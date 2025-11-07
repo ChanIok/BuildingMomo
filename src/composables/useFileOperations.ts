@@ -2,7 +2,10 @@ import { ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import type { GameDataFile, GameItem } from '../types/editor'
 
-export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>) {
+export function useFileOperations(
+  editorStore: ReturnType<typeof useEditorStore>,
+  onImportSuccess?: () => void
+) {
   const fileInputRef = ref<HTMLInputElement | null>(null)
 
   // 导入 JSON 文件
@@ -29,6 +32,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
           if (result.success) {
             console.log(`[FileOps] Successfully imported ${result.itemCount} items`)
+            // 导入成功后调用回调
+            onImportSuccess?.()
           } else {
             alert(`导入失败: ${result.error}`)
           }

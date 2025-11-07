@@ -23,10 +23,14 @@ export const useCommandStore = defineStore('command', () => {
   const zoomInFn = ref<(() => void) | null>(null)
   const zoomOutFn = ref<(() => void) | null>(null)
   const resetViewFn = ref<(() => void) | null>(null)
+  const fitToViewFn = ref<(() => void) | null>(null)
 
   // 剪贴板和文件操作
   const clipboard = useClipboard(editorStore)
-  const fileOps = useFileOperations(editorStore)
+  const fileOps = useFileOperations(editorStore, () => {
+    // 导入成功后自动适配视图
+    fitToViewFn.value?.()
+  })
 
   // 定义所有命令
   const commands = computed<Command[]>(() => [
@@ -203,10 +207,16 @@ export const useCommandStore = defineStore('command', () => {
   }
 
   // 设置缩放函数（由 CanvasEditor 调用）
-  function setZoomFunctions(zoomIn: () => void, zoomOut: () => void, resetView: () => void) {
+  function setZoomFunctions(
+    zoomIn: () => void,
+    zoomOut: () => void,
+    resetView: () => void,
+    fitToView: () => void
+  ) {
     zoomInFn.value = zoomIn
     zoomOutFn.value = zoomOut
     resetViewFn.value = resetView
+    fitToViewFn.value = fitToView
   }
 
   return {

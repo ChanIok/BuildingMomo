@@ -45,19 +45,13 @@ const { selectedItems, handleDragStart, handleDragMove, handleDragEnd } = useCan
 
 // 将缩放函数注册到命令系统
 onMounted(() => {
-  commandStore.setZoomFunctions(zoomIn, zoomOut, resetView)
-})
+  commandStore.setZoomFunctions(zoomIn, zoomOut, resetView, fitToView)
 
-// 监听边界框变化，自动计算最佳视图
-watch(
-  () => editorStore.bounds,
-  (bounds) => {
-    if (bounds) {
-      fitToView()
-    }
-  },
-  { immediate: true }
-)
+  // 如果已有数据，初始化视图
+  if (editorStore.items.length > 0) {
+    fitToView()
+  }
+})
 </script>
 
 <template>
