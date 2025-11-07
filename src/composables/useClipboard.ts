@@ -42,22 +42,16 @@ export function useClipboard(editorStore: ReturnType<typeof useEditorStore>) {
   }
 
   // 粘贴剪贴板内容到画布
-  // 策略：相对原位置偏移 +50, +50
   function paste() {
     if (clipboard.value.length === 0) {
       console.warn('[Clipboard] No items in clipboard to paste')
       return
     }
 
-    const offsetX = 50
-    const offsetY = 50
+    // 创建新物品（不偏移位置）
+    editorStore.pasteItems(clipboard.value, 0, 0)
 
-    // 创建新物品（基于剪贴板数据）
-    editorStore.pasteItems(clipboard.value, offsetX, offsetY)
-
-    console.log(
-      `[Clipboard] Pasted ${clipboard.value.length} items with offset (+${offsetX}, +${offsetY})`
-    )
+    console.log(`[Clipboard] Pasted ${clipboard.value.length} items`)
   }
 
   // 清空剪贴板

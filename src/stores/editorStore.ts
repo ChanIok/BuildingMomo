@@ -186,27 +186,30 @@ export const useEditorStore = defineStore('editor', () => {
   function duplicateSelected(offsetX: number = 50, offsetY: number = 50): string[] {
     const newIds: string[] = []
     const duplicates: AppItem[] = []
+    let nextInstanceId = getNextInstanceId()
 
     items.value.forEach((item) => {
       if (selectedItemIds.value.has(item.internalId)) {
         const newId = generateUUID()
-        // 生成随机数字 InstanceID（使用时间戳 + 随机数）
-        const newInstanceId = Date.now() + Math.floor(Math.random() * 1000000)
+        const newInstanceId = nextInstanceId++
         newIds.push(newId)
+
+        const newX = item.x + offsetX
+        const newY = item.y + offsetY
 
         duplicates.push({
           ...item,
           internalId: newId,
           instanceId: newInstanceId,
-          x: item.x + offsetX,
-          y: item.y + offsetY,
+          x: newX,
+          y: newY,
           originalData: {
             ...item.originalData,
             InstanceID: newInstanceId,
             Location: {
               ...item.originalData.Location,
-              X: item.x + offsetX,
-              Y: item.y + offsetY,
+              X: newX,
+              Y: newY,
             },
           },
         })
@@ -247,30 +250,41 @@ export const useEditorStore = defineStore('editor', () => {
     selectedItemIds.value = newSelection
   }
 
+  // 获取下一个唯一的 InstanceID（自增策略）
+  function getNextInstanceId(): number {
+    if (items.value.length === 0) return 1
+
+    const maxId = items.value.reduce((max, item) => Math.max(max, item.instanceId), 0)
+    return maxId + 1
+  }
+
   // 粘贴物品（从剪贴板）
   function pasteItems(clipboardItems: AppItem[], offsetX: number, offsetY: number): string[] {
     const newIds: string[] = []
     const newItems: AppItem[] = []
+    let nextInstanceId = getNextInstanceId()
 
     clipboardItems.forEach((item) => {
       const newId = generateUUID()
-      // 生成随机数字 InstanceID（使用时间戳 + 随机数）
-      const newInstanceId = Date.now() + Math.floor(Math.random() * 1000000)
+      const newInstanceId = nextInstanceId++
       newIds.push(newId)
+
+      const newX = item.x + offsetX
+      const newY = item.y + offsetY
 
       newItems.push({
         ...item,
         internalId: newId,
         instanceId: newInstanceId,
-        x: item.x + offsetX,
-        y: item.y + offsetY,
+        x: newX,
+        y: newY,
         originalData: {
           ...item.originalData,
           InstanceID: newInstanceId,
           Location: {
             ...item.originalData.Location,
-            X: item.x + offsetX,
-            Y: item.y + offsetY,
+            X: newX,
+            Y: newY,
           },
         },
       })

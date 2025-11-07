@@ -27,7 +27,7 @@ const stageRef = ref<any>(null)
 const zoom = useCanvasZoom(editorStore, stageRef)
 const { scale, stageConfig, handleWheel, resetView, fitToView, zoomIn, zoomOut } = zoom
 
-const { mainLayerRef, interactionLayerRef, updateMainLayer, setHideSelectedItems } =
+const { mainLayerRef, interactionLayerRef, setHideSelectedItems } =
   useCanvasRendering(editorStore, scale)
 
 // 快捷键系统
