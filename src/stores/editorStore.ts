@@ -226,6 +226,12 @@ export const useEditorStore = defineStore('editor', () => {
     activeScheme.value.heightFilter.currentMax = newMax
   }
 
+  // 更新初始视图配置
+  function updateInitialViewConfig(config: { scale: number; x: number; y: number }) {
+    if (!activeScheme.value) return
+    activeScheme.value.initialViewConfig = config
+  }
+
   // 清空数据
   function clearData() {
     schemes.value = []
@@ -465,6 +471,7 @@ export const useEditorStore = defineStore('editor', () => {
     // 兼容旧API
     importJSON,
     updateHeightFilter,
+    updateInitialViewConfig,
     clearData,
 
     // 选择操作

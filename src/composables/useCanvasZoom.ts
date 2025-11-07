@@ -110,7 +110,7 @@ export function useCanvasZoom(editorStore: ReturnType<typeof useEditorStore>, st
     stageConfig.value.y = offsetY
 
     // 保存为初始配置
-    editorStore.initialViewConfig = { scale: adjustedFitScale, x: offsetX, y: offsetY }
+    editorStore.updateInitialViewConfig({ scale: adjustedFitScale, x: offsetX, y: offsetY })
 
     // 同步到 Stage 实例
     nextTick(() => {
