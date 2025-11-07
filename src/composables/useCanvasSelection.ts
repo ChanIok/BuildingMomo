@@ -13,6 +13,7 @@ export function useCanvasSelection(
   const selectionRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
   const isSelecting = ref(false)
   const selectionStart = ref<{ x: number; y: number } | null>(null)
+  const mouseDownScreenPos = ref<{ x: number; y: number } | null>(null) // 记录屏幕坐标起始位置
 
   // 鼠标中键状态
   const isMiddleMousePressed = ref(false)
@@ -75,6 +76,11 @@ export function useCanvasSelection(
   function handleMouseDown(e: any) {
     const evt = e.evt as MouseEvent
 
+    // 检测鼠标右键（button === 2），不触发框选，留给右键菜单处理
+    if (evt.button === 2) {
+      return
+    }
+
     // 检测鼠标中键（button === 1）
     if (evt.button === 1) {
       evt.preventDefault() // 阻止浏览器默认行为（如自动滚动）
@@ -91,13 +97,13 @@ export function useCanvasSelection(
     // 如果处于画布拖动模式（空格键），不触发框选
     if (isCanvasDragMode.value) return
 
-    // 只在点击 Stage 背景时触发框选
-    if (e.target !== e.target.getStage()) return
-
     const stage = e.target.getStage()
     const pos = stage.getPointerPosition()
 
     if (!pos) return
+
+    // 记录屏幕坐标起始位置（用于判断是点击还是拖拽）
+    mouseDownScreenPos.value = { x: pos.x, y: pos.y }
 
     // 转换为世界坐标
     const worldPos = {
@@ -150,6 +156,11 @@ export function useCanvasSelection(
   function handleMouseUp(e: any) {
     const evt = e.evt as MouseEvent
 
+    // 检测鼠标右键释放，不处理
+    if (evt.button === 2) {
+      return
+    }
+
     // 检测鼠标中键释放
     if (evt.button === 1) {
       isMiddleMousePressed.value = false
@@ -158,32 +169,47 @@ export function useCanvasSelection(
       return
     }
 
-    // 如果正在框选，处理框选逻辑
-    if (isSelecting.value && selectionRect.value) {
-      // 检测矩形内的圆点
-      const rect = selectionRect.value
-      const selectedIds = editorStore.visibleItems
-        .filter(
-          (item) =>
-            item.x >= rect.x &&
-            item.x <= rect.x + rect.width &&
-            item.y >= rect.y &&
-            item.y <= rect.y + rect.height
-        )
-        .map((item) => item.internalId)
+    // 如果正在框选，检查是点击还是拖拽
+    if (isSelecting.value && selectionRect.value && mouseDownScreenPos.value) {
+      const stage = e.target.getStage()
+      const endPos = stage.getPointerPosition()
 
-      // 更新选中状态
-      const shiftPressed = e.evt.shiftKey
-      editorStore.updateSelection(selectedIds, shiftPressed)
-    } else {
-      // 否则当作点击处理
-      handleStageClick(e)
+      // 计算屏幕坐标移动距离
+      let moveDistance = 0
+      if (endPos) {
+        moveDistance = Math.sqrt(
+          Math.pow(endPos.x - mouseDownScreenPos.value.x, 2) +
+            Math.pow(endPos.y - mouseDownScreenPos.value.y, 2)
+        )
+      }
+
+      // 如果移动距离小于 3 像素，当作点击处理
+      if (moveDistance < 3) {
+        handleStageClick(e)
+      } else {
+        // 否则当作框选处理
+        const rect = selectionRect.value
+        const selectedIds = editorStore.visibleItems
+          .filter(
+            (item) =>
+              item.x >= rect.x &&
+              item.x <= rect.x + rect.width &&
+              item.y >= rect.y &&
+              item.y <= rect.y + rect.height
+          )
+          .map((item) => item.internalId)
+
+        // 更新选中状态
+        const shiftPressed = e.evt.shiftKey
+        editorStore.updateSelection(selectedIds, shiftPressed)
+      }
     }
 
     // 清除框选状态
     isSelecting.value = false
     selectionRect.value = null
     selectionStart.value = null
+    mouseDownScreenPos.value = null
   }
 
   return {

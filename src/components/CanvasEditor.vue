@@ -7,6 +7,15 @@ import { useCanvasSelection } from '../composables/useCanvasSelection'
 import { useCanvasDrag } from '../composables/useCanvasDrag'
 import { useCanvasRendering } from '../composables/useCanvasRendering'
 import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts'
+import type { AppItem } from '../types/editor'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
@@ -39,6 +48,66 @@ const { selectedItems, handleDragStart, handleDragMove, handleDragEnd } = useCan
   selectedLayerRef
 )
 
+// 右键菜单状态
+const contextMenuOpen = ref(false)
+
+// 菜单位置（屏幕坐标）
+const menuPosition = ref({ x: 0, y: 0 })
+const virtualTriggerRef = ref<HTMLElement | null>(null)
+
+// 碰撞检测函数（复用选择逻辑）
+function findItemAtPosition(worldPos: { x: number; y: number }): AppItem | null {
+  const clickRadius = Math.max(4, 6 / scale.value) + 2
+  let closestItem: AppItem | null = null
+  let minDistance = clickRadius
+
+  for (const item of editorStore.visibleItems) {
+    const distance = Math.sqrt(Math.pow(item.x - worldPos.x, 2) + Math.pow(item.y - worldPos.y, 2))
+    if (distance < minDistance) {
+      minDistance = distance
+      closestItem = item
+    }
+  }
+
+  return closestItem
+}
+
+// 处理右键菜单
+function handleCanvasContextMenu(e: any) {
+  const evt = e.evt as MouseEvent
+  evt.preventDefault()
+
+  // 更新菜单位置为鼠标位置
+  menuPosition.value = {
+    x: evt.clientX,
+    y: evt.clientY,
+  }
+
+  // 判断点击位置
+  const stage = e.target.getStage()
+  const pointerPos = stage.getPointerPosition()
+
+  if (!pointerPos) return
+
+  const worldPos = {
+    x: (pointerPos.x - stage.x()) / stage.scaleX(),
+    y: (pointerPos.y - stage.y()) / stage.scaleY(),
+  }
+
+  // 碰撞检测
+  const clickedItem = findItemAtPosition(worldPos)
+
+  if (clickedItem) {
+    // 如果点击未选中物品，先选中它
+    if (!editorStore.selectedItemIds.has(clickedItem.internalId)) {
+      editorStore.toggleSelection(clickedItem.internalId, false)
+    }
+  }
+
+  // 打开菜单
+  contextMenuOpen.value = true
+}
+
 // 将缩放函数注册到命令系统
 onMounted(() => {
   commandStore.setZoomFunctions(zoomIn, zoomOut, resetView, fitToView)
@@ -48,10 +117,81 @@ onMounted(() => {
     fitToView()
   }
 })
+
+onMounted(() => {
+  document.addEventListener(
+    'contextmenu',
+    (e) => {
+      console.log('🔴 contextmenu event:', {
+        target: e.target,
+        path: e.composedPath(), // 完整的事件路径
+        pointerEvents: getComputedStyle(e.target as Element).pointerEvents,
+        menuOpen: contextMenuOpen.value,
+      })
+    },
+    true
+  )
+})
 </script>
 
 <template>
   <div class="relative flex-1 overflow-hidden bg-gray-100">
+    <!-- Dropdown Menu (代替 Context Menu) -->
+    <DropdownMenu v-model:open="contextMenuOpen" :modal="false">
+      <!-- 虚拟触发器：不可见但存在于 DOM 中，动态定位到鼠标位置 -->
+      <DropdownMenuTrigger as-child>
+        <div
+          ref="virtualTriggerRef"
+          style="position: fixed; width: 1px; height: 1px; pointer-events: none; opacity: 0"
+          :style="{
+            left: `${menuPosition.x}px`,
+            top: `${menuPosition.y}px`,
+          }"
+        />
+      </DropdownMenuTrigger>
+
+      <!-- 菜单内容 -->
+      <DropdownMenuContent
+        :side="'bottom'"
+        :align="'start'"
+        :side-offset="0"
+        :align-offset="0"
+        @escape-key-down="contextMenuOpen = false"
+        @pointer-down-outside="contextMenuOpen = false"
+      >
+        <!-- 统一的右键菜单 -->
+        <DropdownMenuItem
+          :disabled="!commandStore.isCommandEnabled('edit.cut')"
+          @select="commandStore.executeCommand('edit.cut')"
+        >
+          <span>剪切</span>
+          <DropdownMenuShortcut>Ctrl+X</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          :disabled="!commandStore.isCommandEnabled('edit.copy')"
+          @select="commandStore.executeCommand('edit.copy')"
+        >
+          <span>复制</span>
+          <DropdownMenuShortcut>Ctrl+C</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          :disabled="!commandStore.isCommandEnabled('edit.paste')"
+          @select="commandStore.executeCommand('edit.paste')"
+        >
+          <span>粘贴</span>
+          <DropdownMenuShortcut>Ctrl+V</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          :disabled="!commandStore.isCommandEnabled('edit.delete')"
+          @select="commandStore.executeCommand('edit.delete')"
+          variant="destructive"
+        >
+          <span>删除</span>
+          <DropdownMenuShortcut>Delete</DropdownMenuShortcut>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
     <!-- 空状态提示 -->
     <div
       v-if="editorStore.items.length === 0"
@@ -86,6 +226,7 @@ onMounted(() => {
       @mousedown="handleMouseDown"
       @mousemove="handleMouseMove"
       @mouseup="handleMouseUp"
+      @contextmenu="handleCanvasContextMenu"
     >
       <!-- Layer 1: 批量绘制未选中圆点 -->
       <v-layer ref="unselectedLayerRef">

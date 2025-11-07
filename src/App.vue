@@ -5,15 +5,15 @@ import CanvasEditor from './components/CanvasEditor.vue'
 </script>
 
 <template>
-  <div class="h-screen flex flex-col overflow-hidden">
+  <div class="flex h-screen flex-col overflow-hidden">
     <!-- 顶部工具栏 -->
     <Toolbar />
-    
+
     <!-- 主体内容区 -->
-    <div class="flex-1 flex overflow-hidden">
+    <div class="flex flex-1 overflow-hidden">
       <!-- 左侧边栏 -->
       <Sidebar />
-      
+
       <!-- 画布区域 -->
       <CanvasEditor />
     </div>

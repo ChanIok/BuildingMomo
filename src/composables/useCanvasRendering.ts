@@ -1,4 +1,4 @@
-import { ref, watch, nextTick, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import Konva from 'konva'
 import type { useEditorStore } from '../stores/editorStore'
 
@@ -50,22 +50,20 @@ export function useCanvasRendering(
 
   // 更新批量绘制的 Shape
   function updateUnselectedItemsShape() {
-    nextTick(() => {
-      const layer = unselectedLayerRef.value?.getNode()
-      if (!layer) return
+    const layer = unselectedLayerRef.value?.getNode()
+    if (!layer) return
 
-      // 移除旧的 shape
-      if (unselectedShapeRef.value) {
-        unselectedShapeRef.value.destroy()
-      }
+    // 移除旧的 shape
+    if (unselectedShapeRef.value) {
+      unselectedShapeRef.value.destroy()
+    }
 
-      // 创建新的 shape
-      if (editorStore.visibleItems.length > 0) {
-        unselectedShapeRef.value = createUnselectedItemsShape()
-        layer.add(unselectedShapeRef.value)
-        layer.batchDraw()
-      }
-    })
+    // 创建新的 shape
+    if (editorStore.visibleItems.length > 0) {
+      unselectedShapeRef.value = createUnselectedItemsShape()
+      layer.add(unselectedShapeRef.value)
+      layer.batchDraw()
+    }
   }
 
   // 监听可见物品变化，更新批量绘制
@@ -79,10 +77,11 @@ export function useCanvasRendering(
 
   // 监听选中状态变化，更新批量绘制
   watch(
-    () => editorStore.selectedItemIds.size,
+    () => editorStore.selectedItems,
     () => {
       updateUnselectedItemsShape()
-    }
+    },
+    { deep: true }
   )
 
   // 监听缩放变化，更新批量绘制（因为圆点大小依赖于缩放）
