@@ -79,7 +79,9 @@ function isEnabled(commandId: string): boolean {
         <MenubarContent>
           <template v-for="cmd in viewCommands" :key="cmd.id">
             <!-- 在"重置视图"之前添加分隔线 -->
-            <MenubarSeparator v-if="cmd.id === 'view.resetView'" />
+            <MenubarSeparator
+              v-if="cmd.id === 'view.resetView' || cmd.id === 'view.coordinateSystem'"
+            />
             <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
               {{ cmd.label }}
               <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>

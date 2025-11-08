@@ -28,6 +28,9 @@ export const useCommandStore = defineStore('command', () => {
   // 移动对话框状态
   const showMoveDialog = ref(false)
 
+  // 工作坐标系对话框状态
+  const showCoordinateDialog = ref(false)
+
   // 剪贴板和文件操作
   const clipboard = useClipboard(editorStore)
   const fileOps = useFileOperations(editorStore, () => {
@@ -217,6 +220,16 @@ export const useCommandStore = defineStore('command', () => {
         resetViewFn.value?.()
       },
     },
+    {
+      id: 'view.coordinateSystem',
+      label: '工作坐标系设置',
+      category: 'view',
+      enabled: () => editorStore.items.length > 0,
+      execute: () => {
+        console.log('[Command] 打开工作坐标系设置')
+        showCoordinateDialog.value = true
+      },
+    },
   ])
 
   // 命令映射表
@@ -276,5 +289,6 @@ export const useCommandStore = defineStore('command', () => {
     isCommandEnabled,
     setZoomFunctions,
     showMoveDialog,
+    showCoordinateDialog,
   }
 })

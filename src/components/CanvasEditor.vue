@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import MoveDialog from './MoveDialog.vue'
+import CoordinateDialog from './CoordinateDialog.vue'
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
@@ -140,6 +141,9 @@ onMounted(() => {
   <div class="relative h-full flex-1 overflow-hidden bg-gray-100">
     <!-- 移动对话框 -->
     <MoveDialog v-model:open="commandStore.showMoveDialog" />
+
+    <!-- 工作坐标系设置对话框 -->
+    <CoordinateDialog v-model:open="commandStore.showCoordinateDialog" />
 
     <!-- Dropdown Menu (代替 Context Menu) -->
     <DropdownMenu v-model:open="contextMenuOpen" :modal="false">

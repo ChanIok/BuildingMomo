@@ -7,6 +7,7 @@ import type {
   HeightFilter,
   HomeScheme,
   TransformParams,
+  WorkingCoordinateSystem,
 } from '../types/editor'
 
 // 生成简单的UUID
@@ -78,6 +79,12 @@ export const useEditorStore = defineStore('editor', () => {
 
   // 全局剪贴板（支持跨方案复制粘贴）
   const clipboard = ref<AppItem[]>([])
+
+  // 工作坐标系状态
+  const workingCoordinateSystem = ref<WorkingCoordinateSystem>({
+    enabled: false,
+    rotationAngle: 0,
+  })
 
   // 计算属性：当前激活的方案
   const activeScheme = computed(
@@ -619,6 +626,54 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  // 设置工作坐标系
+  function setWorkingCoordinateSystem(enabled: boolean, angle: number) {
+    workingCoordinateSystem.value.enabled = enabled
+    workingCoordinateSystem.value.rotationAngle = angle
+  }
+
+  // 工作坐标系坐标转换：工作坐标系 -> 全局坐标系
+  function workingToGlobal(point: {
+    x: number
+    y: number
+    z: number
+  }): { x: number; y: number; z: number } {
+    if (!workingCoordinateSystem.value.enabled) {
+      return point
+    }
+
+    const angleRad = (workingCoordinateSystem.value.rotationAngle * Math.PI) / 180
+    const cos = Math.cos(angleRad)
+    const sin = Math.sin(angleRad)
+
+    return {
+      x: point.x * cos - point.y * sin,
+      y: point.x * sin + point.y * cos,
+      z: point.z,
+    }
+  }
+
+  // 工作坐标系坐标转换：全局坐标系 -> 工作坐标系
+  function globalToWorking(point: {
+    x: number
+    y: number
+    z: number
+  }): { x: number; y: number; z: number } {
+    if (!workingCoordinateSystem.value.enabled) {
+      return point
+    }
+
+    const angleRad = (-workingCoordinateSystem.value.rotationAngle * Math.PI) / 180
+    const cos = Math.cos(angleRad)
+    const sin = Math.sin(angleRad)
+
+    return {
+      x: point.x * cos - point.y * sin,
+      y: point.x * sin + point.y * cos,
+      z: point.z,
+    }
+  }
+
   return {
     // 多方案状态
     schemes,
@@ -665,5 +720,11 @@ export const useEditorStore = defineStore('editor', () => {
     cutToClipboard,
     pasteFromClipboard,
     pasteItems,
+
+    // 工作坐标系
+    workingCoordinateSystem,
+    setWorkingCoordinateSystem,
+    workingToGlobal,
+    globalToWorking,
   }
 })

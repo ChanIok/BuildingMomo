@@ -27,6 +27,10 @@ const editorStore = useEditorStore()
 // 表单数据
 const mode = ref<'relative' | 'absolute'>('relative')
 
+// 坐标系选择
+const coordinateMode = ref<'global' | 'working'>('global')
+const workingAngle = ref<number>(0)
+
 // 位置输入
 const posX = ref<string>('')
 const posY = ref<string>('')
@@ -51,12 +55,38 @@ const centerHint = computed(() => {
   return ''
 })
 
+// 计算全局坐标系下的位移（用于预览）
+const globalDelta = computed(() => {
+  const dx = parseInputValue(posX.value) ?? 0
+  const dy = parseInputValue(posY.value) ?? 0
+  const dz = parseInputValue(posZ.value) ?? 0
+
+  if (coordinateMode.value === 'global') {
+    return { x: dx, y: dy, z: dz }
+  }
+
+  // 工作坐标系 -> 全局坐标系转换
+  const angleRad = (workingAngle.value * Math.PI) / 180
+  return {
+    x: dx * Math.cos(angleRad) - dy * Math.sin(angleRad),
+    y: dx * Math.sin(angleRad) + dy * Math.cos(angleRad),
+    z: dz,
+  }
+})
+
 // 当对话框打开时，重置表单并填充默认值
 watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
       resetForm()
+      // 如果当前有激活的工作坐标系，使用它
+      if (editorStore.workingCoordinateSystem.enabled) {
+        coordinateMode.value = 'working'
+        workingAngle.value = editorStore.workingCoordinateSystem.rotationAngle
+      } else {
+        coordinateMode.value = 'global'
+      }
     }
   }
 )
@@ -93,14 +123,31 @@ function handleConfirm() {
   }
 
   // 解析位置值
-  const position =
-    posX.value || posY.value || posZ.value
-      ? {
-          x: parseInputValue(posX.value),
-          y: parseInputValue(posY.value),
-          z: parseInputValue(posZ.value),
-        }
-      : undefined
+  let position:
+    | {
+        x?: number
+        y?: number
+        z?: number
+      }
+    | undefined
+
+  if (posX.value || posY.value || posZ.value) {
+    if (coordinateMode.value === 'working') {
+      // 工作坐标系模式：需要转换到全局坐标系
+      position = {
+        x: globalDelta.value.x || undefined,
+        y: globalDelta.value.y || undefined,
+        z: globalDelta.value.z || undefined,
+      }
+    } else {
+      // 全局坐标系模式：直接使用
+      position = {
+        x: parseInputValue(posX.value),
+        y: parseInputValue(posY.value),
+        z: parseInputValue(posZ.value),
+      }
+    }
+  }
 
   // 解析旋转值
   const rotation =
@@ -138,6 +185,66 @@ function handleCancel() {
       </DialogHeader>
 
       <div class="grid gap-6 py-4">
+        <!-- 坐标系选择 -->
+        <div class="rounded-lg border bg-muted/50 p-3">
+          <Label class="text-sm font-medium">坐标系</Label>
+          <RadioGroup v-model="coordinateMode" class="mt-2">
+            <div class="flex items-center space-x-2">
+              <RadioGroupItem id="global" value="global" />
+              <Label for="global" class="cursor-pointer text-sm font-normal">全局坐标系</Label>
+            </div>
+            <div class="flex items-center space-x-2">
+              <RadioGroupItem id="working" value="working" />
+              <Label for="working" class="cursor-pointer text-sm font-normal">
+                工作坐标系（旋转 {{ workingAngle }}°）
+              </Label>
+            </div>
+          </RadioGroup>
+
+          <!-- 工作坐标系角度调整 -->
+          <div v-if="coordinateMode === 'working'" class="mt-3 space-y-2">
+            <Label class="text-xs">旋转角度</Label>
+            <div class="flex items-center gap-2">
+              <Input v-model.number="workingAngle" type="number" class="h-8 w-20 text-sm" />
+              <span class="text-xs text-muted-foreground">度</span>
+              <div class="ml-auto flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-7 px-2 text-xs"
+                  @click="workingAngle = 0"
+                >
+                  0°
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-7 px-2 text-xs"
+                  @click="workingAngle = 45"
+                >
+                  45°
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-7 px-2 text-xs"
+                  @click="workingAngle = 90"
+                >
+                  90°
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  class="h-7 px-2 text-xs"
+                  @click="workingAngle = 135"
+                >
+                  135°
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 模式选择 -->
         <div class="grid gap-2">
           <Label>移动模式</Label>
@@ -160,7 +267,15 @@ function handleCancel() {
         <!-- 位置输入 -->
         <div class="grid gap-3">
           <div class="flex items-center justify-between">
-            <Label class="text-base font-medium">位置</Label>
+            <Label class="text-base font-medium">
+              位置
+              <span
+                v-if="coordinateMode === 'working'"
+                class="ml-1 text-xs font-normal text-blue-600"
+              >
+                (工作坐标系)
+              </span>
+            </Label>
             <span v-if="centerHint" class="text-xs text-muted-foreground">{{ centerHint }}</span>
           </div>
           <div class="grid grid-cols-3 gap-3">
@@ -193,6 +308,21 @@ function handleCancel() {
                 placeholder="0"
                 @keydown.enter="handleConfirm"
               />
+            </div>
+          </div>
+
+          <!-- 坐标转换预览 -->
+          <div
+            v-if="coordinateMode === 'working' && (posX || posY || posZ)"
+            class="rounded-md bg-blue-50 px-3 py-2 text-xs"
+          >
+            <div class="font-medium text-blue-900">转换预览：</div>
+            <div class="mt-1 text-blue-700">
+              工作坐标系: ({{ posX || 0 }}, {{ posY || 0 }}, {{ posZ || 0 }})
+            </div>
+            <div class="text-blue-700">
+              → 全局坐标系: ({{ globalDelta.x.toFixed(2) }}, {{ globalDelta.y.toFixed(2) }},
+              {{ globalDelta.z.toFixed(2) }})
             </div>
           </div>
         </div>

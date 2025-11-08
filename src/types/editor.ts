@@ -93,3 +93,9 @@ export interface TransformParams {
     z?: number // 绕Z轴旋转（对应游戏的Yaw）
   }
 }
+
+// 工作坐标系配置
+export interface WorkingCoordinateSystem {
+  enabled: boolean // 是否启用工作坐标系
+  rotationAngle: number // 旋转角度（以度为单位，0° = 全局坐标系）
+}
