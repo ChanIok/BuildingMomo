@@ -36,6 +36,27 @@ export const useCommandStore = defineStore('command', () => {
   const commands = computed<Command[]>(() => [
     // ===== 文件菜单 =====
     {
+      id: 'file.startWatchMode',
+      label: '监控游戏目录',
+      shortcut: 'Ctrl+Shift+M',
+      category: 'file',
+      enabled: () => fileOps.isFileSystemAccessSupported && !fileOps.watchState.value.isActive,
+      execute: async () => {
+        console.log('[Command] 启动监控模式')
+        await fileOps.startWatchMode()
+      },
+    },
+    {
+      id: 'file.stopWatchMode',
+      label: '停止监控',
+      category: 'file',
+      enabled: () => fileOps.watchState.value.isActive,
+      execute: () => {
+        console.log('[Command] 停止监控模式')
+        fileOps.stopWatchMode()
+      },
+    },
+    {
       id: 'file.import',
       label: '导入 JSON',
       shortcut: 'Ctrl+O',
@@ -67,27 +88,6 @@ export const useCommandStore = defineStore('command', () => {
       execute: async () => {
         console.log('[Command] 保存到游戏')
         await fileOps.saveToGame()
-      },
-    },
-    {
-      id: 'file.startWatchMode',
-      label: '监控游戏目录',
-      shortcut: 'Ctrl+Shift+M',
-      category: 'file',
-      enabled: () => fileOps.isFileSystemAccessSupported && !fileOps.watchState.value.isActive,
-      execute: async () => {
-        console.log('[Command] 启动监控模式')
-        await fileOps.startWatchMode()
-      },
-    },
-    {
-      id: 'file.stopWatchMode',
-      label: '停止监控',
-      category: 'file',
-      enabled: () => fileOps.watchState.value.isActive,
-      execute: () => {
-        console.log('[Command] 停止监控模式')
-        fileOps.stopWatchMode()
       },
     },
 

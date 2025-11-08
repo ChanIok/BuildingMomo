@@ -45,9 +45,9 @@ function isEnabled(commandId: string): boolean {
             <!-- 在"导出"、"保存到游戏"、"监控游戏目录"之前添加分隔线 -->
             <MenubarSeparator
               v-if="
+                cmd.id === 'file.import' ||
                 cmd.id === 'file.export' ||
-                cmd.id === 'file.saveToGame' ||
-                cmd.id === 'file.startWatchMode'
+                cmd.id === 'file.saveToGame'
               "
             />
             <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">

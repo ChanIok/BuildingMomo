@@ -7,7 +7,6 @@ import { useCanvasSelection } from '../composables/useCanvasSelection'
 import { useCanvasDrag } from '../composables/useCanvasDrag'
 import { useCanvasRendering } from '../composables/useCanvasRendering'
 import { useKeyboardShortcuts } from '../composables/useKeyboardShortcuts'
-import type { AppItem } from '../types/editor'
 import {
   DropdownMenu,
   DropdownMenuContent,

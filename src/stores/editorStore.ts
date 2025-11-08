@@ -120,12 +120,25 @@ export const useEditorStore = defineStore('editor', () => {
     try {
       const data: GameDataFile = JSON.parse(fileContent)
 
-      if (!data.PlaceInfo || !Array.isArray(data.PlaceInfo)) {
-        throw new Error('Invalid JSON format: PlaceInfo array not found')
+      // 检查基本结构
+      if (!data.hasOwnProperty('PlaceInfo')) {
+        throw new Error('Invalid JSON format: PlaceInfo field not found')
       }
 
-      // 转换为内部数据格式
-      const newItems: AppItem[] = data.PlaceInfo.map((gameItem: GameItem) => ({
+      // 处理 PlaceInfo 的不同格式
+      let placeInfoArray: GameItem[] = []
+      if (Array.isArray(data.PlaceInfo)) {
+        // PlaceInfo 是数组（正常情况）
+        placeInfoArray = data.PlaceInfo
+      } else if (typeof data.PlaceInfo === 'object' && data.PlaceInfo !== null) {
+        // PlaceInfo 是空对象 {}（游戏未建造或清空时），视为空数组
+        placeInfoArray = []
+      } else {
+        throw new Error('Invalid JSON format: PlaceInfo must be an array or object')
+      }
+
+      // 转换为内部数据格式（允许空数组，创建空白方案）
+      const newItems: AppItem[] = placeInfoArray.map((gameItem: GameItem) => ({
         internalId: generateUUID(),
         gameId: gameItem.ItemID,
         instanceId: gameItem.InstanceID,
@@ -219,16 +232,6 @@ export const useEditorStore = defineStore('editor', () => {
     const scheme = schemes.value.find((s) => s.id === schemeId)
     if (scheme) {
       scheme.name = newName
-    }
-  }
-
-  // 兼容旧API：导入JSON（导入到当前方案或创建新方案）
-  function importJSON(fileContent: string) {
-    const result = importJSONAsScheme(fileContent, '导入的方案')
-    return {
-      success: result.success,
-      itemCount: result.success ? (activeScheme.value?.items.length ?? 0) : 0,
-      error: result.error,
     }
   }
 
@@ -480,9 +483,6 @@ export const useEditorStore = defineStore('editor', () => {
     closeScheme,
     setActiveScheme,
     renameScheme,
-
-    // 兼容旧API
-    importJSON,
     updateHeightFilter,
     updateInitialViewConfig,
     clearData,

@@ -328,10 +328,28 @@ export function useFileOperations(
         // 更新最后修改时间
         watchState.value.lastModifiedTime = file.lastModified
 
-        // 使用新的通知系统显示文件更新提示
-        const confirmed = await notification.fileUpdate(file.name, file.lastModified)
-        if (confirmed) {
-          await importFromWatchedFile()
+        // 读取文件内容检查 NeedRestore
+        try {
+          const content = await file.text()
+          const jsonData = JSON.parse(content)
+
+          // 只有 NeedRestore 为 true 时才提示导入
+          if (jsonData.NeedRestore === true) {
+            const confirmed = await notification.fileUpdate(file.name, file.lastModified)
+            if (confirmed) {
+              await importFromWatchedFile()
+            }
+          } else {
+            // NeedRestore 为 false，静默忽略（不打扰用户）
+            console.log(`[FileWatch] File updated but NeedRestore is false, skipping notification`)
+          }
+        } catch (parseError) {
+          console.error('[FileWatch] Failed to parse JSON, will still notify user:', parseError)
+          // 解析失败时仍然提示用户，让用户决定是否导入
+          const confirmed = await notification.fileUpdate(file.name, file.lastModified)
+          if (confirmed) {
+            await importFromWatchedFile()
+          }
         }
 
         return true
@@ -425,25 +443,35 @@ export function useFileOperations(
       // 5. 启动轮询
       startPolling()
 
-      // 6. 如果有现有文件，询问是否立即导入
+      // 6. 如果有现有文件，检查 NeedRestore 再决定是否提示导入
       if (result) {
-        const shouldImport = await notification.confirm({
-          title: '找到存档文件',
-          description: `文件：${fileName}\n最后修改时间：${new Date(lastModified).toLocaleString()}\n\n是否立即导入？`,
-          confirmText: '立即导入',
-          cancelText: '稍后',
-        })
+        try {
+          const content = await result.file.text()
+          const jsonData = JSON.parse(content)
 
-        if (shouldImport) {
-          await importFromWatchedFile()
+          // 只有 NeedRestore 为 true 时才提示导入
+          if (jsonData.NeedRestore === true) {
+            const shouldImport = await notification.confirm({
+              title: '找到存档文件',
+              description: `文件：${fileName}\n最后修改时间：${new Date(lastModified).toLocaleString()}\n\n是否立即导入？`,
+              confirmText: '立即导入',
+              cancelText: '稍后',
+            })
+
+            if (shouldImport) {
+              await importFromWatchedFile()
+            }
+          } else {
+            // NeedRestore 为 false，说明暂无建造数据
+            notification.success('监控已启动，等待游戏导出建造数据')
+          }
+        } catch (error) {
+          console.error('[FileWatch] Failed to parse JSON:', error)
+          // 解析失败时也提示用户
+          notification.warning('监控已启动，找到存档文件但无法解析')
         }
       } else {
-        notification.alert({
-          title: '监控已启动',
-          description:
-            '未找到现有存档文件，请在游戏中进行建造并保存。\n当文件有更新时，浏览器会自动提示您导入。',
-          confirmText: '知道了',
-        })
+        notification.success('监控已启动，等待游戏导出建造数据')
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {

@@ -8,6 +8,7 @@ import CanvasEditor from './components/CanvasEditor.vue'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { X } from 'lucide-vue-next'
 import { Toaster } from '@/components/ui/sonner'
+import 'vue-sonner/style.css'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -125,7 +126,7 @@ const dialogOpen = computed({
     <Toaster position="top-center" :duration="3000" richColors />
 
     <!-- 全局 AlertDialog -->
-    <AlertDialog :open="dialogOpen" @update:open="dialogOpen = $event">
+    <AlertDialog :open="dialogOpen">
       <AlertDialogContent v-if="notificationStore.currentAlert">
         <AlertDialogHeader>
           <AlertDialogTitle>{{ notificationStore.currentAlert.title }}</AlertDialogTitle>
