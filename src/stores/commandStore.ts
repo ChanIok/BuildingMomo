@@ -208,6 +208,44 @@ export const useCommandStore = defineStore('command', () => {
         editorStore.invertSelection()
       },
     },
+    {
+      id: 'edit.group',
+      label: '成组',
+      shortcut: 'Ctrl+G',
+      category: 'edit',
+      enabled: () => {
+        if (editorStore.selectedItemIds.size < 2) return false
+
+        // 获取所有选中物品的组ID
+        const groupIds = new Set(editorStore.selectedItems.map((item) => item.originalData.GroupID))
+
+        // 如果所有物品都属于同一个组（且该组ID > 0），则不允许成组
+        if (groupIds.size === 1) {
+          const groupId = Array.from(groupIds)[0]
+          if (groupId !== undefined && groupId > 0) return false
+        }
+
+        return true
+      },
+      execute: () => {
+        console.log('[Command] 成组')
+        editorStore.groupSelected()
+      },
+    },
+    {
+      id: 'edit.ungroup',
+      label: '取消组合',
+      shortcut: 'Ctrl+Shift+G',
+      category: 'edit',
+      enabled: () => {
+        // 检查选中物品是否有组
+        return editorStore.selectedItems.some((item) => item.originalData.GroupID > 0)
+      },
+      execute: () => {
+        console.log('[Command] 取消组合')
+        editorStore.ungroupSelected()
+      },
+    },
 
     // ===== 视图菜单 =====
     {

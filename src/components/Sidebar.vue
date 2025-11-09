@@ -13,6 +13,38 @@ const formattedZRange = computed(() => {
   }
 })
 
+// 计算属性：选中物品的组信息
+const selectedGroupInfo = computed(() => {
+  if (editorStore.selectedItems.length === 0) return null
+
+  const groupIds = new Set(editorStore.selectedItems.map((item) => item.originalData.GroupID))
+
+  // 如果所有选中物品都是无组
+  if (groupIds.size === 1 && groupIds.has(0)) {
+    return { type: 'none', count: editorStore.selectedItems.length }
+  }
+
+  // 如果所有选中物品都属于同一组
+  if (groupIds.size === 1) {
+    const groupId = Array.from(groupIds)[0]!
+    const groupItems = editorStore.getGroupItems(groupId)
+    return {
+      type: 'single',
+      groupId,
+      selectedCount: editorStore.selectedItems.length,
+      totalCount: groupItems.length,
+    }
+  }
+
+  // 如果选中了多个组（或混合）
+  const groupCount = Array.from(groupIds).filter((id) => id > 0).length
+  return {
+    type: 'multiple',
+    groupCount,
+    selectedCount: editorStore.selectedItems.length,
+  }
+})
+
 // 更新高度过滤器
 function updateMinFilter(event: Event) {
   const value = parseFloat((event.target as HTMLInputElement).value)
@@ -47,6 +79,90 @@ function updateMaxFilter(event: Event) {
           >
             {{ editorStore.stats.selectedItems }}
           </span>
+        </div>
+        <div class="flex justify-between border-t border-gray-100 pt-2">
+          <span class="text-gray-600">组数量：</span>
+          <span class="font-medium text-purple-600">{{
+            editorStore.stats.groups.totalGroups
+          }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-600">成组物品：</span>
+          <span class="font-medium text-purple-600">{{
+            editorStore.stats.groups.groupedItems
+          }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-600">独立物品：</span>
+          <span class="font-medium text-gray-500">{{
+            editorStore.stats.groups.ungroupedItems
+          }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 选中物品组信息 -->
+    <div v-if="selectedGroupInfo" class="rounded-lg bg-white p-4 shadow-sm">
+      <h2 class="mb-3 text-sm font-semibold text-gray-700">选中物品</h2>
+      <div class="space-y-2 text-sm">
+        <!-- 单一组 -->
+        <template v-if="selectedGroupInfo.type === 'single'">
+          <div class="rounded-md bg-purple-50 p-3">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-purple-700">组 #{{ selectedGroupInfo.groupId }}</span>
+              <span class="text-xs text-purple-600">
+                {{ selectedGroupInfo.selectedCount }} / {{ selectedGroupInfo.totalCount }} 个物品
+              </span>
+            </div>
+          </div>
+        </template>
+
+        <!-- 多个组 -->
+        <template v-else-if="selectedGroupInfo.type === 'multiple'">
+          <div class="rounded-md bg-orange-50 p-3">
+            <div class="text-sm text-orange-700">
+              已选中 {{ selectedGroupInfo.groupCount }} 个组的物品
+            </div>
+          </div>
+        </template>
+
+        <!-- 无组 -->
+        <template v-else-if="selectedGroupInfo.type === 'none'">
+          <div class="rounded-md bg-gray-50 p-3">
+            <div class="text-sm text-gray-600">
+              {{ selectedGroupInfo.count }} 个独立物品（未成组）
+            </div>
+          </div>
+        </template>
+
+        <!-- 成组/取消组合按钮 -->
+        <div class="mt-3 flex gap-2">
+          <button
+            @click="editorStore.groupSelected()"
+            :disabled="editorStore.selectedItemIds.size < 2 || selectedGroupInfo.type === 'single'"
+            :class="[
+              'flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors',
+              editorStore.selectedItemIds.size >= 2 && selectedGroupInfo.type !== 'single'
+                ? 'bg-purple-600 text-white hover:bg-purple-700'
+                : 'cursor-not-allowed bg-gray-100 text-gray-400',
+            ]"
+            title="Ctrl+G"
+          >
+            成组
+          </button>
+          <button
+            @click="editorStore.ungroupSelected()"
+            :disabled="!editorStore.selectedItems.some((item) => item.originalData.GroupID > 0)"
+            :class="[
+              'flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors',
+              editorStore.selectedItems.some((item) => item.originalData.GroupID > 0)
+                ? 'bg-gray-600 text-white hover:bg-gray-700'
+                : 'cursor-not-allowed bg-gray-100 text-gray-400',
+            ]"
+            title="Ctrl+Shift+G"
+          >
+            取消组合
+          </button>
         </div>
       </div>
     </div>

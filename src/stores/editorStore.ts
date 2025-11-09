@@ -139,15 +139,33 @@ export const useEditorStore = defineStore('editor', () => {
   })
 
   // 计算属性：统计信息
-  const stats = computed(() => ({
-    totalItems: items.value.length,
-    visibleItems: visibleItems.value.length,
-    selectedItems: selectedItemIds.value.size,
-    zRange: {
-      min: heightFilter.value.min,
-      max: heightFilter.value.max,
-    },
-  }))
+  const stats = computed(() => {
+    // 统计组信息
+    const groups = new Map<number, number>() // groupId -> count
+    items.value.forEach((item) => {
+      const gid = item.originalData.GroupID
+      if (gid > 0) {
+        groups.set(gid, (groups.get(gid) || 0) + 1)
+      }
+    })
+
+    const groupedItemsCount = Array.from(groups.values()).reduce((a, b) => a + b, 0)
+
+    return {
+      totalItems: items.value.length,
+      visibleItems: visibleItems.value.length,
+      selectedItems: selectedItemIds.value.size,
+      zRange: {
+        min: heightFilter.value.min,
+        max: heightFilter.value.max,
+      },
+      groups: {
+        totalGroups: groups.size,
+        groupedItems: groupedItemsCount,
+        ungroupedItems: items.value.length - groupedItemsCount,
+      },
+    }
+  })
 
   // 计算属性：选中的物品列表
   const selectedItems = computed(() => {
@@ -469,13 +487,34 @@ export const useEditorStore = defineStore('editor', () => {
 
     if (additive) {
       if (activeScheme.value.selectedItemIds.has(itemId)) {
-        activeScheme.value.selectedItemIds.delete(itemId)
+        // 取消选择：如果是组，取消整组
+        const groupId = getItemGroupId(itemId)
+        if (groupId > 0) {
+          const groupItems = getGroupItems(groupId)
+          groupItems.forEach((item) => activeScheme.value!.selectedItemIds.delete(item.internalId))
+        } else {
+          activeScheme.value.selectedItemIds.delete(itemId)
+        }
       } else {
-        activeScheme.value.selectedItemIds.add(itemId)
+        // 添加选择：如果是组，选中整组
+        const groupId = getItemGroupId(itemId)
+        if (groupId > 0) {
+          const groupItems = getGroupItems(groupId)
+          groupItems.forEach((item) => activeScheme.value!.selectedItemIds.add(item.internalId))
+        } else {
+          activeScheme.value.selectedItemIds.add(itemId)
+        }
       }
     } else {
       activeScheme.value.selectedItemIds.clear()
-      activeScheme.value.selectedItemIds.add(itemId)
+      // 如果是组，选中整组
+      const groupId = getItemGroupId(itemId)
+      if (groupId > 0) {
+        const groupItems = getGroupItems(groupId)
+        groupItems.forEach((item) => activeScheme.value!.selectedItemIds.add(item.internalId))
+      } else {
+        activeScheme.value.selectedItemIds.add(itemId)
+      }
     }
   }
 
@@ -488,7 +527,11 @@ export const useEditorStore = defineStore('editor', () => {
     if (!additive) {
       activeScheme.value.selectedItemIds.clear()
     }
-    itemIds.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
+
+    // 扩展选择到整组（框选行为）
+    const initialSelection = new Set(itemIds)
+    const expandedSelection = expandSelectionToGroups(initialSelection)
+    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
   }
 
   function clearSelection() {
@@ -535,6 +578,18 @@ export const useEditorStore = defineStore('editor', () => {
     const duplicates: AppItem[] = []
     let nextInstanceId = getNextInstanceId()
 
+    // 收集选中物品的所有组ID，为每个组分配新的 GroupID
+    const groupIdMap = new Map<number, number>() // 旧GroupID -> 新GroupID
+
+    activeScheme.value.items.forEach((item) => {
+      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
+        const oldGroupId = item.originalData.GroupID
+        if (oldGroupId > 0 && !groupIdMap.has(oldGroupId)) {
+          groupIdMap.set(oldGroupId, getNextGroupId() + groupIdMap.size)
+        }
+      }
+    })
+
     activeScheme.value.items.forEach((item) => {
       if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
         const newId = generateUUID()
@@ -543,6 +598,10 @@ export const useEditorStore = defineStore('editor', () => {
 
         const newX = item.x + offsetX
         const newY = item.y + offsetY
+
+        // 如果物品有组，分配新的 GroupID
+        const oldGroupId = item.originalData.GroupID
+        const newGroupId = oldGroupId > 0 ? groupIdMap.get(oldGroupId)! : 0
 
         duplicates.push({
           ...item,
@@ -553,6 +612,7 @@ export const useEditorStore = defineStore('editor', () => {
           originalData: {
             ...item.originalData,
             InstanceID: newInstanceId,
+            GroupID: newGroupId,
             Location: {
               ...item.originalData.Location,
               X: newX,
@@ -622,6 +682,160 @@ export const useEditorStore = defineStore('editor', () => {
     return maxId + 1
   }
 
+  // ========== 组编辑功能 ==========
+
+  // 获取下一个唯一的 GroupID（自增策略）
+  function getNextGroupId(): number {
+    if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
+
+    const maxId = activeScheme.value.items.reduce(
+      (max, item) => Math.max(max, item.originalData.GroupID),
+      0
+    )
+    return maxId + 1
+  }
+
+  // 获取指定组的所有物品
+  function getGroupItems(groupId: number): AppItem[] {
+    if (!activeScheme.value || groupId <= 0) return []
+    return activeScheme.value.items.filter((item) => item.originalData.GroupID === groupId)
+  }
+
+  // 获取物品的组ID
+  function getItemGroupId(itemId: string): number {
+    if (!activeScheme.value) return 0
+    const item = activeScheme.value.items.find((item) => item.internalId === itemId)
+    return item?.originalData.GroupID ?? 0
+  }
+
+  // 获取所有组ID列表（去重）
+  function getAllGroupIds(): number[] {
+    if (!activeScheme.value) return []
+    const groupIds = new Set<number>()
+    activeScheme.value.items.forEach((item) => {
+      const gid = item.originalData.GroupID
+      if (gid > 0) {
+        groupIds.add(gid)
+      }
+    })
+    return Array.from(groupIds).sort((a, b) => a - b)
+  }
+
+  // 扩展选择到整组（内部辅助函数）
+  function expandSelectionToGroups(itemIds: Set<string>): Set<string> {
+    if (!activeScheme.value) return itemIds
+
+    const expandedIds = new Set(itemIds)
+    const groupsToExpand = new Set<number>()
+
+    // 收集所有涉及的组ID
+    itemIds.forEach((id) => {
+      const groupId = getItemGroupId(id)
+      if (groupId > 0) {
+        groupsToExpand.add(groupId)
+      }
+    })
+
+    // 扩展选择到整组
+    groupsToExpand.forEach((groupId) => {
+      const groupItems = getGroupItems(groupId)
+      groupItems.forEach((item) => expandedIds.add(item.internalId))
+    })
+
+    return expandedIds
+  }
+
+  // 成组：将选中的物品成组
+  function groupSelected() {
+    if (!activeScheme.value) return
+    if (activeScheme.value.selectedItemIds.size < 2) {
+      console.warn('[Group] 至少需要选中2个物品才能成组')
+      return
+    }
+
+    // 保存历史（编辑操作）
+    saveHistory('edit')
+
+    const newGroupId = getNextGroupId()
+
+    // 更新所有选中物品的 GroupID
+    activeScheme.value.items = activeScheme.value.items.map((item) => {
+      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
+        return {
+          ...item,
+          originalData: {
+            ...item.originalData,
+            GroupID: newGroupId,
+          },
+        }
+      }
+      return item
+    })
+
+    console.log(
+      `[Group] 成功创建组 #${newGroupId}，包含 ${activeScheme.value.selectedItemIds.size} 个物品`
+    )
+  }
+
+  // 取消组合：将选中的物品解散组
+  function ungroupSelected() {
+    if (!activeScheme.value) return
+    if (activeScheme.value.selectedItemIds.size === 0) return
+
+    // 检查是否有组
+    const hasGroup = Array.from(activeScheme.value.selectedItemIds).some((id) => {
+      const groupId = getItemGroupId(id)
+      return groupId > 0
+    })
+
+    if (!hasGroup) {
+      console.warn('[Group] 选中的物品没有组')
+      return
+    }
+
+    // 保存历史（编辑操作）
+    saveHistory('edit')
+
+    // 将所有选中物品的 GroupID 设为 0
+    activeScheme.value.items = activeScheme.value.items.map((item) => {
+      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
+        return {
+          ...item,
+          originalData: {
+            ...item.originalData,
+            GroupID: 0,
+          },
+        }
+      }
+      return item
+    })
+
+    console.log(`[Group] 已取消 ${activeScheme.value.selectedItemIds.size} 个物品的组合`)
+  }
+
+  // HSL 转 RGBA 的工具函数
+  function hslToRgba(h: number, s: number, l: number, a: number = 1): string {
+    s /= 100
+    l /= 100
+
+    const k = (n: number) => (n + h / 30) % 12
+    const f = (n: number) =>
+      l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+
+    const r = Math.round(255 * f(0))
+    const g = Math.round(255 * f(8))
+    const b = Math.round(255 * f(4))
+
+    return `rgba(${r}, ${g}, ${b}, ${a})`
+  }
+
+  // 根据 GroupID 计算组颜色（使用黄金角度分布）
+  function getGroupColor(groupId: number): string {
+    if (groupId <= 0) return 'rgba(0, 0, 0, 0)' // transparent
+    const hue = (groupId * 137.5) % 360 // 黄金角度，分布更均匀
+    return hslToRgba(hue, 70, 60, 0.8) // 直接返回带透明度的 RGBA
+  }
+
   // 跨方案剪贴板：复制到剪贴板
   function copyToClipboard() {
     if (!activeScheme.value) return
@@ -664,6 +878,16 @@ export const useEditorStore = defineStore('editor', () => {
     const newItems: AppItem[] = []
     let nextInstanceId = getNextInstanceId()
 
+    // 收集剪贴板物品的所有组ID，为每个组分配新的 GroupID
+    const groupIdMap = new Map<number, number>() // 旧GroupID -> 新GroupID
+
+    clipboardItems.forEach((item) => {
+      const oldGroupId = item.originalData.GroupID
+      if (oldGroupId > 0 && !groupIdMap.has(oldGroupId)) {
+        groupIdMap.set(oldGroupId, getNextGroupId() + groupIdMap.size)
+      }
+    })
+
     clipboardItems.forEach((item) => {
       const newId = generateUUID()
       const newInstanceId = nextInstanceId++
@@ -671,6 +895,10 @@ export const useEditorStore = defineStore('editor', () => {
 
       const newX = item.x + offsetX
       const newY = item.y + offsetY
+
+      // 如果物品有组，分配新的 GroupID
+      const oldGroupId = item.originalData.GroupID
+      const newGroupId = oldGroupId > 0 ? groupIdMap.get(oldGroupId)! : 0
 
       newItems.push({
         ...item,
@@ -681,6 +909,7 @@ export const useEditorStore = defineStore('editor', () => {
         originalData: {
           ...item.originalData,
           InstanceID: newInstanceId,
+          GroupID: newGroupId,
           Location: {
             ...item.originalData.Location,
             X: newX,
@@ -908,5 +1137,13 @@ export const useEditorStore = defineStore('editor', () => {
     redo,
     canUndo,
     canRedo,
+
+    // 组编辑
+    groupSelected,
+    ungroupSelected,
+    getGroupItems,
+    getItemGroupId,
+    getAllGroupIds,
+    getGroupColor,
   }
 })
