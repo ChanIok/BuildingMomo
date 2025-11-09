@@ -43,7 +43,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 文件菜单 =====
     {
       id: 'file.startWatchMode',
-      label: '监控游戏目录',
+      label: '选择游戏目录',
       shortcut: 'Ctrl+O',
       category: 'file',
       enabled: () => fileOps.isFileSystemAccessSupported && !fileOps.watchState.value.isActive,
@@ -64,23 +64,23 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.import',
-      label: '导入 JSON',
+      label: '导入建造数据',
       shortcut: 'Ctrl+Shift+O',
       category: 'file',
       enabled: () => true,
       execute: async () => {
-        console.log('[Command] 导入 JSON')
+        console.log('[Command] 导入建造数据')
         await fileOps.importJSON()
       },
     },
     {
       id: 'file.export',
-      label: '导出 JSON',
+      label: '导出建造数据',
       shortcut: 'Ctrl+Shift+S',
       category: 'file',
       enabled: () => editorStore.items.length > 0,
       execute: () => {
-        console.log('[Command] 导出 JSON')
+        console.log('[Command] 导出建造数据')
         fileOps.exportJSON()
       },
     },

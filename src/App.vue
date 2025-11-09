@@ -5,6 +5,7 @@ import { useNotificationStore } from './stores/notificationStore'
 import Toolbar from './components/Toolbar.vue'
 import Sidebar from './components/Sidebar.vue'
 import CanvasEditor from './components/CanvasEditor.vue'
+import WelcomeScreen from './components/WelcomeScreen.vue'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { X } from 'lucide-vue-next'
 import { Toaster } from '@/components/ui/sonner'
@@ -47,39 +48,16 @@ const dialogOpen = computed({
 </script>
 
 <template>
-  <div class="flex h-screen flex-col overflow-hidden">
+  <div class="flex h-screen flex-col overflow-hidden bg-gray-50">
     <!-- 顶部工具栏 -->
     <Toolbar />
 
     <!-- 主体内容区 -->
-    <div class="flex flex-1 overflow-hidden">
-      <!-- 左侧边栏 -->
-      <Sidebar />
-
-      <!-- 画布区域：多方案Tabs或空状态 -->
-      <div class="flex flex-1 flex-col overflow-hidden">
-        <!-- 空状态：没有方案时 -->
-        <div
-          v-if="editorStore.schemes.length === 0"
-          class="flex flex-1 items-center justify-center bg-gray-100"
-        >
-          <div class="text-center text-gray-400">
-            <svg
-              class="mx-auto mb-4 h-24 w-24 text-gray-300"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              ></path>
-            </svg>
-            <p class="text-lg">请导入 JSON 文件开始</p>
-          </div>
-        </div>
+    <div class="flex h-full flex-1 overflow-hidden">
+      <!-- 画布区域：多方案Tabs或欢迎界面 -->
+      <div class="flex flex-1 flex-col overflow-hidden p-2">
+        <!-- 欢迎界面：没有方案时 -->
+        <WelcomeScreen v-if="editorStore.schemes.length === 0" />
 
         <!-- 多方案Tabs -->
         <Tabs
@@ -120,6 +98,9 @@ const dialogOpen = computed({
           </TabsContent>
         </Tabs>
       </div>
+
+      <!-- 右侧边栏 -->
+      <div class="h-full p-2"><Sidebar /></div>
     </div>
 
     <!-- 全局 Toast 通知 -->

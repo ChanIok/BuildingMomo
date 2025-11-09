@@ -34,15 +34,15 @@ function isEnabled(commandId: string): boolean {
 </script>
 
 <template>
-  <div class="flex h-14 items-center gap-3 border-b border-gray-200 bg-white px-4">
+  <div class="flex h-8 items-center gap-3 px-2 pt-2">
     <!-- Menubar 菜单栏 -->
-    <Menubar class="border-none bg-transparent">
+    <Menubar class="border-none bg-transparent shadow-none">
       <!-- 文件菜单 -->
       <MenubarMenu>
         <MenubarTrigger class="text-sm font-medium">文件</MenubarTrigger>
         <MenubarContent>
           <template v-for="cmd in fileCommands" :key="cmd.id">
-            <!-- 在"导出"、"保存到游戏"、"监控游戏目录"之前添加分隔线 -->
+            <!-- 在"导出"、"保存到游戏"、"选择游戏目录"之前添加分隔线 -->
             <MenubarSeparator
               v-if="
                 cmd.id === 'file.import' || cmd.id === 'file.export' || cmd.id === 'file.saveToGame'

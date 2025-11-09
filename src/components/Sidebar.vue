@@ -211,7 +211,7 @@ function updateMaxFilter(event: Event) {
 
     <!-- 提示信息 -->
     <div v-if="editorStore.items.length === 0" class="mt-4 text-center text-xs text-gray-500">
-      请导入 JSON 文件开始编辑
+      请导入建造数据文件开始编辑
     </div>
   </div>
 </template>
