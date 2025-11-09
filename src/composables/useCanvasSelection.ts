@@ -1,6 +1,7 @@
-import { ref, type Ref } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import type { AppItem } from '../types/editor'
+import { useInputState } from './useInputState'
 
 export function useCanvasSelection(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -12,11 +13,15 @@ export function useCanvasSelection(
   onDragMove?: (worldPos: { x: number; y: number }) => void,
   onDragEnd?: (worldPos: { x: number; y: number }) => void
 ) {
+  // 使用统一的输入状态管理
+  const { isShiftPressed, isAltPressed, isSpacePressed } = useInputState()
+
   // 框选状态
   const selectionRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
   const isSelecting = ref(false)
   const selectionStart = ref<{ x: number; y: number } | null>(null)
   const mouseDownScreenPos = ref<{ x: number; y: number } | null>(null) // 记录屏幕坐标起始位置
+  const selectionMode = ref<'replace' | 'add' | 'subtract'>('replace') // 框选模式
 
   // 拖拽状态
   const isDraggingItem = ref(false)
@@ -25,6 +30,20 @@ export function useCanvasSelection(
   // 鼠标中键状态
   const isMiddleMousePressed = ref(false)
   const lastPointerPos = ref<{ x: number; y: number } | null>(null)
+
+  // 计算当前选择模式（实时根据键盘状态）
+  const currentSelectionMode = computed<'replace' | 'add' | 'subtract'>(() => {
+    if (isAltPressed.value) return 'subtract'
+    if (isShiftPressed.value) return 'add'
+    return 'replace'
+  })
+
+  // 是否应该显示模式提示（排除画布拖拽模式）
+  const shouldShowModeHint = computed(() => {
+    // 如果按了空格键，不显示选择模式提示
+    if (isSpacePressed?.value || isCanvasDragMode.value) return false
+    return isSelecting.value || isShiftPressed.value || isAltPressed.value
+  })
 
   // 更新画布拖动模式
   function updateDragMode(isDragMode: boolean) {
@@ -166,6 +185,9 @@ export function useCanvasSelection(
     isSelecting.value = true
     selectionStart.value = worldPos
     selectionRect.value = { x: worldPos.x, y: worldPos.y, width: 0, height: 0 }
+
+    // 设置框选模式（使用当前实时模式）
+    selectionMode.value = currentSelectionMode.value
   }
 
   function handleMouseMove(e: any) {
@@ -216,8 +238,18 @@ export function useCanvasSelection(
   function handleMouseUp(e: any) {
     const evt = e.evt as MouseEvent
 
+    console.log('[MOUSEUP]', {
+      button: evt.button,
+      shiftKey: evt.shiftKey,
+      altKey: evt.altKey,
+      ctrlKey: evt.ctrlKey,
+      isSelecting: isSelecting.value,
+      selectionMode: selectionMode.value,
+    })
+
     // 检测鼠标右键释放，不处理
     if (evt.button === 2) {
+      console.log('[MOUSEUP] Right button released, ignoring')
       return
     }
 
@@ -226,6 +258,7 @@ export function useCanvasSelection(
       isMiddleMousePressed.value = false
       updateDragMode(false)
       lastPointerPos.value = null
+      console.log('[MOUSEUP] Middle button released, drag mode stopped')
       return
     }
 
@@ -259,7 +292,7 @@ export function useCanvasSelection(
       if (endPos) {
         moveDistance = Math.sqrt(
           Math.pow(endPos.x - mouseDownScreenPos.value.x, 2) +
-          Math.pow(endPos.y - mouseDownScreenPos.value.y, 2)
+            Math.pow(endPos.y - mouseDownScreenPos.value.y, 2)
         )
       }
 
@@ -281,19 +314,44 @@ export function useCanvasSelection(
 
         // 更新选中状态
         const shiftPressed = e.evt.shiftKey
-        editorStore.updateSelection(selectedIds, shiftPressed)
+        const altPressed = e.evt.altKey
+
+        if (altPressed) {
+          // Alt+框选: 减选模式
+          console.log('[MOUSEUP] Executing subtract selection with', selectedIds.length, 'items')
+          editorStore.deselectItems(selectedIds)
+        } else {
+          // 普通框选/Shift+框选: 替换/增选模式
+          console.log(
+            '[MOUSEUP] Executing',
+            shiftPressed ? 'add' : 'replace',
+            'selection with',
+            selectedIds.length,
+            'items'
+          )
+          editorStore.updateSelection(selectedIds, shiftPressed)
+        }
       }
     }
 
     // 清除框选状态
+    console.log('[MOUSEUP] Clearing selection state', {
+      wasSelecting: isSelecting.value,
+      hadRect: !!selectionRect.value,
+    })
     isSelecting.value = false
     selectionRect.value = null
     selectionStart.value = null
     mouseDownScreenPos.value = null
+    selectionMode.value = 'replace'
+    console.log('[MOUSEUP] Selection state cleared')
   }
 
   return {
     selectionRect,
+    selectionMode,
+    currentSelectionMode,
+    shouldShowModeHint,
     isSelecting,
     isMiddleMousePressed,
     handleMouseDown,

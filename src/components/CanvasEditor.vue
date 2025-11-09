@@ -60,9 +60,12 @@ const { startDrag, moveDrag, endDrag } = useCanvasDrag(
   setHideSelectedItems
 )
 
-// 选择系统（集成拖拽）
+// 选择系统(集成拖拽)
 const {
   selectionRect,
+  selectionMode,
+  currentSelectionMode,
+  shouldShowModeHint,
   isMiddleMousePressed,
   handleMouseDown,
   handleMouseMove,
@@ -72,7 +75,7 @@ const {
   editorStore,
   stageRef,
   scale,
-  isSpacePressed,
+  isSpacePressed ?? ref(false),
   stageConfig,
   startDrag,
   moveDrag,
@@ -304,10 +307,20 @@ onMounted(() => {
             y: selectionRect.y,
             width: selectionRect.width,
             height: selectionRect.height,
-            stroke: '#3b82f6',
+            stroke:
+              selectionMode === 'subtract'
+                ? '#ef4444'
+                : selectionMode === 'add'
+                  ? '#10b981'
+                  : '#3b82f6',
             strokeWidth: Math.max(0.5, 1 / scale),
             dash: [Math.max(2, 4 / scale), Math.max(2, 4 / scale)],
-            fill: 'rgba(59, 130, 246, 0.1)',
+            fill:
+              selectionMode === 'subtract'
+                ? 'rgba(239, 68, 68, 0.1)'
+                : selectionMode === 'add'
+                  ? 'rgba(16, 185, 129, 0.1)'
+                  : 'rgba(59, 130, 246, 0.1)',
             listening: false,
           }"
         />
@@ -319,6 +332,29 @@ onMounted(() => {
       v-if="editorStore.items.length > 0"
       class="absolute right-4 bottom-4 flex items-center gap-2"
     >
+      <!-- 框选模式提示 -->
+      <div
+        v-if="shouldShowModeHint"
+        class="flex items-center gap-1 rounded-md px-3 py-2 text-xs font-medium text-white shadow-sm"
+        :class="{
+          'bg-red-600': currentSelectionMode === 'subtract',
+          'bg-green-600': currentSelectionMode === 'add',
+          'bg-blue-600': currentSelectionMode === 'replace',
+        }"
+      >
+        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          ></path>
+        </svg>
+        <span v-if="currentSelectionMode === 'subtract'">减选模式 (Alt)</span>
+        <span v-else-if="currentSelectionMode === 'add'">增选模式 (Shift)</span>
+        <span v-else>选择模式</span>
+      </div>
+
       <!-- 画布拖拽模式提示 -->
       <div
         v-if="isSpacePressed || isMiddleMousePressed"

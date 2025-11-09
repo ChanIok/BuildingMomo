@@ -521,17 +521,30 @@ export const useEditorStore = defineStore('editor', () => {
   function updateSelection(itemIds: string[], additive: boolean) {
     if (!activeScheme.value) return
 
-    // 保存历史（选择操作，会合并）
+    // 保存历史(选择操作,会合并)
     saveHistory('selection')
 
     if (!additive) {
       activeScheme.value.selectedItemIds.clear()
     }
 
-    // 扩展选择到整组（框选行为）
+    // 扩展选择到整组(框选行为)
     const initialSelection = new Set(itemIds)
     const expandedSelection = expandSelectionToGroups(initialSelection)
     expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
+  }
+
+  // 减选功能:从当前选择中移除指定物品
+  function deselectItems(itemIds: string[]) {
+    if (!activeScheme.value) return
+
+    // 保存历史(选择操作,会合并)
+    saveHistory('selection')
+
+    // 扩展选择到整组(框选行为)
+    const initialSelection = new Set(itemIds)
+    const expandedSelection = expandSelectionToGroups(initialSelection)
+    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.delete(id))
   }
 
   function clearSelection() {
@@ -1108,6 +1121,7 @@ export const useEditorStore = defineStore('editor', () => {
     // 选择操作
     toggleSelection,
     updateSelection,
+    deselectItems,
     clearSelection,
     selectAll,
     invertSelection,

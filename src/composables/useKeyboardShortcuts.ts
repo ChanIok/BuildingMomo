@@ -1,5 +1,7 @@
-import { onMounted, onUnmounted, ref, computed, type Ref } from 'vue'
+import { computed, watch, type Ref } from 'vue'
+import { onKeyStroke } from '@vueuse/core'
 import type { Command } from '../stores/commandStore'
+import { useInputState } from './useInputState'
 
 export interface UseKeyboardShortcutsOptions {
   commands: Command[]
@@ -11,8 +13,8 @@ export interface UseKeyboardShortcutsOptions {
 export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
   const { commands, executeCommand, stageRef, stageConfig } = options
 
-  // 空格键状态（用于画布拖拽）
-  const isSpacePressed = ref(false)
+  // 使用统一的输入状态管理
+  const { isSpacePressed } = useInputState()
 
   // 构建快捷键映射表（响应式）
   const shortcutMap = computed(() => {
@@ -64,65 +66,44 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
     }
   }
 
-  // 键盘按下事件
-  function handleKeyDown(event: KeyboardEvent) {
-    // 如果在输入框中，不处理快捷键
-    const target = event.target as HTMLElement
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-      return
+  // 监听空格键状态变化，自动更新拖拽模式
+  watch(
+    () => isSpacePressed?.value || false,
+    (pressed) => {
+      updateDragMode(pressed)
     }
+  )
 
-    // 处理空格键（画布拖拽模式）
-    if (event.code === 'Space' && !isSpacePressed.value) {
-      event.preventDefault()
-      isSpacePressed.value = true
-      updateDragMode(true)
-      return
-    }
+  // 使用 VueUse 的 onKeyStroke 处理键盘事件
+  onKeyStroke(
+    (event) => {
+      // 如果在输入框中，不处理快捷键
+      const target = event.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return
+      }
 
-    // 匹配快捷键命令
-    const shortcut = eventToShortcut(event)
-    const commandId = shortcutMap.value.get(shortcut)
+      // 空格键已通过 watch isSpacePressed 处理，这里跳过
+      if (event.code === 'Space') {
+        event.preventDefault()
+        return
+      }
 
-    if (commandId) {
-      event.preventDefault()
-      console.log(`[Shortcut] Triggered: ${shortcut} -> ${commandId}`)
-      executeCommand(commandId)
-    }
-  }
+      // 匹配快捷键命令
+      const shortcut = eventToShortcut(event)
+      const commandId = shortcutMap.value.get(shortcut)
 
-  // 键盘释放事件
-  function handleKeyUp(event: KeyboardEvent) {
-    // 处理空格键释放（恢复框选模式）
-    if (event.code === 'Space') {
-      event.preventDefault()
-      isSpacePressed.value = false
-      updateDragMode(false)
-    }
-  }
+      if (commandId) {
+        event.preventDefault()
+        console.log(`[Shortcut] Triggered: ${shortcut} -> ${commandId}`)
+        executeCommand(commandId)
+      }
+    },
+    { target: window, dedupe: false }
+  )
 
-  // 窗口失焦时重置状态
-  function handleBlur() {
-    if (isSpacePressed.value) {
-      isSpacePressed.value = false
-      updateDragMode(false)
-    }
-  }
-
-  // 生命周期钩子
-  onMounted(() => {
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    window.addEventListener('blur', handleBlur)
-    console.log(`[Shortcuts] Registered ${shortcutMap.value.size} keyboard shortcuts`)
-  })
-
-  onUnmounted(() => {
-    window.removeEventListener('keydown', handleKeyDown)
-    window.removeEventListener('keyup', handleKeyUp)
-    window.removeEventListener('blur', handleBlur)
-    console.log('[Shortcuts] Unregistered keyboard shortcuts')
-  })
+  // 初始化日志
+  console.log(`[Shortcuts] Registered ${shortcutMap.value.size} keyboard shortcuts`)
 
   return {
     isSpacePressed,
