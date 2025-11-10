@@ -2,7 +2,7 @@ import { ref, computed, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import type { AppItem } from '../types/editor'
 import { useInputState } from './useInputState'
-import { useCanvasVisualSize } from './useCanvasVisualSize'
+import { hitTestItem } from './useItemRenderer'
 
 export function useCanvasSelection(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -16,9 +16,6 @@ export function useCanvasSelection(
 ) {
   // 使用统一的输入状态管理
   const { isShiftPressed, isAltPressed, isSpacePressed } = useInputState()
-
-  // 使用统一的视觉尺寸管理
-  const visualSize = useCanvasVisualSize()
 
   // 框选状态
   const selectionRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -60,7 +57,7 @@ export function useCanvasSelection(
     }
   }
 
-  // 点选功能：手动碰撞检测
+  // 点选功能：使用统一的碰撞检测
   function handleStageClick(e: any) {
     const stage = e.target.getStage()
     const pointerPos = stage.getPointerPosition()
@@ -73,22 +70,13 @@ export function useCanvasSelection(
       y: (pointerPos.y - stage.y()) / stage.scaleY(),
     }
 
-    // 使用统一的视觉尺寸计算
-    const radius = visualSize.getMarkerRadius(scale.value)
-    const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
-    const clickRadius = radius + strokeWidth
-
-    // 遍历可见物品，找到最近的圆点
+    // 遍历可见物品，使用统一的碰撞检测
     let clickedItem: AppItem | null = null
-    let minDistance = clickRadius
 
     for (const item of editorStore.visibleItems) {
-      const distance = Math.sqrt(
-        Math.pow(item.x - worldPos.x, 2) + Math.pow(item.y - worldPos.y, 2)
-      )
-      if (distance < minDistance) {
-        minDistance = distance
+      if (hitTestItem(item, worldPos, scale.value)) {
         clickedItem = item
+        break // 找到第一个命中的物品即可
       }
     }
 
@@ -104,31 +92,24 @@ export function useCanvasSelection(
     }
   }
 
-  // 检测点击位置是否在选中物品上
+  // 检测点击位置是否在物品上（使用统一的碰撞检测）
   function findItemAtPosition(worldPos: { x: number; y: number }): AppItem | null {
-    // 使用统一的视觉尺寸计算
-    const radius = visualSize.getMarkerRadius(scale.value)
-    const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
-    const clickRadius = radius + strokeWidth
     let closestItem: AppItem | null = null
     let closestSelectedItem: AppItem | null = null
-    let minDistance = clickRadius
-    let minSelectedDistance = clickRadius
 
+    // 遍历可见物品，使用统一的碰撞检测
     for (const item of editorStore.visibleItems) {
-      const distance = Math.sqrt(
-        Math.pow(item.x - worldPos.x, 2) + Math.pow(item.y - worldPos.y, 2)
-      )
-
-      if (distance < minDistance) {
-        minDistance = distance
-        closestItem = item
-      }
-
-      // 如果是选中物品，单独记录
-      if (editorStore.selectedItemIds.has(item.internalId) && distance < minSelectedDistance) {
-        minSelectedDistance = distance
-        closestSelectedItem = item
+      if (hitTestItem(item, worldPos, scale.value)) {
+        // 如果是选中物品，优先记录
+        if (editorStore.selectedItemIds.has(item.internalId)) {
+          if (!closestSelectedItem) {
+            closestSelectedItem = item
+          }
+        } else {
+          if (!closestItem) {
+            closestItem = item
+          }
+        }
       }
     }
 

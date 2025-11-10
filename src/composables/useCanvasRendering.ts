@@ -1,25 +1,7 @@
 import { ref, watch, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import Konva from 'konva'
-import { useCanvasVisualSize } from './useCanvasVisualSize'
-
-// 颜色配置常量
-const ITEM_COLORS = {
-  // 选中状态
-  selected: {
-    fill: 'rgba(59, 130, 246, 0.8)', // blue-500 with 80% opacity
-    stroke: 'rgba(37, 99, 235, 1)', // blue-600 solid
-  },
-  // 普通标点
-  normal: {
-    fill: 'rgba(148, 163, 184, 0.8)', // slate-400 with 80% opacity
-    stroke: 'rgba(71, 85, 105, 1)', // slate-600 solid
-  },
-  // 组标点描边
-  group: {
-    stroke: 'rgba(0, 0, 0, 0.29)', // dark semi-transparent
-  },
-} as const
+import { getItemRenderer } from './useItemRenderer'
 
 export function useCanvasRendering(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -32,8 +14,8 @@ export function useCanvasRendering(
   // 是否隐藏选中物品（拖拽时使用）
   const hideSelectedItems = ref(false)
 
-  // 视觉尺寸管理
-  const visualSize = useCanvasVisualSize()
+  // 物品渲染器
+  const renderer = getItemRenderer()
 
   // 批量绘制所有物品
   function updateMainLayer() {
@@ -49,54 +31,30 @@ export function useCanvasRendering(
       return
     }
 
+    // 预加载可见物品的图标（异步，不阻塞渲染）
+    renderer.preloadIcons(visibleItems, scale.value)
+
     // 创建批量绘制的 Shape
     const shape = new Konva.Shape({
       sceneFunc: (context) => {
-        const radius = visualSize.getMarkerRadius(scale.value)
-        const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
-
-        visibleItems.forEach((item) => {
-          const isSelected = editorStore.selectedItemIds.has(item.internalId)
-          const groupId = item.originalData.GroupID
-
+        // 使用统一的渲染器绘制所有物品
+        renderer.drawItems(context, visibleItems, {
+          scale: scale.value,
+          editorStore,
           // 拖拽时跳过选中物品的渲染
-          if (hideSelectedItems.value && isSelected) return
-
-          // 绘制物品点
-          context.beginPath()
-          context.arc(item.x, item.y, radius, 0, Math.PI * 2, false)
-
-          // 根据状态设置颜色（所有颜色已是 RGBA 格式，无需转换）
-          if (isSelected) {
-            context.fillStyle = ITEM_COLORS.selected.fill
-            context.strokeStyle = ITEM_COLORS.selected.stroke
-          } else if (groupId > 0) {
-            context.fillStyle = editorStore.getGroupColor(groupId) // 已是 rgba 格式
-            context.strokeStyle = ITEM_COLORS.group.stroke
-          } else {
-            context.fillStyle = ITEM_COLORS.normal.fill
-            context.strokeStyle = ITEM_COLORS.normal.stroke
-          }
-
-          context.fill()
-          context.lineWidth = strokeWidth
-          context.stroke()
+          skipItemCheck: (item) =>
+            hideSelectedItems.value && editorStore.selectedItemIds.has(item.internalId),
         })
       },
       // 启用碰撞检测
       hitFunc: (context, shape) => {
-        const radius = visualSize.getMarkerRadius(scale.value)
-        const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
-        // 碰撞半径 = 填充半径 + 描边宽度的一半（描边向外扩展）
-        const hitRadius = radius + strokeWidth / 2
-
-        visibleItems.forEach((item) => {
+        // 使用统一的渲染器绘制碰撞区域
+        renderer.drawHitRegions(context, shape, visibleItems, {
+          scale: scale.value,
+          editorStore,
           // 拖拽时跳过选中物品的碰撞检测
-          if (hideSelectedItems.value && editorStore.selectedItemIds.has(item.internalId)) return
-
-          context.beginPath()
-          context.arc(item.x, item.y, hitRadius, 0, Math.PI * 2, false)
-          context.fillStrokeShape(shape)
+          skipItemCheck: (item) =>
+            hideSelectedItems.value && editorStore.selectedItemIds.has(item.internalId),
         })
       },
     })

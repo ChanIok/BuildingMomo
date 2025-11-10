@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import Konva from 'konva'
+import { getItemRenderer } from './useItemRenderer'
 
 export function useCanvasDrag(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -12,6 +13,9 @@ export function useCanvasDrag(
   const isDragging = ref(false)
   const ghostLayer = ref<Konva.Layer | null>(null)
   const dragStartPos = ref({ x: 0, y: 0 })
+
+  // 物品渲染器
+  const renderer = getItemRenderer()
 
   // 创建 Ghost Layer
   function createGhostLayer() {
@@ -25,20 +29,17 @@ export function useCanvasDrag(
       editorStore.selectedItemIds.has(item.internalId)
     )
 
-    // 批量绘制选中物品
+    // 预加载图标
+    renderer.preloadIcons(selectedItems, scale.value)
+
+    // 批量绘制选中物品（使用统一的渲染器）
     const ghostShape = new Konva.Shape({
       sceneFunc: (context) => {
-        const radius = Math.max(4, 6 / scale.value)
-        const strokeWidth = Math.max(0.5, 1 / scale.value)
-
-        selectedItems.forEach((item) => {
-          context.beginPath()
-          context.arc(item.x, item.y, radius, 0, Math.PI * 2, false)
-          context.fillStyle = '#3b82f6'
-          context.fill()
-          context.strokeStyle = '#2563eb'
-          context.lineWidth = strokeWidth
-          context.stroke()
+        // 使用统一的渲染器，强制显示为选中状态
+        renderer.drawItems(context, selectedItems, {
+          scale: scale.value,
+          editorStore,
+          forceSelected: true, // 拖拽时强制显示为选中状态
         })
       },
       listening: false, // Ghost Layer 不需要事件监听

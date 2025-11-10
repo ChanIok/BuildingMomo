@@ -20,6 +20,16 @@ const MARKER_BASE = {
   maxStroke: 2,
 }
 
+// 图标基础尺寸（屏幕像素）
+const ICON_BASE = {
+  size: 48, // 基础尺寸
+  minSize: 16, // 最小屏幕像素
+  maxSize: 96, // 最大屏幕像素
+  showThreshold: 1.0, // 开始显示图标的缩放阈值
+  fadeEndThreshold: 1.2, // 图标完全不透明的缩放阈值
+  markerHideThreshold: 1.2, // 隐藏标点的缩放阈值
+}
+
 /**
  * 计算目标屏幕像素大小（带上下限）
  */
@@ -61,6 +71,59 @@ export function useCanvasVisualSize() {
         MARKER_BASE.maxStroke
       )
       return toWorldSize(screenPixels, scale)
+    },
+
+    /**
+     * 获取图标尺寸（世界坐标）
+     */
+    getIconSize: (scale: number) => {
+      const screenPixels = getTargetScreenSize(
+        ICON_BASE.size,
+        scale,
+        ICON_BASE.minSize,
+        ICON_BASE.maxSize
+      )
+      return toWorldSize(screenPixels, scale)
+    },
+
+    /**
+     * 判断是否应该显示图标
+     */
+    shouldShowIcon: (scale: number) => {
+      return scale > ICON_BASE.showThreshold
+    },
+
+    /**
+     * 判断是否应该显示标点
+     */
+    shouldShowMarker: (scale: number) => {
+      return scale <= ICON_BASE.markerHideThreshold
+    },
+
+    /**
+     * 获取图标透明度（渐变过渡）
+     */
+    getIconOpacity: (scale: number) => {
+      if (scale <= ICON_BASE.showThreshold) return 0
+      if (scale >= ICON_BASE.fadeEndThreshold) return 1
+
+      // 在 showThreshold 和 fadeEndThreshold 之间线性插值
+      const range = ICON_BASE.fadeEndThreshold - ICON_BASE.showThreshold
+      const progress = (scale - ICON_BASE.showThreshold) / range
+      return Math.max(0, Math.min(1, progress))
+    },
+
+    /**
+     * 获取标点透明度（与图标相反的渐变）
+     */
+    getMarkerOpacity: (scale: number) => {
+      if (scale <= ICON_BASE.showThreshold) return 1
+      if (scale >= ICON_BASE.fadeEndThreshold) return 0
+
+      // 在 showThreshold 和 fadeEndThreshold 之间线性插值（反向）
+      const range = ICON_BASE.fadeEndThreshold - ICON_BASE.showThreshold
+      const progress = (scale - ICON_BASE.showThreshold) / range
+      return Math.max(0, Math.min(1, 1 - progress))
     },
   }
 }

@@ -127,6 +127,9 @@ const {
   stageRef
 )
 
+// 判断是否在画布上显示图标（>100% 时显示图标）
+const shouldShowIconInCanvas = computed(() => scale.value > 1.0)
+
 // 合并鼠标移动事件
 function handleMouseMoveWithTooltip(e: any) {
   handleMouseMove(e)
@@ -423,9 +426,9 @@ watch(
         }"
       >
         <div class="flex items-center gap-2 text-sm">
-          <!-- 家具图标 -->
+          <!-- 家具图标（仅在画布不显示图标时展示） -->
           <img
-            v-if="tooltipData.icon"
+            v-if="!shouldShowIconInCanvas && tooltipData.icon"
             :src="tooltipData.icon"
             class="h-12 w-12 rounded border border-gray-300"
             :alt="tooltipData.name"
