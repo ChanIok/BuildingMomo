@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, ref, nextTick, onMounted } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import {
   Menubar,
