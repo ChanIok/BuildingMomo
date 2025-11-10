@@ -60,12 +60,12 @@ onMounted(async () => {
       <Toolbar />
 
       <!-- 主体内容区 -->
-      <div class="flex-1 p-2">
+      <div class="min-h-0 flex-1 p-2">
         <div
           class="flex h-full flex-1 overflow-hidden rounded-md border border-gray-200 bg-background shadow"
         >
           <!-- 画布区域 -->
-          <div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          <div class="relative flex min-w-0 flex-1 flex-col">
             <!-- 欢迎界面：没有方案时 -->
             <WelcomeScreen v-if="editorStore.schemes.length === 0" />
 
