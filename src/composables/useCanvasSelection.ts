@@ -3,6 +3,7 @@ import type { useEditorStore } from '../stores/editorStore'
 import type { AppItem } from '../types/editor'
 import { useInputState } from './useInputState'
 import { hitTestItem } from './useItemRenderer'
+import { useCanvasCoordinates } from './useCanvasCoordinates'
 
 export function useCanvasSelection(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -17,6 +18,9 @@ export function useCanvasSelection(
   // 使用统一的输入状态管理
   const { isShiftPressed, isAltPressed, isSpacePressed } = useInputState()
 
+  // 使用坐标转换工具
+  const { screenToWorld } = useCanvasCoordinates(stageRef)
+
   // 框选状态
   const selectionRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
   const isSelecting = ref(false)
@@ -27,6 +31,8 @@ export function useCanvasSelection(
   // 拖拽状态
   const isDraggingItem = ref(false)
   const draggedItem = ref<AppItem | null>(null)
+  const dragStartAltPressed = ref(false) // 记录拖拽开始时的 Alt 状态
+  const hasActuallyDragged = ref(false) // 标记是否真正发生了拖拽（移动距离 ≥ 3px）
 
   // 鼠标中键状态
   const isMiddleMousePressed = ref(false)
@@ -65,10 +71,7 @@ export function useCanvasSelection(
     if (!pointerPos) return
 
     // 转换为世界坐标
-    const worldPos = {
-      x: (pointerPos.x - stage.x()) / stage.scaleX(),
-      y: (pointerPos.y - stage.y()) / stage.scaleY(),
-    }
+    const worldPos = screenToWorld(pointerPos)
 
     // 遍历可见物品，使用统一的碰撞检测
     let clickedItem: AppItem | null = null
@@ -81,9 +84,19 @@ export function useCanvasSelection(
     }
 
     if (clickedItem) {
-      // 检测 Shift 键
+      // 检测修饰键
       const shiftPressed = e.evt.shiftKey
-      editorStore.toggleSelection(clickedItem.internalId, shiftPressed)
+      const altPressed = e.evt.altKey
+
+      if (altPressed) {
+        // Alt+点击: 减选模式(从选中集合中移除)
+        editorStore.deselectItems([clickedItem.internalId])
+        console.log('[STAGE CLICK] Deselecting item', clickedItem.internalId)
+      } else {
+        // 普通点击/Shift+点击: 替换/增选模式
+        editorStore.toggleSelection(clickedItem.internalId, shiftPressed)
+        console.log('[STAGE CLICK] Toggling selection for item', clickedItem.internalId)
+      }
     } else {
       // 点击空白处，清空选中
       if (!e.evt.shiftKey) {
@@ -151,10 +164,7 @@ export function useCanvasSelection(
     mouseDownScreenPos.value = { x: pos.x, y: pos.y }
 
     // 转换为世界坐标
-    const worldPos = {
-      x: (pos.x - stage.x()) / stage.scaleX(),
-      y: (pos.y - stage.y()) / stage.scaleY(),
-    }
+    const worldPos = screenToWorld(pos)
 
     // 检测是否点击在选中物品上
     const clickedItem = findItemAtPosition(worldPos)
@@ -163,11 +173,9 @@ export function useCanvasSelection(
       // 点击在选中物品上，准备拖拽
       isDraggingItem.value = true
       draggedItem.value = clickedItem
-
-      // 触发拖拽开始
-      if (onDragStart) {
-        onDragStart(worldPos, evt.altKey)
-      }
+      dragStartAltPressed.value = evt.altKey // 记录 Alt 状态
+      hasActuallyDragged.value = false // 重置拖拽标记
+      // 注意：这里不调用 onDragStart，等移动距离 ≥ 3px 时再调用
       return
     }
 
@@ -200,14 +208,31 @@ export function useCanvasSelection(
     const pos = stage.getPointerPosition()
     if (!pos) return
 
-    const worldPos = {
-      x: (pos.x - stage.x()) / stage.scaleX(),
-      y: (pos.y - stage.y()) / stage.scaleY(),
-    }
+    const worldPos = screenToWorld(pos)
 
     // 如果正在拖拽物品
     if (isDraggingItem.value) {
-      if (onDragMove) {
+      // 检查是否真正开始拖拽（移动距离超过阈值）
+      if (!hasActuallyDragged.value && mouseDownScreenPos.value) {
+        const moveDistance = Math.sqrt(
+          Math.pow(pos.x - mouseDownScreenPos.value.x, 2) +
+            Math.pow(pos.y - mouseDownScreenPos.value.y, 2)
+        )
+
+        // 移动距离超过 3 像素，算作真正的拖拽
+        if (moveDistance >= 3) {
+          hasActuallyDragged.value = true
+
+          // 现在才真正开始拖拽，创建幽灵图层
+          // 传递真实的 Alt 状态，让 startDrag 决定是否隐藏原物品
+          if (onDragStart) {
+            onDragStart(worldPos, dragStartAltPressed.value)
+          }
+        }
+      }
+
+      // 只有真正开始拖拽后才更新位置
+      if (hasActuallyDragged.value && onDragMove) {
         onDragMove(worldPos)
       }
       return
@@ -256,18 +281,46 @@ export function useCanvasSelection(
     const pos = stage.getPointerPosition()
 
     if (pos) {
-      const worldPos = {
-        x: (pos.x - stage.x()) / stage.scaleX(),
-        y: (pos.y - stage.y()) / stage.scaleY(),
-      }
+      const worldPos = screenToWorld(pos)
 
       // 如果正在拖拽物品
       if (isDraggingItem.value) {
-        if (onDragEnd) {
-          onDragEnd(worldPos)
+        // 如果没有真正拖拽（移动距离 < 3px），当作点击处理
+        if (!hasActuallyDragged.value) {
+          // Alt + 点击已选中物品 = 减选
+          if (dragStartAltPressed.value && draggedItem.value) {
+            editorStore.deselectItems([draggedItem.value.internalId])
+          }
+          // 注意：普通点击已选中物品不做任何操作
+        } else {
+          // 真正的拖拽结束
+          const stage = e.target.getStage()
+          const startWorldPos = {
+            x: (mouseDownScreenPos.value!.x - stage.x()) / stage.scaleX(),
+            y: (mouseDownScreenPos.value!.y - stage.y()) / stage.scaleY(),
+          }
+          const dx = worldPos.x - startWorldPos.x
+          const dy = worldPos.y - startWorldPos.y
+
+          if (dragStartAltPressed.value) {
+            // Alt + 拖拽 = 复制到目标位置（现在才执行复制）
+            editorStore.duplicateSelected(dx, dy)
+          } else {
+            // 普通拖拽 = 移动到目标位置
+            editorStore.moveSelectedItems(dx, dy)
+          }
+
+          // 结束拖拽（清理幽灵图层）
+          if (onDragEnd) {
+            onDragEnd(worldPos)
+          }
         }
+
+        // 清理拖拽状态
         isDraggingItem.value = false
         draggedItem.value = null
+        dragStartAltPressed.value = false
+        hasActuallyDragged.value = false
         mouseDownScreenPos.value = null
         return
       }

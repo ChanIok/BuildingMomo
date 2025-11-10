@@ -53,27 +53,21 @@ export function useCanvasDrag(
     return layer
   }
 
-  // 开始拖拽
+  // 开始拖拽：创建幽灵图层供预览
   function startDrag(worldPos: { x: number; y: number }, isAltPressed: boolean) {
-    // 保存历史（在拖拽开始时保存，而不是移动过程中）
+    // 保存历史（在拖拽开始时保存，用于撤销）
     editorStore.saveHistory('edit')
-
-    // Alt 复制：立即复制选中物品
-    // duplicateSelected 内部也会保存历史，所以 Alt+拖拽会产生两次历史记录
-    // 第一次：拖拽前的状态，第二次：复制后拖拽前的状态
-    // 这样用户可以：Ctrl+Z 撤销拖拽 → 再 Ctrl+Z 撤销复制
-    if (isAltPressed) {
-      editorStore.duplicateSelected(0, 0)
-    }
 
     isDragging.value = true
     dragStartPos.value = { x: worldPos.x, y: worldPos.y }
 
-    // 创建 Ghost Layer
+    // 创建 Ghost Layer（半透明预览层）
     ghostLayer.value = createGhostLayer()
 
-    // 隐藏主 Layer 上的选中物品
-    setHideSelectedItems(true)
+    // 根据操作类型决定是否隐藏原物品：
+    // - Alt 复制：保留原物品在原位（不隐藏）
+    // - 普通移动：隐藏原物品（幽灵图层就是原物品在移动）
+    setHideSelectedItems(!isAltPressed)
   }
 
   // 拖拽移动
@@ -88,15 +82,12 @@ export function useCanvasDrag(
     ghostLayer.value.batchDraw()
   }
 
-  // 结束拖拽
-  function endDrag(worldPos: { x: number; y: number }) {
+  // 结束拖拽：清理幽灵图层
+  function endDrag() {
     if (!isDragging.value || !ghostLayer.value) return
 
-    const dx = worldPos.x - dragStartPos.value.x
-    const dy = worldPos.y - dragStartPos.value.y
-
-    // 更新 store 中所有选中物品的位置
-    editorStore.moveSelectedItems(dx, dy)
+    // 注意：不在这里调用 moveSelectedItems 或 duplicateSelected
+    // 这些操作已经在 useCanvasSelection 的 MouseUp 中根据 Alt 状态执行
 
     // 清理 Ghost Layer
     ghostLayer.value.destroy()
