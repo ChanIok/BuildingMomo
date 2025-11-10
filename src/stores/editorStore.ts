@@ -95,6 +95,34 @@ export const useEditorStore = defineStore('editor', () => {
   // 向后兼容的计算属性（指向当前激活方案）
   const items = computed(() => activeScheme.value?.items ?? [])
 
+  // 性能优化：建立 itemId -> item 的索引映射，避免频繁的 find 操作
+  const itemsMap = computed(() => {
+    const map = new Map<string, AppItem>()
+    if (!activeScheme.value) return map
+
+    activeScheme.value.items.forEach((item) => {
+      map.set(item.internalId, item)
+    })
+    return map
+  })
+
+  // 性能优化：建立 groupId -> itemIds 的索引映射，加速组扩展
+  const groupsMap = computed(() => {
+    const map = new Map<number, Set<string>>()
+    if (!activeScheme.value) return map
+
+    activeScheme.value.items.forEach((item) => {
+      const gid = item.originalData.GroupID
+      if (gid > 0) {
+        if (!map.has(gid)) {
+          map.set(gid, new Set())
+        }
+        map.get(gid)!.add(item.internalId)
+      }
+    })
+    return map
+  })
+
   // heightFilter: 动态计算z轴范围，智能处理用户过滤边界
   const heightFilter = computed(() => {
     const scheme = activeScheme.value
@@ -718,30 +746,32 @@ export const useEditorStore = defineStore('editor', () => {
     return maxId + 1
   }
 
-  // 获取指定组的所有物品
+  // 获取指定组的所有物品（使用 groupsMap 和 itemsMap 优化性能）
   function getGroupItems(groupId: number): AppItem[] {
     if (!activeScheme.value || groupId <= 0) return []
-    return activeScheme.value.items.filter((item) => item.originalData.GroupID === groupId)
+
+    const itemIds = groupsMap.value.get(groupId)
+    if (!itemIds) return []
+
+    // 使用 itemsMap 快速获取物品对象
+    const items: AppItem[] = []
+    itemIds.forEach((id) => {
+      const item = itemsMap.value.get(id)
+      if (item) items.push(item)
+    })
+    return items
   }
 
-  // 获取物品的组ID
+  // 获取物品的组ID（使用 itemsMap 优化性能）
   function getItemGroupId(itemId: string): number {
     if (!activeScheme.value) return 0
-    const item = activeScheme.value.items.find((item) => item.internalId === itemId)
+    const item = itemsMap.value.get(itemId)
     return item?.originalData.GroupID ?? 0
   }
 
-  // 获取所有组ID列表（去重）
+  // 获取所有组ID列表（去重）（使用 groupsMap 优化性能）
   function getAllGroupIds(): number[] {
-    if (!activeScheme.value) return []
-    const groupIds = new Set<number>()
-    activeScheme.value.items.forEach((item) => {
-      const gid = item.originalData.GroupID
-      if (gid > 0) {
-        groupIds.add(gid)
-      }
-    })
-    return Array.from(groupIds).sort((a, b) => a - b)
+    return Array.from(groupsMap.value.keys()).sort((a, b) => a - b)
   }
 
   // 扩展选择到整组（内部辅助函数）
@@ -759,10 +789,12 @@ export const useEditorStore = defineStore('editor', () => {
       }
     })
 
-    // 扩展选择到整组
+    // 扩展选择到整组（直接使用 groupsMap 获取 itemIds）
     groupsToExpand.forEach((groupId) => {
-      const groupItems = getGroupItems(groupId)
-      groupItems.forEach((item) => expandedIds.add(item.internalId))
+      const itemIds = groupsMap.value.get(groupId)
+      if (itemIds) {
+        itemIds.forEach((itemId) => expandedIds.add(itemId))
+      }
     })
 
     return expandedIds

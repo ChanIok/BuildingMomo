@@ -253,18 +253,8 @@ export function useCanvasSelection(
   function handleMouseUp(e: any) {
     const evt = e.evt as MouseEvent
 
-    console.log('[MOUSEUP]', {
-      button: evt.button,
-      shiftKey: evt.shiftKey,
-      altKey: evt.altKey,
-      ctrlKey: evt.ctrlKey,
-      isSelecting: isSelecting.value,
-      selectionMode: selectionMode.value,
-    })
-
     // 检测鼠标右键释放，不处理
     if (evt.button === 2) {
-      console.log('[MOUSEUP] Right button released, ignoring')
       return
     }
 
@@ -273,7 +263,6 @@ export function useCanvasSelection(
       isMiddleMousePressed.value = false
       updateDragMode(false)
       lastPointerPos.value = null
-      console.log('[MOUSEUP] Middle button released, drag mode stopped')
       return
     }
 
@@ -361,33 +350,20 @@ export function useCanvasSelection(
 
         if (altPressed) {
           // Alt+框选: 减选模式
-          console.log('[MOUSEUP] Executing subtract selection with', selectedIds.length, 'items')
           editorStore.deselectItems(selectedIds)
         } else {
           // 普通框选/Shift+框选: 替换/增选模式
-          console.log(
-            '[MOUSEUP] Executing',
-            shiftPressed ? 'add' : 'replace',
-            'selection with',
-            selectedIds.length,
-            'items'
-          )
           editorStore.updateSelection(selectedIds, shiftPressed)
         }
       }
     }
 
     // 清除框选状态
-    console.log('[MOUSEUP] Clearing selection state', {
-      wasSelecting: isSelecting.value,
-      hadRect: !!selectionRect.value,
-    })
     isSelecting.value = false
     selectionRect.value = null
     selectionStart.value = null
     mouseDownScreenPos.value = null
     selectionMode.value = 'replace'
-    console.log('[MOUSEUP] Selection state cleared')
   }
 
   return {
