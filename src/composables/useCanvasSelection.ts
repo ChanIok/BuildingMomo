@@ -2,6 +2,7 @@ import { ref, computed, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import type { AppItem } from '../types/editor'
 import { useInputState } from './useInputState'
+import { useCanvasVisualSize } from './useCanvasVisualSize'
 
 export function useCanvasSelection(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -15,6 +16,9 @@ export function useCanvasSelection(
 ) {
   // 使用统一的输入状态管理
   const { isShiftPressed, isAltPressed, isSpacePressed } = useInputState()
+
+  // 使用统一的视觉尺寸管理
+  const visualSize = useCanvasVisualSize()
 
   // 框选状态
   const selectionRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
@@ -69,8 +73,10 @@ export function useCanvasSelection(
       y: (pointerPos.y - stage.y()) / stage.scaleY(),
     }
 
-    // 计算点击半径（考虑缩放补偿 + 容差）
-    const clickRadius = Math.max(4, 6 / scale.value) + 2
+    // 使用统一的视觉尺寸计算
+    const radius = visualSize.getMarkerRadius(scale.value)
+    const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
+    const clickRadius = radius + strokeWidth
 
     // 遍历可见物品，找到最近的圆点
     let clickedItem: AppItem | null = null
@@ -100,7 +106,10 @@ export function useCanvasSelection(
 
   // 检测点击位置是否在选中物品上
   function findItemAtPosition(worldPos: { x: number; y: number }): AppItem | null {
-    const clickRadius = Math.max(4, 6 / scale.value) + 2
+    // 使用统一的视觉尺寸计算
+    const radius = visualSize.getMarkerRadius(scale.value)
+    const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
+    const clickRadius = radius + strokeWidth
     let closestItem: AppItem | null = null
     let closestSelectedItem: AppItem | null = null
     let minDistance = clickRadius

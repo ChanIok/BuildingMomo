@@ -1,6 +1,7 @@
 import { ref, watch, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import Konva from 'konva'
+import { useCanvasVisualSize } from './useCanvasVisualSize'
 
 // 颜色配置常量
 const ITEM_COLORS = {
@@ -31,6 +32,9 @@ export function useCanvasRendering(
   // 是否隐藏选中物品（拖拽时使用）
   const hideSelectedItems = ref(false)
 
+  // 视觉尺寸管理
+  const visualSize = useCanvasVisualSize()
+
   // 批量绘制所有物品
   function updateMainLayer() {
     const layer = mainLayerRef.value?.getNode()
@@ -48,8 +52,8 @@ export function useCanvasRendering(
     // 创建批量绘制的 Shape
     const shape = new Konva.Shape({
       sceneFunc: (context) => {
-        const radius = Math.max(4, 6 / scale.value)
-        const strokeWidth = Math.max(0.5, 1 / scale.value)
+        const radius = visualSize.getMarkerRadius(scale.value)
+        const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
 
         visibleItems.forEach((item) => {
           const isSelected = editorStore.selectedItemIds.has(item.internalId)
@@ -81,8 +85,10 @@ export function useCanvasRendering(
       },
       // 启用碰撞检测
       hitFunc: (context, shape) => {
-        const radius = Math.max(4, 6 / scale.value)
-        const hitRadius = radius + Math.max(2, 4 / scale.value)
+        const radius = visualSize.getMarkerRadius(scale.value)
+        const strokeWidth = visualSize.getMarkerStrokeWidth(scale.value)
+        // 碰撞半径 = 填充半径 + 描边宽度的一半（描边向外扩展）
+        const hitRadius = radius + strokeWidth / 2
 
         visibleItems.forEach((item) => {
           // 拖拽时跳过选中物品的碰撞检测
