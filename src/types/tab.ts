@@ -9,4 +9,7 @@ export interface Tab {
 
   // 方案类型专有字段
   schemeId?: string
+
+  // 文档类型专有字段
+  docPage?: string // 指定要打开的文档页面ID（如 'quickstart', 'guide', 'faq'）
 }

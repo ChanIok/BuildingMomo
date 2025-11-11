@@ -2,7 +2,14 @@
 import { computed } from 'vue'
 import { useCommandStore } from '../stores/commandStore'
 import { useTabStore } from '../stores/tabStore'
-import { FolderSearch, FileJson, Github, ExternalLink, TriangleAlert, Monitor } from 'lucide-vue-next'
+import {
+  FolderSearch,
+  FileJson,
+  Code2,
+  ExternalLink,
+  TriangleAlert,
+  Monitor,
+} from 'lucide-vue-next'
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 
 const commandStore = useCommandStore()
@@ -21,10 +28,7 @@ function importJSON() {
 }
 
 function showSafetyNotice() {
-  // 设置 localStorage，让文档页面默认打开 FAQ 标签
-  localStorage.setItem('docs-active-tab', 'faq')
-  // 打开文档标签
-  tabStore.openDocTab()
+  tabStore.openDocTab('faq')
 }
 </script>
 
@@ -54,22 +58,18 @@ function showSafetyNotice() {
       </div>
 
       <!-- 移动端提示 -->
-      <div class="md:hidden mb-10 mx-4">
+      <div class="mx-4 mb-10 md:hidden">
         <div class="rounded-lg border-2 border-orange-200 bg-orange-50/60 p-6 text-center">
-          <div class="flex items-center justify-center gap-2 mb-2">
+          <div class="mb-2 flex items-center justify-center gap-2">
             <Monitor :size="16" class="text-orange-600" :stroke-width="1.5" />
-            <p class="text-base font-medium text-gray-900">
-              仅支持电脑端
-            </p>
+            <p class="text-base font-medium text-gray-900">仅支持电脑端</p>
           </div>
-          <p class="text-sm text-gray-600">
-            本工具用于编辑本地游戏文件
-          </p>
+          <p class="text-sm text-gray-600">本工具用于编辑本地游戏文件</p>
         </div>
       </div>
 
       <!-- 两个大按钮 -->
-      <div class="hidden md:flex mb-10 justify-center gap-6">
+      <div class="mb-10 hidden justify-center gap-6 md:flex">
         <!-- 选择游戏目录按钮 -->
         <Item
           as="button"
@@ -145,14 +145,14 @@ function showSafetyNotice() {
       </div>
 
       <!-- 仓库信息 -->
-      <div class="flex flex-wrap items-center justify-center gap-2 md:gap-6 text-sm text-gray-500">
+      <div class="flex flex-wrap items-center justify-center gap-2 text-sm text-gray-500 md:gap-6">
         <a
           href="https://github.com/ChanIok/BuildingMomo"
           target="_blank"
           rel="noopener noreferrer"
           class="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors hover:text-blue-600"
         >
-          <Github :size="16" />
+          <Code2 :size="16" />
           <span>GitHub 仓库</span>
           <ExternalLink :size="14" class="hidden md:inline" />
         </a>

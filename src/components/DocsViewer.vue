@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { computed } from 'vue'
+import { useTabStore } from '../stores/tabStore'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import QuickStart from './docs/QuickStart.vue'
 import UserGuide from './docs/UserGuide.vue'
 import FAQ from './docs/FAQ.vue'
 
-// 当前子文档（使用 localStorage 记忆用户选择）
-const currentDoc = ref<string>('quickstart')
+const tabStore = useTabStore()
 
 // 菜单项配置
 const menuItems = [
@@ -16,22 +16,18 @@ const menuItems = [
   { id: 'faq', label: '常见问题', component: FAQ },
 ]
 
+// 当前文档页面：直接从标签读取，默认为快速上手
+const currentDoc = computed(() => tabStore.activeTab?.docPage || 'quickstart')
+
 // 当前文档组件
 const currentComponent = computed(() => {
   return menuItems.find((item) => item.id === currentDoc.value)?.component || QuickStart
 })
 
-onMounted(() => {
-  const saved = localStorage.getItem('docs-active-tab')
-  if (saved && menuItems.some((item) => item.id === saved)) {
-    currentDoc.value = saved
-  }
-})
-
+// 切换文档页面：更新标签的 docPage 属性
 function switchDoc(value: string | number) {
-  const strValue = String(value)
-  currentDoc.value = strValue
-  localStorage.setItem('docs-active-tab', strValue)
+  const docPage = String(value)
+  tabStore.updateDocPage(docPage)
 }
 </script>
 

@@ -47,11 +47,15 @@ export const useTabStore = defineStore('tab', () => {
   /**
    * 打开文档标签（单例模式）
    * 全局只有一个文档标签，重复调用只会激活现有标签
+   * @param docPage 可选参数，指定要打开的文档页面ID（如 'quickstart', 'guide', 'faq'）
    */
-  function openDocTab() {
+  function openDocTab(docPage?: string) {
     const existing = tabs.value.find((t) => t.type === 'doc')
     if (existing) {
-      // 已存在，直接激活
+      // 已存在，更新 docPage 并激活
+      if (docPage !== undefined) {
+        existing.docPage = docPage
+      }
       activeTabId.value = existing.id
     } else {
       // 不存在，创建新标签
@@ -59,6 +63,7 @@ export const useTabStore = defineStore('tab', () => {
         id: generateUUID(),
         type: 'doc',
         title: '帮助文档',
+        docPage,
       }
       tabs.value.push(newTab)
       activeTabId.value = newTab.id
@@ -109,6 +114,16 @@ export const useTabStore = defineStore('tab', () => {
   }
 
   /**
+   * 更新文档标签的页面
+   */
+  function updateDocPage(docPage: string) {
+    const docTab = tabs.value.find((t) => t.type === 'doc')
+    if (docTab) {
+      docTab.docPage = docPage
+    }
+  }
+
+  /**
    * 初始化：从现有方案同步标签
    * 用于应用启动时恢复标签状态
    */
@@ -142,6 +157,7 @@ export const useTabStore = defineStore('tab', () => {
     closeTab,
     setActiveTab,
     updateSchemeTabName,
+    updateDocPage,
     syncFromSchemes,
   }
 })

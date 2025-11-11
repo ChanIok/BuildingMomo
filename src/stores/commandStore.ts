@@ -298,7 +298,7 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 打开帮助文档')
         const tabStore = useTabStore()
-        tabStore.openDocTab()
+        tabStore.openDocTab('quickstart')
       },
     },
   ])
