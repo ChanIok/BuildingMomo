@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onActivated, onDeactivated, watch, computed, toRef } from 'vue'
+import {
+  ref,
+  onMounted,
+  onActivated,
+  onDeactivated,
+  watch,
+  computed,
+  toRef,
+} from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { useEditorStore } from '../stores/editorStore'
 import { useCommandStore } from '../stores/commandStore'
@@ -207,22 +215,6 @@ onMounted(() => {
   img.onload = () => {
     backgroundImageConfig.value.image = img
   }
-
-  // 开发环境下的调试监听
-  if (import.meta.env.DEV) {
-    document.addEventListener(
-      'contextmenu',
-      (e) => {
-        console.log('🔴 contextmenu event:', {
-          target: e.target,
-          path: e.composedPath(),
-          pointerEvents: getComputedStyle(e.target as Element).pointerEvents,
-          menuOpen: contextMenuOpen.value,
-        })
-      },
-      true
-    )
-  }
 })
 
 // 当编辑器被激活时，注册缩放函数
@@ -370,7 +362,7 @@ watch(
         @contextmenu="handleCanvasContextMenu"
       >
         <!-- Layer 0: 背景层 -->
-        <v-layer>
+        <v-layer :config="{ listening: false }">
           <v-image v-if="backgroundImageConfig.image" :config="backgroundImageConfig" />
         </v-layer>
 
@@ -380,7 +372,7 @@ watch(
         </v-layer>
 
         <!-- Layer 2: 交互层（框选矩形、原点标记） -->
-        <v-layer ref="interactionLayerRef">
+        <v-layer ref="interactionLayerRef" :config="{ listening: false }">
           <!-- 原点标记 -->
           <v-circle
             :config="{

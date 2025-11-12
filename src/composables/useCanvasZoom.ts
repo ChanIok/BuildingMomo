@@ -92,14 +92,12 @@ export function useCanvasZoom(
   // 计算最佳视图（自适应缩放和居中）
   function fitToView() {
     const bounds = editorStore.bounds
-    console.log('🔴 bounds', bounds)
     if (!bounds) return
 
     const padding = 100 // 边距
     const scaleX = (containerWidth.value - padding * 2) / bounds.width
     const scaleY = (containerHeight.value - padding * 2) / bounds.height
     // containerWidth和containerHeight
-    console.log('🔴 containerWidth', containerWidth.value, 'containerHeight', containerHeight.value)
     const fitScale = Math.max(0.01, Math.min(scaleX, scaleY, 1)) // 最小百分之一，最大不放大
 
     // 调整最小缩放限制，避免太小导致标点看不清
