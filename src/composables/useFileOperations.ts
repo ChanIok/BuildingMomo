@@ -164,11 +164,10 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         const reader = new FileReader()
         reader.onload = async (e) => {
           const content = e.target?.result as string
-          // 使用新的多方案导入API，传递文件修改时间
+          // 使用多方案导入API
           const result = await editorStore.importJSONAsScheme(
             content,
             file.name,
-            undefined,
             file.lastModified
           )
 
@@ -242,22 +241,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     console.log(`[FileOps] Exported ${gameItems.length} items to ${link.download}`)
   }
 
-  // 保存到游戏
+  // 保存到游戎
   async function saveToGame(): Promise<void> {
-    const activeScheme = editorStore.activeScheme
-
-    if (!activeScheme) {
-      notification.warning('没有激活的方案')
-      return
-    }
-
-    if (activeScheme.sourceType !== 'game') {
-      notification.warning('当前方案不是从游戏路径导入的，请使用"导出 JSON"功能')
-      return
-    }
-
-    if (!activeScheme.gameFileHandle) {
-      notification.error('缺少游戏文件句柄，无法保存')
+    // 检查全局游戎连接状态
+    if (!watchState.value.isActive || !watchState.value.fileHandle) {
+      notification.warning('请先连接游戏目录')
       return
     }
 
@@ -291,7 +279,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       const jsonString = JSON.stringify(exportData, null, 2)
 
       // 2. 请求写入权限（如果需要）
-      const handle = activeScheme.gameFileHandle
+      const handle = watchState.value.fileHandle!
       const permission = await verifyPermission(handle, true)
 
       if (!permission) {
@@ -307,7 +295,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       // 4. 更新监控状态，避免触发文件更新通知
       watchState.value.lastModifiedTime = Date.now()
 
-      console.log(`[FileOps] Successfully saved to game: ${activeScheme.gameFilePath}`)
+      console.log(`[FileOps] Successfully saved to game: ${watchState.value.fileName}`)
       notification.success('保存成功！')
     } catch (error: any) {
       console.error('[FileOps] Failed to save to game:', error)
@@ -550,16 +538,10 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       // 读取文件内容
       const content = await file.text()
 
-      // 使用 editorStore 的导入方法，并传递游戏路径信息和文件修改时间
+      // 使用 editorStore 的导入方法
       const importResult = await editorStore.importJSONAsScheme(
         content,
         file.name,
-        {
-          sourceType: 'game',
-          gameFilePath: file.name,
-          gameFileHandle: handle,
-          gameDirHandle: watchState.value.dirHandle,
-        },
         file.lastModified
       )
 

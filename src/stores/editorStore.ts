@@ -455,12 +455,6 @@ export const useEditorStore = defineStore('editor', () => {
   async function importJSONAsScheme(
     fileContent: string,
     fileName: string,
-    gamePathInfo?: {
-      sourceType: 'game'
-      gameFilePath: string
-      gameFileHandle: FileSystemFileHandle
-      gameDirHandle: FileSystemDirectoryHandle
-    },
     fileLastModified?: number
   ): Promise<{ success: boolean; schemeId?: string; error?: string }> {
     try {
@@ -509,13 +503,6 @@ export const useEditorStore = defineStore('editor', () => {
         },
         selectedItemIds: new Set(),
         lastModified: fileLastModified,
-        // 如果是从游戏路径导入，添加额外信息
-        ...(gamePathInfo && {
-          sourceType: gamePathInfo.sourceType,
-          gameFilePath: gamePathInfo.gameFilePath,
-          gameFileHandle: gamePathInfo.gameFileHandle,
-          gameDirHandle: gamePathInfo.gameDirHandle,
-        }),
       }
 
       schemes.value.push(newScheme)
