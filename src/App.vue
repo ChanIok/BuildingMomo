@@ -9,6 +9,7 @@ import Toolbar from './components/Toolbar.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import CanvasEditor from './components/CanvasEditor.vue'
+import ThreeDemo from './components/ThreeDemo.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import MoveDialog from './components/MoveDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
@@ -90,12 +91,17 @@ onMounted(async () => {
             <!-- 有标签时：根据类型渲染 -->
             <template v-else>
               <!-- 方案编辑器 -->
-              <KeepAlive :max="10">
-                <CanvasEditor
-                  v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme"
-                  :key="editorStore.activeSchemeId || ''"
-                />
-              </KeepAlive>
+              <template v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme">
+                <!-- 2D视图 -->
+                <KeepAlive v-if="editorStore.viewMode === '2d'" :max="10">
+                  <CanvasEditor :key="editorStore.activeSchemeId || ''" />
+                </KeepAlive>
+
+                <!-- 3D视图 -->
+                <KeepAlive v-else :max="10">
+                  <ThreeDemo :key="editorStore.activeSchemeId || ''" />
+                </KeepAlive>
+              </template>
 
               <!-- 文档查看器 -->
               <KeepAlive>

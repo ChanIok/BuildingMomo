@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
+import { templateCompilerOptions } from '@tresjs/core'
 
 // https://vite.dev/config/
 export default defineConfig(() => {
@@ -9,12 +10,20 @@ export default defineConfig(() => {
   const base = process.env.VITE_BASE_PATH || '/'
 
   return {
-    plugins: [vue(), tailwindcss()],
+    plugins: [
+      vue({
+        // TresJS 模板编译器配置，让 Vue 识别 Tres 组件
+        ...templateCompilerOptions,
+      }),
+      tailwindcss(),
+    ],
     base,
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
+      // 强制使用单一 Three.js 实例，避免多版本冲突
+      dedupe: ['three'],
     },
     build: {
       rollupOptions: {
@@ -31,6 +40,14 @@ export default defineConfig(() => {
             // Konva 图形库
             if (id.includes('node_modules/konva/') || id.includes('node_modules/vue-konva/')) {
               return 'konva'
+            }
+            // Three.js 和 TresJS 3D 库
+            if (
+              id.includes('node_modules/three/') ||
+              id.includes('node_modules/@tresjs/core/') ||
+              id.includes('node_modules/@tresjs/cientos/')
+            ) {
+              return 'three-vendor'
             }
             // UI 组件库
             if (

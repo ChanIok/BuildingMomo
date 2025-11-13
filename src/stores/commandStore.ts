@@ -280,6 +280,17 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'view.toggle2D3D',
+      label: '切换2D/3D视图',
+      shortcut: 'V',
+      category: 'view',
+      enabled: () => editorStore.items.length > 0,
+      execute: () => {
+        console.log('[Command] 切换视图模式')
+        editorStore.toggleViewMode()
+      },
+    },
+    {
       id: 'view.coordinateSystem',
       label: '工作坐标系设置',
       category: 'view',

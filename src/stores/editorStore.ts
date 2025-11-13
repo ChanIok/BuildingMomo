@@ -89,6 +89,9 @@ export const useEditorStore = defineStore('editor', () => {
     rotationAngle: 0,
   })
 
+  // 视图模式状态
+  const viewMode = ref<'2d' | '3d'>('2d')
+
   // 计算属性：当前激活的方案
   const activeScheme = computed(
     () => schemes.value.find((s) => s.id === activeSchemeId.value) ?? null
@@ -669,6 +672,18 @@ export const useEditorStore = defineStore('editor', () => {
     saveHistory('selection')
 
     activeScheme.value.selectedItemIds.clear()
+  }
+
+  // ========== 视图模式切换 ==========
+
+  function toggleViewMode() {
+    viewMode.value = viewMode.value === '2d' ? '3d' : '2d'
+    console.log('[EditorStore] View mode switched to:', viewMode.value)
+  }
+
+  function setViewMode(mode: '2d' | '3d') {
+    viewMode.value = mode
+    console.log('[EditorStore] View mode set to:', viewMode.value)
   }
 
   // 移动选中物品（注意：不在这里保存历史，由拖拽结束时统一保存）
@@ -1269,6 +1284,11 @@ export const useEditorStore = defineStore('editor', () => {
     setWorkingCoordinateSystem,
     workingToGlobal,
     globalToWorking,
+
+    // 视图模式
+    viewMode,
+    toggleViewMode,
+    setViewMode,
 
     // 历史记录
     saveHistory,
