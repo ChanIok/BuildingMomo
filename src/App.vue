@@ -9,7 +9,7 @@ import Toolbar from './components/Toolbar.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import CanvasEditor from './components/CanvasEditor.vue'
-import ThreeDemo from './components/ThreeDemo.vue'
+import ThreeEditor from './components/ThreeEditor.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import MoveDialog from './components/MoveDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
@@ -99,7 +99,7 @@ onMounted(async () => {
 
                 <!-- 3D视图 -->
                 <KeepAlive v-else :max="10">
-                  <ThreeDemo :key="editorStore.activeSchemeId || ''" />
+                  <ThreeEditor :key="editorStore.activeSchemeId || ''" />
                 </KeepAlive>
               </template>
 

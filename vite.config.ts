@@ -41,13 +41,16 @@ export default defineConfig(() => {
             if (id.includes('node_modules/konva/') || id.includes('node_modules/vue-konva/')) {
               return 'konva'
             }
-            // Three.js 和 TresJS 3D 库
+            // TresJS 核心和cientos
             if (
-              id.includes('node_modules/three/') ||
               id.includes('node_modules/@tresjs/core/') ||
               id.includes('node_modules/@tresjs/cientos/')
             ) {
-              return 'three-vendor'
+              return 'tresjs'
+            }
+            // Three.js 核心库
+            if (id.includes('node_modules/three/')) {
+              return 'three-core'
             }
             // UI 组件库
             if (

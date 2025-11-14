@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls } from '@tresjs/cientos'
+import type { Object3D } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
+import { useThreeSelection } from '@/composables/useThreeSelection'
 
 const editorStore = useEditorStore()
+
+// 3D 选择相关引用
+const threeContainerRef = ref<HTMLElement | null>(null)
+const cameraRef = ref<any | null>(null)
+const meshRefs = ref<Object3D[]>([])
+
+const { selectionRect, handlePointerDown, handlePointerMove, handlePointerUp } =
+  useThreeSelection(editorStore, cameraRef, meshRefs, threeContainerRef)
 
 // 默认长方体尺寸（暂无体积数据时使用）
 const DEFAULT_BOX_SIZE = {
@@ -132,58 +142,95 @@ const initialCameraPosition = computed<[number, number, number]>(() => {
       </div>
     </div>
 
-    <!-- Three.js 场景 -->
-    <TresCanvas v-if="editorStore.items.length > 0" clear-color="#f3f4f6">
-      <!-- 相机 - 适配大坐标场景 -->
-      <TresPerspectiveCamera
-        :position="initialCameraPosition"
-        :look-at="sceneCenter"
-        :fov="50"
-        :near="10"
-        :far="200000"
-      />
-
-      <!-- 轨道控制器 -->
-      <OrbitControls :target="sceneCenter" :enableDamping="true" :dampingFactor="0.05" />
-
-      <!-- 光照 -->
-      <TresAmbientLight :intensity="0.6" />
-      <TresDirectionalLight :position="[1000, 2000, 1000]" :intensity="0.8" :cast-shadow="true" />
-
-      <!-- 辅助元素 - 适配大场景 -->
-      <TresGridHelper :args="[40000, 100, 0xcccccc, 0xe5e5e5]" />
-      <TresAxesHelper :args="[5000]" />
-
-      <!-- 原点标记 - 放大以适应大场景 -->
-      <TresGroup :position="[0, 0, 0]">
-        <TresMesh>
-          <TresSphereGeometry :args="[200, 16, 16]" />
-          <TresMeshBasicMaterial :color="0xef4444" />
-        </TresMesh>
-      </TresGroup>
-
-      <!-- 渲染所有可见物品 -->
-      <TresGroup
-        v-for="item in editorStore.visibleItems"
-        :key="item.internalId"
-        :position="[item.x, item.z, item.y]"
+    <!-- Three.js 场景 + 选择层 -->
+    <div
+      v-if="editorStore.items.length > 0"
+      ref="threeContainerRef"
+      class="absolute inset-0"
+    >
+      <TresCanvas
+        clear-color="#f3f4f6"
+        @pointerdown.capture="handlePointerDown"
+        @pointermove.capture="handlePointerMove"
+        @pointerup.capture="handlePointerUp"
+        @pointerleave.capture="handlePointerUp"
       >
-        <!-- 长方体主体 -->
-        <TresMesh :user-data="{ internalId: item.internalId, gameId: item.gameId }">
-          <TresBoxGeometry
-            :args="[DEFAULT_BOX_SIZE.width, DEFAULT_BOX_SIZE.height, DEFAULT_BOX_SIZE.depth]"
-          />
-          <TresMeshStandardMaterial
-            :color="getItemColor(item)"
-            :transparent="true"
-            :opacity="getItemOpacity(item)"
-          />
-        </TresMesh>
+        <!-- 相机 - 适配大坐标场景 -->
+        <TresPerspectiveCamera
+          ref="cameraRef"
+          :position="initialCameraPosition"
+          :look-at="sceneCenter"
+          :fov="50"
+          :near="10"
+          :far="150000"
+        />
 
-        <!-- 边框线（使用简化的实现） -->
-        <!-- TODO: 优化边框线渲染 -->
-      </TresGroup>
-    </TresCanvas>
+        <!-- 轨道控制器 -->
+        <OrbitControls
+          :target="sceneCenter"
+          :enableDamping="true"
+          :dampingFactor="0.05"
+          :mouseButtons="{ MIDDLE: 0, RIGHT: 2 }"
+        />
+
+        <!-- 光照 -->
+        <TresAmbientLight :intensity="0.6" />
+        <TresDirectionalLight
+          :position="[1000, 2000, 1000]"
+          :intensity="0.8"
+          :cast-shadow="true"
+        />
+
+        <!-- 辅助元素 - 适配大场景 -->
+        <TresGridHelper :args="[40000, 100, 0xcccccc, 0xe5e5e5]" />
+        <TresAxesHelper :args="[5000]" />
+
+        <!-- 原点标记 - 放大以适应大场景 -->
+        <TresGroup :position="[0, 0, 0]">
+          <TresMesh>
+            <TresSphereGeometry :args="[200, 16, 16]" />
+            <TresMeshBasicMaterial :color="0xef4444" />
+          </TresMesh>
+        </TresGroup>
+
+        <!-- 渲染所有可见物品 -->
+        <TresGroup
+          v-for="item in editorStore.visibleItems"
+          :key="item.internalId"
+          :position="[item.x, item.z, item.y]"
+        >
+          <!-- 长方体主体 -->
+          <TresMesh
+            ref="meshRefs"
+            :user-data="{ internalId: item.internalId, gameId: item.gameId }"
+          >
+            <TresBoxGeometry
+              :args="[DEFAULT_BOX_SIZE.width, DEFAULT_BOX_SIZE.height, DEFAULT_BOX_SIZE.depth]"
+            />
+            <TresMeshStandardMaterial
+              :color="getItemColor(item)"
+              :transparent="true"
+              :opacity="getItemOpacity(item)"
+            />
+          </TresMesh>
+
+          <!-- 边框线（使用简化的实现） -->
+          <!-- TODO: 优化边框线渲染 -->
+        </TresGroup>
+      </TresCanvas>
+
+      <!-- 3D 框选矩形 -->
+      <div
+        v-if="selectionRect"
+        class="absolute border border-blue-400/80 bg-blue-500/10 pointer-events-none"
+        :style="{
+          left: selectionRect.x + 'px',
+          top: selectionRect.y + 'px',
+          width: selectionRect.width + 'px',
+          height: selectionRect.height + 'px',
+        }"
+      ></div>
+    </div>
 
     <!-- 视图信息 -->
     <div v-if="editorStore.items.length > 0" class="absolute right-4 bottom-4 space-y-2">
@@ -196,7 +243,9 @@ const initialCameraPosition = computed<[number, number, number]>(() => {
 
       <div class="rounded-md bg-blue-500/90 px-3 py-2 text-xs text-white shadow-sm">
         <div class="font-medium">3D 预览模式</div>
-        <div class="mt-1 text-[10px] opacity-80">拖拽旋转 · 滚轮缩放 · 右键平移</div>
+        <div class="mt-1 text-[10px] opacity-80">
+          左键选择/框选 · 中键旋转 · 滚轮缩放 · 右键平移
+        </div>
       </div>
     </div>
   </div>
