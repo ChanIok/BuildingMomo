@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, markRaw, watch } from 'vue'
+import { ref, computed, markRaw, watch, onActivated, onDeactivated } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls } from '@tresjs/cientos'
 import { Object3D } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
+import { useCommandStore } from '@/stores/commandStore'
 import { useThreeSelection } from '@/composables/useThreeSelection'
 import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 
 const editorStore = useEditorStore()
+const commandStore = useCommandStore()
 
 // 3D 选择 & gizmo 相关引用
 const threeContainerRef = ref<HTMLElement | null>(null)
 const cameraRef = ref<any | null>(null)
+const orbitControlsRef = ref<any | null>(null)
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
 
 // 创建共享的 isTransformDragging ref
@@ -33,9 +36,9 @@ const {
   editorStore,
   gizmoPivot,
   updateSelectedInstancesMatrix,
-  isTransformDragging
+  isTransformDragging,
+  orbitControlsRef
 )
-
 
 const { selectionRect, handlePointerDown, handlePointerMove, handlePointerUp } = useThreeSelection(
   editorStore,
@@ -72,31 +75,6 @@ const sceneCenter = computed<[number, number, number]>(() => {
 // 轨道控制中心：用户可控，不随数据变化而自动更新
 const orbitTarget = ref<[number, number, number]>([0, 0, 0])
 
-// 智能更新轨道控制中心：仅在方案切换或首次加载时同步
-watch(
-  () => editorStore.activeSchemeId,
-  () => {
-    // 方案切换或首次加载时，重置轨道中心到场景中心
-    if (editorStore.activeSchemeId) {
-      orbitTarget.value = sceneCenter.value
-    }
-  },
-  { immediate: true }
-)
-
-// 聚焦到选中物品的中心
-function focusOnSelection() {
-  const center = editorStore.getSelectedItemsCenter?.()
-  if (center) {
-    orbitTarget.value = [center.x, center.z, center.y]
-  }
-}
-
-// 聚焦到整个场景
-function focusOnScene() {
-  orbitTarget.value = sceneCenter.value
-}
-
 // 计算合适的相机距离
 const cameraDistance = computed(() => {
   if (editorStore.items.length === 0) {
@@ -120,15 +98,62 @@ const cameraDistance = computed(() => {
   return Math.max(maxRange * 2, 3000)
 })
 
-// 初始相机位置（等距视角）
-const initialCameraPosition = computed<[number, number, number]>(() => {
+// 相机位置：不再是响应式计算属性，避免因数据变化而自动重置
+const cameraPosition = ref<[number, number, number]>([0, 0, 0])
+
+// 计算并设置最佳相机位置（类似2D视图的fitToView）
+function fitCameraToScene() {
   const center = sceneCenter.value
   const distance = cameraDistance.value
-  return [
+
+  cameraPosition.value = [
     center[0] + distance * 0.6,
     center[1] + distance * 0.8,
     center[2] + distance * 0.6,
   ]
+}
+
+// 聚焦到选中物品的中心
+function focusOnSelection() {
+  const center = editorStore.getSelectedItemsCenter?.()
+  if (center) {
+    orbitTarget.value = [center.x, center.z, center.y]
+  }
+}
+
+// 聚焦到整个场景
+function focusOnScene() {
+  orbitTarget.value = sceneCenter.value
+  fitCameraToScene() // 同时重置相机位置
+}
+
+// 智能更新轨道控制中心：仅在方案切换或首次加载时同步
+watch(
+  () => editorStore.activeSchemeId,
+  () => {
+    // 方案切换或首次加载时，重置轨道中心到场景中心
+    if (editorStore.activeSchemeId) {
+      orbitTarget.value = sceneCenter.value
+      fitCameraToScene() // 同时重置相机位置
+    }
+  },
+  { immediate: true }
+)
+
+// 重置3D视图（用于命令系统）
+function resetView3D() {
+  focusOnScene() // 这会同时重置轨道中心和相机位置
+}
+
+// 当3D视图激活时，注册视图函数
+onActivated(() => {
+  // 3D视图不需要缩放功能，但需要重置视图和聚焦选中功能
+  commandStore.setZoomFunctions(null, null, resetView3D, focusOnSelection)
+})
+
+// 当3D视图停用时，清除函数
+onDeactivated(() => {
+  commandStore.setZoomFunctions(null, null, null, null)
 })
 </script>
 
@@ -171,7 +196,7 @@ const initialCameraPosition = computed<[number, number, number]>(() => {
         <!-- 相机 - 适配大坐标场景 -->
         <TresPerspectiveCamera
           ref="cameraRef"
-          :position="initialCameraPosition"
+          :position="cameraPosition"
           :look-at="orbitTarget"
           :fov="50"
           :near="10"
@@ -180,6 +205,7 @@ const initialCameraPosition = computed<[number, number, number]>(() => {
 
         <!-- 轨道控制器 -->
         <OrbitControls
+          ref="orbitControlsRef"
           :target="orbitTarget"
           :enableDamping="true"
           :dampingFactor="0.05"

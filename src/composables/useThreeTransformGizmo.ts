@@ -7,7 +7,8 @@ export function useThreeTransformGizmo(
   editorStore: ReturnType<typeof useEditorStore>,
   pivotRef: Ref<Object3D | null>,
   updateSelectedInstancesMatrix: (selectedIds: Set<string>, deltaPosition: Vector3) => void,
-  isTransformDragging?: Ref<boolean>
+  isTransformDragging?: Ref<boolean>,
+  orbitControlsRef?: Ref<any | null>
 ) {
   // 使用共享的 ref 或创建内部 ref（向后兼容）
   const _isTransformDragging = isTransformDragging || ref(false)
@@ -38,6 +39,17 @@ export function useThreeTransformGizmo(
     coordinates3D.setThreeFromGame(pivot.position, center)
   })
 
+  function setOrbitControlsEnabled(enabled: boolean) {
+    if (!orbitControlsRef?.value) return
+
+    const wrapper = orbitControlsRef.value as any
+    const controls = wrapper.instance // 从测试中确认的正确路径
+    
+    if (controls && typeof controls.enabled === 'boolean') {
+      controls.enabled = enabled
+    }
+  }
+
   function handleGizmoDragging(isDragging: boolean) {
     _isTransformDragging.value = isDragging
 
@@ -51,12 +63,18 @@ export function useThreeTransformGizmo(
       lastThreePosition.value = markRaw(pivot.position.clone())
       lastApplied.value = { x: 0, y: 0, z: 0 }
       hasStartedTransform.value = false
+
+      // 拖拽开始时禁用相机控制
+      setOrbitControlsEnabled(false)
     } else {
       // 结束拖拽时清理
       dragStartWorld.value = null
       lastThreePosition.value = null
       lastApplied.value = { x: 0, y: 0, z: 0 }
       hasStartedTransform.value = false
+
+      // 拖拽结束时恢复相机控制
+      setOrbitControlsEnabled(true)
     }
   }
 
@@ -71,6 +89,9 @@ export function useThreeTransformGizmo(
     lastThreePosition.value = markRaw(pivot.position.clone())
     lastApplied.value = { x: 0, y: 0, z: 0 }
     hasStartedTransform.value = false
+
+    // 鼠标按下时禁用相机控制
+    setOrbitControlsEnabled(false)
   }
 
   function handleGizmoMouseUp() {
@@ -89,6 +110,9 @@ export function useThreeTransformGizmo(
     lastThreePosition.value = null
     lastApplied.value = { x: 0, y: 0, z: 0 }
     hasStartedTransform.value = false
+
+    // 松开鼠标后恢复相机控制
+    setOrbitControlsEnabled(true)
   }
 
   function handleGizmoChange() {

@@ -26,6 +26,7 @@ export const useCommandStore = defineStore('command', () => {
   const zoomInFn = ref<(() => void) | null>(null)
   const zoomOutFn = ref<(() => void) | null>(null)
   const fitToViewFn = ref<(() => void) | null>(null)
+  const focusSelectionFn = ref<(() => void) | null>(null)
 
   // 移动对话框状态
   const showMoveDialog = ref(false)
@@ -282,6 +283,17 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'view.focusSelection',
+      label: '聚焦选中物品',
+      shortcut: 'F',
+      category: 'view',
+      enabled: () => editorStore.selectedItemIds.size > 0 && focusSelectionFn.value !== null,
+      execute: () => {
+        console.log('[Command] 聚焦选中物品')
+        focusSelectionFn.value?.()
+      },
+    },
+    {
       id: 'view.toggle2D3D',
       label: '切换2D/3D视图',
       shortcut: 'V',
@@ -356,11 +368,13 @@ export const useCommandStore = defineStore('command', () => {
   function setZoomFunctions(
     zoomIn: (() => void) | null,
     zoomOut: (() => void) | null,
-    fitToView: (() => void) | null
+    fitToView: (() => void) | null,
+    focusSelection?: (() => void) | null
   ) {
     zoomInFn.value = zoomIn
     zoomOutFn.value = zoomOut
     fitToViewFn.value = fitToView
+    focusSelectionFn.value = focusSelection || null
   }
 
   return {
