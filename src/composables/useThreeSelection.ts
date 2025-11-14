@@ -1,5 +1,6 @@
 import { ref, markRaw, type Ref } from 'vue'
-import { Raycaster, Vector2, Vector3, Box3, Matrix4, type Camera, type InstancedMesh } from 'three'
+import { Raycaster, Vector2, Vector3, type Camera, type InstancedMesh } from 'three'
+import { coordinates3D } from '@/lib/coordinates'
 import type { useEditorStore } from '@/stores/editorStore'
 
 interface SelectionRect {
@@ -27,7 +28,7 @@ export function useThreeSelection(
   const selectionRect = ref<SelectionRect | null>(null)
   const isSelecting = ref(false)
   const mouseDownPos = ref<{ x: number; y: number } | null>(null)
-  const tempMatrix = markRaw(new Matrix4())
+  const tempVec3 = markRaw(new Vector3())
 
   function getRelativePosition(evt: any) {
     const el = containerRef.value
@@ -170,63 +171,39 @@ export function useThreeSelection(
 
     const containerRect = container.getBoundingClientRect()
 
-    const selectedIds: string[] = []
-    const box = markRaw(new Box3())
-    const corner = markRaw(new Vector3())
-
     const selLeft = rect.x
     const selTop = rect.y
     const selRight = rect.x + rect.width
     const selBottom = rect.y + rect.height
 
-    const instancedMesh = selectionSources.instancedMesh.value
     const idMap = selectionSources.indexToIdMap.value
-    if (!instancedMesh || !idMap) return
+    if (!idMap) return
 
-    const instanceCount = Math.min(instancedMesh.count, idMap.size)
+    const visibleItems = editorStore.visibleItems
 
-    for (let index = 0; index < instanceCount; index++) {
-      instancedMesh.getMatrixAt(index, tempMatrix)
+    // 先构建一个 id -> item 的映射，确保只处理当前实例化的物品
+    const itemById = new Map<string, any>()
+    for (const item of visibleItems) {
+      itemById.set(item.internalId, item)
+    }
 
-      box.min.set(-0.5, -0.5, -0.5)
-      box.max.set(0.5, 0.5, 0.5)
-      box.applyMatrix4(tempMatrix)
+    const selectedIds: string[] = []
 
-      const corners: Vector3[] = [
-        new Vector3(box.min.x, box.min.y, box.min.z),
-        new Vector3(box.min.x, box.min.y, box.max.z),
-        new Vector3(box.min.x, box.max.y, box.min.z),
-        new Vector3(box.min.x, box.max.y, box.max.z),
-        new Vector3(box.max.x, box.min.y, box.min.z),
-        new Vector3(box.max.x, box.min.y, box.max.z),
-        new Vector3(box.max.x, box.max.y, box.min.z),
-        new Vector3(box.max.x, box.max.y, box.max.z),
-      ]
+    for (const id of idMap.values()) {
+      const item = itemById.get(id)
+      if (!item) continue
 
-      let minX = Infinity
-      let minY = Infinity
-      let maxX = -Infinity
-      let maxY = -Infinity
+      // 使用游戏坐标转换为 Three.js 世界坐标，再投影到屏幕空间
+      coordinates3D.setThreeFromGame(tempVec3, { x: item.x, y: item.y, z: item.z })
+      tempVec3.project(camera)
 
-      for (const c of corners) {
-        corner.copy(c).project(camera)
+      const sx = (tempVec3.x + 1) * 0.5 * containerRect.width
+      const sy = (-tempVec3.y + 1) * 0.5 * containerRect.height
 
-        const sx = (corner.x + 1) * 0.5 * containerRect.width
-        const sy = (-corner.y + 1) * 0.5 * containerRect.height
+      const withinRect = sx >= selLeft && sx <= selRight && sy >= selTop && sy <= selBottom
 
-        if (sx < minX) minX = sx
-        if (sx > maxX) maxX = sx
-        if (sy < minY) minY = sy
-        if (sy > maxY) maxY = sy
-      }
-
-      const intersects = maxX >= selLeft && minX <= selRight && maxY >= selTop && minY <= selBottom
-
-      if (intersects) {
-        const id = idMap.get(index)
-        if (id) {
-          selectedIds.push(id)
-        }
+      if (withinRect) {
+        selectedIds.push(id)
       }
     }
 

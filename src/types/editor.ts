@@ -106,7 +106,9 @@ export interface WorkingCoordinateSystem {
 
 // 历史记录快照
 export interface HistorySnapshot {
-  items: AppItem[] // 物品数据快照
+  // 对于编辑类操作（type: 'edit'），需要完整的物品数据快照；
+  // 对于选择类操作（type: 'selection'），可以为 null，仅保存选择状态以减少开销。
+  items: AppItem[] | null
   selectedItemIds: Set<string> // 选择状态快照
   timestamp: number // 时间戳
   type: 'edit' | 'selection' // 操作类型

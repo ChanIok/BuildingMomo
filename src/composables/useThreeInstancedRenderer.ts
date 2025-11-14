@@ -91,7 +91,37 @@ export function useThreeInstancedRenderer(
     return 0x94a3b8
   }
 
-  function updateInstances() {
+  // 仅更新实例颜色（用于选中状态变化时的轻量刷新）
+  function updateInstancesColor() {
+    const meshTarget = instancedMesh.value
+    if (!meshTarget) return
+
+    const items = editorStore.visibleItems
+    const map = indexToIdMap.value
+
+    if (!map || map.size === 0) return
+
+    const itemById = new Map<string, AppItem>()
+    for (const item of items) {
+      itemById.set(item.internalId, item)
+    }
+
+    for (const [index, id] of map.entries()) {
+      const item = itemById.get(id)
+      if (!item) continue
+
+      const colorHex = getItemColor(item)
+      scratchColor.setHex(colorHex)
+      meshTarget.setColorAt(index, scratchColor)
+    }
+
+    if (meshTarget.instanceColor) {
+      meshTarget.instanceColor.needsUpdate = true
+    }
+  }
+
+  // 完整重建实例几何和索引映射（用于物品集合变化时）
+  function rebuildInstances() {
     const meshTarget = instancedMesh.value
     const edgeTarget = edgesInstancedMesh.value
     if (!meshTarget || !edgeTarget) return
@@ -137,15 +167,9 @@ export function useThreeInstancedRenderer(
 
       meshTarget.setMatrixAt(index, scratchMatrix)
       edgeTarget.setMatrixAt(index, scratchMatrix)
-
-      const colorHex = getItemColor(item)
-      scratchColor.setHex(colorHex)
-
-      meshTarget.setColorAt(index, scratchColor)
     }
 
     meshTarget.instanceMatrix.needsUpdate = true
-    meshTarget.instanceColor!.needsUpdate = true
     edgeTarget.instanceMatrix.needsUpdate = true
 
     indexToIdMap.value = map
@@ -155,6 +179,9 @@ export function useThreeInstancedRenderer(
       reverseMap.set(id, index)
     }
     idToIndexMap.value = reverseMap
+
+    // 几何更新后刷新一次颜色，确保选中高亮正确
+    updateInstancesColor()
   }
 
   // 局部更新选中物品的矩阵（用于拖拽时的视觉更新）
@@ -166,30 +193,26 @@ export function useThreeInstancedRenderer(
     }
 
     const reverseMap = idToIndexMap.value
-    const tempMatrix = markRaw(new Matrix4())
-    const tempPos = markRaw(new Vector3())
-    const tempQuat = markRaw(new Quaternion())
-    const tempScale = markRaw(new Vector3())
 
     for (const id of selectedIds) {
       const index = reverseMap.get(id)
       if (index === undefined) continue
 
       // 读取当前矩阵
-      meshTarget.getMatrixAt(index, tempMatrix)
+      meshTarget.getMatrixAt(index, scratchMatrix)
 
       // 分解矩阵
-      tempMatrix.decompose(tempPos, tempQuat, tempScale)
+      scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchScale)
 
       // 应用位置增量
-      tempPos.add(deltaPosition)
+      scratchPosition.add(deltaPosition)
 
       // 重新组合矩阵
-      tempMatrix.compose(tempPos, tempQuat, tempScale)
+      scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
 
       // 更新两个实例
-      meshTarget.setMatrixAt(index, tempMatrix)
-      edgeTarget.setMatrixAt(index, tempMatrix)
+      meshTarget.setMatrixAt(index, scratchMatrix)
+      edgeTarget.setMatrixAt(index, scratchMatrix)
     }
 
     // 只标记矩阵需要更新，不触发颜色更新
@@ -197,17 +220,29 @@ export function useThreeInstancedRenderer(
     edgeTarget.instanceMatrix.needsUpdate = true
   }
 
+  // 物品集合变化时重建实例；选中状态变化时仅刷新颜色
   watch(
-    () => [editorStore.visibleItems, editorStore.selectedItemIds.size],
+    () => editorStore.visibleItems,
     () => {
       // 拖拽时不触发全量更新，由 handleGizmoChange 直接更新实例矩阵
       if (isTransformDragging?.value) {
         return
       }
 
-      updateInstances()
+      rebuildInstances()
     },
     { deep: true, immediate: true }
+  )
+
+  watch(
+    () => editorStore.selectedItemIds.size,
+    () => {
+      if (isTransformDragging?.value) {
+        return
+      }
+
+      updateInstancesColor()
+    }
   )
 
   return {

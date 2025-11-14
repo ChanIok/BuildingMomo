@@ -324,23 +324,31 @@ export const useEditorStore = defineStore('editor', () => {
     if (type === 'selection' && history.undoStack.length > 0) {
       const lastSnapshot = history.undoStack[history.undoStack.length - 1]
       if (lastSnapshot && lastSnapshot.type === 'selection') {
-        // 替换栈顶的选择操作
-        history.undoStack[history.undoStack.length - 1] = {
-          items: cloneItems(activeScheme.value.items),
-          selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
-          timestamp: Date.now(),
-          type: 'selection',
-        }
+        // 仅更新选择集合和时间戳，避免重复深拷贝 items
+        lastSnapshot.selectedItemIds = cloneSelection(activeScheme.value.selectedItemIds)
+        lastSnapshot.timestamp = Date.now()
         return
       }
     }
 
     // 创建快照
-    const snapshot: HistorySnapshot = {
-      items: cloneItems(activeScheme.value.items),
-      selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
-      timestamp: Date.now(),
-      type,
+    let snapshot: HistorySnapshot
+    if (type === 'selection') {
+      // 选择操作：只保存选择状态，items 设为 null 以减少性能开销
+      snapshot = {
+        items: null,
+        selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
+        timestamp: Date.now(),
+        type,
+      }
+    } else {
+      // 编辑操作：保存完整的物品数据和选择状态
+      snapshot = {
+        items: cloneItems(activeScheme.value.items),
+        selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
+        timestamp: Date.now(),
+        type,
+      }
     }
 
     // 推入撤销栈
@@ -376,8 +384,17 @@ export const useEditorStore = defineStore('editor', () => {
 
     // 从撤销栈弹出并恢复状态
     const snapshot = history.undoStack.pop()!
-    activeScheme.value.items = cloneItems(snapshot.items)
-    activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
+
+    if (snapshot.type === 'edit') {
+      // 编辑操作：恢复物品和选择状态
+      if (snapshot.items) {
+        activeScheme.value.items = cloneItems(snapshot.items)
+      }
+      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
+    } else if (snapshot.type === 'selection') {
+      // 选择操作：只恢复选择状态，避免不必要的物品深拷贝
+      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
+    }
 
     console.log(`[History] 撤销操作 (类型: ${snapshot.type})`)
   }
@@ -403,8 +420,15 @@ export const useEditorStore = defineStore('editor', () => {
 
     // 从重做栈弹出并恢复状态
     const snapshot = history.redoStack.pop()!
-    activeScheme.value.items = cloneItems(snapshot.items)
-    activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
+
+    if (snapshot.type === 'edit') {
+      if (snapshot.items) {
+        activeScheme.value.items = cloneItems(snapshot.items)
+      }
+      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
+    } else if (snapshot.type === 'selection') {
+      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
+    }
 
     console.log('[History] 重做操作')
   }

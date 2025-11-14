@@ -2,7 +2,7 @@
 import { ref, computed, markRaw, watch, onActivated, onDeactivated } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls } from '@tresjs/cientos'
-import { Object3D } from 'three'
+import { Object3D, MOUSE } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useThreeSelection } from '@/composables/useThreeSelection'
@@ -185,14 +185,16 @@ onDeactivated(() => {
     </div>
 
     <!-- Three.js 场景 + 选择层 -->
-    <div v-if="editorStore.items.length > 0" ref="threeContainerRef" class="absolute inset-0">
-      <TresCanvas
-        clear-color="#f3f4f6"
-        @pointerdown="handlePointerDown"
-        @pointermove="handlePointerMove"
-        @pointerup="handlePointerUp"
-        @pointerleave="handlePointerUp"
-      >
+    <div
+      v-if="editorStore.items.length > 0"
+      ref="threeContainerRef"
+      class="absolute inset-0"
+      @pointerdown="handlePointerDown"
+      @pointermove="handlePointerMove"
+      @pointerup="handlePointerUp"
+      @pointerleave="handlePointerUp"
+    >
+      <TresCanvas clear-color="#f3f4f6">
         <!-- 相机 - 适配大坐标场景 -->
         <TresPerspectiveCamera
           ref="cameraRef"
@@ -209,7 +211,7 @@ onDeactivated(() => {
           :target="orbitTarget"
           :enableDamping="true"
           :dampingFactor="0.05"
-          :mouseButtons="{ MIDDLE: 0, RIGHT: 2 }"
+          :mouseButtons="{ MIDDLE: MOUSE.ROTATE, RIGHT: MOUSE.PAN }"
         />
 
         <!-- 光照 -->
