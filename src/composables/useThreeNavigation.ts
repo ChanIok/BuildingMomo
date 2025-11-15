@@ -12,6 +12,8 @@ export interface ThreeNavigationOptions {
   pitchLimits?: { min: number; max: number }
   /** 相机高度下限（world Y 坐标） */
   minHeight?: number
+  /** Shift 键加速倍数 */
+  shiftSpeedMultiplier?: number
 }
 
 export interface ThreeNavigationDeps {
@@ -46,9 +48,10 @@ export function useThreeNavigation(
   deps: ThreeNavigationDeps = {}
 ): ThreeNavigationResult {
   // === 配置 ===
-  const baseSpeed = options.baseSpeed ?? 800 // 结合当前坐标尺度，属于中等速度
-  const pitchMinRad = ((options.pitchLimits?.min ?? -80) * Math.PI) / 180
-  const pitchMaxRad = ((options.pitchLimits?.max ?? 80) * Math.PI) / 180
+  const baseSpeed = options.baseSpeed ?? 1000 // 结合当前坐标尺度，属于中等速度
+  const shiftSpeedMultiplier = options.shiftSpeedMultiplier ?? 4
+  const pitchMinRad = ((options.pitchLimits?.min ?? -90) * Math.PI) / 180
+  const pitchMaxRad = ((options.pitchLimits?.max ?? 90) * Math.PI) / 180
   const minHeight = options.minHeight ?? -10000
 
   // === 对外暴露的状态 ===
@@ -66,7 +69,7 @@ export function useThreeNavigation(
 
   // === 使用 VueUse 的 useMagicKeys 监听按键 ===
   const keys = useMagicKeys()
-  const { w, a, s, d, q, space } = keys
+  const { w, a, s, d, q, space, shift } = keys
 
   // 计算当前是否有导航键按下（仅在视图聚焦且未拖动时生效）
   const isNavKeyPressed = computed(() => {
@@ -99,7 +102,7 @@ export function useThreeNavigation(
   function updateCameraLookAt() {
     const [px, py, pz] = cameraPosition.value
     const [fx, fy, fz] = getForward()
-    const distance = 1000 // 只影响 lookAt 距离，不影响旋转方向
+    const distance = 2000 // 只影响 lookAt 距离，不影响旋转方向
     cameraLookAt.value = [px + fx * distance, py + fy * distance, pz + fz * distance]
 
     // 同步更新 OrbitControls 的 target，使其跟随相机前方
@@ -167,7 +170,9 @@ export function useThreeNavigation(
     const moveNorm = normalize(move)
     if (moveNorm[0] === 0 && moveNorm[1] === 0 && moveNorm[2] === 0) return
 
-    const distance = baseSpeed * deltaSeconds
+    // 应用 Shift 加速倍数
+    const speedMultiplier = shift?.value ? shiftSpeedMultiplier : 1
+    const distance = baseSpeed * deltaSeconds * speedMultiplier
     const newPos = addScaled(cameraPosition.value, moveNorm, distance)
 
     // 高度下限限制

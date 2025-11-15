@@ -40,8 +40,9 @@ const {
   lookAtTarget,
 } = useThreeNavigation(
   {
-    baseSpeed: 2000,
-    mouseSensitivity: 0.002,
+    baseSpeed: 1000,
+    shiftSpeedMultiplier: 4,
+    mouseSensitivity: 0.001,
     pitchLimits: { min: -90, max: 90 },
     minHeight: -10000,
   },
