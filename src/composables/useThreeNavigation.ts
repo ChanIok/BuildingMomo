@@ -1,4 +1,5 @@
-import { ref, onMounted, onUnmounted, onActivated, onDeactivated, type Ref } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated, onDeactivated, type Ref, computed } from 'vue'
+import { useRafFn, useMagicKeys, clamp } from '@vueuse/core'
 
 type Vec3Tuple = [number, number, number]
 
@@ -16,6 +17,8 @@ export interface ThreeNavigationOptions {
 export interface ThreeNavigationDeps {
   /** 拖动 Transform Gizmo 时禁用导航 */
   isTransformDragging?: Ref<boolean>
+  /** 当导航系统更新相机位置/朝向时，同步更新 OrbitControls 的 target */
+  onOrbitTargetUpdate?: (target: Vec3Tuple) => void
 }
 
 export interface ThreeNavigationResult {
@@ -26,6 +29,8 @@ export interface ThreeNavigationResult {
 
   /** 3D 视图是否获得了键盘焦点（WASD 是否生效） */
   isViewFocused: Ref<boolean>
+  /** 当前是否有导航按键（WASD/Q/Space）按下 */
+  isNavKeyPressed: Ref<boolean>
 
   /** 导航层的 pointer 事件处理函数（容器上转发）：用于标记 3D 视图获得键盘焦点 */
   handleNavPointerDown: (evt: PointerEvent) => void
@@ -56,19 +61,22 @@ export function useThreeNavigation(
   let yaw = 0 // 绕世界 Y 轴，水平旋转
   let pitch = 0 // 绕相机局部 X 轴，俯仰
 
-  // 按键状态（KeyboardEvent.code）
-  const pressedKeys = new Set<string>()
-
-
-  // RAF 循环控制
-  let frameHandle: number | null = null
-  let lastTimestamp: number | null = null
+  // 是否激活（用于控制生命周期）
   let isActive = false
 
+  // === 使用 VueUse 的 useMagicKeys 监听按键 ===
+  const keys = useMagicKeys()
+  const { w, a, s, d, q, space } = keys
+
+  // 计算当前是否有导航键按下（仅在视图聚焦且未拖动时生效）
+  const isNavKeyPressed = computed(() => {
+    if (!isViewFocused.value || deps.isTransformDragging?.value) {
+      return false
+    }
+    return w?.value || a?.value || s?.value || d?.value || q?.value || space?.value || false
+  })
+
   // === 工具函数 ===
-  function clamp(value: number, min: number, max: number) {
-    return Math.min(max, Math.max(min, value))
-  }
 
   function getForward(): Vec3Tuple {
     // 约定：yaw=0, pitch=0 时朝 +Z 看
@@ -93,6 +101,11 @@ export function useThreeNavigation(
     const [fx, fy, fz] = getForward()
     const distance = 1000 // 只影响 lookAt 距离，不影响旋转方向
     cameraLookAt.value = [px + fx * distance, py + fy * distance, pz + fz * distance]
+
+    // 同步更新 OrbitControls 的 target，使其跟随相机前方
+    if (deps.onOrbitTargetUpdate && isNavKeyPressed.value) {
+      deps.onOrbitTargetUpdate(cameraLookAt.value)
+    }
   }
 
   function normalize(v: Vec3Tuple): Vec3Tuple {
@@ -109,7 +122,11 @@ export function useThreeNavigation(
   function setPoseFromLookAt(position: Vec3Tuple, target: Vec3Tuple) {
     cameraPosition.value = [...position]
 
-    const dir: Vec3Tuple = [target[0] - position[0], target[1] - position[1], target[2] - position[2]]
+    const dir: Vec3Tuple = [
+      target[0] - position[0],
+      target[1] - position[1],
+      target[2] - position[2],
+    ]
     const dirNorm = normalize(dir)
 
     // 根据 dirNorm 计算 yaw/pitch，使得 getForward() 对齐这个方向
@@ -124,55 +141,10 @@ export function useThreeNavigation(
     setPoseFromLookAt(cameraPosition.value, target)
   }
 
-  // === 键盘处理 ===
-  function handleKeyDown(evt: KeyboardEvent) {
-    if (!isViewFocused.value) return
-    if (deps.isTransformDragging?.value) return
-
-    const handled =
-      evt.code === 'KeyW' ||
-      evt.code === 'KeyA' ||
-      evt.code === 'KeyS' ||
-      evt.code === 'KeyD' ||
-      evt.code === 'KeyQ' ||
-      evt.code === 'Space'
-
-    if (!handled) return
-
-    pressedKeys.add(evt.code)
-    evt.preventDefault()
-  }
-
-  function handleKeyUp(evt: KeyboardEvent) {
-    if (!isViewFocused.value) return
-
-    if (
-      evt.code === 'KeyW' ||
-      evt.code === 'KeyA' ||
-      evt.code === 'KeyS' ||
-      evt.code === 'KeyD' ||
-      evt.code === 'KeyQ' ||
-      evt.code === 'Space'
-    ) {
-      pressedKeys.delete(evt.code)
-      evt.preventDefault()
-    }
-  }
-
-  function addKeyListeners() {
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-  }
-
-  function removeKeyListeners() {
-    window.removeEventListener('keydown', handleKeyDown)
-    window.removeEventListener('keyup', handleKeyUp)
-    pressedKeys.clear()
-  }
-
-  // === 更新循环 ===
+  // === 使用 VueUse 的 useRafFn 实现更新循环 ===
   function step(deltaSeconds: number) {
-    if (pressedKeys.size === 0) return
+    // 检查是否有按键按下且满足条件
+    if (!isNavKeyPressed.value) return
 
     const forward = getForward()
     const right = getRight()
@@ -184,13 +156,13 @@ export function useThreeNavigation(
       move = [move[0] + dir[0] * sign, move[1] + dir[1] * sign, move[2] + dir[2] * sign]
     }
 
-    if (pressedKeys.has('KeyW')) push(forward, 1)
-    if (pressedKeys.has('KeyS')) push(forward, -1)
+    if (w?.value) push(forward, 1)
+    if (s?.value) push(forward, -1)
     // A = 向左移动，D = 向右移动，这里根据用户体验调整方向
-    if (pressedKeys.has('KeyA')) push(right, 1)
-    if (pressedKeys.has('KeyD')) push(right, -1)
-    if (pressedKeys.has('Space')) push(up, 1)
-    if (pressedKeys.has('KeyQ')) push(up, -1)
+    if (a?.value) push(right, 1)
+    if (d?.value) push(right, -1)
+    if (space?.value) push(up, 1)
+    if (q?.value) push(up, -1)
 
     const moveNorm = normalize(move)
     if (moveNorm[0] === 0 && moveNorm[1] === 0 && moveNorm[2] === 0) return
@@ -207,32 +179,15 @@ export function useThreeNavigation(
     updateCameraLookAt()
   }
 
-  function loop(timestamp: number) {
-    if (!isActive) return
-
-    if (lastTimestamp != null) {
-      const deltaMs = timestamp - lastTimestamp
-      const deltaSeconds = deltaMs / 1000
+  // 使用 useRafFn 替代手动 RAF 循环
+  const { pause, resume } = useRafFn(
+    ({ delta }) => {
+      if (!isActive) return
+      const deltaSeconds = delta / 1000 // delta 是毫秒，转换为秒
       step(deltaSeconds)
-    }
-
-    lastTimestamp = timestamp
-    frameHandle = window.requestAnimationFrame(loop)
-  }
-
-  function startLoop() {
-    if (frameHandle != null) return
-    lastTimestamp = performance.now()
-    frameHandle = window.requestAnimationFrame(loop)
-  }
-
-  function stopLoop() {
-    if (frameHandle != null) {
-      window.cancelAnimationFrame(frameHandle)
-      frameHandle = null
-    }
-    lastTimestamp = null
-  }
+    },
+    { immediate: false }
+  )
 
   // === Pointer：仅负责 3D 视图焦点管理（用于启用 WASD/Q/Space 键盘导航） ===
   function handleNavPointerDown(_evt: PointerEvent) {
@@ -245,16 +200,13 @@ export function useThreeNavigation(
   function activate() {
     if (isActive) return
     isActive = true
-    addKeyListeners()
-    startLoop()
+    resume()
   }
 
   function deactivate() {
     if (!isActive) return
     isActive = false
-
-    stopLoop()
-    removeKeyListeners()
+    pause()
     isViewFocused.value = false
   }
 
@@ -278,6 +230,7 @@ export function useThreeNavigation(
     cameraPosition,
     cameraLookAt,
     isViewFocused,
+    isNavKeyPressed,
     handleNavPointerDown,
     setPoseFromLookAt,
     lookAtTarget,

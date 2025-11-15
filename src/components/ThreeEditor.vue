@@ -27,21 +27,31 @@ const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
 // 创建共享的 isTransformDragging ref
 const isTransformDragging = ref(false)
 
+// Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
+const orbitTarget = ref<[number, number, number]>([0, 0, 0])
+
 // 相机导航（WASD/Q/Space）
 const {
   cameraPosition,
   cameraLookAt,
+  isNavKeyPressed,
   handleNavPointerDown,
   setPoseFromLookAt,
   lookAtTarget,
 } = useThreeNavigation(
   {
-    baseSpeed: 1500,
+    baseSpeed: 2000,
     mouseSensitivity: 0.002,
-    pitchLimits: { min: -80, max: 80 },
+    pitchLimits: { min: -90, max: 90 },
     minHeight: -10000,
   },
-  { isTransformDragging }
+  {
+    isTransformDragging,
+    // 导航时同步更新 OrbitControls 的 target，使其跟随相机
+    onOrbitTargetUpdate: (target) => {
+      orbitTarget.value = target
+    },
+  }
 )
 
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 函数
@@ -72,6 +82,26 @@ const { selectionRect, handlePointerDown, handlePointerMove, handlePointerUp } =
   },
   threeContainerRef,
   isTransformDragging
+)
+
+// 导航键按下时，临时禁用 OrbitControls，避免其阻尼效果干扰自由飞行
+// 由于导航时会持续更新 orbitTarget，重新启用时不会产生瞬移
+watch(
+  () => isNavKeyPressed.value,
+  (pressed) => {
+    const wrapper = orbitControlsRef.value as any
+    const controls = wrapper?.instance
+    if (!controls || typeof controls.enabled !== 'boolean') return
+
+    if (pressed) {
+      // 导航键按下时，禁用 OrbitControls 以完全接管相机控制
+      controls.enabled = false
+    } else if (!isTransformDragging.value) {
+      // 导航键抬起且未拖动 Gizmo 时，恢复 OrbitControls
+      // 此时 orbitTarget 已经被导航系统更新到相机前方，不会瞬移
+      controls.enabled = true
+    }
+  }
 )
 
 // 3D Tooltip 系统（与 2D 复用同一开关）
@@ -125,6 +155,9 @@ function handleOrbitChange() {
   const cam = cameraRef.value as any
   if (!cam) return
 
+  // 如果当前处于导航模式（按键按下），不要反向同步，避免循环更新
+  if (isNavKeyPressed.value) return
+
   const pos = cam.position
   const target = orbitTarget.value
 
@@ -152,9 +185,6 @@ const sceneCenter = computed<[number, number, number]>(() => {
     (bounds.minY + bounds.maxY) / 2,
   ]
 })
-
-// Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
-const orbitTarget = ref<[number, number, number]>([0, 0, 0])
 
 // 计算合适的相机距离
 const cameraDistance = computed(() => {
@@ -291,8 +321,7 @@ onDeactivated(() => {
         <OrbitControls
           ref="orbitControlsRef"
           :target="orbitTarget"
-          :enableDamping="true"
-          :dampingFactor="0.05"
+          :enableDamping="false"
           :enableRotate="true"
           :enablePan="false"
           :mouseButtons="{ MIDDLE: MOUSE.ROTATE }"
