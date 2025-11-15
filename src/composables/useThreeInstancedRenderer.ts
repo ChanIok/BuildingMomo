@@ -15,17 +15,16 @@ import {
 import type { useEditorStore } from '@/stores/editorStore'
 import type { AppItem } from '@/types/editor'
 import { coordinates3D } from '@/lib/coordinates'
+import type { useFurnitureStore } from '@/stores/furnitureStore'
 
 const MAX_INSTANCES = 10000
 
-const BASE_BOX_SIZE = {
-  width: 100,
-  height: 150,
-  depth: 100,
-} as const
+// 当缺少尺寸信息时使用的默认尺寸（游戏坐标：X=长, Y=宽, Z=高）
+const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 
 export function useThreeInstancedRenderer(
   editorStore: ReturnType<typeof useEditorStore>,
+  furnitureStore: ReturnType<typeof useFurnitureStore>,
   isTransformDragging?: Ref<boolean>
 ) {
   const baseGeometry = new BoxGeometry(1, 1, 1)
@@ -149,18 +148,28 @@ export function useThreeInstancedRenderer(
       coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
 
       const { Rotation, Scale } = item.originalData
+      // 旋转轴从游戏坐标系映射到 Three.js：
+      // 游戏 Roll(X) -> Three.js X
+      // 游戏 Yaw(Z，高度轴) -> Three.js Y
+      // 游戏 Pitch(Y，前后轴) -> Three.js Z
       scratchEuler.set(
         (Rotation.Roll * Math.PI) / 180,
-        (Rotation.Pitch * Math.PI) / 180,
         (Rotation.Yaw * Math.PI) / 180,
+        (Rotation.Pitch * Math.PI) / 180,
         'XYZ'
       )
       scratchQuaternion.setFromEuler(scratchEuler)
 
+      // 从家具元数据获取真实尺寸（游戏坐标：X=长, Y=宽, Z=高）
+      const furnitureSize = furnitureStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+      const [sizeX, sizeY, sizeZ] = furnitureSize
+
+      // 应用游戏内缩放并映射到 Three.js 坐标系：
+      // 游戏 X -> Three.js X，游戏 Z(高度) -> Three.js Y，游戏 Y -> Three.js Z
       scratchScale.set(
-        (Scale.X || 1) * BASE_BOX_SIZE.width,
-        (Scale.Z || 1) * BASE_BOX_SIZE.height,
-        (Scale.Y || 1) * BASE_BOX_SIZE.depth
+        (Scale.X || 1) * sizeX,
+        (Scale.Z || 1) * sizeZ,
+        (Scale.Y || 1) * sizeY
       )
 
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)

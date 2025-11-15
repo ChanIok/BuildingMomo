@@ -5,12 +5,14 @@ import { OrbitControls, TransformControls } from '@tresjs/cientos'
 import { Object3D, MOUSE } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
+import { useFurnitureStore } from '@/stores/furnitureStore'
 import { useThreeSelection } from '@/composables/useThreeSelection'
 import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
+const furnitureStore = useFurnitureStore()
 
 // 3D 选择 & gizmo 相关引用
 const threeContainerRef = ref<HTMLElement | null>(null)
@@ -23,7 +25,7 @@ const isTransformDragging = ref(false)
 
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 函数
 const { instancedMesh, edgesInstancedMesh, indexToIdMap, updateSelectedInstancesMatrix } =
-  useThreeInstancedRenderer(editorStore, isTransformDragging)
+  useThreeInstancedRenderer(editorStore, furnitureStore, isTransformDragging)
 
 // 然后初始化 gizmo，传入 updateSelectedInstancesMatrix
 const {

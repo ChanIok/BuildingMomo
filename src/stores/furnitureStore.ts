@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { FurnitureItem, FurnitureCache, BuildingMomoFurniture } from '../types/furniture'
+import type {
+  FurnitureItem,
+  FurnitureCache,
+  BuildingMomoFurniture,
+  RawFurnitureEntry,
+} from '../types/furniture'
 
 // IndexedDB 配置
 const DB_NAME = 'BuildingMomoFurnitureDB'
@@ -105,7 +110,7 @@ export const useFurnitureStore = defineStore('furniture', () => {
 
   // ========== 数据加载 ==========
 
-  // 从远程获取数据
+  // 从远程获取数据并转换为内部结构
   async function fetchRemoteData(): Promise<Record<string, FurnitureItem>> {
     const response = await fetch(FURNITURE_DATA_URL)
     if (!response.ok) {
@@ -113,7 +118,34 @@ export const useFurnitureStore = defineStore('furniture', () => {
     }
 
     const json: BuildingMomoFurniture = await response.json()
-    return json.d
+
+    // 使用 Map 处理原始条目，然后归一化为 Record<string, FurnitureItem>
+    const rawMap = new Map<number, RawFurnitureEntry[1]>(json.d)
+    const result: Record<string, FurnitureItem> = {}
+
+    for (const [itemId, value] of rawMap.entries()) {
+      const [nameZh, nameEn, iconId, dim] = value
+
+      // 基本校验：尺寸应为长度为3的数组
+      const validSize =
+        Array.isArray(dim) &&
+        dim.length === 3 &&
+        dim.every((n) => typeof n === 'number' && Number.isFinite(n))
+
+      const size: [number, number, number] = validSize
+        ? (dim as [number, number, number])
+        : [100, 100, 150]
+
+      result[itemId.toString()] = {
+        name_cn: String(nameZh ?? ''),
+        name_en: String(nameEn ?? ''),
+        // 这里存储的是 icon_id，实际 URL 在 getIconUrl 中统一拼接 .webp
+        icon: String(iconId ?? ''),
+        size,
+      }
+    }
+
+    return result
   }
 
   // 初始化（应用启动时调用）
@@ -196,11 +228,17 @@ export const useFurnitureStore = defineStore('furniture', () => {
     return data.value[itemId.toString()] || null
   }
 
-  // 获取图标 URL
+  // 获取家具尺寸（游戏坐标系：[X, Y, Z] = [长, 宽, 高]）
+  function getFurnitureSize(itemId: number): [number, number, number] | null {
+    const furniture = getFurniture(itemId)
+    return furniture?.size ?? null
+  }
+
+  // 获取图标 URL（导出为 webp 格式）
   function getIconUrl(itemId: number): string {
     const furniture = getFurniture(itemId)
     if (!furniture || !furniture.icon) return ''
-    return ICON_BASE_URL + furniture.icon
+    return ICON_BASE_URL + furniture.icon + '.webp'
   }
 
   // 强制更新（用户手动触发）
@@ -239,6 +277,7 @@ export const useFurnitureStore = defineStore('furniture', () => {
     // 方法
     initialize,
     getFurniture,
+    getFurnitureSize,
     getIconUrl,
     forceUpdate,
     clearCache,
