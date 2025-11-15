@@ -166,11 +166,7 @@ export function useThreeInstancedRenderer(
 
       // 应用游戏内缩放并映射到 Three.js 坐标系：
       // 游戏 X -> Three.js X，游戏 Z(高度) -> Three.js Y，游戏 Y -> Three.js Z
-      scratchScale.set(
-        (Scale.X || 1) * sizeX,
-        (Scale.Z || 1) * sizeZ,
-        (Scale.Y || 1) * sizeY
-      )
+      scratchScale.set((Scale.X || 1) * sizeX, (Scale.Z || 1) * sizeZ, (Scale.Y || 1) * sizeY)
 
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
 
@@ -244,7 +240,7 @@ export function useThreeInstancedRenderer(
   )
 
   watch(
-    () => editorStore.selectedItemIds.size,
+    () => Array.from(editorStore.selectedItemIds),
     () => {
       if (isTransformDragging?.value) {
         return

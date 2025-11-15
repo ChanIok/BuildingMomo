@@ -203,7 +203,7 @@ onDeactivated(() => {
           :position="cameraPosition"
           :look-at="orbitTarget"
           :fov="50"
-          :near="10"
+          :near="100"
           :far="150000"
         />
 
@@ -247,7 +247,6 @@ onDeactivated(() => {
 
         <!-- Instanced 渲染 -->
         <primitive v-if="instancedMesh" :object="instancedMesh" />
-        <primitive v-if="edgesInstancedMesh" :object="edgesInstancedMesh" />
       </TresCanvas>
 
       <!-- 3D 框选矩形 -->
