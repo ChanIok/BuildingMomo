@@ -423,8 +423,8 @@ onMounted(() => {
         <OrbitControls
           ref="orbitControlsRef"
           :target="orbitTarget"
-          :enableDamping="true"
-          :dampingFactor="0.5"
+          :enableDamping="controlMode === 'orbit'"
+          :dampingFactor="0.3"
           :enabled="controlMode === 'orbit'"
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
