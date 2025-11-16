@@ -12,15 +12,18 @@ import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeNavigation, type ViewPreset } from '@/composables/useThreeNavigation'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Button } from '@/components/ui/button'
-import { Camera } from 'lucide-vue-next'
+import {
+  Camera,
+  Eye,
+  ChevronsUp,
+  ChevronsDown,
+  ChevronsRight,
+  ChevronsLeft,
+  ChevronRight,
+  ChevronLeft,
+} from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
@@ -107,18 +110,6 @@ const { selectionRect, handlePointerDown, handlePointerMove, handlePointerUp } =
   isTransformDragging
 )
 
-// 控制模式切换时，启用/禁用 OrbitControls
-watch(
-  () => controlMode.value,
-  (mode) => {
-    const wrapper = orbitControlsRef.value as any
-    const controls = wrapper?.instance
-    if (!controls || typeof controls.enabled !== 'boolean') return
-
-    controls.enabled = mode === 'orbit'
-  }
-)
-
 // 3D Tooltip 系统（与 2D 复用同一开关）
 const {
   tooltipVisible,
@@ -174,6 +165,9 @@ function handleOrbitChange() {
 
   // flight 模式下不反向同步，避免循环
   if (controlMode.value === 'flight') return
+
+  // 正交视图下，平移时不应该改变朝向，直接返回
+  if (isOrthographic.value) return
 
   const pos = cam.position
   const target = orbitTarget.value
@@ -427,6 +421,7 @@ onMounted(() => {
           ref="orbitControlsRef"
           :target="orbitTarget"
           :enableDamping="false"
+          :enabled="controlMode === 'orbit'"
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
           :mouseButtons="isOrthographic ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }"
@@ -507,8 +502,8 @@ onMounted(() => {
 
     <!-- 视图切换按钮 -->
     <div v-if="editorStore.items.length > 0" class="absolute top-4 right-4">
-      <DropdownMenu>
-        <DropdownMenuTrigger as-child>
+      <HoverCard :open-delay="200" :close-delay="100">
+        <HoverCardTrigger as-child>
           <Button variant="outline" size="sm" class="shadow-md">
             <Camera class="mr-2 h-4 w-4" />
             <span v-if="currentViewPreset">
@@ -530,39 +525,69 @@ onMounted(() => {
             </span>
             <span v-else>自定义</span>
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" class="w-48">
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewPerspective')">
-            <span class="flex-1">🎯 透视视图</span>
-            <span class="text-xs text-muted-foreground">0</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewTop')">
-            <span class="flex-1">⬆️ 顶视图</span>
-            <span class="text-xs text-muted-foreground">7</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewBottom')">
-            <span class="flex-1">⬇️ 底视图</span>
-            <span class="text-xs text-muted-foreground">9</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewFront')">
-            <span class="flex-1">➡️ 前视图</span>
-            <span class="text-xs text-muted-foreground">1</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewBack')">
-            <span class="flex-1">⬅️ 后视图</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewRight')">
-            <span class="flex-1">👉 右侧视图</span>
-            <span class="text-xs text-muted-foreground">3</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem @click="commandStore.executeCommand('view.setViewLeft')">
-            <span class="flex-1">👈 左侧视图</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </HoverCardTrigger>
+        <HoverCardContent align="end" class="w-48 p-1">
+          <div class="space-y-1">
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewPerspective')"
+            >
+              <Eye class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">透视视图</span>
+              <span class="text-xs text-muted-foreground">0</span>
+            </button>
+            <div class="my-1 h-px bg-border" />
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewTop')"
+            >
+              <ChevronsUp class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">顶视图</span>
+              <span class="text-xs text-muted-foreground">7</span>
+            </button>
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewBottom')"
+            >
+              <ChevronsDown class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">底视图</span>
+              <span class="text-xs text-muted-foreground">9</span>
+            </button>
+            <div class="my-1 h-px bg-border" />
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewFront')"
+            >
+              <ChevronsRight class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">前视图</span>
+              <span class="text-xs text-muted-foreground">1</span>
+            </button>
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewBack')"
+            >
+              <ChevronsLeft class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">后视图</span>
+            </button>
+            <div class="my-1 h-px bg-border" />
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewRight')"
+            >
+              <ChevronRight class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">右侧视图</span>
+              <span class="text-xs text-muted-foreground">3</span>
+            </button>
+            <button
+              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+              @click="commandStore.executeCommand('view.setViewLeft')"
+            >
+              <ChevronLeft class="mr-2 h-4 w-4" />
+              <span class="flex-1 text-left">左侧视图</span>
+            </button>
+          </div>
+        </HoverCardContent>
+      </HoverCard>
     </div>
 
     <!-- 视图信息 -->
@@ -577,7 +602,10 @@ onMounted(() => {
       <div class="rounded-md bg-blue-500/90 px-3 py-2 text-xs text-white shadow-sm">
         <div class="font-medium">3D 预览模式</div>
         <div class="mt-1 text-[10px] opacity-80">
-          左键选择/框选 · 中键绕场景旋转 · 滚轮缩放 · WASD/Q/空格移动相机
+          <template v-if="isOrthographic"> 左键选择/框选 · 中键平移 · 滚轮缩放 </template>
+          <template v-else>
+            左键选择/框选 · 中键绕场景旋转 · 滚轮缩放 · WASD/Q/空格移动相机
+          </template>
         </div>
       </div>
     </div>

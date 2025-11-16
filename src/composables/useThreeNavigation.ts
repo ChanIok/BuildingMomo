@@ -405,7 +405,8 @@ export function useThreeNavigation(
           mode === 'orbit' &&
           focused &&
           (wv || av || sv || dv || qv || spv) &&
-          !deps.isTransformDragging?.value
+          !deps.isTransformDragging?.value &&
+          !isOrthographic.value  // 正交视图下不自动切换到飞行模式
         ) {
           switchToFlightMode()
         }
