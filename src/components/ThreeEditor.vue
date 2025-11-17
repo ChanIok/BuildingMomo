@@ -12,6 +12,7 @@ import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
+import { useThrottleFn } from '@vueuse/core'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Button } from '@/components/ui/button'
 import {
@@ -128,43 +129,68 @@ const pickInstancedMesh = computed(() =>
   shouldShowIconMesh.value ? iconInstancedMesh.value : instancedMesh.value
 )
 
+// 创建节流函数，用于透视视图下的图标朝向更新（避免过于频繁的更新）
+const updateIconFacingThrottled = useThrottleFn(
+  (normal: [number, number, number], up?: [number, number, number]) => {
+    updateIconFacing(normal, up)
+  },
+  150
+) // 每150ms最多更新一次
+
 // 在视图或模式变化时，更新 Icon 面朝方向（仅图标模式）
 watch(
-  [() => currentDisplayMode.value, () => currentViewPreset.value],
-  ([mode, preset]) => {
+  [
+    () => currentDisplayMode.value,
+    () => currentViewPreset.value,
+    () => cameraPosition.value, // 监听相机位置，用于透视视图下的实时跟随
+    () => cameraLookAt.value, // 监听相机目标，用于计算朝向
+  ],
+  ([mode, preset, camPos, camTarget]) => {
     if (mode !== 'icon') {
       return
     }
 
     let normal: [number, number, number] = [0, 0, 1]
-    switch (preset) {
-      case 'top':
-        normal = [0, 1, 0]
-        break
-      case 'bottom':
-        normal = [0, -1, 0]
-        break
-      case 'front':
-        normal = [0, 0, 1]
-        break
-      case 'back':
-        normal = [0, 0, -1]
-        break
-      case 'right':
-        normal = [1, 0, 0]
-        break
-      case 'left':
-        normal = [-1, 0, 0]
-        break
-      case 'perspective':
-      default:
-        // 透视视图：使用固定朝向（朝前），避免相机旋转时的复杂性
-        // 如果需要 Billboard 效果（图标始终面向相机），需要实时更新
-        normal = [0, 0, 1]
-        break
-    }
 
-    updateIconFacing(normal)
+    // 如果是正交视图预设，使用固定朝向（保持现有逻辑）
+    if (preset && preset !== 'perspective') {
+      switch (preset) {
+        case 'top':
+          normal = [0, 1, 0]
+          break
+        case 'bottom':
+          normal = [0, -1, 0]
+          break
+        case 'front':
+          normal = [0, 0, 1]
+          break
+        case 'back':
+          normal = [0, 0, -1]
+          break
+        case 'right':
+          normal = [1, 0, 0]
+          break
+        case 'left':
+          normal = [-1, 0, 0]
+          break
+      }
+      // 正交视图：立即更新，无需节流（切换频率低）
+      updateIconFacing(normal)
+    } else {
+      // 透视视图：计算从目标点指向相机的方向，使图标法线朝向相机（图标面向相机）
+      const dirX = camPos[0] - camTarget[0]
+      const dirY = camPos[1] - camTarget[1]
+      const dirZ = camPos[2] - camTarget[2]
+
+      // 归一化向量
+      const len = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
+      if (len > 0.0001) {
+        normal = [dirX / len, dirY / len, dirZ / len]
+      }
+
+      // 透视视图：使用节流更新，并传入 cameraUp 向量防止图标绕法线旋转
+      updateIconFacingThrottled(normal, cameraUp.value)
+    }
   },
   { immediate: true }
 )

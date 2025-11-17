@@ -76,6 +76,8 @@ export function useThreeInstancedRenderer(
 
   // 存储当前的图标朝向（默认朝上，适配默认视图）
   const currentIconNormal = ref<[number, number, number]>([0, 1, 0])
+  // 存储当前的图标 up 向量（用于约束旋转，防止绕法线旋转）
+  const currentIconUp = ref<[number, number, number] | null>(null)
 
   const scratchMatrix = markRaw(new Matrix4())
   const scratchPosition = markRaw(new Vector3())
@@ -85,6 +87,8 @@ export function useThreeInstancedRenderer(
   const scratchColor = markRaw(new Color())
   const scratchTmpVec3 = markRaw(new Vector3(0, 0, 1))
   const scratchDefaultNormal = markRaw(new Vector3(0, 0, 1))
+  const scratchUpVec3 = markRaw(new Vector3(0, 1, 0))
+  const scratchLookAtTarget = markRaw(new Vector3())
 
   function convertColorToHex(colorStr: string | undefined): number {
     if (!colorStr) return 0x94a3b8
@@ -250,15 +254,24 @@ export function useThreeInstancedRenderer(
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
       meshTarget.setMatrixAt(index, scratchMatrix)
 
-      // === Icon 模式：固定大小，使用当前视图的正确朝向 ===
+      // === Icon 模式：固定大小，使用当前视图的正确朝向和 up 向量 ===
       // 位置相同，但使用固定尺寸和当前的朝向
-      // 从 currentIconNormal 计算正确的旋转四元数
       scratchTmpVec3
         .set(currentIconNormal.value[0], currentIconNormal.value[1], currentIconNormal.value[2])
         .normalize()
 
-      // 计算从 PlaneGeometry 的默认法线 (+Z) 到目标法线的旋转
-      scratchQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
+      // 如果有 up 向量约束，使用 lookAt 方法；否则使用 setFromUnitVectors
+      if (currentIconUp.value) {
+        scratchUpVec3
+          .set(currentIconUp.value[0], currentIconUp.value[1], currentIconUp.value[2])
+          .normalize()
+        scratchLookAtTarget.set(-scratchTmpVec3.x, -scratchTmpVec3.y, -scratchTmpVec3.z)
+        scratchMatrix.lookAt(new Vector3(0, 0, 0), scratchLookAtTarget, scratchUpVec3)
+        scratchQuaternion.setFromRotationMatrix(scratchMatrix)
+      } else {
+        // 计算从 PlaneGeometry 的默认法线 (+Z) 到目标法线的旋转
+        scratchQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
+      }
 
       scratchScale.set(1, 1, 1) // 使用 PlaneGeometry 的原始尺寸 (180x180)
 
@@ -340,36 +353,50 @@ export function useThreeInstancedRenderer(
     { deep: true, immediate: true }
   )
 
-  // 更新 Icon 平面朝向（使其法线指向给定方向）
-  function updateIconFacing(normal: [number, number, number]) {
+  // 更新 Icon 平面朝向（使其法线指向给定方向，同时约束up向量防止绕法线旋转）
+  function updateIconFacing(normal: [number, number, number], up?: [number, number, number]) {
     // 归一化输入向量，避免存储大数值
     const len = Math.sqrt(normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2)
     const normalized: [number, number, number] =
       len > 0.0001 ? [normal[0] / len, normal[1] / len, normal[2] / len] : [0, 0, 1] // 默认朝向
 
-    // 保存归一化后的朝向，确保 rebuildInstances 时使用正确的朝向
+    // 保存归一化后的朝向和 up 向量，确保 rebuildInstances 时使用相同的旋转逻辑
     currentIconNormal.value = normalized
+    currentIconUp.value = up || null
 
     const iconMeshTarget = iconInstancedMesh.value
     if (!iconMeshTarget) return
 
-    // 使用已经归一化的值
-    scratchTmpVec3.set(normalized[0], normalized[1], normalized[2])
-
-    // 计算从 +Z 指向目标法线的旋转
-    // 使用独立的四元数，避免被后续的 decompose 覆盖
     const targetQuaternion = markRaw(new Quaternion())
-    targetQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
+
+    if (up) {
+      // 如果提供了 up 向量，使用 lookAt 方法计算旋转（确保图标边缘平行于屏幕）
+      // 构建一个临时的旋转矩阵：Z轴指向法线方向，Y轴尽量对齐up向量
+      scratchTmpVec3.set(normalized[0], normalized[1], normalized[2])
+      scratchUpVec3.set(up[0], up[1], up[2]).normalize()
+
+      // 使用 Matrix4 的 lookAt 方法：从原点看向法线方向，up 向量约束旋转
+      // 注意：lookAt 会让物体的 -Z 轴指向目标，但我们的平面默认法线是 +Z
+      // 所以需要先 lookAt 反方向，然后旋转 180 度
+      scratchLookAtTarget.set(-normalized[0], -normalized[1], -normalized[2])
+      scratchMatrix.lookAt(new Vector3(0, 0, 0), scratchLookAtTarget, scratchUpVec3)
+
+      // 提取旋转四元数
+      targetQuaternion.setFromRotationMatrix(scratchMatrix)
+    } else {
+      // 如果没有提供 up 向量，使用原有的 setFromUnitVectors 方法（可能产生旋转）
+      scratchTmpVec3.set(normalized[0], normalized[1], normalized[2])
+      targetQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
+    }
 
     const count = iconMeshTarget.count
 
     for (let index = 0; index < count; index++) {
       // 读取现有矩阵，保留位置和缩放
       iconMeshTarget.getMatrixAt(index, scratchMatrix)
-      // decompose 会将旧的旋转写入 scratchQuaternion，但不影响 targetQuaternion
       scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchScale)
 
-      // 应用新朝向（使用独立的 targetQuaternion）
+      // 应用新朝向
       scratchMatrix.compose(scratchPosition, targetQuaternion, scratchScale)
       iconMeshTarget.setMatrixAt(index, scratchMatrix)
     }
