@@ -1,5 +1,15 @@
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, type Ref } from 'vue'
-import { useRafFn, useMagicKeys } from '@vueuse/core'
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted,
+  onActivated,
+  onDeactivated,
+  type Ref,
+} from 'vue'
+import { useRafFn } from '@vueuse/core'
+import { useInputState } from './useInputState'
 
 // ============================================================
 // 📦 Types & Constants
@@ -156,16 +166,8 @@ export function useThreeCamera(
   const isMiddleButtonDown = ref(false)
   let isActive = false
 
-  // === 键盘输入 ===
-  const keys = useMagicKeys()
-  // 这些键在运行时总是存在，这里通过非空断言消除 TS 的 undefined 警告
-  const w = keys.w!
-  const a = keys.a!
-  const s = keys.s!
-  const d = keys.d!
-  const q = keys.q!
-  const space = keys.space!
-  const shift = keys.shift!
+  // === 键盘输入：使用统一的全局输入状态管理 ===
+  const { w, a, s, d, q, space, isShiftPressed: shift, isMiddleMousePressed } = useInputState()
   // ============================================================
   // 📐 Geometry Helpers
   // ============================================================
@@ -310,7 +312,9 @@ export function useThreeCamera(
   }
 
   function handleNavPointerUp(evt: PointerEvent) {
-    if (evt.button === 1) {
+    // 中键释放 或 鼠标离开画布时，都清理中键拖拽状态
+    // （pointerleave 事件的 button 属性可能不准确，所以需要显式处理）
+    if (evt.button === 1 || evt.type === 'pointerleave') {
       isMiddleButtonDown.value = false
     }
   }
@@ -327,7 +331,6 @@ export function useThreeCamera(
     const { yaw, pitch } = calculateYawPitchFromDirection(dir)
     state.value.yaw = yaw
     state.value.pitch = pitch
-    console.log('setPoseFromLookAt', position, target)
   }
 
   function lookAtTarget(target: Vec3) {
@@ -433,6 +436,13 @@ export function useThreeCamera(
 
   onDeactivated(() => {
     deactivate()
+  })
+
+  // 监听中键释放（在画布外也能捕获）
+  watch(isMiddleMousePressed, (pressed) => {
+    if (!pressed) {
+      isMiddleButtonDown.value = false
+    }
   })
 
   // ============================================================

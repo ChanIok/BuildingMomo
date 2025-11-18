@@ -1,7 +1,8 @@
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import Konva from 'konva'
 import { getItemRenderer } from './useItemRenderer'
+import { useInputState } from './useInputState'
 
 export function useCanvasDrag(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -16,6 +17,9 @@ export function useCanvasDrag(
 
   // 物品渲染器
   const renderer = getItemRenderer()
+
+  // 使用统一的输入状态管理
+  const { isLeftMousePressed } = useInputState()
 
   // 创建 Ghost Layer
   function createGhostLayer() {
@@ -113,6 +117,15 @@ export function useCanvasDrag(
     // 恢复主 Layer 上的选中物品显示
     setHideSelectedItems(false)
   }
+
+  // 监听左键释放（在画布外也能捕获）
+  watch(isLeftMousePressed, (pressed) => {
+    if (!pressed && isDragging.value) {
+      // 在画布外松开按键时，取消拖拽（不保存位置）
+      // 注意：实际的移动/复制操作由 useCanvasSelection 处理
+      cancelDrag()
+    }
+  })
 
   return {
     isDragging,

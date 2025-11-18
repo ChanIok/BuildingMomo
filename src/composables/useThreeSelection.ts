@@ -1,7 +1,8 @@
-import { ref, markRaw, type Ref } from 'vue'
+import { ref, markRaw, watch, type Ref } from 'vue'
 import { Raycaster, Vector2, Vector3, type Camera, type InstancedMesh } from 'three'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useEditorStore } from '@/stores/editorStore'
+import { useInputState } from './useInputState'
 
 interface SelectionRect {
   x: number
@@ -22,6 +23,9 @@ export function useThreeSelection(
   containerRef: Ref<HTMLElement | null>,
   transformDraggingRef?: Ref<boolean>
 ) {
+  // 使用统一的输入状态管理（包含鼠标按钮状态）
+  const { isShiftPressed, isAltPressed, isLeftMousePressed } = useInputState()
+
   const raycaster = markRaw(new Raycaster())
   const pointerNdc = markRaw(new Vector2())
 
@@ -30,143 +34,20 @@ export function useThreeSelection(
   const mouseDownPos = ref<{ x: number; y: number } | null>(null)
   const tempVec3 = markRaw(new Vector3())
 
-  function getRelativePosition(evt: any) {
-    const el = containerRef.value
-    if (!el) return null
-    const rect = el.getBoundingClientRect()
-    return {
-      x: evt.clientX - rect.left,
-      y: evt.clientY - rect.top,
-      rect,
-    }
-  }
+  // 记录最后已知的相对位置（用于画布外松开按键时）
+  const lastKnownPos = ref<{ x: number; y: number; rect: DOMRect } | null>(null)
 
-  function handlePointerDown(evt: any) {
-    if (transformDraggingRef?.value) return
-    // 排除右键（button === 2），留给右键菜单处理
-    if (evt.button === 2) return
-    if (evt.button !== 0) return
-    if (typeof evt.stopPropagation === 'function') {
-      evt.stopPropagation()
-    }
-    const pos = getRelativePosition(evt)
-    if (!pos) return
-    mouseDownPos.value = { x: pos.x, y: pos.y }
-    selectionRect.value = null
-    isSelecting.value = false
-  }
-
-  function handlePointerMove(evt: any) {
-    if (transformDraggingRef?.value) return
-    if (!mouseDownPos.value) return
-    if (evt.buttons === 0) return
-
-    const pos = getRelativePosition(evt)
-    if (!pos) return
-
-    const dx = pos.x - mouseDownPos.value.x
-    const dy = pos.y - mouseDownPos.value.y
-    const distance = Math.hypot(dx, dy)
-
-    if (!isSelecting.value && distance >= 3) {
-      isSelecting.value = true
-    }
-
-    if (isSelecting.value) {
-      selectionRect.value = {
-        x: Math.min(mouseDownPos.value.x, pos.x),
-        y: Math.min(mouseDownPos.value.y, pos.y),
-        width: Math.abs(dx),
-        height: Math.abs(dy),
-      }
-    }
-  }
-
-  function handlePointerUp(evt: any) {
-    if (transformDraggingRef?.value) {
-      mouseDownPos.value = null
-      isSelecting.value = false
-      selectionRect.value = null
-      return
-    }
-
-    // pointerleave: 只清理状态，不触发点击/框选逻辑
-    if (evt.type === 'pointerleave') {
-      mouseDownPos.value = null
-      isSelecting.value = false
-      selectionRect.value = null
-      return
-    }
-
-    const start = mouseDownPos.value
-    const rectInfo = selectionRect.value
-
+  // ==================== 清理函数 ====================
+  function cleanupSelectionState() {
     mouseDownPos.value = null
-
-    const pos = getRelativePosition(evt)
-    if (!start || !pos) {
-      isSelecting.value = false
-      selectionRect.value = null
-      return
-    }
-
-    const dx = pos.x - start.x
-    const dy = pos.y - start.y
-    const distance = Math.hypot(dx, dy)
-
-    if (!isSelecting.value || distance < 3 || !rectInfo) {
-      performClickSelection(evt)
-    } else {
-      performBoxSelection(evt, rectInfo)
-    }
-
     isSelecting.value = false
     selectionRect.value = null
   }
 
-  function performClickSelection(evt: any) {
-    const camera = cameraRef.value
-    const container = containerRef.value
-    if (!camera || !container) return
+  // ==================== 私有辅助函数：避免重复逻辑 ====================
 
-    const pos = getRelativePosition(evt)
-    if (!pos) return
-
-    const { rect, x, y } = pos
-
-    pointerNdc.x = (x / rect.width) * 2 - 1
-    pointerNdc.y = -(y / rect.height) * 2 + 1
-
-    raycaster.setFromCamera(pointerNdc, camera)
-
-    let internalId: string | null = null
-
-    const instancedMesh = selectionSources.instancedMesh.value
-    const idMap = selectionSources.indexToIdMap.value
-    if (!instancedMesh || !idMap) return
-
-    const intersects = raycaster.intersectObject(instancedMesh, false)
-    const hit = intersects[0]
-
-    if (hit && hit.instanceId !== undefined) {
-      internalId = idMap.get(hit.instanceId) ?? null
-    }
-
-    if (internalId) {
-      const shift = evt.shiftKey
-      const alt = evt.altKey
-
-      if (alt) {
-        editorStore.deselectItems([internalId])
-      } else {
-        editorStore.toggleSelection(internalId, shift)
-      }
-    } else if (!evt.shiftKey) {
-      editorStore.clearSelection()
-    }
-  }
-
-  function performBoxSelection(evt: any, rect: SelectionRect) {
+  // 执行框选逻辑（被 performBoxSelection 和 finishSelection 复用）
+  function _executeBoxSelection(rect: SelectionRect) {
     const camera = cameraRef.value
     const container = containerRef.value
     if (!camera || !container) return
@@ -209,8 +90,9 @@ export function useThreeSelection(
       }
     }
 
-    const alt = evt.altKey
-    const shift = evt.shiftKey
+    // 使用统一的响应式输入状态
+    const alt = isAltPressed.value
+    const shift = isShiftPressed.value
 
     if (alt) {
       if (selectedIds.length > 0) {
@@ -220,6 +102,178 @@ export function useThreeSelection(
       editorStore.updateSelection(selectedIds, shift)
     }
   }
+
+  function getRelativePosition(evt: any) {
+    const el = containerRef.value
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    return {
+      x: evt.clientX - rect.left,
+      y: evt.clientY - rect.top,
+      rect,
+    }
+  }
+
+  function handlePointerDown(evt: any) {
+    if (transformDraggingRef?.value) return
+    // 排除右键（button === 2），留给右键菜单处理
+    if (evt.button === 2) return
+    if (evt.button !== 0) return
+    if (typeof evt.stopPropagation === 'function') {
+      evt.stopPropagation()
+    }
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+    mouseDownPos.value = { x: pos.x, y: pos.y }
+    selectionRect.value = null
+    isSelecting.value = false
+  }
+
+  function handlePointerMove(evt: any) {
+    if (transformDraggingRef?.value) return
+    if (!mouseDownPos.value) return
+    if (evt.buttons === 0) return
+
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+
+    // 持续更新最后已知的位置
+    lastKnownPos.value = { x: pos.x, y: pos.y, rect: pos.rect }
+
+    const dx = pos.x - mouseDownPos.value.x
+    const dy = pos.y - mouseDownPos.value.y
+    const distance = Math.hypot(dx, dy)
+
+    if (!isSelecting.value && distance >= 3) {
+      isSelecting.value = true
+    }
+
+    if (isSelecting.value) {
+      selectionRect.value = {
+        x: Math.min(mouseDownPos.value.x, pos.x),
+        y: Math.min(mouseDownPos.value.y, pos.y),
+        width: Math.abs(dx),
+        height: Math.abs(dy),
+      }
+    }
+  }
+
+  function handlePointerUp(evt: any) {
+    if (transformDraggingRef?.value) {
+      cleanupSelectionState()
+      return
+    }
+
+    // pointerleave: 只清理鼠标位置，保留选框用于全局 watch 处理
+    // （全局 watch 会在左键松开时调用 finishSelection）
+    if (evt.type === 'pointerleave') {
+      return
+    }
+
+    const start = mouseDownPos.value
+    const rectInfo = selectionRect.value
+
+    mouseDownPos.value = null
+
+    const pos = getRelativePosition(evt)
+    if (!start || !pos) {
+      cleanupSelectionState()
+      return
+    }
+
+    const dx = pos.x - start.x
+    const dy = pos.y - start.y
+    const distance = Math.hypot(dx, dy)
+
+    if (!isSelecting.value || distance < 3 || !rectInfo) {
+      performClickSelection(evt)
+    } else {
+      performBoxSelection(evt, rectInfo)
+    }
+
+    cleanupSelectionState()
+  }
+
+  function performClickSelection(evt: any) {
+    const camera = cameraRef.value
+    const container = containerRef.value
+    if (!camera || !container) return
+
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+
+    const { rect, x, y } = pos
+
+    pointerNdc.x = (x / rect.width) * 2 - 1
+    pointerNdc.y = -(y / rect.height) * 2 + 1
+
+    raycaster.setFromCamera(pointerNdc, camera)
+
+    let internalId: string | null = null
+
+    const instancedMesh = selectionSources.instancedMesh.value
+    const idMap = selectionSources.indexToIdMap.value
+    if (!instancedMesh || !idMap) return
+
+    const intersects = raycaster.intersectObject(instancedMesh, false)
+    const hit = intersects[0]
+
+    if (hit && hit.instanceId !== undefined) {
+      internalId = idMap.get(hit.instanceId) ?? null
+    }
+
+    if (internalId) {
+      // 使用统一的响应式输入状态
+      const shift = isShiftPressed.value
+      const alt = isAltPressed.value
+
+      if (alt) {
+        editorStore.deselectItems([internalId])
+      } else {
+        editorStore.toggleSelection(internalId, shift)
+      }
+    } else if (!isShiftPressed.value) {
+      editorStore.clearSelection()
+    }
+  }
+
+  function performBoxSelection(_evt: any, rect: SelectionRect) {
+    // 使用提取的辅助函数
+    _executeBoxSelection(rect)
+  }
+
+  // ==================== 画布外松开按键的处理 ====================
+
+  // 完成框选操作（用于画布外松开按键）
+  function finishSelection() {
+    if (!isSelecting.value || !selectionRect.value) {
+      cleanupSelectionState()
+      return
+    }
+
+    const rectInfo = selectionRect.value
+
+    // 使用矩形尺寸判断是否真正拖拽了（避免小抖动被当作框选）
+    const moveDistance = Math.hypot(rectInfo.width, rectInfo.height)
+
+    if (moveDistance < 3) {
+      // 小于阈值，不执行框选，只清理状态
+      cleanupSelectionState()
+      return
+    }
+
+    // 使用提取的辅助函数
+    _executeBoxSelection(rectInfo)
+
+    cleanupSelectionState()
+  }
+
+  // 监听左键释放（在画布外也能捕获）
+  watch(isLeftMousePressed, (pressed) => {
+    if (!pressed && isSelecting.value) {
+      finishSelection()
+    }
+  })
 
   return {
     selectionRect,

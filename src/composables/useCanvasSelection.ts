@@ -1,4 +1,4 @@
-import { ref, computed, type Ref } from 'vue'
+import { ref, computed, watch, type Ref } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import type { AppItem } from '../types/editor'
 import { useInputState } from './useInputState'
@@ -15,8 +15,9 @@ export function useCanvasSelection(
   onDragMove?: (worldPos: { x: number; y: number }) => void,
   onDragEnd?: (worldPos: { x: number; y: number }) => void
 ) {
-  // 使用统一的输入状态管理
-  const { isShiftPressed, isAltPressed, isSpacePressed } = useInputState()
+  // 使用统一的输入状态管理（包含鼠标按钮状态）
+  const { isShiftPressed, isAltPressed, isSpacePressed, isMiddleMousePressed, isLeftMousePressed } =
+    useInputState()
 
   // 使用坐标转换工具
   const { screenToWorld } = createCanvas2DCoordinates(stageRef)
@@ -34,9 +35,11 @@ export function useCanvasSelection(
   const dragStartAltPressed = ref(false) // 记录拖拽开始时的 Alt 状态
   const hasActuallyDragged = ref(false) // 标记是否真正发生了拖拽（移动距离 ≥ 3px）
 
-  // 鼠标中键状态
-  const isMiddleMousePressed = ref(false)
+  // 中键拖拽画布的辅助状态
   const lastPointerPos = ref<{ x: number; y: number } | null>(null)
+
+  // 记录最后已知的世界坐标位置（用于画布外松开按键时）
+  const lastKnownWorldPos = ref<{ x: number; y: number } | null>(null)
 
   // 计算当前选择模式（实时根据键盘状态）
   const currentSelectionMode = computed<'replace' | 'add' | 'subtract'>(() => {
@@ -52,6 +55,23 @@ export function useCanvasSelection(
     return isSelecting.value || isShiftPressed.value || isAltPressed.value
   })
 
+  // ==================== 清理函数 ====================
+
+  // 清理框选状态
+  function cleanupSelectionState() {
+    isSelecting.value = false
+    selectionRect.value = null
+    selectionStart.value = null
+    mouseDownScreenPos.value = null
+    selectionMode.value = 'replace'
+  }
+
+  // 清理中键画布拖拽状态
+  function cleanupMiddleMouseDrag() {
+    updateDragMode(false)
+    lastPointerPos.value = null
+  }
+
   // 更新画布拖动模式
   function updateDragMode(isDragMode: boolean) {
     stageConfig.value.draggable = isDragMode
@@ -60,6 +80,49 @@ export function useCanvasSelection(
     if (stage) {
       const container = stage.container()
       container.style.cursor = isDragMode ? 'grab' : 'default'
+    }
+  }
+
+  // ==================== 私有辅助函数：避免重复逻辑 ====================
+
+  // 执行框选逻辑（被 handleMouseUp 和 finishSelection 复用）
+  function _executeBoxSelection(rect: { x: number; y: number; width: number; height: number }) {
+    const selectedIds = editorStore.visibleItems
+      .filter(
+        (item) =>
+          item.x >= rect.x &&
+          item.x <= rect.x + rect.width &&
+          item.y >= rect.y &&
+          item.y <= rect.y + rect.height
+      )
+      .map((item) => item.internalId)
+
+    // 使用统一的响应式输入状态
+    const shiftPressed = isShiftPressed.value
+    const altPressed = isAltPressed.value
+
+    if (altPressed) {
+      // Alt+框选: 减选模式
+      editorStore.deselectItems(selectedIds)
+    } else {
+      // 普通框选/Shift+框选: 替换/增选模式
+      editorStore.updateSelection(selectedIds, shiftPressed)
+    }
+  }
+
+  // 执行拖拽完成逻辑（被 handleMouseUp 和 finishDrag 复用）
+  function _executeDragCompletion(dx: number, dy: number, worldPos: { x: number; y: number }) {
+    if (dragStartAltPressed.value) {
+      // Alt + 拖拽 = 复制到目标位置
+      editorStore.duplicateSelected(dx, dy)
+    } else {
+      // 普通拖拽 = 移动到目标位置
+      editorStore.moveSelectedItems(dx, dy)
+    }
+
+    // 结束拖拽（清理幽灵图层）
+    if (onDragEnd) {
+      onDragEnd(worldPos)
     }
   }
 
@@ -84,9 +147,9 @@ export function useCanvasSelection(
     }
 
     if (clickedItem) {
-      // 检测修饰键
-      const shiftPressed = e.evt.shiftKey
-      const altPressed = e.evt.altKey
+      // 使用统一的响应式输入状态
+      const shiftPressed = isShiftPressed.value
+      const altPressed = isAltPressed.value
 
       if (altPressed) {
         // Alt+点击: 减选模式(从选中集合中移除)
@@ -99,7 +162,7 @@ export function useCanvasSelection(
       }
     } else {
       // 点击空白处，清空选中
-      if (!e.evt.shiftKey) {
+      if (!isShiftPressed.value) {
         editorStore.clearSelection()
       }
     }
@@ -142,7 +205,7 @@ export function useCanvasSelection(
     // 检测鼠标中键（button === 1）
     if (evt.button === 1) {
       evt.preventDefault() // 阻止浏览器默认行为（如自动滚动）
-      isMiddleMousePressed.value = true
+      // 注意：isMiddleMousePressed 现在由全局状态管理，这里只需要设置辅助状态
       updateDragMode(true)
       const stage = e.target.getStage()
       const pos = stage?.getPointerPosition()
@@ -173,7 +236,7 @@ export function useCanvasSelection(
       // 点击在选中物品上，准备拖拽
       isDraggingItem.value = true
       draggedItem.value = clickedItem
-      dragStartAltPressed.value = evt.altKey // 记录 Alt 状态
+      dragStartAltPressed.value = isAltPressed.value // 记录 Alt 状态
       hasActuallyDragged.value = false // 重置拖拽标记
       // 注意：这里不调用 onDragStart，等移动距离 ≥ 3px 时再调用
       return
@@ -190,7 +253,7 @@ export function useCanvasSelection(
 
   function handleMouseMove(e: any) {
     // 中键拖动画布：手动更新 Stage 位置（Konva 只支持左键拖拽）
-    if (isMiddleMousePressed.value) {
+    if (isMiddleMousePressed.value && lastPointerPos.value) {
       const stage = e.target.getStage()
       const pos = stage.getPointerPosition()
       if (stage && pos && lastPointerPos.value) {
@@ -209,6 +272,9 @@ export function useCanvasSelection(
     if (!pos) return
 
     const worldPos = screenToWorld(pos)
+
+    // 持续更新最后已知的世界坐标位置
+    lastKnownWorldPos.value = { x: worldPos.x, y: worldPos.y }
 
     // 如果正在拖拽物品
     if (isDraggingItem.value) {
@@ -260,9 +326,9 @@ export function useCanvasSelection(
 
     // 检测鼠标中键释放
     if (evt.button === 1) {
-      isMiddleMousePressed.value = false
-      updateDragMode(false)
-      lastPointerPos.value = null
+      // 注意：isMiddleMousePressed 现在由全局状态管理
+      // 这里只需要清理辅助状态（全局 watch 会处理状态清理）
+      cleanupMiddleMouseDrag()
       return
     }
 
@@ -291,18 +357,8 @@ export function useCanvasSelection(
           const dx = worldPos.x - startWorldPos.x
           const dy = worldPos.y - startWorldPos.y
 
-          if (dragStartAltPressed.value) {
-            // Alt + 拖拽 = 复制到目标位置（现在才执行复制）
-            editorStore.duplicateSelected(dx, dy)
-          } else {
-            // 普通拖拽 = 移动到目标位置
-            editorStore.moveSelectedItems(dx, dy)
-          }
-
-          // 结束拖拽（清理幽灵图层）
-          if (onDragEnd) {
-            onDragEnd(worldPos)
-          }
+          // 使用提取的辅助函数
+          _executeDragCompletion(dx, dy, worldPos)
         }
 
         // 清理拖拽状态
@@ -334,37 +390,88 @@ export function useCanvasSelection(
       } else {
         // 否则当作框选处理
         const rect = selectionRect.value
-        const selectedIds = editorStore.visibleItems
-          .filter(
-            (item) =>
-              item.x >= rect.x &&
-              item.x <= rect.x + rect.width &&
-              item.y >= rect.y &&
-              item.y <= rect.y + rect.height
-          )
-          .map((item) => item.internalId)
-
-        // 更新选中状态
-        const shiftPressed = e.evt.shiftKey
-        const altPressed = e.evt.altKey
-
-        if (altPressed) {
-          // Alt+框选: 减选模式
-          editorStore.deselectItems(selectedIds)
-        } else {
-          // 普通框选/Shift+框选: 替换/增选模式
-          editorStore.updateSelection(selectedIds, shiftPressed)
-        }
+        // 使用提取的辅助函数
+        _executeBoxSelection(rect)
       }
     }
 
     // 清除框选状态
-    isSelecting.value = false
-    selectionRect.value = null
-    selectionStart.value = null
-    mouseDownScreenPos.value = null
-    selectionMode.value = 'replace'
+    cleanupSelectionState()
   }
+
+  // ==================== 画布外松开按键的处理 ====================
+
+  // 完成框选操作（用于画布外松开按键）
+  function finishSelection() {
+    if (!isSelecting.value || !selectionRect.value) {
+      cleanupSelectionState()
+      return
+    }
+
+    const rect = selectionRect.value
+
+    // 使用矩形尺寸判断是否真正拖拽了（避免小抖动被当作框选）
+    const moveDistance = Math.hypot(rect.width, rect.height)
+
+    if (moveDistance < 3) {
+      // 小于阈值，不执行框选，只清理状态
+      cleanupSelectionState()
+      return
+    }
+
+    // 使用提取的辅助函数
+    _executeBoxSelection(rect)
+
+    cleanupSelectionState()
+  }
+
+  // 完成拖拽操作（用于画布外松开按键）
+  function finishDrag() {
+    if (!isDraggingItem.value) return
+
+    // 如果真正拖拽了，执行移动/复制
+    if (hasActuallyDragged.value && mouseDownScreenPos.value && lastKnownWorldPos.value) {
+      const stage = stageRef.value?.getStage()
+      if (stage) {
+        const startWorldPos = {
+          x: (mouseDownScreenPos.value.x - stage.x()) / stage.scaleX(),
+          y: (mouseDownScreenPos.value.y - stage.y()) / stage.scaleY(),
+        }
+        const dx = lastKnownWorldPos.value.x - startWorldPos.x
+        const dy = lastKnownWorldPos.value.y - startWorldPos.y
+
+        // 使用提取的辅助函数
+        _executeDragCompletion(dx, dy, lastKnownWorldPos.value)
+      }
+    }
+
+    // 清理拖拽状态
+    isDraggingItem.value = false
+    draggedItem.value = null
+    dragStartAltPressed.value = false
+    hasActuallyDragged.value = false
+    mouseDownScreenPos.value = null
+    lastKnownWorldPos.value = null
+  }
+
+  // 监听左键释放（在画布外也能捕获）
+  watch(isLeftMousePressed, (pressed) => {
+    if (!pressed) {
+      // 优先处理拖拽，因为拖拽优先级高于框选
+      if (isDraggingItem.value) {
+        finishDrag()
+      } else if (isSelecting.value) {
+        finishSelection()
+      }
+    }
+  })
+
+  // 监听中键释放（在画布外也能捕获）
+  watch(isMiddleMousePressed, (pressed) => {
+    if (!pressed) {
+      cleanupMiddleMouseDrag()
+    }
+  })
 
   return {
     selectionRect,
