@@ -18,6 +18,7 @@ import type { useEditorStore } from '@/stores/editorStore'
 import type { AppItem } from '@/types/editor'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useFurnitureStore } from '@/stores/furnitureStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeTextureArray } from './useThreeTextureArray'
 
 const MAX_INSTANCES = 10000
@@ -30,6 +31,8 @@ export function useThreeInstancedRenderer(
   furnitureStore: ReturnType<typeof useFurnitureStore>,
   isTransformDragging?: Ref<boolean>
 ) {
+  const settingsStore = useSettingsStore()
+
   // === Box 模式（原有） ===
   const baseGeometry = new BoxGeometry(1, 1, 1)
   const material = new MeshStandardMaterial({
@@ -44,6 +47,8 @@ export function useThreeInstancedRenderer(
 
   // 当前 hover 的物品（仅 3D 视图内部使用，不改变全局选中状态）
   const hoveredItemId = ref<string | null>(null)
+  // 被抑制 hover 的物品 ID（用于在选中瞬间暂时屏蔽 hover 效果，直到鼠标移出）
+  const suppressedHoverId = ref<string | null>(null)
 
   // 初始化 Box 实例
   const mesh = new InstancedMesh(baseGeometry, material, MAX_INSTANCES)
@@ -55,7 +60,7 @@ export function useThreeInstancedRenderer(
   instancedMesh.value = markRaw(mesh)
 
   // === Icon 模式（新增） ===
-  const planeGeometry = new PlaneGeometry(180, 180) // 固定大小：180x180 游戏单位
+  const planeGeometry = new PlaneGeometry(150, 150) // 固定大小：150x150 游戏单位
 
   // 初始化纹理数组（使用 Texture2DArray）
   const textureArray = getThreeTextureArray()
@@ -274,6 +279,16 @@ export function useThreeInstancedRenderer(
 
   // 设置 hover 物品并局部刷新对应实例颜色
   function setHoveredItemId(id: string | null) {
+    // 如果当前有被抑制的 hover ID，且传入的 ID 依然是它，则忽略（保持选中状态的颜色）
+    if (suppressedHoverId.value && id === suppressedHoverId.value) {
+      return
+    }
+
+    // 如果鼠标移到了其他物体或空处，解除抑制
+    if (suppressedHoverId.value && id !== suppressedHoverId.value) {
+      suppressedHoverId.value = null
+    }
+
     const prevId = hoveredItemId.value
     hoveredItemId.value = id
 
@@ -379,7 +394,8 @@ export function useThreeInstancedRenderer(
         scratchQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
       }
 
-      scratchScale.set(1, 1, 1) // 使用 PlaneGeometry 的原始尺寸 (180x180)
+      const scale = settingsStore.settings.threeIconScale
+      scratchScale.set(scale, scale, scale) // 使用设置中的缩放比例
 
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
       iconMeshTarget.setMatrixAt(index, scratchMatrix)
@@ -505,14 +521,17 @@ export function useThreeInstancedRenderer(
       targetQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
     }
 
+    const scale = settingsStore.settings.threeIconScale
+    scratchScale.set(scale, scale, scale)
+
     const count = iconMeshTarget.count
 
     for (let index = 0; index < count; index++) {
       // 读取现有矩阵，保留位置和缩放
       iconMeshTarget.getMatrixAt(index, scratchMatrix)
-      scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchScale)
+      scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchTmpVec3) // 使用临时变量接收旧缩放
 
-      // 应用新朝向
+      // 应用新朝向和当前设置的缩放
       scratchMatrix.compose(scratchPosition, targetQuaternion, scratchScale)
       iconMeshTarget.setMatrixAt(index, scratchMatrix)
     }
@@ -520,11 +539,52 @@ export function useThreeInstancedRenderer(
     iconMeshTarget.instanceMatrix.needsUpdate = true
   }
 
+  // 仅更新图标缩放（性能优化：不改变位置和旋转）
+  function updateIconsScale() {
+    const iconMeshTarget = iconInstancedMesh.value
+    if (!iconMeshTarget) return
+
+    const scale = settingsStore.settings.threeIconScale
+    scratchScale.set(scale, scale, scale)
+
+    const count = iconMeshTarget.count
+
+    for (let index = 0; index < count; index++) {
+      iconMeshTarget.getMatrixAt(index, scratchMatrix)
+      scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchTmpVec3)
+
+      // 仅更新缩放
+      scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
+      iconMeshTarget.setMatrixAt(index, scratchMatrix)
+    }
+
+    iconMeshTarget.instanceMatrix.needsUpdate = true
+  }
+
+  // 监听图标缩放设置变化
+  watch(
+    () => settingsStore.settings.threeIconScale,
+    () => {
+      updateIconsScale()
+    }
+  )
+
   watch(
     () => Array.from(editorStore.selectedItemIds),
     () => {
       if (isTransformDragging?.value) {
         return
+      }
+
+      // 1. 处理刚刚被选中的情况：抑制 Hover，使其显示选中色
+      if (hoveredItemId.value && editorStore.selectedItemIds.has(hoveredItemId.value)) {
+        suppressedHoverId.value = hoveredItemId.value
+        hoveredItemId.value = null
+      }
+
+      // 2. 处理被抑制的物品不再被选中的情况：解除抑制
+      if (suppressedHoverId.value && !editorStore.selectedItemIds.has(suppressedHoverId.value)) {
+        suppressedHoverId.value = null
       }
 
       updateInstancesColor()

@@ -16,6 +16,7 @@ export interface AppSettings {
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' // 3D 显示模式：立方体或图标
   threeIconModeInOrthographic: boolean // 正交视图下自动使用图标模式
+  threeIconScale: number // 图标缩放比例 (1.0 = 100%)
 }
 
 // 默认设置
@@ -26,6 +27,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableDuplicateDetection: true,
   threeDisplayMode: 'box',
   threeIconModeInOrthographic: true,
+  threeIconScale: 1.0,
 }
 
 const STORAGE_KEY = 'buildingmomo_settings'

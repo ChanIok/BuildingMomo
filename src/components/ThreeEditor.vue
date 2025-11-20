@@ -23,9 +23,11 @@ import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRender
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { releaseThreeTextureArray } from '@/composables/useThreeTextureArray'
-import { useThrottleFn } from '@vueuse/core'
+import { useThrottleFn, useMagicKeys } from '@vueuse/core'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +62,10 @@ const orthoCameraRef = ref<any | null>(null) // 正交相机
 const orbitControlsRef = ref<any | null>(null)
 const gridRef = ref<any | null>(null) // 网格引用
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
+
+// 监听按键状态
+const { Ctrl } = useMagicKeys()
+const isCtrlPressed = computed(() => Ctrl?.value ?? false)
 
 // 调试面板状态
 const showCameraDebug = ref(false)
@@ -257,6 +263,33 @@ function handlePointerMoveWithTooltip(evt: PointerEvent) {
   // 3D 中没有拖动选框以外的拖拽逻辑，这里直接用 selectionRect 是否存在来判断是否在框选
   const isSelecting = !!selectionRect.value
   handleTooltipPointerMove(evt, isSelecting)
+}
+
+// 滑块绑定的代理（Slider 组件通常使用数组）
+const iconScaleProxy = computed({
+  get: () => [settingsStore.settings.threeIconScale],
+  set: (val) => {
+    if (val && val.length > 0 && typeof val[0] === 'number') {
+      settingsStore.settings.threeIconScale = val[0]
+    }
+  },
+})
+
+// 处理容器滚轮事件（用于 Ctrl+滚轮 缩放图标）
+function handleContainerWheel(evt: WheelEvent) {
+  // 仅在图标模式下且按下 Ctrl 键时生效
+  if (shouldShowIconMesh.value && evt.ctrlKey) {
+    evt.preventDefault()
+    evt.stopPropagation()
+
+    // 计算新的缩放值
+    const delta = evt.deltaY > 0 ? -0.1 : 0.1
+    const current = settingsStore.settings.threeIconScale
+    const next = Math.min(Math.max(current + delta, 0.1), 3.0)
+
+    // 保留一位小数
+    settingsStore.settings.threeIconScale = Number(next.toFixed(1))
+  }
 }
 
 // 容器级指针事件：先交给导航，再交给选择/tooltip
@@ -607,6 +640,7 @@ onUnmounted(() => {
       @pointerup="handleContainerPointerUp"
       @pointerleave="handleContainerPointerLeave"
       @contextmenu="handleContextMenu"
+      @wheel="handleContainerWheel"
     >
       <TresCanvas clear-color="#f3f4f6">
         <!-- 透视相机 - perspective 视图 -->
@@ -645,6 +679,7 @@ onUnmounted(() => {
           :enabled="controlMode === 'orbit'"
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
+          :enable-zoom="!isCtrlPressed"
           :mouseButtons="isOrthographic ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }"
           @change="handleOrbitChange"
         />
@@ -832,8 +867,30 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- 图标大小控制 (仅在图标模式显示) -->
+    <div v-if="shouldShowIconMesh" class="absolute bottom-4 left-4 w-64">
+      <Item
+        variant="muted"
+        size="sm"
+        class="border-gray-200 bg-white/90 shadow-md backdrop-blur-sm"
+      >
+        <ItemContent>
+          <div class="mb-2 flex items-center justify-between">
+            <ItemTitle class="text-xs font-medium">图标大小</ItemTitle>
+            <span class="text-xs text-gray-500"
+              >{{ Math.round(settingsStore.settings.threeIconScale * 100) }}%</span
+            >
+          </div>
+          <Slider v-model="iconScaleProxy" :max="3" :min="0.1" :step="0.1" />
+          <ItemDescription class="mt-2 text-[10px] text-gray-400">
+            Ctrl + 滚轮快速调整
+          </ItemDescription>
+        </ItemContent>
+      </Item>
+    </div>
+
     <!-- 相机状态调试面板 (开发模式) -->
-    <div v-if="isDev" class="absolute bottom-4 left-4">
+    <div v-if="isDev" class="absolute bottom-32 left-4">
       <button
         @click="showCameraDebug = !showCameraDebug"
         class="rounded-md bg-gray-800/80 px-2 py-1 text-xs text-white hover:bg-gray-700/80"
