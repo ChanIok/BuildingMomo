@@ -11,8 +11,9 @@ import {
   toRef,
 } from 'vue'
 import { TresCanvas } from '@tresjs/core'
-import { OrbitControls, TransformControls } from '@tresjs/cientos'
-import { Object3D, MOUSE } from 'three'
+import { OrbitControls, TransformControls, Grid } from '@tresjs/cientos'
+import { Object3D, MOUSE, TextureLoader, SRGBColorSpace } from 'three'
+import backgroundUrl from '@/assets/home.webp'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useFurnitureStore } from '@/stores/furnitureStore'
@@ -60,7 +61,6 @@ const threeContainerRef = ref<HTMLElement | null>(null)
 const cameraRef = ref<any | null>(null) // 透视相机
 const orthoCameraRef = ref<any | null>(null) // 正交相机
 const orbitControlsRef = ref<any | null>(null)
-const gridRef = ref<any | null>(null) // 网格引用
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
 
 // 监听按键状态
@@ -69,6 +69,38 @@ const isCtrlPressed = computed(() => Ctrl?.value ?? false)
 
 // 调试面板状态
 const showCameraDebug = ref(false)
+
+// 背景图相关
+const backgroundTexture = ref<any>(null)
+const backgroundSize = ref<{ width: number; height: number }>({ width: 100, height: 100 })
+const backgroundPosition = ref<[number, number, number]>([0, -50, 0])
+
+// 加载背景图
+onMounted(() => {
+  const loader = new TextureLoader()
+  loader.load(backgroundUrl, (texture) => {
+    texture.colorSpace = SRGBColorSpace
+    backgroundTexture.value = texture
+
+    const img = texture.image
+    const scale = 11.2
+    const xOffset = -20000
+    const yOffset = -18000 // Canvas Y -> Three Z
+
+    const width = img.width * scale
+    const height = img.height * scale
+
+    backgroundSize.value = { width, height }
+
+    // CanvasEditor: x,y 是左上角
+    // Three Plane: position 是中心点
+    backgroundPosition.value = [
+      xOffset + width / 2,
+      -1, // 微下移避免与网格 Z-fighting
+      yOffset + height / 2,
+    ]
+  })
+})
 
 // 创建共享的 isTransformDragging ref
 const isTransformDragging = ref(false)
@@ -423,20 +455,27 @@ const gridRotation = computed<[number, number, number]>(() => {
 
   switch (preset) {
     case 'front':
-    case 'back':
-      // 前/后视图: XY 平面（垂直墙面），绕 X 轴旋转 90°
+      // 前视图: XY 平面，法线朝 +Z
       return [Math.PI / 2, 0, 0]
+    case 'back':
+      // 后视图: XY 平面，法线朝 -Z
+      return [-Math.PI / 2, 0, 0]
 
     case 'left':
-    case 'right':
-      // 左/右视图: YZ 平面（垂直墙面），绕 Z 轴旋转 90°
+      // 左视图: YZ 平面，法线朝 -X
       return [0, 0, Math.PI / 2]
+    case 'right':
+      // 右视图: YZ 平面，法线朝 +X
+      return [0, 0, -Math.PI / 2]
+
+    case 'bottom':
+      // 底视图: XZ 平面，法线朝 -Y
+      return [Math.PI, 0, 0]
 
     case 'top':
-    case 'bottom':
     case 'perspective':
     default:
-      // 顶/底/透视视图: XZ 平面（水平地面），默认方向
+      // 顶/透视视图: XZ 平面，法线朝 +Y
       return [0, 0, 0]
   }
 })
@@ -475,12 +514,24 @@ function focusOnScene() {
   fitCameraToScene()
 }
 
+// 背景显示条件
+const shouldShowBackground = computed(() => {
+  if (!settingsStore.settings.showBackground) return false
+  // 仅在 顶/底/透视 视图显示，侧视图隐藏
+  const hiddenPresets = ['front', 'back', 'left', 'right']
+  if (currentViewPreset.value && hiddenPresets.includes(currentViewPreset.value)) {
+    return false
+  }
+  return true
+})
+
 // 智能更新视图：方案切换或首次加载时重置视角
 watch(
   () => editorStore.activeSchemeId,
   () => {
     if (editorStore.activeSchemeId) {
-      fitCameraToScene()
+      // 默认使用顶视图
+      switchToView('top')
     }
   },
   { immediate: true }
@@ -511,17 +562,6 @@ onActivated(() => {
 onDeactivated(() => {
   commandStore.setZoomFunctions(null, null, null, null)
   commandStore.setViewPresetFunction(null)
-})
-
-// 设置网格深度控制，使其显示在物体后面
-onMounted(() => {
-  if (gridRef.value) {
-    const grid = gridRef.value
-    if (grid.material) {
-      grid.material.depthWrite = false
-      grid.renderOrder = -1
-    }
-  }
 })
 
 // 组件卸载时释放纹理数组引用
@@ -691,9 +731,31 @@ onUnmounted(() => {
         <TresAmbientLight :intensity="0.6" />
         <TresDirectionalLight :position="[1000, 2000, 1000]" :intensity="0.8" :cast-shadow="true" />
 
+        <!-- 背景地图 -->
+        <TresMesh
+          v-if="backgroundTexture && shouldShowBackground"
+          :position="backgroundPosition"
+          :rotation="[-Math.PI / 2, 0, 0]"
+        >
+          <TresPlaneGeometry :args="[backgroundSize.width, backgroundSize.height]" />
+          <TresMeshBasicMaterial :map="backgroundTexture" :tone-mapped="false" />
+        </TresMesh>
+
         <!-- 辅助元素 - 适配大场景 -->
         <TresGroup :rotation="gridRotation">
-          <TresGridHelper ref="gridRef" :args="[40000, 100, 0xcccccc, 0xe5e5e5]" />
+          <!-- 使用 Grid 组件替换 TresGridHelper -->
+          <Grid
+            v-if="backgroundTexture"
+            :args="[backgroundSize.width, backgroundSize.height]"
+            :position="[backgroundPosition[0], 0, backgroundPosition[2]]"
+            :cell-size="1000"
+            :section-size="1000"
+            :cell-color="'#cccccc'"
+            :section-color="'#cccccc'"
+            :fade-distance="50000"
+            :fade-strength="0.5"
+            :infinite-grid="false"
+          />
         </TresGroup>
         <TresAxesHelper :args="[5000]" />
 

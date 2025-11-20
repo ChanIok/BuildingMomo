@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   showBackground: true,
   autoUpdateFurniture: true,
   enableDuplicateDetection: true,
-  threeDisplayMode: 'box',
+  threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
 }
 
