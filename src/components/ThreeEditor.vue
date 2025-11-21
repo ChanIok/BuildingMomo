@@ -24,7 +24,7 @@ import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRender
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { releaseThreeTextureArray } from '@/composables/useThreeTextureArray'
-import { useThrottleFn, useMagicKeys } from '@vueuse/core'
+import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
@@ -58,6 +58,9 @@ const isDev = import.meta.env.DEV
 
 // 3D 选择 & gizmo 相关引用
 const threeContainerRef = ref<HTMLElement | null>(null)
+// 监听容器尺寸变化，用于更新正交相机视锥体
+const { width: containerWidth, height: containerHeight } = useElementSize(threeContainerRef)
+
 const cameraRef = ref<any | null>(null) // 透视相机
 const orthoCameraRef = ref<any | null>(null) // 正交相机
 const orbitControlsRef = ref<any | null>(null)
@@ -438,8 +441,9 @@ const orthoFrustum = computed(() => {
   const size = distance * 0.93
 
   // 获取容器宽高比（默认 16:9，实际会由 TresCanvas 自动适配）
-  const container = threeContainerRef.value
-  const aspect = container ? container.clientWidth / container.clientHeight : 16 / 9
+  const w = containerWidth.value
+  const h = containerHeight.value
+  const aspect = h > 0 ? w / h : 16 / 9
 
   return {
     left: (-size * aspect) / 2,

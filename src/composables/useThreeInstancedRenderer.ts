@@ -8,7 +8,6 @@ import {
   InstancedMesh,
   InstancedBufferAttribute,
   Matrix4,
-  MeshStandardMaterial,
   ShaderMaterial,
   Quaternion,
   Vector3,
@@ -36,10 +35,106 @@ export function useThreeInstancedRenderer(
   // === Box 模式（原有） & Simple Box 模式（复用） ===
   // 基础几何体 1x1x1
   const baseGeometry = new BoxGeometry(1, 1, 1)
-  const material = new MeshStandardMaterial({
-    transparent: true,
-    opacity: 0.7,
-  })
+
+  // 创建带边框效果的 ShaderMaterial 辅助函数
+  const createBoxMaterial = (opacity: number) => {
+    return new ShaderMaterial({
+      uniforms: {
+        uOpacity: { value: opacity },
+        uBorderWidth: { value: 0.6 }, // 物理边框宽度 (单位: 游戏世界单位)
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vColor;
+        varying vec3 vScale;
+        varying vec3 vLocalNormal; // 传递模型空间的原始法线
+
+        void main() {
+          vUv = uv;
+          vLocalNormal = normal; // BoxGeometry 的原始法线是轴对齐的
+          
+          #ifdef USE_INSTANCING_COLOR
+            vColor = instanceColor;
+          #else
+            vColor = vec3(1.0);
+          #endif
+
+          // 从 instanceMatrix 提取缩放
+          vec3 col0 = vec3(instanceMatrix[0][0], instanceMatrix[0][1], instanceMatrix[0][2]);
+          vec3 col1 = vec3(instanceMatrix[1][0], instanceMatrix[1][1], instanceMatrix[1][2]);
+          vec3 col2 = vec3(instanceMatrix[2][0], instanceMatrix[2][1], instanceMatrix[2][2]);
+          
+          vScale = vec3(length(col0), length(col1), length(col2));
+
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        precision highp float;
+        
+        uniform float uOpacity;
+        uniform float uBorderWidth;
+        
+        varying vec2 vUv;
+        varying vec3 vColor;
+        varying vec3 vScale;
+        varying vec3 vLocalNormal;
+
+        void main() {
+          // === 物理等宽边框 + 平滑抗锯齿 + 面校正 ===
+          
+          // 根据法线判断当前渲染的是哪个面，并获取该面对应的物理尺寸
+          // BoxGeometry 的 UV 映射规则:
+          // 1. 顶/底面 (y轴): u -> x轴, v -> z轴
+          // 2. 前/后面 (z轴): u -> x轴, v -> y轴
+          // 3. 左/右面 (x轴): u -> z轴, v -> y轴
+          
+          vec3 absNormal = abs(vLocalNormal);
+          vec2 faceScale = vec2(1.0);
+          
+          if (absNormal.y > 0.5) {
+            // 顶面或底面
+            faceScale = vec2(vScale.x, vScale.z);
+          } else if (absNormal.z > 0.5) {
+            // 前面或后面
+            faceScale = vec2(vScale.x, vScale.y);
+          } else {
+            // 左面或右面 (x轴)
+            faceScale = vec2(vScale.z, vScale.y);
+          }
+          
+          // 1. 计算基础边框宽度 (UV空间)
+          // 使用校正后的 faceScale
+          vec2 baseUvBorder = uBorderWidth / max(faceScale, vec2(0.001));
+          
+          // 2. 计算平滑过渡区
+          vec2 f = fwidth(vUv);
+          vec2 smoothing = f * 1.5;
+          
+          // 3. smoothstep 平滑混合
+          vec2 borderMin = smoothstep(baseUvBorder + smoothing, baseUvBorder, vUv);
+          vec2 borderMax = smoothstep(1.0 - baseUvBorder - smoothing, 1.0 - baseUvBorder, vUv);
+          
+          float isBorder = max(max(borderMin.x, borderMax.x), max(borderMin.y, borderMax.y));
+          isBorder = clamp(isBorder, 0.0, 1.0);
+
+          // 边框颜色
+          vec3 borderColor = vColor * 0.9;
+          
+          // 混合
+          vec3 finalColor = mix(vColor, borderColor, isBorder);
+          
+          gl_FragColor = vec4(finalColor, uOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: true,
+      depthTest: true,
+    })
+  }
+
+  const material = createBoxMaterial(0.9) // Box 透明度 0.9
 
   const instancedMesh = ref<InstancedMesh | null>(null)
 
@@ -62,10 +157,7 @@ export function useThreeInstancedRenderer(
 
   // === Simple Box 模式 ===
   // 复用 baseGeometry (1x1x1)，通过缩放实现 100x100x100 的效果
-  const simpleBoxMaterial = new MeshStandardMaterial({
-    transparent: true,
-    opacity: 0.9,
-  })
+  const simpleBoxMaterial = createBoxMaterial(0.95) // 原 0.9
 
   const simpleBoxInstancedMesh = ref<InstancedMesh | null>(null)
 
@@ -212,14 +304,14 @@ export function useThreeInstancedRenderer(
   }
 
   function getItemColor(item: AppItem, type: 'box' | 'icon'): number {
-    // hover 高亮优先级最高（即使物品已被选中，hover 时也显示为橙色）
+    // hover 高亮优先级最高（即使物品已被选中，hover 时也显示为琥珀色）
     if (hoveredItemId.value === item.internalId) {
-      return type === 'icon' ? 0xf59e0b : 0xf97316 // Icon: amber-400, Box/SimpleBox: orange-500
+      return type === 'icon' ? 0xf59e0b : 0xf59e0b // Icon & Box/SimpleBox: amber-400
     }
 
     // 其次是选中高亮
     if (editorStore.selectedItemIds.has(item.internalId)) {
-      return type === 'icon' ? 0x38bdf8 : 0x3b82f6 // Icon: sky-400, Box/SimpleBox: blue-500
+      return type === 'icon' ? 0x60a5fa : 0x60a5fa // Icon & Box/SimpleBox: blue-400
     }
 
     const groupId = item.originalData.GroupID
