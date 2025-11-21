@@ -125,19 +125,18 @@ const {
   isOrthographic,
   isViewFocused,
   isNavKeyPressed,
-  sceneCenter,
   cameraDistance,
   handleNavPointerDown,
   handleNavPointerMove,
   handleNavPointerUp,
   setPoseFromLookAt,
   setZoom,
-  lookAtTarget,
-  switchToOrbitMode,
   switchToViewPreset,
+  fitCameraToScene,
+  focusOnSelection,
 } = useThreeCamera(
   {
-    baseSpeed: 1000,
+    baseSpeed: 1500,
     shiftSpeedMultiplier: 4,
     mouseSensitivity: 0.002,
     pitchLimits: { min: -90, max: 90 },
@@ -387,9 +386,23 @@ function handleOrbitChange() {
   if (controlMode.value !== 'orbit') return
   if (!activeCameraRef.value) return
 
+  // 尝试获取 OrbitControls 的内部实例
+  // Cientos v4+ 通过 .instance 暴露底层 Three.js 实例
+  const controls = orbitControlsRef.value?.instance || orbitControlsRef.value?.value
+  if (!controls) return
+
   const cam = activeCameraRef.value as any
   const pos = cam.position
-  const target = orbitTarget.value
+
+  // 从控制器实例直接获取最新的 target
+  const currentTarget = controls.target
+  if (!currentTarget) return
+
+  const targetArray: [number, number, number] = [currentTarget.x, currentTarget.y, currentTarget.z]
+
+  // 同步更新本地的 orbitTarget，确保下次切换视图时读取到的是正确位置
+  // 注意：这里更新 ref 会触发 OrbitControls 的 props 更新，但因为值相同，通常不会造成问题
+  orbitTarget.value = targetArray
 
   // 记录当前的 Zoom
   if (cam.zoom !== undefined) {
@@ -397,11 +410,8 @@ function handleOrbitChange() {
   }
 
   // 同步相机姿态（位置和目标点）
-  // 无论是透视视图（旋转/平移）还是正交视图（平移），都需要记录新的位置和目标
-  setPoseFromLookAt([pos.x, pos.y, pos.z], target)
+  setPoseFromLookAt([pos.x, pos.y, pos.z], targetArray)
 }
-
-// 场景中心与相机距离计算已移至 useThreeCamera
 
 // 计算正交相机的视锥体参数
 const orthoFrustum = computed(() => {
@@ -453,39 +463,7 @@ const gridRotation = computed<[number, number, number]>(() => {
   }
 })
 
-// 计算并设置最佳相机位置（类似2D视图的fitToView）
-function fitCameraToScene() {
-  const center = sceneCenter.value
-  const distance = cameraDistance.value
-
-  const position: [number, number, number] = [
-    center[0] + distance * 0.6,
-    center[1] + distance * 0.8,
-    center[2] + distance * 0.6,
-  ]
-
-  orbitTarget.value = center
-  setPoseFromLookAt(position, center)
-}
-
-// 聚焦到选中物品的中心
-function focusOnSelection() {
-  const newTarget = switchToOrbitMode()
-  if (newTarget) orbitTarget.value = newTarget
-  const center = editorStore.getSelectedItemsCenter?.()
-  if (center) {
-    const target: [number, number, number] = [center.x, center.z, center.y]
-    orbitTarget.value = target
-    lookAtTarget(target)
-  }
-}
-
-// 聚焦到整个场景
-function focusOnScene() {
-  const newTarget = switchToOrbitMode()
-  if (newTarget) orbitTarget.value = newTarget
-  fitCameraToScene()
-}
+// 聚焦到整个场景 (别名，兼容 CommandStore 命名)
 
 // 背景显示条件
 const shouldShowBackground = computed(() => {
@@ -509,7 +487,7 @@ function switchToView(preset: ViewPreset) {
 // 当 3D 视图激活时，注册视图函数
 onActivated(() => {
   // 3D视图不需要缩放功能，但需要重置视图和聚焦选中功能
-  commandStore.setZoomFunctions(null, null, focusOnScene, focusOnSelection)
+  commandStore.setZoomFunctions(null, null, fitCameraToScene, focusOnSelection)
   // 注册视图切换函数
   commandStore.setViewPresetFunction(switchToView)
 })
@@ -681,6 +659,7 @@ onUnmounted(() => {
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
           :enable-zoom="!isCtrlPressed"
+          :zoomSpeed="2.5"
           :mouseButtons="isOrthographic ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }"
           @change="handleOrbitChange"
         />
@@ -790,9 +769,9 @@ onUnmounted(() => {
         <HoverCardTrigger as-child>
           <Button variant="outline" size="sm" class="shadow-md">
             <Camera class="mr-2 h-4 w-4" />
-            <span v-if="currentViewPreset">
+            <span>
               {{
-                currentViewPreset === 'perspective'
+                !isOrthographic
                   ? '透视'
                   : currentViewPreset === 'top'
                     ? '顶视图'
@@ -804,10 +783,11 @@ onUnmounted(() => {
                           ? '后视图'
                           : currentViewPreset === 'right'
                             ? '右视图'
-                            : '左视图'
+                            : currentViewPreset === 'left'
+                              ? '左视图'
+                              : '正交视图'
               }}
             </span>
-            <span v-else>自定义</span>
           </Button>
         </HoverCardTrigger>
         <HoverCardContent align="end" class="w-48 p-1">
@@ -932,7 +912,10 @@ onUnmounted(() => {
         <div class="mb-1 font-bold text-green-300">📷 相机状态</div>
         <div class="space-y-0.5">
           <div><span class="text-gray-400">模式:</span> {{ controlMode }}</div>
-          <div><span class="text-gray-400">视图:</span> {{ currentViewPreset || '自定义' }}</div>
+          <div>
+            <span class="text-gray-400">视图:</span>
+            {{ !isOrthographic ? '透视' : currentViewPreset || '正交' }}
+          </div>
           <div><span class="text-gray-400">投影:</span> {{ isOrthographic ? '正交' : '透视' }}</div>
           <div class="mt-1 text-gray-400">位置:</div>
           <div class="pl-2">

@@ -106,9 +106,11 @@ export interface CameraControllerResult {
   setPoseFromLookAt: (position: Vec3, target: Vec3) => void
   lookAtTarget: (target: Vec3) => void
   switchToOrbitMode: () => Vec3 | null
-  setViewPreset: (preset: ViewPreset, target: Vec3, distance: number) => void
+  setViewPreset: (preset: ViewPreset, target: Vec3, distance: number, newZoom?: number) => void
   switchToViewPreset: (preset: ViewPreset) => void
   setZoom: (zoom: number) => void
+  fitCameraToScene: () => void
+  focusOnSelection: () => void
   restoreSnapshot: (snapshot: {
     position: Vec3
     target: Vec3
@@ -159,6 +161,8 @@ export function useThreeCamera(
   // ============================================================
   // 🎯 State Management
   // ============================================================
+
+  const FOV = 50 // 透视相机默认 FOV
 
   const state = ref<CameraState>({
     position: [0, 0, 3000],
@@ -398,10 +402,7 @@ export function useThreeCamera(
     if (!isMiddleButtonDown.value || mode.value.kind !== 'flight') return
     if (deps.isTransformDragging?.value) return
 
-    // 手动旋转 → 退出预设视图
-    state.value.viewPreset = null
-
-    // 更新 yaw/pitch
+    // 更新 yaw/pitch（透视视角下始终视为透视预设的连续变体）
     state.value.yaw -= evt.movementX * mouseSensitivity
     state.value.pitch = clamp(
       state.value.pitch - evt.movementY * mouseSensitivity,
@@ -436,7 +437,7 @@ export function useThreeCamera(
     setPoseFromLookAt(state.value.position, target)
   }
 
-  function setViewPreset(preset: ViewPreset, target: Vec3, distance: number) {
+  function setViewPreset(preset: ViewPreset, target: Vec3, distance: number, newZoom?: number) {
     const config = VIEW_PRESETS[preset]
     const direction = normalize(config.direction)
 
@@ -451,7 +452,7 @@ export function useThreeCamera(
       pitch,
       viewPreset: preset,
       up: [...config.up],
-      zoom: preset === 'perspective' ? 1 : state.value.zoom,
+      zoom: newZoom ?? (preset === 'perspective' ? 1 : state.value.zoom),
     }
 
     // 直接切换模式
@@ -468,7 +469,67 @@ export function useThreeCamera(
   }
 
   function switchToViewPreset(preset: ViewPreset) {
-    setViewPreset(preset, sceneCenter.value, cameraDistance.value)
+    // 计算当前相机到目标的实际物理距离
+    const dx = state.value.position[0] - state.value.target[0]
+    const dy = state.value.position[1] - state.value.target[1]
+    const dz = state.value.position[2] - state.value.target[2]
+    const currentDist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    const isCurrentlyPerspective =
+      state.value.viewPreset === 'perspective' ||
+      (mode.value.kind === 'orbit' && mode.value.projection === 'perspective')
+    const isSwitchingToPerspective = preset === 'perspective'
+
+    // 基础距离参考（用于全景时的距离）
+    const baseDistance = cameraDistance.value
+    // 视锥体基准大小 (参考 ThreeEditor.vue 中的 orthoFrustum 计算：size = distance * 0.93)
+    const frustumSize = baseDistance * 0.93
+
+    let newDistance = currentDist
+    let newZoom = 1
+
+    if (isCurrentlyPerspective && !isSwitchingToPerspective) {
+      // 1. 透视 -> 正交
+      // 通过 Zoom 模拟远近，保持物理距离不变
+      const tanHalfFov = Math.tan(((FOV / 2) * Math.PI) / 180)
+      // 限制最小距离防止除零或过大
+      const safeDist = Math.max(currentDist, 100)
+
+      // 计算公式：zoom = frustumSize / (2 * dist * tan(fov/2))
+      newZoom = frustumSize / (2 * safeDist * tanHalfFov)
+
+      // 限制 Zoom 范围，防止过度放大/缩小
+      newZoom = clamp(newZoom, 0.1, 20)
+
+      // 正交视图下，相机拉远避免穿模
+      newDistance = baseDistance
+    } else if (!isCurrentlyPerspective && isSwitchingToPerspective) {
+      // 2. 正交 -> 透视
+      // 将 Zoom 转换回物理距离
+      const currentZoom = state.value.zoom
+      const tanHalfFov = Math.tan(((FOV / 2) * Math.PI) / 180)
+
+      // 计算等效距离：dist = frustumSize / (2 * zoom * tan(fov/2))
+      newDistance = frustumSize / (2 * currentZoom * tanHalfFov)
+
+      // 限制距离范围
+      newDistance = clamp(newDistance, 100, baseDistance * 2)
+
+      // 透视模式 Zoom 重置为 1
+      newZoom = 1
+    } else if (!isCurrentlyPerspective && !isSwitchingToPerspective) {
+      // 3. 正交 -> 正交
+      // 保持当前的 Zoom 和物理距离
+      newZoom = state.value.zoom
+      newDistance = currentDist < baseDistance ? baseDistance : currentDist
+    } else {
+      // 4. 透视 -> 透视 (兜底处理)
+      newDistance = currentDist
+      newZoom = 1
+    }
+
+    // 切换视图时，使用新的距离和 Zoom
+    setViewPreset(preset, state.value.target, newDistance, newZoom)
   }
 
   function restoreSnapshot(snapshot: {
@@ -591,6 +652,134 @@ export function useThreeCamera(
   })
 
   // ============================================================
+  // 🔍 Focus & Fit Logic
+  // ============================================================
+
+  const currentViewPreset = computed(() => {
+    // 透视投影下，即使没有显式预设，也统一视为 "perspective"，避免出现"自定义视角"概念
+    if (state.value.viewPreset) return state.value.viewPreset
+    if (mode.value.kind === 'orbit' && mode.value.projection === 'perspective') return 'perspective'
+    return null
+  })
+
+  const isOrthographic = computed(
+    () => mode.value.kind === 'orbit' && mode.value.projection === 'orthographic'
+  )
+
+  function fitCameraToScene() {
+    // 使用当前视图预设重置；若没有预设则按透视视图处理
+    const preset = currentViewPreset.value ?? 'perspective'
+    // 强制使用全局场景中心和全景距离，并重置缩放为 1
+    setViewPreset(preset, sceneCenter.value, cameraDistance.value, 1)
+  }
+
+  function focusOnSelection() {
+    const selectedItems = editorStore.selectedItems
+    if (selectedItems.length === 0) return
+
+    // 1. 计算包围盒
+    let minX = Infinity,
+      maxX = -Infinity
+    let minY = Infinity,
+      maxY = -Infinity // Store Y (对应 World Z)
+    let minZ = Infinity,
+      maxZ = -Infinity // Store Z (对应 World Y)
+
+    selectedItems.forEach((item) => {
+      minX = Math.min(minX, item.x)
+      maxX = Math.max(maxX, item.x)
+      minY = Math.min(minY, item.y)
+      maxY = Math.max(maxY, item.y)
+      minZ = Math.min(minZ, item.z)
+      maxZ = Math.max(maxZ, item.z)
+    })
+
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    const centerZ = (minZ + maxZ) / 2
+
+    // 转换为世界坐标: X->X, Z->Y, Y->Z
+    const target: Vec3 = [centerX, centerZ, centerY]
+
+    const sizeX = maxX - minX
+    const sizeY = maxZ - minZ // World Y
+    const sizeZ = maxY - minY // World Z
+    const maxDim = Math.max(sizeX, sizeY, sizeZ)
+
+    // 确保切换到 Orbit 模式
+    switchToOrbitMode()
+    // 更新内部 target 状态
+    mode.value = { ...mode.value, target: [...target] } as any
+    if (deps.onOrbitTargetUpdate) {
+      deps.onOrbitTargetUpdate(target)
+    }
+
+    if (isOrthographic.value) {
+      // === 正交视图处理 ===
+      // 1. 平移相机：保持方向不变，移动位置使视线穿过新目标
+      const currentPos = state.value.position
+      const currentTarget = state.value.target
+
+      const offsetX = target[0] - currentTarget[0]
+      const offsetY = target[1] - currentTarget[1]
+      const offsetZ = target[2] - currentTarget[2]
+
+      const newPos: Vec3 = [
+        currentPos[0] + offsetX,
+        currentPos[1] + offsetY,
+        currentPos[2] + offsetZ,
+      ]
+
+      setPoseFromLookAt(newPos, target)
+
+      // 2. 调整 Zoom 适配包围盒
+      // 获取当前视锥体高度基准 (zoom=1时的高度)
+      // 参考 ThreeEditor 中的计算：size = distance * 0.93
+      const frustumHeight = cameraDistance.value * 0.93
+
+      // 计算目标需要的视口大小
+      const requiredSize = Math.max(maxDim, 100) * 1.2
+
+      // zoom = 基准高度 / 实际需要高度
+      // 限制 zoom 范围防止出错
+      const newZoom = clamp(frustumHeight / requiredSize, 0.1, 20)
+      state.value.zoom = newZoom
+    } else {
+      // === 透视视图处理 ===
+      // 移动相机距离以包含包围盒
+      const currentPos = state.value.position
+      const currentTarget = state.value.target
+
+      // 计算当前方向向量
+      const dx = currentTarget[0] - currentPos[0]
+      const dy = currentTarget[1] - currentPos[1]
+      const dz = currentTarget[2] - currentPos[2]
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+      // 归一化反向向量 (从目标指向相机)
+      const backX = len > 0 ? -dx / len : 0
+      const backY = len > 0 ? -dy / len : 0
+      const backZ = len > 0 ? -dz / len : 1
+
+      // 计算合适距离
+      // FOV 默认 50
+      const k = Math.tan((FOV * Math.PI) / 360) // tan(fov/2)
+      // distance = (objectSize / 2) / tan(fov/2)
+      let dist = maxDim / 2 / k
+      dist = Math.max(dist, 1376) * 1.2
+
+      const newPos: Vec3 = [
+        target[0] + backX * dist,
+        target[1] + backY * dist,
+        target[2] + backZ * dist,
+      ]
+
+      setPoseFromLookAt(newPos, target)
+      state.value.zoom = 1 // 透视模式重置 Zoom
+    }
+  }
+
+  // ============================================================
   // 📤 Return API
   // ============================================================
 
@@ -603,10 +792,8 @@ export function useThreeCamera(
     isViewFocused,
     isNavKeyPressed,
     controlMode: computed(() => (mode.value.kind === 'flight' ? 'flight' : 'orbit')),
-    currentViewPreset: computed(() => state.value.viewPreset),
-    isOrthographic: computed(
-      () => mode.value.kind === 'orbit' && mode.value.projection === 'orthographic'
-    ),
+    currentViewPreset,
+    isOrthographic,
     sceneCenter,
     cameraDistance,
 
@@ -625,5 +812,7 @@ export function useThreeCamera(
     setViewPreset,
     switchToViewPreset,
     restoreSnapshot,
+    fitCameraToScene,
+    focusOnSelection,
   }
 }
