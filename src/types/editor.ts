@@ -1,3 +1,5 @@
+import type { ViewPreset } from '../composables/useThreeCamera'
+
 // 游戏内物品原始数据结构（对应JSON格式）
 export interface GameItem {
   ItemID: number
@@ -55,6 +57,14 @@ export interface GameDataFile {
   PlaceInfo: GameItem[]
 }
 
+// 3D视图状态
+export interface ThreeViewState {
+  position: [number, number, number] // 相机位置
+  target: [number, number, number] // 观察目标点
+  preset: ViewPreset | null // 视图预设
+  zoom: number // 相机缩放 (正交视图必需)
+}
+
 // 家园方案（多文档架构）
 export interface HomeScheme {
   id: string // 方案唯一ID
@@ -67,6 +77,7 @@ export interface HomeScheme {
   filterState: FilterState // 用户设置的过滤状态
   selectedItemIds: Set<string>
   currentViewConfig?: { scale: number; x: number; y: number } // 用户当前视图配置
+  viewState?: ThreeViewState // 3D视图状态
 
   // 历史记录栈（每个方案独立）
   history?: HistoryStack

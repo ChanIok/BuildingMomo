@@ -100,8 +100,8 @@ onMounted(async () => {
                 </KeepAlive>
 
                 <!-- 3D视图 -->
-                <KeepAlive v-else :max="10">
-                  <ThreeEditor :key="editorStore.activeSchemeId || ''" />
+                <KeepAlive v-else>
+                  <ThreeEditor />
                 </KeepAlive>
               </template>
 

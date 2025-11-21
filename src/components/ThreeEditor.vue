@@ -111,23 +111,30 @@ const isTransformDragging = ref(false)
 // Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
 const orbitTarget = ref<[number, number, number]>([0, 0, 0])
 
-// 相机导航（WASD/Q/Space）- 优先定义，因为后续依赖 isOrthographic
+// 响应式绑定当前方案的视图状态
+// 已移至 useThreeCamera 内部处理
+
+// 相机导航（WASD/Q/Space）
 const {
   cameraPosition,
   cameraLookAt,
   cameraUp,
+  cameraZoom,
   controlMode,
   currentViewPreset,
   isOrthographic,
   isViewFocused,
   isNavKeyPressed,
+  sceneCenter,
+  cameraDistance,
   handleNavPointerDown,
   handleNavPointerMove,
   handleNavPointerUp,
   setPoseFromLookAt,
+  setZoom,
   lookAtTarget,
   switchToOrbitMode,
-  setViewPreset,
+  switchToViewPreset,
 } = useThreeCamera(
   {
     baseSpeed: 1000,
@@ -384,55 +391,17 @@ function handleOrbitChange() {
   const pos = cam.position
   const target = orbitTarget.value
 
-  // 在透视模式下，同步相机旋转后的姿态
-  if (!isOrthographic.value) {
-    setPoseFromLookAt([pos.x, pos.y, pos.z], target)
+  // 记录当前的 Zoom
+  if (cam.zoom !== undefined) {
+    setZoom(cam.zoom)
   }
+
+  // 同步相机姿态（位置和目标点）
+  // 无论是透视视图（旋转/平移）还是正交视图（平移），都需要记录新的位置和目标
+  setPoseFromLookAt([pos.x, pos.y, pos.z], target)
 }
 
-// 计算场景中心（用于初始化相机位置）
-const sceneCenter = computed<[number, number, number]>(() => {
-  if (editorStore.items.length === 0) {
-    return [0, 0, 0]
-  }
-
-  const bounds = editorStore.bounds
-  const heightFilter = editorStore.heightFilter
-
-  // 安全检查：bounds 可能为 null
-  if (!bounds) {
-    return [0, (heightFilter.min + heightFilter.max) / 2, 0]
-  }
-
-  return [
-    (bounds.minX + bounds.maxX) / 2,
-    (heightFilter.min + heightFilter.max) / 2, // Z轴（高度）
-    (bounds.minY + bounds.maxY) / 2,
-  ]
-})
-
-// 计算合适的相机距离
-const cameraDistance = computed(() => {
-  if (editorStore.items.length === 0) {
-    return 5000
-  }
-
-  const bounds = editorStore.bounds
-  const heightFilter = editorStore.heightFilter
-
-  // 安全检查：bounds 可能为 null
-  if (!bounds) {
-    const rangeZ = heightFilter.max - heightFilter.min
-    return Math.max(rangeZ * 1, 3000)
-  }
-
-  const rangeX = bounds.maxX - bounds.minX
-  const rangeY = bounds.maxY - bounds.minY
-  const rangeZ = heightFilter.max - heightFilter.min
-
-  const maxRange = Math.max(rangeX, rangeY, rangeZ)
-  return Math.max(maxRange * 1, 3000)
-})
+// 场景中心与相机距离计算已移至 useThreeCamera
 
 // 计算正交相机的视锥体参数
 const orthoFrustum = computed(() => {
@@ -530,28 +499,11 @@ const shouldShowBackground = computed(() => {
 })
 
 // 智能更新视图：方案切换或首次加载时重置视角
-watch(
-  () => editorStore.activeSchemeId,
-  () => {
-    if (editorStore.activeSchemeId) {
-      // 默认使用顶视图
-      switchToView('top')
-    }
-  },
-  { immediate: true }
-)
+// 已移至 useThreeCamera 内部处理，通过监听 activeSchemeId 自动恢复快照或设置默认视图
 
 // 视图切换函数（供命令系统调用）
 function switchToView(preset: ViewPreset) {
-  const center = sceneCenter.value
-  const distance = cameraDistance.value
-
-  // 切换到预设视图
-  setViewPreset(preset, center, distance)
-
-  // 确保在 Orbit 模式
-  // const newTarget = switchToOrbitMode()
-  // if (newTarget) orbitTarget.value = newTarget
+  switchToViewPreset(preset)
 }
 
 // 当 3D 视图激活时，注册视图函数
@@ -697,6 +649,7 @@ onUnmounted(() => {
           :position="cameraPosition"
           :look-at="cameraLookAt"
           :up="cameraUp"
+          :zoom="cameraZoom"
           :fov="50"
           :near="100"
           :far="100000"
@@ -709,6 +662,7 @@ onUnmounted(() => {
           :position="cameraPosition"
           :look-at="cameraLookAt"
           :up="cameraUp"
+          :zoom="cameraZoom"
           :left="orthoFrustum.left"
           :right="orthoFrustum.right"
           :top="orthoFrustum.top"
@@ -1004,6 +958,7 @@ onUnmounted(() => {
           <div>
             <span class="text-gray-400">导航键:</span> {{ isNavKeyPressed ? '激活' : '未激活' }}
           </div>
+          <div><span class="text-gray-400">缩放:</span> {{ cameraZoom.toFixed(2) }}</div>
         </div>
       </div>
     </div>

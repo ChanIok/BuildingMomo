@@ -468,7 +468,7 @@ export const useEditorStore = defineStore('editor', () => {
     return newScheme.id
   }
 
-  // 方案管理：导入JSON为新方案
+  // 导入JSON为新方案
   async function importJSONAsScheme(
     fileContent: string,
     fileName: string,

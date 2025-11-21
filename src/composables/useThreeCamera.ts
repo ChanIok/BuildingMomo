@@ -1,5 +1,15 @@
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, type Ref } from 'vue'
+import {
+  ref,
+  computed,
+  onMounted,
+  onUnmounted,
+  onActivated,
+  onDeactivated,
+  watch,
+  type Ref,
+} from 'vue'
 import { useRafFn, useMagicKeys } from '@vueuse/core'
+import { useEditorStore } from '@/stores/editorStore'
 
 // ============================================================
 // 📦 Types & Constants
@@ -59,6 +69,7 @@ interface CameraState {
   pitch: number // 弧度
   viewPreset: ViewPreset | null
   up: Vec3 // 相机的上方向
+  zoom: number // 缩放级别 (主要用于正交相机)
 }
 
 // 配置选项
@@ -81,11 +92,14 @@ export interface CameraControllerResult {
   cameraPosition: Ref<Vec3>
   cameraLookAt: Ref<Vec3>
   cameraUp: Ref<Vec3>
+  cameraZoom: Ref<number>
   isViewFocused: Ref<boolean>
   isNavKeyPressed: Ref<boolean>
   controlMode: Ref<'orbit' | 'flight'>
   currentViewPreset: Ref<ViewPreset | null>
   isOrthographic: Ref<boolean>
+  sceneCenter: Ref<Vec3>
+  cameraDistance: Ref<number>
   handleNavPointerDown: (evt: PointerEvent) => void
   handleNavPointerMove: (evt: PointerEvent) => void
   handleNavPointerUp: (evt: PointerEvent) => void
@@ -93,6 +107,14 @@ export interface CameraControllerResult {
   lookAtTarget: (target: Vec3) => void
   switchToOrbitMode: () => Vec3 | null
   setViewPreset: (preset: ViewPreset, target: Vec3, distance: number) => void
+  switchToViewPreset: (preset: ViewPreset) => void
+  setZoom: (zoom: number) => void
+  restoreSnapshot: (snapshot: {
+    position: Vec3
+    target: Vec3
+    preset: ViewPreset | null
+    zoom?: number
+  }) => void
 }
 
 // ============================================================
@@ -125,7 +147,8 @@ export function useThreeCamera(
   options: CameraControllerOptions = {},
   deps: CameraControllerDeps = {}
 ): CameraControllerResult {
-  // === 配置 ===
+  // === 引入 Store ===
+  const editorStore = useEditorStore()
   const baseSpeed = options.baseSpeed ?? 1000
   const shiftSpeedMultiplier = options.shiftSpeedMultiplier ?? 4
   const mouseSensitivity = options.mouseSensitivity ?? 0.002
@@ -144,6 +167,7 @@ export function useThreeCamera(
     pitch: 0,
     viewPreset: 'perspective',
     up: [0, 1, 0],
+    zoom: 1,
   })
 
   const mode = ref<CameraMode>({
@@ -155,6 +179,85 @@ export function useThreeCamera(
   const isViewFocused = ref(false)
   const isMiddleButtonDown = ref(false)
   let isActive = false
+
+  // === 场景中心与距离计算 (Computed from Store) ===
+  const sceneCenter = computed<Vec3>(() => {
+    if (editorStore.items.length === 0) {
+      return [0, 0, 0]
+    }
+
+    const bounds = editorStore.bounds
+    const heightFilter = editorStore.heightFilter
+
+    // 安全检查：bounds 可能为 null
+    if (!bounds) {
+      return [0, (heightFilter.min + heightFilter.max) / 2, 0]
+    }
+
+    return [
+      (bounds.minX + bounds.maxX) / 2,
+      (heightFilter.min + heightFilter.max) / 2, // Z轴（高度）
+      (bounds.minY + bounds.maxY) / 2,
+    ]
+  })
+
+  const cameraDistance = computed(() => {
+    if (editorStore.items.length === 0) {
+      return 5000
+    }
+
+    const bounds = editorStore.bounds
+    const heightFilter = editorStore.heightFilter
+
+    // 安全检查：bounds 可能为 null
+    if (!bounds) {
+      const rangeZ = heightFilter.max - heightFilter.min
+      return Math.max(rangeZ * 1, 3000)
+    }
+
+    const rangeX = bounds.maxX - bounds.minX
+    const rangeY = bounds.maxY - bounds.minY
+    const rangeZ = heightFilter.max - heightFilter.min
+
+    const maxRange = Math.max(rangeX, rangeY, rangeZ)
+    return Math.max(maxRange * 1, 3000)
+  })
+
+  // === 响应式绑定 (Reactive Binding with Store) ===
+
+  // 1. Sync Store (Scheme Switch) -> Internal State
+  watch(
+    () => editorStore.activeSchemeId,
+    (newId) => {
+      if (!newId) return
+
+      const scheme = editorStore.activeScheme
+      if (scheme?.viewState) {
+        // 恢复状态
+        restoreSnapshot(scheme.viewState)
+      } else {
+        // 无状态，默认使用顶视图
+        switchToViewPreset('top')
+      }
+    },
+    { immediate: true }
+  )
+
+  // 2. Sync Internal State -> Store (相机移动时触发)
+  watch(
+    state,
+    (newVal) => {
+      if (editorStore.activeScheme) {
+        editorStore.activeScheme.viewState = {
+          position: [...newVal.position],
+          target: [...newVal.target],
+          preset: newVal.viewPreset,
+          zoom: newVal.zoom,
+        }
+      }
+    },
+    { deep: true }
+  )
 
   // === 键盘输入 ===
   const keys = useMagicKeys()
@@ -316,7 +419,7 @@ export function useThreeCamera(
   }
 
   // ============================================================
-  // 🔌 Public API
+  // 🔌 Public API (Internal Implementation)
   // ============================================================
 
   function setPoseFromLookAt(position: Vec3, target: Vec3) {
@@ -348,6 +451,7 @@ export function useThreeCamera(
       pitch,
       viewPreset: preset,
       up: [...config.up],
+      zoom: preset === 'perspective' ? 1 : state.value.zoom,
     }
 
     // 直接切换模式
@@ -355,6 +459,58 @@ export function useThreeCamera(
       kind: 'orbit',
       projection: preset === 'perspective' ? 'perspective' : 'orthographic',
       target: [...target],
+    }
+
+    // 通知外部更新 orbit target
+    if (deps.onOrbitTargetUpdate) {
+      deps.onOrbitTargetUpdate(mode.value.target)
+    }
+  }
+
+  function switchToViewPreset(preset: ViewPreset) {
+    setViewPreset(preset, sceneCenter.value, cameraDistance.value)
+  }
+
+  function restoreSnapshot(snapshot: {
+    position: Vec3
+    target: Vec3
+    preset: ViewPreset | null
+    zoom?: number
+  }) {
+    state.value.position = [...snapshot.position]
+    state.value.target = [...snapshot.target]
+    state.value.viewPreset = snapshot.preset
+    state.value.zoom = snapshot.zoom ?? 1
+
+    const dir: Vec3 = [
+      snapshot.target[0] - snapshot.position[0],
+      snapshot.target[1] - snapshot.position[1],
+      snapshot.target[2] - snapshot.position[2],
+    ]
+    const { yaw, pitch } = calculateYawPitchFromDirection(dir)
+    state.value.yaw = yaw
+    state.value.pitch = pitch
+
+    // 恢复 up 向量
+    if (snapshot.preset && VIEW_PRESETS[snapshot.preset]) {
+      state.value.up = [...VIEW_PRESETS[snapshot.preset].up]
+    } else {
+      state.value.up = [0, 1, 0]
+    }
+
+    // 恢复模式
+    if (snapshot.preset && snapshot.preset !== 'perspective') {
+      mode.value = {
+        kind: 'orbit',
+        projection: 'orthographic',
+        target: [...snapshot.target],
+      }
+    } else {
+      mode.value = {
+        kind: 'orbit',
+        projection: 'perspective',
+        target: [...snapshot.target],
+      }
     }
 
     // 通知外部更新 orbit target
@@ -443,6 +599,7 @@ export function useThreeCamera(
     cameraPosition: computed(() => state.value.position),
     cameraLookAt: computed(() => state.value.target),
     cameraUp: computed(() => state.value.up),
+    cameraZoom: computed(() => state.value.zoom),
     isViewFocused,
     isNavKeyPressed,
     controlMode: computed(() => (mode.value.kind === 'flight' ? 'flight' : 'orbit')),
@@ -450,6 +607,8 @@ export function useThreeCamera(
     isOrthographic: computed(
       () => mode.value.kind === 'orbit' && mode.value.projection === 'orthographic'
     ),
+    sceneCenter,
+    cameraDistance,
 
     // 事件处理
     handleNavPointerDown,
@@ -458,8 +617,13 @@ export function useThreeCamera(
 
     // 命令
     setPoseFromLookAt,
+    setZoom: (zoom: number) => {
+      state.value.zoom = zoom
+    },
     lookAtTarget,
     switchToOrbitMode,
     setViewPreset,
+    switchToViewPreset,
+    restoreSnapshot,
   }
 }
