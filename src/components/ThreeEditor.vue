@@ -23,7 +23,7 @@ import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
-import { releaseThreeTextureArray } from '@/composables/useThreeTextureArray'
+import { releaseThreeIconManager } from '@/composables/useThreeIconManager'
 import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Button } from '@/components/ui/button'
@@ -502,7 +502,7 @@ onDeactivated(() => {
 onUnmounted(() => {
   // 释放纹理数组的引用计数
   // 当所有 ThreeEditor 组件都卸载后，纹理数组会自动清理 GPU 内存
-  releaseThreeTextureArray()
+  releaseThreeIconManager()
 })
 </script>
 

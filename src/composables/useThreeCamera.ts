@@ -240,8 +240,8 @@ export function useThreeCamera(
         // 恢复状态
         restoreSnapshot(scheme.viewState)
       } else {
-        // 无状态，默认使用顶视图
-        switchToViewPreset('top')
+        // 无状态（如新导入），默认使用顶视图并聚焦到物品中心
+        setViewPreset('top', sceneCenter.value, cameraDistance.value, 1)
       }
     },
     { immediate: true }

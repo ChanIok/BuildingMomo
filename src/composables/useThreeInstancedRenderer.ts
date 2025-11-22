@@ -12,13 +12,15 @@ import {
   Quaternion,
   Vector3,
   GLSL3,
+  DoubleSide,
+  Sphere,
 } from 'three'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { AppItem } from '@/types/editor'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useFurnitureStore } from '@/stores/furnitureStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { getThreeTextureArray } from './useThreeTextureArray'
+import { getThreeIconManager } from './useThreeIconManager'
 
 const MAX_INSTANCES = 10000
 
@@ -150,6 +152,8 @@ export function useThreeInstancedRenderer(
   const mesh = new InstancedMesh(baseGeometry, material, MAX_INSTANCES)
   // 关闭视锥体剔除，避免因包围球未更新导致大场景下消失
   mesh.frustumCulled = false
+  // 确保 Raycaster 始终检测实例，不受默认包围球限制
+  mesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
   mesh.instanceMatrix.setUsage(DynamicDrawUsage)
   mesh.count = 0
 
@@ -163,6 +167,8 @@ export function useThreeInstancedRenderer(
 
   const simpleBoxMesh = new InstancedMesh(baseGeometry, simpleBoxMaterial, MAX_INSTANCES)
   simpleBoxMesh.frustumCulled = false
+  // 确保 Raycaster 始终检测实例
+  simpleBoxMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
   simpleBoxMesh.instanceMatrix.setUsage(DynamicDrawUsage)
   simpleBoxMesh.count = 0
 
@@ -172,8 +178,8 @@ export function useThreeInstancedRenderer(
   const planeGeometry = new PlaneGeometry(100, 100)
 
   // 初始化纹理数组（使用 Texture2DArray）
-  const textureArray = getThreeTextureArray()
-  const arrayTexture = textureArray.initTextureArray()
+  const iconManager = getThreeIconManager()
+  const arrayTexture = iconManager.initTextureArray()
 
   // 为每个实例添加纹理索引属性（1个float: 纹理层索引）
   const textureIndices = new Float32Array(MAX_INSTANCES)
@@ -183,7 +189,7 @@ export function useThreeInstancedRenderer(
   const iconMaterial = new ShaderMaterial({
     uniforms: {
       textureArray: { value: arrayTexture },
-      textureDepth: { value: textureArray.getCurrentCapacity() }, // 动态纹理深度
+      textureDepth: { value: iconManager.getCurrentCapacity() }, // 动态纹理深度
       uDefaultColor: { value: new Color(0x94a3b8) }, // 默认颜色
     },
     vertexShader: `
@@ -262,6 +268,7 @@ export function useThreeInstancedRenderer(
     depthWrite: true,
     depthTest: true,
     glslVersion: GLSL3, // 启用 GLSL 3.0 （WebGL2）
+    // side: DoubleSide, // 双面渲染，确保 Raycaster 即使从背面射入也能检测到
   })
 
   const iconInstancedMesh = ref<InstancedMesh | null>(null)
@@ -272,6 +279,8 @@ export function useThreeInstancedRenderer(
   const iconMesh = new InstancedMesh(planeGeometry, iconMaterial, MAX_INSTANCES)
   // 关闭视锥体剔除，避免因包围球未更新导致大场景下消失
   iconMesh.frustumCulled = false
+  // 确保 Raycaster 始终检测实例
+  iconMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
   iconMesh.instanceMatrix.setUsage(DynamicDrawUsage)
   iconMesh.count = 0
 
@@ -448,7 +457,7 @@ export function useThreeInstancedRenderer(
     // 如果是 Icon 模式，需要预加载纹理
     if (mode === 'icon' && iconMeshTarget) {
       const itemIds = items.slice(0, instanceCount).map((item) => item.gameId)
-      await textureArray.preloadIcons(itemIds).catch((err) => {
+      await iconManager.preloadIcons(itemIds).catch((err) => {
         console.warn('[ThreeInstancedRenderer] 图标预加载失败:', err)
       })
 
@@ -456,10 +465,10 @@ export function useThreeInstancedRenderer(
       const material = iconMeshTarget.material as ShaderMaterial
       if (material.uniforms) {
         if (material.uniforms.textureArray) {
-          material.uniforms.textureArray.value = textureArray.getTextureArray()
+          material.uniforms.textureArray.value = iconManager.getTextureArray()
         }
         if (material.uniforms.textureDepth) {
-          material.uniforms.textureDepth.value = textureArray.getCurrentCapacity()
+          material.uniforms.textureDepth.value = iconManager.getCurrentCapacity()
         }
       }
     }
@@ -514,7 +523,7 @@ export function useThreeInstancedRenderer(
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
         iconMeshTarget.setMatrixAt(index, scratchMatrix)
 
-        const texIndex = textureArray.getTextureIndex(item.gameId)
+        const texIndex = iconManager.getTextureIndex(item.gameId)
         textureIndices[index] = texIndex
       }
 
