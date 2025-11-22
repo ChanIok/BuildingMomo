@@ -11,7 +11,7 @@
 
   <p>
     <img alt="Platform" src="https://img.shields.io/badge/platform-Web-blue?style=flat-square" />
-    <img alt="Status" src="https://img.shields.io/badge/status-开发中_80%25-yellow?style=flat-square" />
+    <img alt="Status" src="https://img.shields.io/badge/status-开发中_90%25-yellow?style=flat-square" />
     <img alt="License" src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" />
   </p>
 
@@ -36,21 +36,26 @@ BuildingMomo（搬砖吧大喵）
 
 ▸ 可视化编辑坐标，所见即所得
 
-💡 专为有特殊建造需求的玩家设计（如复杂建筑群调整、方案合并、快速成组）
+💡 专为有特殊建造需求的玩家设计（如复杂建筑群调整、多方案整合、快速成组）
 
 ## 🚀 快速开始
 
 ### 🌐 在线使用（推荐）
 
-访问 [在线编辑器](https://chaniok.github.io/BuildingMomo) 即可开始使用
+访问 [在线编辑器](https://chaniok.github.io/BuildingMomo) 即可开始使用。
 
 ### 💻 本地运行
 
+如果您是开发者或希望本地部署：
+
 ```bash
-# 安装依赖
+# 1. 安装依赖
 npm install
 
-# 启动开发服务器
+# 2. 获取最新物品数据与图标 (首次运行必须)
+npm run fetch-data
+
+# 3. 启动开发服务器
 npm run dev
 
 # 构建生产版本
@@ -59,15 +64,15 @@ npm run build
 
 ## 🚧 开发状态
 
-**项目开发中 (约 80% 完成)**
+**项目开发中 (约 90% 完成)**
 
-✅ **已完成**：导入/导出方案、可视化渲染、高度过滤、画布缩放/平移、精确移动与旋转、工作坐标系、撤销重做、组合编辑
+✅ **已完成**：导入/导出方案、可视化渲染、高度过滤、画布缩放/平移、精确移动与旋转、工作坐标系、撤销重做、组合编辑、3D视角控制
 
-🔨 **进行中**：UI优化、三视图切换、英文支持
+🔨 **进行中**：UI/UX优化、英文支持
 
 ## 🛠️ 技术栈
 
-Vue 3 · Vite · Konva.js · Pinia · Tailwind CSS · shadcn-vue
+Vue 3 · Vite · Three.js · Tresjs · Pinia · Tailwind CSS · shadcn-vue
 
 ## 🙏 致谢
 
@@ -76,4 +81,3 @@ Vue 3 · Vite · Konva.js · Pinia · Tailwind CSS · shadcn-vue
 ## 📄 开源协议
 
 本项目采用 [MIT 协议](LICENSE) 开源。项目 Logo 和游戏相关素材版权归《无限暖暖》开发商所有。
-

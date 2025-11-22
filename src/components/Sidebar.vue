@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import HeightFilter from './HeightFilter.vue'
 
 const editorStore = useEditorStore()
 const furnitureStore = useFurnitureStore()
@@ -265,16 +264,5 @@ function handleIconError(e: Event) {
       </div>
       <ScrollBar orientation="vertical" class="!w-1.5" />
     </ScrollArea>
-
-    <!-- 固定在底部的高度过滤器 -->
-    <div class="shrink-0 p-3 pt-0">
-      <HeightFilter
-        :min="editorStore.heightFilter.min"
-        :max="editorStore.heightFilter.max"
-        :current-min="editorStore.heightFilter.currentMin"
-        :current-max="editorStore.heightFilter.currentMax"
-        @update="({ min, max }) => editorStore.updateHeightFilter(min, max)"
-      />
-    </div>
   </div>
 </template>

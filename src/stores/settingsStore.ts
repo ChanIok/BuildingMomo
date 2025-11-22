@@ -6,22 +6,26 @@ export interface AppSettings {
   // 显示设置
   showFurnitureTooltip: boolean
   showBackground: boolean
-  iconShowThreshold: number
 
   // 数据设置
   autoUpdateFurniture: boolean
 
   // 编辑辅助
   enableDuplicateDetection: boolean
+
+  // 3D 视图设置
+  threeDisplayMode: 'box' | 'icon' | 'simple-box' // 3D 显示模式：立方体、图标或简化方块
+  threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
 }
 
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
   showFurnitureTooltip: true,
   showBackground: true,
-  iconShowThreshold: 0.3,
   autoUpdateFurniture: true,
   enableDuplicateDetection: true,
+  threeDisplayMode: 'simple-box',
+  threeSymbolScale: 1.0,
 }
 
 const STORAGE_KEY = 'buildingmomo_settings'

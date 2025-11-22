@@ -1,8 +1,7 @@
-import { ref, markRaw, watch, type Ref } from 'vue'
+import { ref, markRaw, type Ref } from 'vue'
 import { Raycaster, Vector2, Vector3, type Camera, type InstancedMesh } from 'three'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useEditorStore } from '@/stores/editorStore'
-import { useInputState } from './useInputState'
 
 interface SelectionRect {
   x: number
@@ -23,9 +22,6 @@ export function useThreeSelection(
   containerRef: Ref<HTMLElement | null>,
   transformDraggingRef?: Ref<boolean>
 ) {
-  // 使用统一的输入状态管理（包含鼠标按钮状态）
-  const { isShiftPressed, isAltPressed, isLeftMousePressed } = useInputState()
-
   const raycaster = markRaw(new Raycaster())
   const pointerNdc = markRaw(new Vector2())
 
@@ -33,75 +29,6 @@ export function useThreeSelection(
   const isSelecting = ref(false)
   const mouseDownPos = ref<{ x: number; y: number } | null>(null)
   const tempVec3 = markRaw(new Vector3())
-
-  // 记录最后已知的相对位置（用于画布外松开按键时）
-  const lastKnownPos = ref<{ x: number; y: number; rect: DOMRect } | null>(null)
-
-  // ==================== 清理函数 ====================
-  function cleanupSelectionState() {
-    mouseDownPos.value = null
-    isSelecting.value = false
-    selectionRect.value = null
-  }
-
-  // ==================== 私有辅助函数：避免重复逻辑 ====================
-
-  // 执行框选逻辑（被 performBoxSelection 和 finishSelection 复用）
-  function _executeBoxSelection(rect: SelectionRect) {
-    const camera = cameraRef.value
-    const container = containerRef.value
-    if (!camera || !container) return
-
-    const containerRect = container.getBoundingClientRect()
-
-    const selLeft = rect.x
-    const selTop = rect.y
-    const selRight = rect.x + rect.width
-    const selBottom = rect.y + rect.height
-
-    const idMap = selectionSources.indexToIdMap.value
-    if (!idMap) return
-
-    const visibleItems = editorStore.visibleItems
-
-    // 先构建一个 id -> item 的映射，确保只处理当前实例化的物品
-    const itemById = new Map<string, any>()
-    for (const item of visibleItems) {
-      itemById.set(item.internalId, item)
-    }
-
-    const selectedIds: string[] = []
-
-    for (const id of idMap.values()) {
-      const item = itemById.get(id)
-      if (!item) continue
-
-      // 使用游戏坐标转换为 Three.js 世界坐标，再投影到屏幕空间
-      coordinates3D.setThreeFromGame(tempVec3, { x: item.x, y: item.y, z: item.z })
-      tempVec3.project(camera)
-
-      const sx = (tempVec3.x + 1) * 0.5 * containerRect.width
-      const sy = (-tempVec3.y + 1) * 0.5 * containerRect.height
-
-      const withinRect = sx >= selLeft && sx <= selRight && sy >= selTop && sy <= selBottom
-
-      if (withinRect) {
-        selectedIds.push(id)
-      }
-    }
-
-    // 使用统一的响应式输入状态
-    const alt = isAltPressed.value
-    const shift = isShiftPressed.value
-
-    if (alt) {
-      if (selectedIds.length > 0) {
-        editorStore.deselectItems(selectedIds)
-      }
-    } else {
-      editorStore.updateSelection(selectedIds, shift)
-    }
-  }
 
   function getRelativePosition(evt: any) {
     const el = containerRef.value
@@ -137,9 +64,6 @@ export function useThreeSelection(
     const pos = getRelativePosition(evt)
     if (!pos) return
 
-    // 持续更新最后已知的位置
-    lastKnownPos.value = { x: pos.x, y: pos.y, rect: pos.rect }
-
     const dx = pos.x - mouseDownPos.value.x
     const dy = pos.y - mouseDownPos.value.y
     const distance = Math.hypot(dx, dy)
@@ -160,13 +84,9 @@ export function useThreeSelection(
 
   function handlePointerUp(evt: any) {
     if (transformDraggingRef?.value) {
-      cleanupSelectionState()
-      return
-    }
-
-    // pointerleave: 只清理鼠标位置，保留选框用于全局 watch 处理
-    // （全局 watch 会在左键松开时调用 finishSelection）
-    if (evt.type === 'pointerleave') {
+      mouseDownPos.value = null
+      isSelecting.value = false
+      selectionRect.value = null
       return
     }
 
@@ -177,7 +97,8 @@ export function useThreeSelection(
 
     const pos = getRelativePosition(evt)
     if (!start || !pos) {
-      cleanupSelectionState()
+      isSelecting.value = false
+      selectionRect.value = null
       return
     }
 
@@ -191,7 +112,8 @@ export function useThreeSelection(
       performBoxSelection(evt, rectInfo)
     }
 
-    cleanupSelectionState()
+    isSelecting.value = false
+    selectionRect.value = null
   }
 
   function performClickSelection(evt: any) {
@@ -216,6 +138,7 @@ export function useThreeSelection(
     if (!instancedMesh || !idMap) return
 
     const intersects = raycaster.intersectObject(instancedMesh, false)
+
     const hit = intersects[0]
 
     if (hit && hit.instanceId !== undefined) {
@@ -223,57 +146,73 @@ export function useThreeSelection(
     }
 
     if (internalId) {
-      // 使用统一的响应式输入状态
-      const shift = isShiftPressed.value
-      const alt = isAltPressed.value
+      const shift = evt.shiftKey
+      const alt = evt.altKey
 
       if (alt) {
         editorStore.deselectItems([internalId])
       } else {
         editorStore.toggleSelection(internalId, shift)
       }
-    } else if (!isShiftPressed.value) {
+    } else if (!evt.shiftKey) {
       editorStore.clearSelection()
     }
   }
 
-  function performBoxSelection(_evt: any, rect: SelectionRect) {
-    // 使用提取的辅助函数
-    _executeBoxSelection(rect)
+  function performBoxSelection(evt: any, rect: SelectionRect) {
+    const camera = cameraRef.value
+    const container = containerRef.value
+    if (!camera || !container) return
+
+    const containerRect = container.getBoundingClientRect()
+
+    const selLeft = rect.x
+    const selTop = rect.y
+    const selRight = rect.x + rect.width
+    const selBottom = rect.y + rect.height
+
+    const idMap = selectionSources.indexToIdMap.value
+    if (!idMap) return
+
+    const visibleItems = editorStore.items
+
+    // 先构建一个 id -> item 的映射，确保只处理当前实例化的物品
+    const itemById = new Map<string, any>()
+    for (const item of visibleItems) {
+      itemById.set(item.internalId, item)
+    }
+
+    const selectedIds: string[] = []
+
+    for (const id of idMap.values()) {
+      const item = itemById.get(id)
+      if (!item) continue
+
+      // 使用游戏坐标转换为 Three.js 世界坐标，再投影到屏幕空间
+      coordinates3D.setThreeFromGame(tempVec3, { x: item.x, y: item.y, z: item.z })
+      tempVec3.project(camera)
+
+      const sx = (tempVec3.x + 1) * 0.5 * containerRect.width
+      const sy = (-tempVec3.y + 1) * 0.5 * containerRect.height
+
+      const withinRect = sx >= selLeft && sx <= selRight && sy >= selTop && sy <= selBottom
+
+      if (withinRect) {
+        selectedIds.push(id)
+      }
+    }
+
+    const alt = evt.altKey
+    const shift = evt.shiftKey
+
+    if (alt) {
+      if (selectedIds.length > 0) {
+        editorStore.deselectItems(selectedIds)
+      }
+    } else {
+      editorStore.updateSelection(selectedIds, shift)
+    }
   }
-
-  // ==================== 画布外松开按键的处理 ====================
-
-  // 完成框选操作（用于画布外松开按键）
-  function finishSelection() {
-    if (!isSelecting.value || !selectionRect.value) {
-      cleanupSelectionState()
-      return
-    }
-
-    const rectInfo = selectionRect.value
-
-    // 使用矩形尺寸判断是否真正拖拽了（避免小抖动被当作框选）
-    const moveDistance = Math.hypot(rectInfo.width, rectInfo.height)
-
-    if (moveDistance < 3) {
-      // 小于阈值，不执行框选，只清理状态
-      cleanupSelectionState()
-      return
-    }
-
-    // 使用提取的辅助函数
-    _executeBoxSelection(rectInfo)
-
-    cleanupSelectionState()
-  }
-
-  // 监听左键释放（在画布外也能捕获）
-  watch(isLeftMousePressed, (pressed) => {
-    if (!pressed && isSelecting.value) {
-      finishSelection()
-    }
-  })
 
   return {
     selectionRect,

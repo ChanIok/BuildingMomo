@@ -8,7 +8,7 @@ import type { WorkingCoordinateSystem } from '../types/editor'
  */
 export const useUIStore = defineStore('ui', () => {
   // 视图模式状态
-  const viewMode = ref<'2d' | '3d'>('2d')
+  const viewMode = ref<'2d' | '3d'>('3d')
 
   // 工作坐标系状态
   const workingCoordinateSystem = ref<WorkingCoordinateSystem>({

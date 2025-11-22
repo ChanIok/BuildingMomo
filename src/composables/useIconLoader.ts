@@ -55,8 +55,8 @@ export function useIconLoader() {
         resolve(null)
       }
 
-      // 不设置 crossOrigin，避免 CORS 问题
-      // 我们只需要绘制图片，不需要读取像素数据
+      // 设置 crossOrigin 属性，支持跨域图片加载
+      img.crossOrigin = 'anonymous'
       img.src = iconUrl
     })
 

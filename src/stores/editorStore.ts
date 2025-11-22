@@ -118,37 +118,6 @@ export const useEditorStore = defineStore('editor', () => {
     return map
   })
 
-  // heightFilter: 动态计算z轴范围，智能处理用户过滤边界
-  const heightFilter = computed(() => {
-    const scheme = activeScheme.value
-    if (!scheme || scheme.items.length === 0) {
-      return {
-        min: 0,
-        max: 0,
-        currentMin: 0,
-        currentMax: 0,
-      }
-    }
-
-    // 实时计算当前z轴范围
-    const zValues = scheme.items.map((item) => item.z)
-    const min = Math.min(...zValues)
-    const max = Math.max(...zValues)
-
-    // 智能边界处理：用户设置的值若仍在范围内则保留，否则重置
-    const currentMin =
-      scheme.filterState.currentMin !== null
-        ? Math.max(min, Math.min(max, scheme.filterState.currentMin))
-        : min
-
-    const currentMax =
-      scheme.filterState.currentMax !== null
-        ? Math.max(min, Math.min(max, scheme.filterState.currentMax))
-        : max
-
-    return { min, max, currentMin, currentMax }
-  })
-
   const selectedItemIds = computed(() => activeScheme.value?.selectedItemIds ?? new Set<string>())
 
   // 计算属性：边界框
@@ -157,29 +126,29 @@ export const useEditorStore = defineStore('editor', () => {
 
     const xs = items.value.map((i) => i.x)
     const ys = items.value.map((i) => i.y)
+    const zs = items.value.map((i) => i.z)
 
     const minX = Math.min(...xs)
     const maxX = Math.max(...xs)
     const minY = Math.min(...ys)
     const maxY = Math.max(...ys)
+    const minZ = Math.min(...zs)
+    const maxZ = Math.max(...zs)
 
     return {
       minX,
       maxX,
       minY,
       maxY,
+      minZ,
+      maxZ,
       centerX: (minX + maxX) / 2,
       centerY: (minY + maxY) / 2,
+      centerZ: (minZ + maxZ) / 2,
       width: maxX - minX,
       height: maxY - minY,
+      depth: maxZ - minZ,
     }
-  })
-
-  // 计算属性：可见物品（经过高度过滤）
-  const visibleItems = computed(() => {
-    return items.value.filter(
-      (item) => item.z >= heightFilter.value.currentMin && item.z <= heightFilter.value.currentMax
-    )
   })
 
   // 计算属性：统计信息
@@ -197,12 +166,7 @@ export const useEditorStore = defineStore('editor', () => {
 
     return {
       totalItems: items.value.length,
-      visibleItems: visibleItems.value.length,
       selectedItems: selectedItemIds.value.size,
-      zRange: {
-        min: heightFilter.value.min,
-        max: heightFilter.value.max,
-      },
       groups: {
         totalGroups: groups.size,
         groupedItems: groupedItemsCount,
@@ -451,10 +415,6 @@ export const useEditorStore = defineStore('editor', () => {
       id: generateUUID(),
       name,
       items: [],
-      filterState: {
-        currentMin: null, // null 表示跟随全局最小值
-        currentMax: null, // null 表示跟随全局最大值
-      },
       selectedItemIds: new Set(),
     }
 
@@ -468,7 +428,7 @@ export const useEditorStore = defineStore('editor', () => {
     return newScheme.id
   }
 
-  // 方案管理：导入JSON为新方案
+  // 导入JSON为新方案
   async function importJSONAsScheme(
     fileContent: string,
     fileName: string,
@@ -514,10 +474,6 @@ export const useEditorStore = defineStore('editor', () => {
         name: schemeName,
         filePath: fileName,
         items: newItems,
-        filterState: {
-          currentMin: null, // 默认显示所有高度
-          currentMax: null,
-        },
         selectedItemIds: new Set(),
         lastModified: fileLastModified,
       }
@@ -582,13 +538,6 @@ export const useEditorStore = defineStore('editor', () => {
       const tabStore = useTabStore()
       tabStore.updateSchemeTabName(schemeId, newName)
     }
-  }
-
-  // 更新高度过滤器
-  function updateHeightFilter(newMin: number, newMax: number) {
-    if (!activeScheme.value) return
-    activeScheme.value.filterState.currentMin = newMin
-    activeScheme.value.filterState.currentMax = newMax
   }
 
   // 保存当前视图配置
@@ -831,7 +780,7 @@ export const useEditorStore = defineStore('editor', () => {
     saveHistory('selection')
 
     activeScheme.value.selectedItemIds.clear()
-    visibleItems.value.forEach((item) => {
+    items.value.forEach((item) => {
       activeScheme.value!.selectedItemIds.add(item.internalId)
     })
   }
@@ -844,7 +793,7 @@ export const useEditorStore = defineStore('editor', () => {
     saveHistory('selection')
 
     const newSelection = new Set<string>()
-    visibleItems.value.forEach((item) => {
+    items.value.forEach((item) => {
       if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
         newSelection.add(item.internalId)
       }
@@ -1223,9 +1172,7 @@ export const useEditorStore = defineStore('editor', () => {
 
     // 向后兼容的计算属性
     items,
-    heightFilter,
     bounds,
-    visibleItems,
     stats,
     selectedItemIds,
     selectedItems,
@@ -1242,7 +1189,6 @@ export const useEditorStore = defineStore('editor', () => {
     closeScheme,
     setActiveScheme,
     renameScheme,
-    updateHeightFilter,
     saveCurrentViewConfig,
     getSavedViewConfig,
     clearData,

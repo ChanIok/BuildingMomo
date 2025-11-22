@@ -25,3 +25,7 @@ dist-ssr
 
 # AI
 WARP.md
+
+# Downloaded assets
+public/assets/data/
+public/assets/furniture-icon/

@@ -1,3 +1,5 @@
+import type { ViewPreset } from '../composables/useThreeCamera'
+
 // 游戏内物品原始数据结构（对应JSON格式）
 export interface GameItem {
   ItemID: number
@@ -25,7 +27,7 @@ export interface GameItem {
 
 // 应用内部使用的物品数据结构
 export interface AppItem {
-  internalId: string // 内部唯一ID（用于Vue/Konva key）
+  internalId: string // 内部唯一ID（用于Vue key）
   gameId: number // 原始游戏ItemID
   instanceId: number // 原始InstanceID
   x: number // 平面X坐标
@@ -35,24 +37,18 @@ export interface AppItem {
   originalData: GameItem
 }
 
-// 高度过滤器配置（动态计算）
-export interface HeightFilter {
-  min: number // 物品的实际最小z坐标（动态计算）
-  max: number // 物品的实际最大z坐标（动态计算）
-  currentMin: number // 用户当前设置的最小过滤值
-  currentMax: number // 用户当前设置的最大过滤值
-}
-
-// 过滤状态（用户设置）
-export interface FilterState {
-  currentMin: number | null // null 表示跟随全局最小值
-  currentMax: number | null // null 表示跟随全局最大值
-}
-
 // JSON文件根结构
 export interface GameDataFile {
   NeedRestore?: boolean
   PlaceInfo: GameItem[]
+}
+
+// 3D视图状态
+export interface ThreeViewState {
+  position: [number, number, number] // 相机位置
+  target: [number, number, number] // 观察目标点
+  preset: ViewPreset | null // 视图预设
+  zoom: number // 相机缩放 (正交视图必需)
 }
 
 // 家园方案（多文档架构）
@@ -64,9 +60,9 @@ export interface HomeScheme {
 
   // 每个方案独立的状态
   items: AppItem[]
-  filterState: FilterState // 用户设置的过滤状态
   selectedItemIds: Set<string>
   currentViewConfig?: { scale: number; x: number; y: number } // 用户当前视图配置
+  viewState?: ThreeViewState // 3D视图状态
 
   // 历史记录栈（每个方案独立）
   history?: HistoryStack

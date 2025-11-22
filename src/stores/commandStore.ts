@@ -186,7 +186,7 @@ export const useCommandStore = defineStore('command', () => {
       label: '全选',
       shortcut: 'Ctrl+A',
       category: 'edit',
-      enabled: () => editorStore.visibleItems.length > 0,
+      enabled: () => editorStore.items.length > 0,
       execute: () => {
         console.log('[Command] 全选')
         editorStore.selectAll()
@@ -208,7 +208,7 @@ export const useCommandStore = defineStore('command', () => {
       label: '反选',
       shortcut: 'Ctrl+Shift+A',
       category: 'edit',
-      enabled: () => editorStore.visibleItems.length > 0,
+      enabled: () => editorStore.items.length > 0,
       execute: () => {
         console.log('[Command] 反选')
         editorStore.invertSelection()
@@ -452,7 +452,7 @@ export const useCommandStore = defineStore('command', () => {
     return command ? command.enabled() : false
   }
 
-  // 设置缩放函数（由 CanvasEditor 调用）
+  // 设置缩放函数（由编辑器调用）
   function setZoomFunctions(
     zoomIn: (() => void) | null,
     zoomOut: (() => void) | null,

@@ -44,7 +44,6 @@ const fullTimeTooltip = computed(() => {
 // 统计信息
 const stats = computed(() => ({
   total: editorStore.stats.totalItems,
-  visible: editorStore.stats.visibleItems,
   selected: editorStore.stats.selectedItems,
 }))
 
@@ -138,8 +137,6 @@ const handleDuplicateClick = () => {
         <!-- 统计信息 -->
         <div class="flex shrink-0 items-center gap-3 text-gray-600">
           <span class="text-xs">总计 {{ stats.total }}</span>
-          <span class="text-gray-300">|</span>
-          <span class="text-xs">可见 {{ stats.visible }}</span>
           <span class="text-gray-300">|</span>
           <span
             class="text-xs"

@@ -58,7 +58,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
         return
       }
 
-      // 空格键不在这里处理，由各 CanvasEditor 自行监听
+      // 空格键不在这里处理，由各编辑器自行监听
       if (event.code === 'Space') {
         event.preventDefault()
         return

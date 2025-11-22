@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, markRaw, watch, onActivated, onDeactivated, onMounted, toRef } from 'vue'
+import {
+  ref,
+  computed,
+  markRaw,
+  watch,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  toRef,
+} from 'vue'
 import { TresCanvas } from '@tresjs/core'
-import { OrbitControls, TransformControls } from '@tresjs/cientos'
-import { Object3D, MOUSE } from 'three'
+import { OrbitControls, TransformControls, Grid } from '@tresjs/cientos'
+import { Object3D, MOUSE, TextureLoader, SRGBColorSpace } from 'three'
+import backgroundUrl from '@/assets/home.webp'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useFurnitureStore } from '@/stores/furnitureStore'
@@ -12,8 +23,12 @@ import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
+import { releaseThreeIconManager } from '@/composables/useThreeIconManager'
+import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { Button } from '@/components/ui/button'
+import { Slider } from '@/components/ui/slider'
+import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,18 +58,51 @@ const isDev = import.meta.env.DEV
 
 // 3D 选择 & gizmo 相关引用
 const threeContainerRef = ref<HTMLElement | null>(null)
+// 监听容器尺寸变化，用于更新正交相机视锥体
+const { width: containerWidth, height: containerHeight } = useElementSize(threeContainerRef)
+
 const cameraRef = ref<any | null>(null) // 透视相机
 const orthoCameraRef = ref<any | null>(null) // 正交相机
 const orbitControlsRef = ref<any | null>(null)
-const gridRef = ref<any | null>(null) // 网格引用
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
+
+// 监听按键状态
+const { Ctrl } = useMagicKeys()
+const isCtrlPressed = computed(() => Ctrl?.value ?? false)
 
 // 调试面板状态
 const showCameraDebug = ref(false)
 
-// 当前活动的相机（根据视图类型动态切换）
-const activeCameraRef = computed(() => {
-  return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
+// 背景图相关
+const backgroundTexture = ref<any>(null)
+const backgroundSize = ref<{ width: number; height: number }>({ width: 100, height: 100 })
+const backgroundPosition = ref<[number, number, number]>([0, -50, 0])
+
+// 加载背景图
+onMounted(() => {
+  const loader = new TextureLoader()
+  loader.load(backgroundUrl, (texture) => {
+    texture.colorSpace = SRGBColorSpace
+    backgroundTexture.value = texture
+
+    const img = texture.image
+    const scale = 11.2
+    const xOffset = -20000
+    const yOffset = -18000 // Canvas Y -> Three Z
+
+    const width = img.width * scale
+    const height = img.height * scale
+
+    backgroundSize.value = { width, height }
+
+    // ThreeEditor: x,y 是左上角
+    // Three Plane: position 是中心点
+    backgroundPosition.value = [
+      xOffset + width / 2,
+      -1, // 微下移避免与网格 Z-fighting
+      yOffset + height / 2,
+    ]
+  })
 })
 
 // 创建共享的 isTransformDragging ref
@@ -63,26 +111,32 @@ const isTransformDragging = ref(false)
 // Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
 const orbitTarget = ref<[number, number, number]>([0, 0, 0])
 
+// 响应式绑定当前方案的视图状态
+// 已移至 useThreeCamera 内部处理
+
 // 相机导航（WASD/Q/Space）
 const {
   cameraPosition,
   cameraLookAt,
   cameraUp,
+  cameraZoom,
   controlMode,
   currentViewPreset,
   isOrthographic,
   isViewFocused,
   isNavKeyPressed,
+  cameraDistance,
   handleNavPointerDown,
   handleNavPointerMove,
   handleNavPointerUp,
   setPoseFromLookAt,
-  lookAtTarget,
-  switchToOrbitMode,
-  setViewPreset,
+  setZoom,
+  switchToViewPreset,
+  fitCameraToScene,
+  focusOnSelection,
 } = useThreeCamera(
   {
-    baseSpeed: 1000,
+    baseSpeed: 1500,
     shiftSpeedMultiplier: 4,
     mouseSensitivity: 0.002,
     pitchLimits: { min: -90, max: 90 },
@@ -97,9 +151,110 @@ const {
   }
 )
 
+// 当前活动的相机（根据视图类型动态切换）
+const activeCameraRef = computed(() => {
+  return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
+})
+
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 函数
-const { instancedMesh, indexToIdMap, updateSelectedInstancesMatrix, setHoveredItemId } =
-  useThreeInstancedRenderer(editorStore, furnitureStore, isTransformDragging)
+const {
+  instancedMesh,
+  iconInstancedMesh,
+  simpleBoxInstancedMesh,
+  indexToIdMap,
+  updateSelectedInstancesMatrix,
+  setHoveredItemId,
+  updateIconFacing,
+} = useThreeInstancedRenderer(editorStore, furnitureStore, isTransformDragging)
+
+// 当前 3D 显示模式（根据设置和视图类型动态决定）
+// 当前 3D 显示模式（完全由用户设置决定）
+const currentDisplayMode = computed(() => {
+  return settingsStore.settings.threeDisplayMode
+})
+
+// 是否显示 Box mesh
+const shouldShowBoxMesh = computed(() => currentDisplayMode.value === 'box')
+
+// 是否显示 Icon mesh
+const shouldShowIconMesh = computed(() => currentDisplayMode.value === 'icon')
+
+// 是否显示 Simple Box mesh
+const shouldShowSimpleBoxMesh = computed(() => currentDisplayMode.value === 'simple-box')
+
+// 当前用于拾取/选择的 InstancedMesh（根据显示模式切换）
+// 当前用于拾取/选择的 InstancedMesh（根据显示模式切换）
+const pickInstancedMesh = computed(() => {
+  if (shouldShowIconMesh.value) return iconInstancedMesh.value
+  if (shouldShowSimpleBoxMesh.value) return simpleBoxInstancedMesh.value
+  return instancedMesh.value
+})
+
+// 创建节流函数，用于透视视图下的图标朝向更新（避免过于频繁的更新）
+const updateIconFacingThrottled = useThrottleFn(
+  (normal: [number, number, number], up?: [number, number, number]) => {
+    updateIconFacing(normal, up)
+  },
+  150
+) // 每150ms最多更新一次
+
+// 在视图或模式变化时，更新 Icon 面朝方向（仅图标模式）
+watch(
+  [
+    () => currentDisplayMode.value,
+    () => currentViewPreset.value,
+    () => cameraPosition.value, // 监听相机位置，用于透视视图下的实时跟随
+    () => cameraLookAt.value, // 监听相机目标，用于计算朝向
+  ],
+  ([mode, preset, camPos, camTarget]) => {
+    if (mode !== 'icon') {
+      return
+    }
+
+    let normal: [number, number, number] = [0, 0, 1]
+
+    // 如果是正交视图预设，使用固定朝向（保持现有逻辑）
+    if (preset && preset !== 'perspective') {
+      switch (preset) {
+        case 'top':
+          normal = [0, 1, 0]
+          break
+        case 'bottom':
+          normal = [0, -1, 0]
+          break
+        case 'front':
+          normal = [0, 0, 1]
+          break
+        case 'back':
+          normal = [0, 0, -1]
+          break
+        case 'right':
+          normal = [1, 0, 0]
+          break
+        case 'left':
+          normal = [-1, 0, 0]
+          break
+      }
+      // 正交视图：立即更新，无需节流（切换频率低）
+      updateIconFacing(normal)
+    } else {
+      // 透视视图：计算从目标点指向相机的方向，使图标法线朝向相机（图标面向相机）
+      const dirX = camPos[0] - camTarget[0]
+      const dirY = camPos[1] - camTarget[1]
+      const dirZ = camPos[2] - camTarget[2]
+
+      // 归一化向量
+      const len = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
+      if (len > 0.0001) {
+        normal = [dirX / len, dirY / len, dirZ / len]
+      }
+
+      // 透视视图：使用节流更新，并传入 cameraUp 向量防止图标绕法线旋转
+      updateIconFacingThrottled(normal, cameraUp.value)
+    }
+  },
+  { immediate: true }
+)
 
 // 然后初始化 gizmo，传入 updateSelectedInstancesMatrix
 const {
@@ -116,16 +271,11 @@ const {
   orbitControlsRef
 )
 
-const {
-  selectionRect,
-  handlePointerDown,
-  handlePointerMove,
-  handlePointerUp,
-} = useThreeSelection(
+const { selectionRect, handlePointerDown, handlePointerMove, handlePointerUp } = useThreeSelection(
   editorStore,
   activeCameraRef,
   {
-    instancedMesh,
+    instancedMesh: pickInstancedMesh,
     indexToIdMap,
   },
   threeContainerRef,
@@ -144,7 +294,7 @@ const {
   activeCameraRef,
   threeContainerRef,
   {
-    instancedMesh,
+    instancedMesh: pickInstancedMesh,
     indexToIdMap,
   },
   toRef(settingsStore.settings, 'showFurnitureTooltip'),
@@ -159,8 +309,38 @@ function handlePointerMoveWithTooltip(evt: PointerEvent) {
   handleTooltipPointerMove(evt, isSelecting)
 }
 
+// 滑块绑定的代理（Slider 组件通常使用数组）
+const symbolScaleProxy = computed({
+  get: () => [settingsStore.settings.threeSymbolScale],
+  set: (val) => {
+    if (val && val.length > 0 && typeof val[0] === 'number') {
+      settingsStore.settings.threeSymbolScale = val[0]
+    }
+  },
+})
+
+// 处理容器滚轮事件（用于 Ctrl+滚轮 缩放图标/方块）
+function handleContainerWheel(evt: WheelEvent) {
+  // 仅在图标或简化方块模式下且按下 Ctrl 键时生效
+  if ((shouldShowIconMesh.value || shouldShowSimpleBoxMesh.value) && evt.ctrlKey) {
+    evt.preventDefault()
+    evt.stopPropagation()
+
+    // 计算新的缩放值
+    const delta = evt.deltaY > 0 ? -0.1 : 0.1
+    const current = settingsStore.settings.threeSymbolScale
+    const next = Math.min(Math.max(current + delta, 0.1), 3.0)
+
+    // 保留一位小数
+    settingsStore.settings.threeSymbolScale = Number(next.toFixed(1))
+  }
+}
+
 // 容器级指针事件：先交给导航，再交给选择/tooltip
 function handleContainerPointerDown(evt: PointerEvent) {
+  // 捕获指针，确保移出画布后仍能响应事件
+  ;(evt.target as HTMLElement).setPointerCapture(evt.pointerId)
+
   // 如果右键菜单已打开，点击画布任意位置先关闭菜单
   if (contextMenuOpen.value) {
     contextMenuOpen.value = false
@@ -176,12 +356,12 @@ function handleContainerPointerMove(evt: PointerEvent) {
 }
 
 function handleContainerPointerUp(evt: PointerEvent) {
+  ;(evt.target as HTMLElement).releasePointerCapture(evt.pointerId)
   handleNavPointerUp(evt)
   handlePointerUp(evt)
 }
 
-function handleContainerPointerLeave(evt: PointerEvent) {
-  handleContainerPointerUp(evt)
+function handleContainerPointerLeave() {
   hideTooltip()
 }
 
@@ -209,59 +389,32 @@ function handleOrbitChange() {
   if (controlMode.value !== 'orbit') return
   if (!activeCameraRef.value) return
 
+  // 尝试获取 OrbitControls 的内部实例
+  // Cientos v4+ 通过 .instance 暴露底层 Three.js 实例
+  const controls = orbitControlsRef.value?.instance || orbitControlsRef.value?.value
+  if (!controls) return
+
   const cam = activeCameraRef.value as any
   const pos = cam.position
-  const target = orbitTarget.value
 
-  // 在透视模式下，同步相机旋转后的姿态
-  if (!isOrthographic.value) {
-    setPoseFromLookAt([pos.x, pos.y, pos.z], target)
+  // 从控制器实例直接获取最新的 target
+  const currentTarget = controls.target
+  if (!currentTarget) return
+
+  const targetArray: [number, number, number] = [currentTarget.x, currentTarget.y, currentTarget.z]
+
+  // 同步更新本地的 orbitTarget，确保下次切换视图时读取到的是正确位置
+  // 注意：这里更新 ref 会触发 OrbitControls 的 props 更新，但因为值相同，通常不会造成问题
+  orbitTarget.value = targetArray
+
+  // 记录当前的 Zoom
+  if (cam.zoom !== undefined) {
+    setZoom(cam.zoom)
   }
+
+  // 同步相机姿态（位置和目标点）
+  setPoseFromLookAt([pos.x, pos.y, pos.z], targetArray)
 }
-
-// 计算场景中心（用于初始化相机位置）
-const sceneCenter = computed<[number, number, number]>(() => {
-  if (editorStore.items.length === 0) {
-    return [0, 0, 0]
-  }
-
-  const bounds = editorStore.bounds
-  const heightFilter = editorStore.heightFilter
-
-  // 安全检查：bounds 可能为 null
-  if (!bounds) {
-    return [0, (heightFilter.min + heightFilter.max) / 2, 0]
-  }
-
-  return [
-    (bounds.minX + bounds.maxX) / 2,
-    (heightFilter.min + heightFilter.max) / 2, // Z轴（高度）
-    (bounds.minY + bounds.maxY) / 2,
-  ]
-})
-
-// 计算合适的相机距离
-const cameraDistance = computed(() => {
-  if (editorStore.items.length === 0) {
-    return 5000
-  }
-
-  const bounds = editorStore.bounds
-  const heightFilter = editorStore.heightFilter
-
-  // 安全检查：bounds 可能为 null
-  if (!bounds) {
-    const rangeZ = heightFilter.max - heightFilter.min
-    return Math.max(rangeZ * 1, 3000)
-  }
-
-  const rangeX = bounds.maxX - bounds.minX
-  const rangeY = bounds.maxY - bounds.minY
-  const rangeZ = heightFilter.max - heightFilter.min
-
-  const maxRange = Math.max(rangeX, rangeY, rangeZ)
-  return Math.max(maxRange * 1, 3000)
-})
 
 // 计算正交相机的视锥体参数
 const orthoFrustum = computed(() => {
@@ -270,8 +423,9 @@ const orthoFrustum = computed(() => {
   const size = distance * 0.93
 
   // 获取容器宽高比（默认 16:9，实际会由 TresCanvas 自动适配）
-  const container = threeContainerRef.value
-  const aspect = container ? container.clientWidth / container.clientHeight : 16 / 9
+  const w = containerWidth.value
+  const h = containerHeight.value
+  const aspect = h > 0 ? w / h : 16 / 9
 
   return {
     left: (-size * aspect) / 2,
@@ -287,86 +441,56 @@ const gridRotation = computed<[number, number, number]>(() => {
 
   switch (preset) {
     case 'front':
-    case 'back':
-      // 前/后视图: XY 平面（垂直墙面），绕 X 轴旋转 90°
+      // 前视图: XY 平面，法线朝 +Z
       return [Math.PI / 2, 0, 0]
+    case 'back':
+      // 后视图: XY 平面，法线朝 -Z
+      return [-Math.PI / 2, 0, 0]
 
     case 'left':
-    case 'right':
-      // 左/右视图: YZ 平面（垂直墙面），绕 Z 轴旋转 90°
+      // 左视图: YZ 平面，法线朝 -X
       return [0, 0, Math.PI / 2]
+    case 'right':
+      // 右视图: YZ 平面，法线朝 +X
+      return [0, 0, -Math.PI / 2]
+
+    case 'bottom':
+      // 底视图: XZ 平面，法线朝 -Y
+      return [Math.PI, 0, 0]
 
     case 'top':
-    case 'bottom':
     case 'perspective':
     default:
-      // 顶/底/透视视图: XZ 平面（水平地面），默认方向
+      // 顶/透视视图: XZ 平面，法线朝 +Y
       return [0, 0, 0]
   }
 })
 
-// 计算并设置最佳相机位置（类似2D视图的fitToView）
-function fitCameraToScene() {
-  const center = sceneCenter.value
-  const distance = cameraDistance.value
+// 聚焦到整个场景 (别名，兼容 CommandStore 命名)
 
-  const position: [number, number, number] = [
-    center[0] + distance * 0.6,
-    center[1] + distance * 0.8,
-    center[2] + distance * 0.6,
-  ]
-
-  orbitTarget.value = center
-  setPoseFromLookAt(position, center)
-}
-
-// 聚焦到选中物品的中心
-function focusOnSelection() {
-  const newTarget = switchToOrbitMode()
-  if (newTarget) orbitTarget.value = newTarget
-  const center = editorStore.getSelectedItemsCenter?.()
-  if (center) {
-    const target: [number, number, number] = [center.x, center.z, center.y]
-    orbitTarget.value = target
-    lookAtTarget(target)
+// 背景显示条件
+const shouldShowBackground = computed(() => {
+  if (!settingsStore.settings.showBackground) return false
+  // 仅在 顶/底/透视 视图显示，侧视图隐藏
+  const hiddenPresets = ['front', 'back', 'left', 'right']
+  if (currentViewPreset.value && hiddenPresets.includes(currentViewPreset.value)) {
+    return false
   }
-}
-
-// 聚焦到整个场景
-function focusOnScene() {
-  const newTarget = switchToOrbitMode()
-  if (newTarget) orbitTarget.value = newTarget
-  fitCameraToScene()
-}
+  return true
+})
 
 // 智能更新视图：方案切换或首次加载时重置视角
-watch(
-  () => editorStore.activeSchemeId,
-  () => {
-    if (editorStore.activeSchemeId) {
-      fitCameraToScene()
-    }
-  },
-  { immediate: true }
-)
+// 已移至 useThreeCamera 内部处理，通过监听 activeSchemeId 自动恢复快照或设置默认视图
 
 // 视图切换函数（供命令系统调用）
 function switchToView(preset: ViewPreset) {
-  const center = sceneCenter.value
-  const distance = cameraDistance.value
-
-  // 切换到预设视图
-  setViewPreset(preset, center, distance)
-
-  // 确保在 Orbit 模式
-  // const newTarget = switchToOrbitMode()
-  // if (newTarget) orbitTarget.value = newTarget
+  switchToViewPreset(preset)
 }
 
 // 当 3D 视图激活时，注册视图函数
 onActivated(() => {
   // 3D视图不需要缩放功能，但需要重置视图和聚焦选中功能
-  commandStore.setZoomFunctions(null, null, focusOnScene, focusOnSelection)
+  commandStore.setZoomFunctions(null, null, fitCameraToScene, focusOnSelection)
   // 注册视图切换函数
   commandStore.setViewPresetFunction(switchToView)
 })
@@ -377,15 +501,11 @@ onDeactivated(() => {
   commandStore.setViewPresetFunction(null)
 })
 
-// 设置网格深度控制，使其显示在物体后面
-onMounted(() => {
-  if (gridRef.value) {
-    const grid = gridRef.value
-    if (grid.material) {
-      grid.material.depthWrite = false
-      grid.renderOrder = -1
-    }
-  }
+// 组件卸载时释放纹理数组引用
+onUnmounted(() => {
+  // 释放纹理数组的引用计数
+  // 当所有 ThreeEditor 组件都卸载后，纹理数组会自动清理 GPU 内存
+  releaseThreeIconManager()
 })
 </script>
 
@@ -494,12 +614,13 @@ onMounted(() => {
     <div
       v-if="editorStore.items.length > 0"
       ref="threeContainerRef"
-      class="absolute inset-0"
+      class="absolute inset-0 overflow-hidden"
       @pointerdown="handleContainerPointerDown"
       @pointermove="handleContainerPointerMove"
       @pointerup="handleContainerPointerUp"
       @pointerleave="handleContainerPointerLeave"
       @contextmenu="handleContextMenu"
+      @wheel="handleContainerWheel"
     >
       <TresCanvas clear-color="#f3f4f6">
         <!-- 透视相机 - perspective 视图 -->
@@ -509,9 +630,10 @@ onMounted(() => {
           :position="cameraPosition"
           :look-at="cameraLookAt"
           :up="cameraUp"
+          :zoom="cameraZoom"
           :fov="50"
           :near="100"
-          :far="150000"
+          :far="100000"
         />
 
         <!-- 正交相机 - 六个方向视图 -->
@@ -521,12 +643,13 @@ onMounted(() => {
           :position="cameraPosition"
           :look-at="cameraLookAt"
           :up="cameraUp"
+          :zoom="cameraZoom"
           :left="orthoFrustum.left"
           :right="orthoFrustum.right"
           :top="orthoFrustum.top"
           :bottom="orthoFrustum.bottom"
           :near="100"
-          :far="150000"
+          :far="100000"
         />
 
         <!-- 轨道控制器：透视视图下使用中键旋转，正交视图下使用中键平移 -->
@@ -538,6 +661,8 @@ onMounted(() => {
           :enabled="controlMode === 'orbit'"
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
+          :enable-zoom="!isCtrlPressed"
+          :zoomSpeed="2.5"
           :mouseButtons="isOrthographic ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }"
           @change="handleOrbitChange"
         />
@@ -546,9 +671,31 @@ onMounted(() => {
         <TresAmbientLight :intensity="0.6" />
         <TresDirectionalLight :position="[1000, 2000, 1000]" :intensity="0.8" :cast-shadow="true" />
 
+        <!-- 背景地图 -->
+        <TresMesh
+          v-if="backgroundTexture && shouldShowBackground"
+          :position="backgroundPosition"
+          :rotation="[-Math.PI / 2, 0, 0]"
+        >
+          <TresPlaneGeometry :args="[backgroundSize.width, backgroundSize.height]" />
+          <TresMeshBasicMaterial :map="backgroundTexture" :tone-mapped="false" />
+        </TresMesh>
+
         <!-- 辅助元素 - 适配大场景 -->
         <TresGroup :rotation="gridRotation">
-          <TresGridHelper ref="gridRef" :args="[40000, 100, 0xcccccc, 0xe5e5e5]" />
+          <!-- 使用 Grid 组件替换 TresGridHelper -->
+          <Grid
+            v-if="backgroundTexture"
+            :args="[backgroundSize.width, backgroundSize.height]"
+            :position="[backgroundPosition[0], 0, backgroundPosition[2]]"
+            :cell-size="1000"
+            :section-size="1000"
+            :cell-color="'#cccccc'"
+            :section-color="'#cccccc'"
+            :fade-distance="50000"
+            :fade-strength="0.5"
+            :infinite-grid="false"
+          />
         </TresGroup>
         <TresAxesHelper :args="[5000]" />
 
@@ -573,8 +720,13 @@ onMounted(() => {
           @change="handleGizmoChange"
         />
 
-        <!-- Instanced 渲染 -->
-        <primitive v-if="instancedMesh" :object="instancedMesh" />
+        <!-- Instanced 渲染：按显示模式切换 -->
+        <primitive v-if="shouldShowBoxMesh && instancedMesh" :object="instancedMesh" />
+        <primitive v-if="shouldShowIconMesh && iconInstancedMesh" :object="iconInstancedMesh" />
+        <primitive
+          v-if="shouldShowSimpleBoxMesh && simpleBoxInstancedMesh"
+          :object="simpleBoxInstancedMesh"
+        />
       </TresCanvas>
 
       <!-- 3D 框选矩形 -->
@@ -620,9 +772,9 @@ onMounted(() => {
         <HoverCardTrigger as-child>
           <Button variant="outline" size="sm" class="shadow-md">
             <Camera class="mr-2 h-4 w-4" />
-            <span v-if="currentViewPreset">
+            <span>
               {{
-                currentViewPreset === 'perspective'
+                !isOrthographic
                   ? '透视'
                   : currentViewPreset === 'top'
                     ? '顶视图'
@@ -634,10 +786,11 @@ onMounted(() => {
                           ? '后视图'
                           : currentViewPreset === 'right'
                             ? '右视图'
-                            : '左视图'
+                            : currentViewPreset === 'left'
+                              ? '左视图'
+                              : '正交视图'
               }}
             </span>
-            <span v-else>自定义</span>
           </Button>
         </HoverCardTrigger>
         <HoverCardContent align="end" class="w-48 p-1">
@@ -707,7 +860,7 @@ onMounted(() => {
     <!-- 视图信息 -->
     <div v-if="editorStore.items.length > 0" class="absolute right-4 bottom-4 space-y-2">
       <div class="rounded-md bg-white/90 px-3 py-2 text-xs text-gray-600 shadow-sm">
-        <div>物品数量: {{ editorStore.visibleItems.length }} / {{ editorStore.items.length }}</div>
+        <div>物品数量: {{ editorStore.items.length }}</div>
         <div v-if="editorStore.selectedItemIds.size > 0">
           已选中: {{ editorStore.selectedItemIds.size }}
         </div>
@@ -724,8 +877,30 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 图标/方块大小控制 (仅在图标或简化方块模式显示) -->
+    <div v-if="shouldShowIconMesh || shouldShowSimpleBoxMesh" class="absolute bottom-4 left-4 w-64">
+      <Item
+        variant="muted"
+        size="sm"
+        class="border-gray-200 bg-white/90 shadow-md backdrop-blur-sm"
+      >
+        <ItemContent>
+          <div class="mb-2 flex items-center justify-between">
+            <ItemTitle class="text-xs font-medium">图标/方块大小</ItemTitle>
+            <span class="text-xs text-gray-500"
+              >{{ Math.round(settingsStore.settings.threeSymbolScale * 100) }}%</span
+            >
+          </div>
+          <Slider v-model="symbolScaleProxy" :max="3" :min="0.1" :step="0.1" />
+          <ItemDescription class="mt-2 text-[10px] text-gray-400">
+            Ctrl + 滚轮快速调整
+          </ItemDescription>
+        </ItemContent>
+      </Item>
+    </div>
+
     <!-- 相机状态调试面板 (开发模式) -->
-    <div v-if="isDev" class="absolute bottom-4 left-4">
+    <div v-if="isDev" class="absolute bottom-32 left-4">
       <button
         @click="showCameraDebug = !showCameraDebug"
         class="rounded-md bg-gray-800/80 px-2 py-1 text-xs text-white hover:bg-gray-700/80"
@@ -740,7 +915,10 @@ onMounted(() => {
         <div class="mb-1 font-bold text-green-300">📷 相机状态</div>
         <div class="space-y-0.5">
           <div><span class="text-gray-400">模式:</span> {{ controlMode }}</div>
-          <div><span class="text-gray-400">视图:</span> {{ currentViewPreset || '自定义' }}</div>
+          <div>
+            <span class="text-gray-400">视图:</span>
+            {{ !isOrthographic ? '透视' : currentViewPreset || '正交' }}
+          </div>
           <div><span class="text-gray-400">投影:</span> {{ isOrthographic ? '正交' : '透视' }}</div>
           <div class="mt-1 text-gray-400">位置:</div>
           <div class="pl-2">
@@ -766,6 +944,7 @@ onMounted(() => {
           <div>
             <span class="text-gray-400">导航键:</span> {{ isNavKeyPressed ? '激活' : '未激活' }}
           </div>
+          <div><span class="text-gray-400">缩放:</span> {{ cameraZoom.toFixed(2) }}</div>
         </div>
       </div>
     </div>
