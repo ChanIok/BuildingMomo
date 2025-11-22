@@ -374,6 +374,10 @@ export function useThreeIconManager() {
   function dispose() {
     if (textureArray) {
       textureArray.dispose()
+      // 防御性措施：显式清空 Data3DTexture 内部的数据引用
+      if (textureArray.image) {
+        textureArray.image.data = null
+      }
       textureArray = null
     }
     textureData = null

@@ -1,4 +1,4 @@
-import { ref, watch, markRaw, type Ref } from 'vue'
+import { ref, watch, markRaw, onUnmounted, type Ref } from 'vue'
 import {
   BoxGeometry,
   PlaneGeometry,
@@ -19,7 +19,7 @@ import type { AppItem } from '@/types/editor'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useFurnitureStore } from '@/stores/furnitureStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { getThreeIconManager } from './useThreeIconManager'
+import { getThreeIconManager, releaseThreeIconManager } from './useThreeIconManager'
 
 const MAX_INSTANCES = 10000
 
@@ -739,6 +739,46 @@ export function useThreeInstancedRenderer(
       updateInstancesColor()
     }
   )
+
+  onUnmounted(() => {
+    console.log('[ThreeInstancedRenderer] Disposing resources')
+
+    // 1. 显式断开材质对纹理的引用（关键：打破对巨大 Uint8Array 的引用链）
+    if (iconMaterial.uniforms.textureArray) {
+      iconMaterial.uniforms.textureArray.value = null
+    }
+    // 辅助：断开其他引用
+    if (iconMaterial.uniforms.uDefaultColor) {
+      iconMaterial.uniforms.uDefaultColor.value = null
+    }
+
+    // 2. 销毁几何体和材质
+    baseGeometry.dispose()
+    material.dispose()
+    simpleBoxMaterial.dispose()
+    planeGeometry.dispose()
+    iconMaterial.dispose()
+
+    // 3. 显式断开 Mesh 对 Geometry 和 Material 的引用，并置空 ref
+    if (instancedMesh.value) {
+      instancedMesh.value.geometry = null as any
+      instancedMesh.value.material = null as any
+      instancedMesh.value = null
+    }
+    if (iconInstancedMesh.value) {
+      iconInstancedMesh.value.geometry = null as any
+      iconInstancedMesh.value.material = null as any
+      iconInstancedMesh.value = null
+    }
+    if (simpleBoxInstancedMesh.value) {
+      simpleBoxInstancedMesh.value.geometry = null as any
+      simpleBoxInstancedMesh.value.material = null as any
+      simpleBoxInstancedMesh.value = null
+    }
+
+    // 4. 释放图标管理器引用
+    releaseThreeIconManager()
+  })
 
   return {
     instancedMesh,

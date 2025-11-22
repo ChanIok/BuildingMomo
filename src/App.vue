@@ -90,12 +90,11 @@ onMounted(async () => {
             <!-- 有标签时：根据类型渲染 -->
             <template v-else>
               <!-- 方案编辑器 -->
-              <template v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme">
-                <!-- 默认使用3D视图 -->
-                <KeepAlive>
-                  <ThreeEditor />
-                </KeepAlive>
-              </template>
+              <KeepAlive>
+                <ThreeEditor
+                  v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme"
+                />
+              </KeepAlive>
 
               <!-- 文档查看器 -->
               <KeepAlive>
