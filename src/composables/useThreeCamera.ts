@@ -10,6 +10,7 @@ import {
 } from 'vue'
 import { useRafFn, useMagicKeys } from '@vueuse/core'
 import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
 
 // ============================================================
 // 📦 Types & Constants
@@ -96,7 +97,7 @@ export interface CameraControllerResult {
   isViewFocused: Ref<boolean>
   isNavKeyPressed: Ref<boolean>
   controlMode: Ref<'orbit' | 'flight'>
-  currentViewPreset: Ref<ViewPreset | null>
+  // currentViewPreset: Ref<ViewPreset | null> // 已移至 UI Store
   isOrthographic: Ref<boolean>
   sceneCenter: Ref<Vec3>
   cameraDistance: Ref<number>
@@ -151,6 +152,7 @@ export function useThreeCamera(
 ): CameraControllerResult {
   // === 引入 Store ===
   const editorStore = useEditorStore()
+  const uiStore = useUIStore()
   const baseSpeed = options.baseSpeed ?? 1000
   const shiftSpeedMultiplier = options.shiftSpeedMultiplier ?? 4
   const mouseSensitivity = options.mouseSensitivity ?? 0.002
@@ -169,7 +171,7 @@ export function useThreeCamera(
     target: [0, 0, 0],
     yaw: 0,
     pitch: 0,
-    viewPreset: 'perspective',
+    viewPreset: 'perspective', // 仅用于初始化，后续由 UI Store 管理逻辑
     up: [0, 1, 0],
     zoom: 1,
   })
@@ -252,7 +254,7 @@ export function useThreeCamera(
         editorStore.activeScheme.viewState = {
           position: [...newVal.position],
           target: [...newVal.target],
-          preset: newVal.viewPreset,
+          preset: uiStore.currentViewPreset,
           zoom: newVal.zoom,
         }
       }
@@ -452,6 +454,9 @@ export function useThreeCamera(
       zoom: newZoom ?? (preset === 'perspective' ? 1 : state.value.zoom),
     }
 
+    // 同步到 UI Store
+    uiStore.setCurrentViewPreset(preset)
+
     // 直接切换模式
     mode.value = {
       kind: 'orbit',
@@ -473,7 +478,7 @@ export function useThreeCamera(
     const currentDist = Math.sqrt(dx * dx + dy * dy + dz * dz)
 
     const isCurrentlyPerspective =
-      state.value.viewPreset === 'perspective' ||
+      uiStore.currentViewPreset === 'perspective' ||
       (mode.value.kind === 'orbit' && mode.value.projection === 'perspective')
     const isSwitchingToPerspective = preset === 'perspective'
 
@@ -540,6 +545,13 @@ export function useThreeCamera(
     state.value.viewPreset = snapshot.preset
     state.value.zoom = snapshot.zoom ?? 1
 
+    // 同步到 UI Store
+    if (snapshot.preset) {
+      uiStore.setCurrentViewPreset(snapshot.preset)
+    } else {
+      uiStore.setCurrentViewPreset('perspective')
+    }
+
     const dir: Vec3 = [
       snapshot.target[0] - snapshot.position[0],
       snapshot.target[1] - snapshot.position[1],
@@ -586,13 +598,14 @@ export function useThreeCamera(
       if (!isActive) return
 
       // 1. 在正交预设视图下，强制同步 up 向量保持坐标对齐
+      const currentPreset = uiStore.currentViewPreset
       if (
         mode.value.kind === 'orbit' &&
         mode.value.projection === 'orthographic' &&
-        state.value.viewPreset &&
-        state.value.viewPreset !== 'perspective'
+        currentPreset &&
+        currentPreset !== 'perspective'
       ) {
-        const config = VIEW_PRESETS[state.value.viewPreset]
+        const config = VIEW_PRESETS[currentPreset]
         state.value.up = [...config.up]
       }
 
@@ -652,12 +665,7 @@ export function useThreeCamera(
   // 🔍 Focus & Fit Logic
   // ============================================================
 
-  const currentViewPreset = computed(() => {
-    // 透视投影下，即使没有显式预设，也统一视为 "perspective"，避免出现"自定义视角"概念
-    if (state.value.viewPreset) return state.value.viewPreset
-    if (mode.value.kind === 'orbit' && mode.value.projection === 'perspective') return 'perspective'
-    return null
-  })
+  // const currentViewPreset = computed(() => { ... }) // 移除了内部 computed
 
   const isOrthographic = computed(
     () => mode.value.kind === 'orbit' && mode.value.projection === 'orthographic'
@@ -665,7 +673,7 @@ export function useThreeCamera(
 
   function fitCameraToScene() {
     // 使用当前视图预设重置；若没有预设则按透视视图处理
-    const preset = currentViewPreset.value ?? 'perspective'
+    const preset = uiStore.currentViewPreset ?? 'perspective'
     // 强制使用全局场景中心和全景距离，并重置缩放为 1
     setViewPreset(preset, sceneCenter.value, cameraDistance.value, 1)
   }
@@ -789,7 +797,7 @@ export function useThreeCamera(
     isViewFocused,
     isNavKeyPressed,
     controlMode: computed(() => (mode.value.kind === 'flight' ? 'flight' : 'orbit')),
-    currentViewPreset,
+    // currentViewPreset, // 移除导出
     isOrthographic,
     sceneCenter,
     cameraDistance,

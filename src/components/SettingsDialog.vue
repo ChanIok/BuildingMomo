@@ -10,13 +10,6 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 const props = defineProps<{
   open: boolean
@@ -78,27 +71,7 @@ const settingsStore = useSettingsStore()
         </div>
 
         <!-- 3D 视图设置分组 -->
-        <div class="border-t pt-4">
-          <h3 class="mb-3 text-sm font-medium">3D 视图</h3>
-        </div>
-
-        <!-- 3D 显示模式选择 -->
-        <div class="flex items-center justify-between">
-          <div class="space-y-0.5">
-            <Label>3D 视图显示模式</Label>
-            <p class="text-xs text-muted-foreground">选择在 3D 场景中如何呈现物品</p>
-          </div>
-          <Select v-model="settingsStore.settings.threeDisplayMode">
-            <SelectTrigger class="w-[140px]">
-              <SelectValue placeholder="选择模式" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="box">完整体积</SelectItem>
-              <SelectItem value="icon">图标模式</SelectItem>
-              <SelectItem value="simple-box">简化方块</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <!-- 3D 视图显示模式选择已移至侧边栏顶部工具栏 -->
       </div>
     </DialogContent>
   </Dialog>

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { WorkingCoordinateSystem } from '../types/editor'
+import type { ViewPreset } from '../composables/useThreeCamera'
 
 /**
  * UI状态管理Store
@@ -9,6 +10,9 @@ import type { WorkingCoordinateSystem } from '../types/editor'
 export const useUIStore = defineStore('ui', () => {
   // 视图模式状态
   const viewMode = ref<'2d' | '3d'>('3d')
+
+  // 当前视图预设（透视、顶、前...）
+  const currentViewPreset = ref<ViewPreset>('perspective')
 
   // 工作坐标系状态
   const workingCoordinateSystem = ref<WorkingCoordinateSystem>({
@@ -26,6 +30,11 @@ export const useUIStore = defineStore('ui', () => {
   function setViewMode(mode: '2d' | '3d') {
     viewMode.value = mode
     console.log('[UIStore] View mode set to:', viewMode.value)
+  }
+
+  function setCurrentViewPreset(preset: ViewPreset) {
+    currentViewPreset.value = preset
+    // console.log('[UIStore] Current view preset set to:', preset)
   }
 
   // ========== 工作坐标系管理 ==========
@@ -89,6 +98,8 @@ export const useUIStore = defineStore('ui', () => {
     // 视图模式
     toggleViewMode,
     setViewMode,
+    currentViewPreset,
+    setCurrentViewPreset,
 
     // 工作坐标系
     setWorkingCoordinateSystem,

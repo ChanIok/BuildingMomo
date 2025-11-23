@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import SidebarHeader from './SidebarHeader.vue'
 
 const editorStore = useEditorStore()
 const furnitureStore = useFurnitureStore()
@@ -117,6 +118,9 @@ function handleIconError(e: Event) {
 
 <template>
   <div class="flex h-full w-64 flex-col">
+    <!-- 顶部工具栏 -->
+    <SidebarHeader />
+
     <!-- 可滚动内容区域 -->
     <ScrollArea class="flex-1">
       <div class="flex flex-col gap-4 p-3">

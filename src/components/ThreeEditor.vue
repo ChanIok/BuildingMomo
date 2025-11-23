@@ -8,14 +8,13 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useFurnitureStore } from '@/stores/furnitureStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useThreeSelection } from '@/composables/useThreeSelection'
 import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
-import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item'
 import {
@@ -26,21 +25,12 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Camera,
-  Eye,
-  ChevronsUp,
-  ChevronsDown,
-  ChevronsRight,
-  ChevronsLeft,
-  ChevronRight,
-  ChevronLeft,
-} from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
 const furnitureStore = useFurnitureStore()
 const settingsStore = useSettingsStore()
+const uiStore = useUIStore()
 
 // 开发环境标志
 const isDev = import.meta.env.DEV
@@ -97,6 +87,9 @@ onMounted(() => {
 // 创建共享的 isTransformDragging ref
 const isTransformDragging = ref(false)
 
+// 从 UI Store 获取当前视图预设
+const currentViewPreset = computed(() => uiStore.currentViewPreset)
+
 // Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
 const orbitTarget = ref<[number, number, number]>([0, 0, 0])
 
@@ -110,7 +103,7 @@ const {
   cameraUp,
   cameraZoom,
   controlMode,
-  currentViewPreset,
+  // currentViewPreset, // 移至 UI Store
   isOrthographic,
   isViewFocused,
   isNavKeyPressed,
@@ -139,6 +132,29 @@ const {
     },
   }
 )
+
+// 计算 OrbitControls 的鼠标按钮映射
+const orbitMouseButtons = computed(() => {
+  // 如果是手形工具，左键用于平移（正交）或旋转（透视）
+  if (editorStore.currentTool === 'hand') {
+    if (isOrthographic.value) {
+      return {
+        LEFT: MOUSE.PAN,
+        MIDDLE: MOUSE.ROTATE, // 保持中键习惯
+        RIGHT: MOUSE.ROTATE,
+      }
+    } else {
+      return {
+        LEFT: MOUSE.ROTATE,
+        MIDDLE: MOUSE.PAN,
+        RIGHT: MOUSE.PAN,
+      }
+    }
+  }
+
+  // 默认模式（选择工具）：左键留给框选，中键操作相机
+  return isOrthographic.value ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }
+})
 
 // 当前活动的相机（根据视图类型动态切换）
 const activeCameraRef = computed(() => {
@@ -292,6 +308,11 @@ const {
 )
 
 function handlePointerMoveWithTooltip(evt: PointerEvent) {
+  // 如果是手形工具，跳过选择逻辑
+  if (editorStore.currentTool === 'hand') {
+    return
+  }
+
   handlePointerMove(evt)
   // 3D 中没有拖动选框以外的拖拽逻辑，这里直接用 selectionRect 是否存在来判断是否在框选
   const isSelecting = !!selectionRect.value
@@ -336,7 +357,11 @@ function handleContainerPointerDown(evt: PointerEvent) {
   }
 
   handleNavPointerDown(evt)
-  handlePointerDown(evt)
+
+  // 手形工具下禁用框选/点击选择
+  if (editorStore.currentTool !== 'hand') {
+    handlePointerDown(evt)
+  }
 }
 
 function handleContainerPointerMove(evt: PointerEvent) {
@@ -347,7 +372,10 @@ function handleContainerPointerMove(evt: PointerEvent) {
 function handleContainerPointerUp(evt: PointerEvent) {
   ;(evt.target as HTMLElement).releasePointerCapture(evt.pointerId)
   handleNavPointerUp(evt)
-  handlePointerUp(evt)
+
+  if (editorStore.currentTool !== 'hand') {
+    handlePointerUp(evt)
+  }
 }
 
 function handleContainerPointerLeave() {
@@ -645,7 +673,7 @@ onDeactivated(() => {
           :enablePan="isOrthographic"
           :enable-zoom="!isCtrlPressed"
           :zoomSpeed="2.5"
-          :mouseButtons="isOrthographic ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }"
+          :mouseButtons="orbitMouseButtons"
           @change="handleOrbitChange"
         />
 
@@ -746,97 +774,6 @@ onDeactivated(() => {
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 视图切换按钮 -->
-    <div v-if="editorStore.items.length > 0" class="absolute top-4 right-4">
-      <HoverCard :open-delay="200" :close-delay="100">
-        <HoverCardTrigger as-child>
-          <Button variant="outline" size="sm" class="shadow-md">
-            <Camera class="mr-2 h-4 w-4" />
-            <span>
-              {{
-                !isOrthographic
-                  ? '透视'
-                  : currentViewPreset === 'top'
-                    ? '顶视图'
-                    : currentViewPreset === 'bottom'
-                      ? '底视图'
-                      : currentViewPreset === 'front'
-                        ? '前视图'
-                        : currentViewPreset === 'back'
-                          ? '后视图'
-                          : currentViewPreset === 'right'
-                            ? '右视图'
-                            : currentViewPreset === 'left'
-                              ? '左视图'
-                              : '正交视图'
-              }}
-            </span>
-          </Button>
-        </HoverCardTrigger>
-        <HoverCardContent align="end" class="w-48 p-1">
-          <div class="space-y-1">
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewPerspective')"
-            >
-              <Eye class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">透视视图</span>
-              <span class="text-xs text-muted-foreground">0</span>
-            </button>
-            <div class="my-1 h-px bg-border" />
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewTop')"
-            >
-              <ChevronsUp class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">顶视图</span>
-              <span class="text-xs text-muted-foreground">7</span>
-            </button>
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewBottom')"
-            >
-              <ChevronsDown class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">底视图</span>
-              <span class="text-xs text-muted-foreground">9</span>
-            </button>
-            <div class="my-1 h-px bg-border" />
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewFront')"
-            >
-              <ChevronsRight class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">前视图</span>
-              <span class="text-xs text-muted-foreground">1</span>
-            </button>
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewBack')"
-            >
-              <ChevronsLeft class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">后视图</span>
-            </button>
-            <div class="my-1 h-px bg-border" />
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewRight')"
-            >
-              <ChevronRight class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">右侧视图</span>
-              <span class="text-xs text-muted-foreground">3</span>
-            </button>
-            <button
-              class="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-              @click="commandStore.executeCommand('view.setViewLeft')"
-            >
-              <ChevronLeft class="mr-2 h-4 w-4" />
-              <span class="flex-1 text-left">左侧视图</span>
-            </button>
-          </div>
-        </HoverCardContent>
-      </HoverCard>
     </div>
 
     <!-- 视图信息 -->

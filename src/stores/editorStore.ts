@@ -82,6 +82,9 @@ export const useEditorStore = defineStore('editor', () => {
   // 全局剪贴板（支持跨方案复制粘贴）
   const clipboard = ref<AppItem[]>([])
 
+  // 当前工具状态
+  const currentTool = ref<'select' | 'hand'>('select')
+
   // 计算属性：当前激活的方案
   const activeScheme = computed(
     () => schemes.value.find((s) => s.id === activeSchemeId.value) ?? null
@@ -1169,6 +1172,7 @@ export const useEditorStore = defineStore('editor', () => {
     activeSchemeId,
     activeScheme,
     clipboard,
+    currentTool,
 
     // 向后兼容的计算属性
     items,

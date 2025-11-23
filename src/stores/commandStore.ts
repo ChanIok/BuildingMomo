@@ -12,12 +12,12 @@ export interface Command {
   id: string
   label: string
   shortcut?: string
-  category: 'file' | 'edit' | 'view' | 'help'
+  category: CommandCategory
   enabled: () => boolean
   execute: () => void | Promise<void>
 }
 
-export type CommandCategory = 'file' | 'edit' | 'view' | 'help'
+export type CommandCategory = 'file' | 'edit' | 'view' | 'help' | 'tool'
 
 export const useCommandStore = defineStore('command', () => {
   const editorStore = useEditorStore()
@@ -100,6 +100,30 @@ export const useCommandStore = defineStore('command', () => {
       execute: async () => {
         console.log('[Command] 保存到游戏')
         await fileOps.saveToGame()
+      },
+    },
+
+    // ===== 工具菜单 =====
+    {
+      id: 'tool.select',
+      label: '选择工具',
+      shortcut: 'V',
+      category: 'tool',
+      enabled: () => true,
+      execute: () => {
+        console.log('[Command] 切换选择工具')
+        editorStore.currentTool = 'select'
+      },
+    },
+    {
+      id: 'tool.hand',
+      label: '拖拽工具',
+      shortcut: 'H',
+      category: 'tool',
+      enabled: () => true,
+      execute: () => {
+        console.log('[Command] 切换拖拽工具')
+        editorStore.currentTool = 'hand'
       },
     },
 
@@ -295,17 +319,6 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 聚焦选中物品')
         focusSelectionFn.value?.()
-      },
-    },
-    {
-      id: 'view.toggle2D3D',
-      label: '切换2D/3D视图',
-      shortcut: 'V',
-      category: 'view',
-      enabled: () => editorStore.items.length > 0,
-      execute: () => {
-        console.log('[Command] 切换视图模式')
-        uiStore.toggleViewMode()
       },
     },
     {
