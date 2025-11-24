@@ -3,7 +3,6 @@ import { ref, computed } from 'vue'
 import { useEditorStore } from './editorStore'
 import { useUIStore } from './uiStore'
 import { useSettingsStore } from './settingsStore'
-import { useClipboard } from '../composables/useClipboard'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
 import type { ViewPreset } from '../composables/useThreeCamera'
@@ -41,7 +40,6 @@ export const useCommandStore = defineStore('command', () => {
   const showCoordinateDialog = ref(false)
 
   // 剪贴板和文件操作
-  const clipboard = useClipboard(editorStore)
   const fileOps = useFileOperations(editorStore)
 
   // 定义所有命令
@@ -171,7 +169,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.selectedItemIds.size > 0,
       execute: () => {
         console.log('[Command] 剪切')
-        clipboard.cut()
+        editorStore.cutToClipboard()
       },
     },
     {
@@ -182,7 +180,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.selectedItemIds.size > 0,
       execute: () => {
         console.log('[Command] 复制')
-        clipboard.copy()
+        editorStore.copyToClipboard()
       },
     },
     {
@@ -190,10 +188,10 @@ export const useCommandStore = defineStore('command', () => {
       label: '粘贴',
       shortcut: 'Ctrl+V',
       category: 'edit',
-      enabled: () => clipboard.hasClipboardData.value,
+      enabled: () => editorStore.clipboard.length > 0,
       execute: () => {
         console.log('[Command] 粘贴')
-        clipboard.paste()
+        editorStore.pasteFromClipboard(0, 0)
       },
     },
     {
@@ -499,7 +497,7 @@ export const useCommandStore = defineStore('command', () => {
   return {
     commands,
     commandMap,
-    clipboard,
+    clipboard: computed(() => editorStore.clipboard),
     fileOps,
     getCommandsByCategory,
     executeCommand,

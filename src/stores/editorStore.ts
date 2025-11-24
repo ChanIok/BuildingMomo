@@ -1,37 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type {
-  AppItem,
-  GameItem,
-  GameDataFile,
-  HomeScheme,
-  TransformParams,
-  HistorySnapshot,
-  HistoryStack,
-} from '../types/editor'
+import type { AppItem, GameItem, GameDataFile, HomeScheme, TransformParams } from '../types/editor'
 import { useTabStore } from './tabStore'
 import { useSettingsStore } from './settingsStore'
-
-// 射线法判断点是否在多边形内
-function isPointInPolygon(point: { x: number; y: number }, polygon: number[][]): boolean {
-  let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const pi = polygon[i]
-    const pj = polygon[j]
-
-    if (!pi || !pj || pi.length < 2 || pj.length < 2) continue
-
-    const xi = pi[0]!
-    const yi = pi[1]!
-    const xj = pj[0]!
-    const yj = pj[1]!
-
-    const intersect =
-      yi > point.y !== yj > point.y && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi
-    if (intersect) inside = !inside
-  }
-  return inside
-}
+import { useEditorHistory } from '../composables/editor/useEditorHistory'
+import { useEditorValidation } from '../composables/editor/useEditorValidation'
+import { useEditorGroups } from '../composables/editor/useEditorGroups'
+import { useClipboard } from '../composables/useClipboard'
 
 // 生成简单的UUID
 function generateUUID(): string {
@@ -96,12 +71,14 @@ function rotatePoint3D(
 }
 
 export const useEditorStore = defineStore('editor', () => {
+  const settingsStore = useSettingsStore()
+
   // 多方案状态
   const schemes = ref<HomeScheme[]>([])
   const activeSchemeId = ref<string | null>(null)
 
   // 全局剪贴板（支持跨方案复制粘贴）
-  const clipboard = ref<AppItem[]>([])
+  const clipboardRef = ref<AppItem[]>([])
 
   // 当前工具状态
   const currentTool = ref<'select' | 'hand'>('select')
@@ -227,322 +204,49 @@ export const useEditorStore = defineStore('editor', () => {
     return items.value.filter((item) => selectedItemIds.value.has(item.internalId))
   })
 
-  // ========== 重复物品检测 ==========
+  // ========== 历史记录 (Composables) ==========
+  const { saveHistory, undo, redo, canUndo, canRedo } = useEditorHistory(activeScheme)
 
-  // 计算属性：重复的物品组（按位置、旋转、缩放分组）
-  const duplicateGroups = computed<AppItem[][]>(() => {
-    const settingsStore = useSettingsStore()
+  // ========== 组管理 (Composables) ==========
+  const {
+    groupSelected,
+    ungroupSelected,
+    getGroupItems,
+    getItemGroupId,
+    getAllGroupIds,
+    getGroupColor,
+    getNextGroupId,
+  } = useEditorGroups(activeScheme, itemsMap, groupsMap, saveHistory)
 
-    // 如果未启用检测或没有活动方案，返回空数组
-    if (!settingsStore.settings.enableDuplicateDetection || !activeScheme.value) {
-      return []
-    }
+  // 获取下一个唯一的 InstanceID（自增策略）
+  function getNextInstanceId(): number {
+    if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
 
-    const startTime = performance.now()
-
-    // Map索引：key = "gameId,x,y,z,pitch,yaw,roll,scaleX,scaleY,scaleZ", value = AppItem[]
-    const itemMap = new Map<string, AppItem[]>()
-
-    activeScheme.value.items.forEach((item) => {
-      const rot = item.originalData.Rotation
-      const scale = item.originalData.Scale
-      const key = `${item.gameId},${item.x},${item.y},${item.z},${rot.Pitch},${rot.Yaw},${rot.Roll},${scale.X},${scale.Y},${scale.Z}`
-      if (!itemMap.has(key)) {
-        itemMap.set(key, [])
-      }
-      itemMap.get(key)!.push(item)
-    })
-
-    // 过滤出重复的组（count > 1）
-    const duplicates = Array.from(itemMap.values()).filter((group) => group.length > 1)
-
-    const elapsed = performance.now() - startTime
-    if (import.meta.env.DEV && activeScheme.value.items.length > 100) {
-      console.log(
-        `[Duplicate Detection] ${elapsed.toFixed(2)}ms for ${activeScheme.value.items.length} items, found ${duplicates.length} duplicate groups`
-      )
-    }
-
-    return duplicates
-  })
-
-  // 计算属性：是否存在重复物品
-  const hasDuplicate = computed(() => duplicateGroups.value.length > 0)
-
-  // 计算属性：重复物品总数（只计算多余的，不包括每组保留的第一个）
-  const duplicateItemCount = computed(() => {
-    return duplicateGroups.value.reduce((sum, group) => sum + (group.length - 1), 0)
-  })
-
-  // 选择所有重复的物品（保留每组的第一个）
-  function selectDuplicateItems() {
-    if (!activeScheme.value || duplicateGroups.value.length === 0) return
-
-    // 保存历史（选择操作）
-    saveHistory('selection')
-
-    // 清空当前选择
-    activeScheme.value.selectedItemIds.clear()
-
-    // 选中除第一个之外的重复物品
-    duplicateGroups.value.forEach((group) => {
-      group.slice(1).forEach((item) => {
-        activeScheme.value!.selectedItemIds.add(item.internalId)
-      })
-    })
-
-    console.log(
-      `[Duplicate Detection] Selected ${duplicateItemCount.value} duplicate items (excluding first of each group)`
-    )
+    const maxId = activeScheme.value.items.reduce((max, item) => Math.max(max, item.instanceId), 0)
+    return maxId + 1
   }
 
-  // ========== 限制检查 (坐标 & 组大小) ==========
+  // ========== 剪贴板 (Composables) ==========
+  const { copyToClipboard, cutToClipboard, pasteFromClipboard, pasteItems, clipboard } =
+    useClipboard(activeScheme, clipboardRef, saveHistory, getNextGroupId, getNextInstanceId)
 
-  // 计算属性：超出限制的问题
-  const limitIssues = computed(() => {
-    if (!activeScheme.value) {
-      return { outOfBoundsItems: [], oversizedGroups: [] }
-    }
-
-    const outOfBoundsItems: AppItem[] = []
-    const oversizedGroups: number[] = []
-
-    // 1. 检查组大小限制 ( > 50 )
-    const groupCounts = new Map<number, number>()
-    activeScheme.value.items.forEach((item) => {
-      const gid = item.originalData.GroupID
-      if (gid > 0) {
-        groupCounts.set(gid, (groupCounts.get(gid) || 0) + 1)
-      }
-    })
-
-    groupCounts.forEach((count, gid) => {
-      if (count > 50) {
-        oversizedGroups.push(gid)
-      }
-    })
-
-    // 2. 检查坐标限制 (如果在可建造区域外)
-    if (isBuildableAreaLoaded.value && buildableAreas.value) {
-      // 获取所有多边形
-      const polygons = Object.values(buildableAreas.value)
-
-      activeScheme.value.items.forEach((item) => {
-        // 简单的点判定，不考虑物品体积
-        const point = { x: item.x, y: item.y }
-        let isInside = false
-
-        // 只要在任意一个多边形内就算合法
-        for (const polygon of polygons) {
-          if (isPointInPolygon(point, polygon)) {
-            isInside = true
-            break
-          }
-        }
-
-        if (!isInside) {
-          outOfBoundsItems.push(item)
-        }
-      })
-    }
-
-    return {
-      outOfBoundsItems,
-      oversizedGroups,
-    }
-  })
-
-  // 是否存在限制问题
-  const hasLimitIssues = computed(() => {
-    return (
-      limitIssues.value.outOfBoundsItems.length > 0 || limitIssues.value.oversizedGroups.length > 0
-    )
-  })
-
-  // 选择超出坐标限制的物品
-  function selectOutOfBoundsItems() {
-    if (!activeScheme.value || limitIssues.value.outOfBoundsItems.length === 0) return
-
-    saveHistory('selection')
-    activeScheme.value.selectedItemIds.clear()
-
-    limitIssues.value.outOfBoundsItems.forEach((item) => {
-      activeScheme.value!.selectedItemIds.add(item.internalId)
-    })
-  }
-
-  // 选择超大组的物品
-  function selectOversizedGroupItems() {
-    if (!activeScheme.value || limitIssues.value.oversizedGroups.length === 0) return
-
-    saveHistory('selection')
-    activeScheme.value.selectedItemIds.clear()
-
-    const targetGroups = new Set(limitIssues.value.oversizedGroups)
-    activeScheme.value.items.forEach((item) => {
-      if (targetGroups.has(item.originalData.GroupID)) {
-        activeScheme.value!.selectedItemIds.add(item.internalId)
-      }
-    })
-  }
-
-  // ========== 历史记录管理 ==========
-
-  // 初始化历史栈
-  function initHistoryStack(): HistoryStack {
-    return {
-      undoStack: [],
-      redoStack: [],
-      maxSize: 50,
-    }
-  }
-
-  // 深拷贝物品数组（使用 JSON 序列化，安全但性能稍低）
-  function cloneItems(items: AppItem[]): AppItem[] {
-    // 使用 JSON.parse(JSON.stringify()) 进行深拷贝
-    // 这种方法可以安全地处理所有可序列化的数据
-    return JSON.parse(JSON.stringify(items))
-  }
-
-  // 深拷贝选择集合
-  function cloneSelection(selection: Set<string>): Set<string> {
-    return new Set(selection)
-  }
-
-  // 保存历史记录
-  function saveHistory(type: 'edit' | 'selection' = 'edit') {
-    if (!activeScheme.value) return
-
-    // 确保历史栈已初始化
-    if (!activeScheme.value.history) {
-      activeScheme.value.history = initHistoryStack()
-    }
-
-    const history = activeScheme.value.history
-
-    // 方案A：选择操作合并策略
-    // 如果是选择操作且栈顶也是选择操作，则替换而不是新增
-    if (type === 'selection' && history.undoStack.length > 0) {
-      const lastSnapshot = history.undoStack[history.undoStack.length - 1]
-      if (lastSnapshot && lastSnapshot.type === 'selection') {
-        // 仅更新选择集合和时间戳，避免重复深拷贝 items
-        lastSnapshot.selectedItemIds = cloneSelection(activeScheme.value.selectedItemIds)
-        lastSnapshot.timestamp = Date.now()
-        return
-      }
-    }
-
-    // 创建快照
-    let snapshot: HistorySnapshot
-    if (type === 'selection') {
-      // 选择操作：只保存选择状态，items 设为 null 以减少性能开销
-      snapshot = {
-        items: null,
-        selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
-        timestamp: Date.now(),
-        type,
-      }
-    } else {
-      // 编辑操作：保存完整的物品数据和选择状态
-      snapshot = {
-        items: cloneItems(activeScheme.value.items),
-        selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
-        timestamp: Date.now(),
-        type,
-      }
-    }
-
-    // 推入撤销栈
-    history.undoStack.push(snapshot)
-
-    // 限制栈大小
-    if (history.undoStack.length > history.maxSize) {
-      history.undoStack.shift()
-    }
-
-    // 清空重做栈（新操作会使重做历史失效）
-    history.redoStack = []
-  }
-
-  // 撤销操作
-  function undo() {
-    if (!activeScheme.value?.history) return
-    const history = activeScheme.value.history
-
-    if (history.undoStack.length === 0) {
-      console.log('[History] 没有可撤销的操作')
-      return
-    }
-
-    // 保存当前状态到重做栈
-    const currentSnapshot: HistorySnapshot = {
-      items: cloneItems(activeScheme.value.items),
-      selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
-      timestamp: Date.now(),
-      type: 'edit', // 重做栈不区分类型
-    }
-    history.redoStack.push(currentSnapshot)
-
-    // 从撤销栈弹出并恢复状态
-    const snapshot = history.undoStack.pop()!
-
-    if (snapshot.type === 'edit') {
-      // 编辑操作：恢复物品和选择状态
-      if (snapshot.items) {
-        activeScheme.value.items = cloneItems(snapshot.items)
-      }
-      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
-    } else if (snapshot.type === 'selection') {
-      // 选择操作：只恢复选择状态，避免不必要的物品深拷贝
-      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
-    }
-
-    console.log(`[History] 撤销操作 (类型: ${snapshot.type})`)
-  }
-
-  // 重做操作
-  function redo() {
-    if (!activeScheme.value?.history) return
-    const history = activeScheme.value.history
-
-    if (history.redoStack.length === 0) {
-      console.log('[History] 没有可重做的操作')
-      return
-    }
-
-    // 保存当前状态到撤销栈
-    const currentSnapshot: HistorySnapshot = {
-      items: cloneItems(activeScheme.value.items),
-      selectedItemIds: cloneSelection(activeScheme.value.selectedItemIds),
-      timestamp: Date.now(),
-      type: 'edit',
-    }
-    history.undoStack.push(currentSnapshot)
-
-    // 从重做栈弹出并恢复状态
-    const snapshot = history.redoStack.pop()!
-
-    if (snapshot.type === 'edit') {
-      if (snapshot.items) {
-        activeScheme.value.items = cloneItems(snapshot.items)
-      }
-      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
-    } else if (snapshot.type === 'selection') {
-      activeScheme.value.selectedItemIds = cloneSelection(snapshot.selectedItemIds)
-    }
-
-    console.log('[History] 重做操作')
-  }
-
-  // 检查是否可以撤销
-  function canUndo(): boolean {
-    return (activeScheme.value?.history?.undoStack.length ?? 0) > 0
-  }
-
-  // 检查是否可以重做
-  function canRedo(): boolean {
-    return (activeScheme.value?.history?.redoStack.length ?? 0) > 0
-  }
+  // ========== 验证逻辑 (Composables + Worker) ==========
+  const {
+    duplicateGroups,
+    hasDuplicate,
+    duplicateItemCount,
+    selectDuplicateItems,
+    limitIssues,
+    hasLimitIssues,
+    selectOutOfBoundsItems,
+    selectOversizedGroupItems,
+  } = useEditorValidation(
+    activeScheme,
+    buildableAreas,
+    isBuildableAreaLoaded,
+    computed(() => settingsStore.settings),
+    saveHistory
+  )
 
   // ========== 方案管理 ==========
 
@@ -693,10 +397,11 @@ export const useEditorStore = defineStore('editor', () => {
   function clearData() {
     schemes.value = []
     activeSchemeId.value = null
-    clipboard.value = []
+    clipboardRef.value = []
   }
 
-  // 选择功能
+  // ========== 选择操作 ==========
+
   function toggleSelection(itemId: string, additive: boolean) {
     if (!activeScheme.value) return
 
@@ -752,6 +457,32 @@ export const useEditorStore = defineStore('editor', () => {
     expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
   }
 
+  // 扩展选择到整组（内部辅助函数）
+  function expandSelectionToGroups(itemIds: Set<string>): Set<string> {
+    if (!activeScheme.value) return itemIds
+
+    const expandedIds = new Set(itemIds)
+    const groupsToExpand = new Set<number>()
+
+    // 收集所有涉及的组ID
+    itemIds.forEach((id) => {
+      const groupId = getItemGroupId(id)
+      if (groupId > 0) {
+        groupsToExpand.add(groupId)
+      }
+    })
+
+    // 扩展选择到整组（直接使用 groupsMap 获取 itemIds）
+    groupsToExpand.forEach((groupId) => {
+      const itemIds = groupsMap.value.get(groupId)
+      if (itemIds) {
+        itemIds.forEach((itemId) => expandedIds.add(itemId))
+      }
+    })
+
+    return expandedIds
+  }
+
   // 减选功能:从当前选择中移除指定物品
   function deselectItems(itemIds: string[]) {
     if (!activeScheme.value) return
@@ -771,141 +502,6 @@ export const useEditorStore = defineStore('editor', () => {
     // 保存历史（选择操作，会合并）
     saveHistory('selection')
 
-    activeScheme.value.selectedItemIds.clear()
-  }
-
-  // 移动选中物品（注意：不在这里保存历史，由拖拽结束时统一保存）
-  function moveSelectedItems(dx: number, dy: number) {
-    if (!activeScheme.value) return
-
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return {
-          ...item,
-          x: item.x + dx,
-          y: item.y + dy,
-          originalData: {
-            ...item.originalData,
-            Location: {
-              ...item.originalData.Location,
-              X: item.x + dx,
-              Y: item.y + dy,
-            },
-          },
-        }
-      }
-      return item
-    })
-  }
-
-  // 3D 移动选中物品（XYZ），不在此保存历史，由调用方控制
-  function moveSelectedItems3D(dx: number, dy: number, dz: number) {
-    if (!activeScheme.value) {
-      return
-    }
-
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return item
-      }
-
-      const newX = item.x + dx
-      const newY = item.y + dy
-      const newZ = item.z + dz
-
-      return {
-        ...item,
-        x: newX,
-        y: newY,
-        z: newZ,
-        originalData: {
-          ...item.originalData,
-          Location: {
-            ...item.originalData.Location,
-            X: newX,
-            Y: newY,
-            Z: newZ,
-          },
-        },
-      }
-    })
-  }
-
-  // 复制选中物品（带偏移）
-  function duplicateSelected(offsetX: number = 0, offsetY: number = 0): string[] {
-    if (!activeScheme.value) return []
-
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    const newIds: string[] = []
-    const duplicates: AppItem[] = []
-    let nextInstanceId = getNextInstanceId()
-
-    // 收集选中物品的所有组ID，为每个组分配新的 GroupID
-    const groupIdMap = new Map<number, number>() // 旧GroupID -> 新GroupID
-
-    activeScheme.value.items.forEach((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        const oldGroupId = item.originalData.GroupID
-        if (oldGroupId > 0 && !groupIdMap.has(oldGroupId)) {
-          groupIdMap.set(oldGroupId, getNextGroupId() + groupIdMap.size)
-        }
-      }
-    })
-
-    activeScheme.value.items.forEach((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        const newId = generateUUID()
-        const newInstanceId = nextInstanceId++
-        newIds.push(newId)
-
-        const newX = item.x + offsetX
-        const newY = item.y + offsetY
-
-        // 如果物品有组，分配新的 GroupID
-        const oldGroupId = item.originalData.GroupID
-        const newGroupId = oldGroupId > 0 ? groupIdMap.get(oldGroupId)! : 0
-
-        duplicates.push({
-          ...item,
-          internalId: newId,
-          instanceId: newInstanceId,
-          x: newX,
-          y: newY,
-          originalData: {
-            ...item.originalData,
-            InstanceID: newInstanceId,
-            GroupID: newGroupId,
-            Location: {
-              ...item.originalData.Location,
-              X: newX,
-              Y: newY,
-            },
-          },
-        })
-      }
-    })
-
-    activeScheme.value.items.push(...duplicates)
-
-    // 选中新副本
-    activeScheme.value.selectedItemIds.clear()
-    newIds.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
-
-    return newIds
-  }
-
-  // 删除选中物品
-  function deleteSelected() {
-    if (!activeScheme.value) return
-
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    activeScheme.value.items = activeScheme.value.items.filter(
-      (item) => !activeScheme.value!.selectedItemIds.has(item.internalId)
-    )
     activeScheme.value.selectedItemIds.clear()
   }
 
@@ -938,262 +534,52 @@ export const useEditorStore = defineStore('editor', () => {
     activeScheme.value.selectedItemIds = newSelection
   }
 
-  // 获取下一个唯一的 InstanceID（自增策略）
-  function getNextInstanceId(): number {
-    if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
+  // ========== 编辑操作 ==========
 
-    const maxId = activeScheme.value.items.reduce((max, item) => Math.max(max, item.instanceId), 0)
-    return maxId + 1
-  }
-
-  // ========== 组编辑功能 ==========
-
-  // 获取下一个唯一的 GroupID（自增策略）
-  function getNextGroupId(): number {
-    if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
-
-    const maxId = activeScheme.value.items.reduce(
-      (max, item) => Math.max(max, item.originalData.GroupID),
-      0
-    )
-    return maxId + 1
-  }
-
-  // 获取指定组的所有物品（使用 groupsMap 和 itemsMap 优化性能）
-  function getGroupItems(groupId: number): AppItem[] {
-    if (!activeScheme.value || groupId <= 0) return []
-
-    const itemIds = groupsMap.value.get(groupId)
-    if (!itemIds) return []
-
-    // 使用 itemsMap 快速获取物品对象
-    const items: AppItem[] = []
-    itemIds.forEach((id) => {
-      const item = itemsMap.value.get(id)
-      if (item) items.push(item)
-    })
-    return items
-  }
-
-  // 获取物品的组ID（使用 itemsMap 优化性能）
-  function getItemGroupId(itemId: string): number {
-    if (!activeScheme.value) return 0
-    const item = itemsMap.value.get(itemId)
-    return item?.originalData.GroupID ?? 0
-  }
-
-  // 获取所有组ID列表（去重）（使用 groupsMap 优化性能）
-  function getAllGroupIds(): number[] {
-    return Array.from(groupsMap.value.keys()).sort((a, b) => a - b)
-  }
-
-  // 扩展选择到整组（内部辅助函数）
-  function expandSelectionToGroups(itemIds: Set<string>): Set<string> {
-    if (!activeScheme.value) return itemIds
-
-    const expandedIds = new Set(itemIds)
-    const groupsToExpand = new Set<number>()
-
-    // 收集所有涉及的组ID
-    itemIds.forEach((id) => {
-      const groupId = getItemGroupId(id)
-      if (groupId > 0) {
-        groupsToExpand.add(groupId)
-      }
-    })
-
-    // 扩展选择到整组（直接使用 groupsMap 获取 itemIds）
-    groupsToExpand.forEach((groupId) => {
-      const itemIds = groupsMap.value.get(groupId)
-      if (itemIds) {
-        itemIds.forEach((itemId) => expandedIds.add(itemId))
-      }
-    })
-
-    return expandedIds
-  }
-
-  // 成组：将选中的物品成组
-  function groupSelected() {
-    if (!activeScheme.value) return
-    if (activeScheme.value.selectedItemIds.size < 2) {
-      console.warn('[Group] 至少需要选中2个物品才能成组')
+  // 移动选中物品（XYZ），不在此保存历史，由调用方控制
+  function moveSelectedItems3D(dx: number, dy: number, dz: number) {
+    if (!activeScheme.value) {
       return
     }
 
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    const newGroupId = getNextGroupId()
-
-    // 更新所有选中物品的 GroupID
     activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return {
-          ...item,
-          originalData: {
-            ...item.originalData,
-            GroupID: newGroupId,
-          },
-        }
+      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
+        return item
       }
-      return item
-    })
 
-    console.log(
-      `[Group] 成功创建组 #${newGroupId}，包含 ${activeScheme.value.selectedItemIds.size} 个物品`
-    )
-  }
+      const newX = item.x + dx
+      const newY = item.y + dy
+      const newZ = item.z + dz
 
-  // 取消组合：将选中的物品解散组
-  function ungroupSelected() {
-    if (!activeScheme.value) return
-    if (activeScheme.value.selectedItemIds.size === 0) return
-
-    // 检查是否有组
-    const hasGroup = Array.from(activeScheme.value.selectedItemIds).some((id) => {
-      const groupId = getItemGroupId(id)
-      return groupId > 0
-    })
-
-    if (!hasGroup) {
-      console.warn('[Group] 选中的物品没有组')
-      return
-    }
-
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    // 将所有选中物品的 GroupID 设为 0
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return {
-          ...item,
-          originalData: {
-            ...item.originalData,
-            GroupID: 0,
-          },
-        }
-      }
-      return item
-    })
-
-    console.log(`[Group] 已取消 ${activeScheme.value.selectedItemIds.size} 个物品的组合`)
-  }
-
-  // HSL 转 RGBA 的工具函数
-  function hslToRgba(h: number, s: number, l: number, a: number = 1): string {
-    s /= 100
-    l /= 100
-
-    const k = (n: number) => (n + h / 30) % 12
-    const f = (n: number) =>
-      l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
-
-    const r = Math.round(255 * f(0))
-    const g = Math.round(255 * f(8))
-    const b = Math.round(255 * f(4))
-
-    return `rgba(${r}, ${g}, ${b}, ${a})`
-  }
-
-  // 根据 GroupID 计算组颜色（使用黄金角度分布）
-  function getGroupColor(groupId: number): string {
-    if (groupId <= 0) return 'rgba(0, 0, 0, 0)' // transparent
-    const hue = (groupId * 137.5) % 360 // 黄金角度，分布更均匀
-    return hslToRgba(hue, 70, 60, 0.8) // 直接返回带透明度的 RGBA
-  }
-
-  // 跨方案剪贴板：复制到剪贴板
-  function copyToClipboard() {
-    if (!activeScheme.value) return
-
-    clipboard.value = activeScheme.value.items
-      .filter((item) => activeScheme.value!.selectedItemIds.has(item.internalId))
-      .map((item) => ({ ...item })) // 深拷贝
-  }
-
-  // 跨方案剪贴板：剪切到剪贴板
-  function cutToClipboard() {
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    copyToClipboard()
-    // deleteSelected 内部已经保存历史，但因为我们已经保存了，需要避免重复
-    // 直接删除，不再调用 deleteSelected
-    if (!activeScheme.value) return
-    activeScheme.value.items = activeScheme.value.items.filter(
-      (item) => !activeScheme.value!.selectedItemIds.has(item.internalId)
-    )
-    activeScheme.value.selectedItemIds.clear()
-  }
-
-  // 跨方案剪贴板：从剪贴板粘贴
-  function pasteFromClipboard(offsetX: number = 0, offsetY: number = 0): string[] {
-    if (!activeScheme.value || clipboard.value.length === 0) return []
-
-    return pasteItems(clipboard.value, offsetX, offsetY)
-  }
-
-  // 粘贴物品（内部方法）
-  function pasteItems(clipboardItems: AppItem[], offsetX: number, offsetY: number): string[] {
-    if (!activeScheme.value) return []
-
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    const newIds: string[] = []
-    const newItems: AppItem[] = []
-    let nextInstanceId = getNextInstanceId()
-
-    // 收集剪贴板物品的所有组ID，为每个组分配新的 GroupID
-    const groupIdMap = new Map<number, number>() // 旧GroupID -> 新GroupID
-
-    clipboardItems.forEach((item) => {
-      const oldGroupId = item.originalData.GroupID
-      if (oldGroupId > 0 && !groupIdMap.has(oldGroupId)) {
-        groupIdMap.set(oldGroupId, getNextGroupId() + groupIdMap.size)
-      }
-    })
-
-    clipboardItems.forEach((item) => {
-      const newId = generateUUID()
-      const newInstanceId = nextInstanceId++
-      newIds.push(newId)
-
-      const newX = item.x + offsetX
-      const newY = item.y + offsetY
-
-      // 如果物品有组，分配新的 GroupID
-      const oldGroupId = item.originalData.GroupID
-      const newGroupId = oldGroupId > 0 ? groupIdMap.get(oldGroupId)! : 0
-
-      newItems.push({
+      return {
         ...item,
-        internalId: newId,
-        instanceId: newInstanceId,
         x: newX,
         y: newY,
+        z: newZ,
         originalData: {
           ...item.originalData,
-          InstanceID: newInstanceId,
-          GroupID: newGroupId,
           Location: {
             ...item.originalData.Location,
             X: newX,
             Y: newY,
+            Z: newZ,
           },
         },
-      })
+      }
     })
+  }
 
-    activeScheme.value.items.push(...newItems)
+  // 删除选中物品
+  function deleteSelected() {
+    if (!activeScheme.value) return
 
-    // 选中新粘贴的物品
+    // 保存历史（编辑操作）
+    saveHistory('edit')
+
+    activeScheme.value.items = activeScheme.value.items.filter(
+      (item) => !activeScheme.value!.selectedItemIds.has(item.internalId)
+    )
     activeScheme.value.selectedItemIds.clear()
-    newIds.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
-
-    return newIds
   }
 
   // 精确变换选中物品（位置和旋转）
@@ -1272,6 +658,7 @@ export const useEditorStore = defineStore('editor', () => {
         originalData: {
           ...item.originalData,
           Location: {
+            ...item.originalData.Location,
             X: newX,
             Y: newY,
             Z: newZ,
@@ -1305,7 +692,7 @@ export const useEditorStore = defineStore('editor', () => {
     schemes,
     activeSchemeId,
     activeScheme,
-    clipboard,
+    clipboard, // 来自 useClipboard 的 computed
     currentTool,
 
     // 向后兼容的计算属性
@@ -1315,13 +702,13 @@ export const useEditorStore = defineStore('editor', () => {
     selectedItemIds,
     selectedItems,
 
-    // 重复物品检测
+    // 重复物品检测 (来自 Composable)
     duplicateGroups,
     hasDuplicate,
     duplicateItemCount,
     selectDuplicateItems,
 
-    // Limitation Detection
+    // Limitation Detection (来自 Composable)
     limitIssues,
     hasLimitIssues,
     selectOutOfBoundsItems,
@@ -1346,27 +733,25 @@ export const useEditorStore = defineStore('editor', () => {
     invertSelection,
 
     // 编辑操作
-    moveSelectedItems,
     moveSelectedItems3D,
-    duplicateSelected,
     deleteSelected,
     updateSelectedItemsTransform,
     getSelectedItemsCenter,
 
-    // 跨方案剪贴板
+    // 跨方案剪贴板 (来自 Composable)
     copyToClipboard,
     cutToClipboard,
     pasteFromClipboard,
     pasteItems,
 
-    // 历史记录
+    // 历史记录 (来自 Composable)
     saveHistory,
     undo,
     redo,
     canUndo,
     canRedo,
 
-    // 组编辑
+    // 组编辑 (来自 Composable)
     groupSelected,
     ungroupSelected,
     getGroupItems,

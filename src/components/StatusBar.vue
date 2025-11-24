@@ -122,18 +122,18 @@ const handleDuplicateClick = () => {
       <!-- 右: 统计信息、组信息、工作坐标系 -->
       <div class="flex shrink-0 items-center gap-4">
         <!-- 限制警告：坐标超限 -->
-        <Tooltip v-if="limitIssues.outOfBoundsItems.length > 0">
+        <Tooltip v-if="limitIssues.outOfBoundsItemIds.length > 0">
           <TooltipTrigger as-child>
             <div
               class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-50"
               @click="editorStore.selectOutOfBoundsItems()"
             >
               <AlertTriangle :size="14" />
-              <span class="text-xs">{{ limitIssues.outOfBoundsItems.length }} 超出区域</span>
+              <span class="text-xs">{{ limitIssues.outOfBoundsItemIds.length }} 超出区域</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            {{ limitIssues.outOfBoundsItems.length }} 个物品超出可建造区域 - 点击选中
+            {{ limitIssues.outOfBoundsItemIds.length }} 个物品超出可建造区域 - 点击选中
           </TooltipContent>
         </Tooltip>
 

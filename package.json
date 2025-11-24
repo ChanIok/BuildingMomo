@@ -19,6 +19,7 @@
     "@vueuse/core": "^14.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "comlink": "^4.4.2",
     "lucide-vue-next": "^0.553.0",
     "pinia": "^3.0.4",
     "reka-ui": "^2.6.0",

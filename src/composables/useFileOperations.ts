@@ -154,11 +154,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
     // 2. 检查限制问题
     if (editorStore.hasLimitIssues) {
-      const { outOfBoundsItems, oversizedGroups } = editorStore.limitIssues
+      const { outOfBoundsItemIds, oversizedGroups } = editorStore.limitIssues
       const issues: string[] = []
 
-      if (outOfBoundsItems.length > 0) {
-        issues.push(`- ${outOfBoundsItems.length} 个物品超出可建造区域 (将被移除)`)
+      if (outOfBoundsItemIds.length > 0) {
+        issues.push(`- ${outOfBoundsItemIds.length} 个物品超出可建造区域 (将被移除)`)
       }
       if (oversizedGroups.length > 0) {
         issues.push(`- ${oversizedGroups.length} 个组合超过50个物品上限 (将被解组)`)
@@ -177,9 +177,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     }
 
     // 3. 处理数据
-    const outOfBoundsIds = new Set(
-      editorStore.limitIssues.outOfBoundsItems.map((i) => i.internalId)
-    )
+    const outOfBoundsIds = new Set(editorStore.limitIssues.outOfBoundsItemIds)
     const oversizedGroupIds = new Set(editorStore.limitIssues.oversizedGroups)
 
     const gameItems: GameItem[] = editorStore.items
