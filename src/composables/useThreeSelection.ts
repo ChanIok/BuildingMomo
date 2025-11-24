@@ -2,6 +2,7 @@ import { ref, markRaw, type Ref } from 'vue'
 import { Raycaster, Vector2, Vector3, type Camera, type InstancedMesh } from 'three'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useEditorStore } from '@/stores/editorStore'
+import { useEditorSelection } from './editor/useEditorSelection'
 
 interface SelectionRect {
   x: number
@@ -29,6 +30,8 @@ export function useThreeSelection(
   const isSelecting = ref(false)
   const mouseDownPos = ref<{ x: number; y: number } | null>(null)
   const tempVec3 = markRaw(new Vector3())
+
+  const { deselectItems, toggleSelection, clearSelection, updateSelection } = useEditorSelection()
 
   function getRelativePosition(evt: any) {
     const el = containerRef.value
@@ -150,12 +153,12 @@ export function useThreeSelection(
       const alt = evt.altKey
 
       if (alt) {
-        editorStore.deselectItems([internalId])
+        deselectItems([internalId])
       } else {
-        editorStore.toggleSelection(internalId, shift)
+        toggleSelection(internalId, shift)
       }
     } else if (!evt.shiftKey) {
-      editorStore.clearSelection()
+      clearSelection()
     }
   }
 
@@ -207,10 +210,10 @@ export function useThreeSelection(
 
     if (alt) {
       if (selectedIds.length > 0) {
-        editorStore.deselectItems(selectedIds)
+        deselectItems(selectedIds)
       }
     } else {
-      editorStore.updateSelection(selectedIds, shift)
+      updateSelection(selectedIds, shift)
     }
   }
 

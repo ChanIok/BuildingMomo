@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
+import { useEditorGroups } from '../composables/editor/useEditorGroups'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,6 +16,7 @@ import {
 
 const editorStore = useEditorStore()
 const furnitureStore = useFurnitureStore()
+const { getGroupItems, groupSelected, ungroupSelected } = useEditorGroups()
 
 // 计算属性:选中物品的组信息
 const selectedGroupInfo = computed(() => {
@@ -30,7 +32,7 @@ const selectedGroupInfo = computed(() => {
   // 如果所有选中物品都属于同一组
   if (groupIds.size === 1) {
     const groupId = Array.from(groupIds)[0]!
-    const groupItems = editorStore.getGroupItems(groupId)
+    const groupItems = getGroupItems(groupId)
     return {
       type: 'single',
       groupId,
@@ -217,7 +219,7 @@ function handleIconError(e: Event) {
     <!-- 成组/取消组合按钮 -->
     <div class="flex gap-2">
       <Button
-        @click="editorStore.groupSelected()"
+        @click="groupSelected()"
         :disabled="editorStore.selectedItemIds.size < 2 || selectedGroupInfo?.type === 'single'"
         class="flex-1"
         size="sm"
@@ -226,7 +228,7 @@ function handleIconError(e: Event) {
         成组
       </Button>
       <Button
-        @click="editorStore.ungroupSelected()"
+        @click="ungroupSelected()"
         :disabled="!editorStore.selectedItems.some((item) => item.originalData.GroupID > 0)"
         variant="secondary"
         class="flex-1"

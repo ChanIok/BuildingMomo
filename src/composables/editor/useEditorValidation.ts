@@ -1,17 +1,21 @@
-import { ref, watch, computed, toRaw, type Ref } from 'vue'
+import { ref, watch, computed, toRaw } from 'vue'
 import * as Comlink from 'comlink'
 import { useDebounceFn } from '@vueuse/core'
-import type { AppItem, HomeScheme } from '../../types/editor'
+import { storeToRefs } from 'pinia'
+import type { AppItem } from '../../types/editor'
 import type { ValidationWorkerApi } from '../../workers/editorValidation.worker'
 import Worker from '../../workers/editorValidation.worker?worker'
+import { useEditorStore } from '../../stores/editorStore'
+import { useSettingsStore } from '../../stores/settingsStore'
+import { useEditorHistory } from './useEditorHistory'
 
-export function useEditorValidation(
-  activeScheme: Ref<HomeScheme | null>,
-  buildableAreas: Ref<Record<string, number[][]> | null>,
-  isBuildableAreaLoaded: Ref<boolean>,
-  settings: Ref<{ enableDuplicateDetection: boolean }>,
-  saveHistory: (type: 'selection') => void
-) {
+export function useEditorValidation() {
+  const editorStore = useEditorStore()
+  const settingsStore = useSettingsStore()
+  const { saveHistory } = useEditorHistory()
+
+  const { activeScheme, buildableAreas, isBuildableAreaLoaded } = storeToRefs(editorStore)
+  const settings = computed(() => settingsStore.settings)
   // Worker 实例
   const worker = new Worker()
   const workerApi = Comlink.wrap<ValidationWorkerApi>(worker)

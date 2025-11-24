@@ -20,6 +20,7 @@ import { coordinates3D } from '@/lib/coordinates'
 import type { useFurnitureStore } from '@/stores/furnitureStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeIconManager, releaseThreeIconManager } from './useThreeIconManager'
+import { useEditorGroups } from './editor/useEditorGroups'
 
 const MAX_INSTANCES = 10000
 
@@ -32,6 +33,7 @@ export function useThreeInstancedRenderer(
   isTransformDragging?: Ref<boolean>
 ) {
   const settingsStore = useSettingsStore()
+  const { getGroupColor } = useEditorGroups()
 
   // === Box 模式（原有） & Simple Box 模式（复用） ===
   // 基础几何体 1x1x1
@@ -324,7 +326,7 @@ export function useThreeInstancedRenderer(
 
     const groupId = item.originalData.GroupID
     if (groupId > 0) {
-      return convertColorToHex(editorStore.getGroupColor(groupId))
+      return convertColorToHex(getGroupColor(groupId))
     }
 
     return 0x94a3b8

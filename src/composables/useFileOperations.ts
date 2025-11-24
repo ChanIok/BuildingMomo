@@ -3,6 +3,7 @@ import type { useEditorStore } from '../stores/editorStore'
 import type { GameDataFile, GameItem, FileWatchState } from '../types/editor'
 import { useNotification } from './useNotification'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useEditorValidation } from './editor/useEditorValidation'
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -104,6 +105,9 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   const notification = useNotification()
   const fileInputRef = ref<HTMLInputElement | null>(null)
 
+  const settingsStore = useSettingsStore()
+  const { hasDuplicate, duplicateItemCount, hasLimitIssues, limitIssues } = useEditorValidation()
+
   // 文件监控状态
   const watchState = ref<FileWatchState>({
     isActive: false,
@@ -124,13 +128,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
   // 检查重复物品（辅助函数）
   async function checkDuplicateItems(): Promise<boolean> {
-    const settingsStore = useSettingsStore()
-
     // 如果启用了重复物品检测且存在重复物品
-    if (settingsStore.settings.enableDuplicateDetection && editorStore.hasDuplicate) {
+    if (settingsStore.settings.enableDuplicateDetection && hasDuplicate.value) {
       const confirmed = await notification.confirm({
         title: '检测到重复物品',
-        description: `当前方案中检测到 ${editorStore.duplicateItemCount} 个重复物品。\n\n这些物品的位置、旋转和缩放完全相同，会在游戏中完全重叠，可能不是您期望的摆放效果。\n\n是否继续？`,
+        description: `当前方案中检测到 ${duplicateItemCount.value} 个重复物品。\n\n这些物品的位置、旋转和缩放完全相同，会在游戏中完全重叠，可能不是您期望的摆放效果。\n\n是否继续？`,
         confirmText: '继续',
         cancelText: '取消',
       })
@@ -153,8 +155,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     }
 
     // 2. 检查限制问题
-    if (editorStore.hasLimitIssues) {
-      const { outOfBoundsItemIds, oversizedGroups } = editorStore.limitIssues
+    if (hasLimitIssues.value) {
+      const { outOfBoundsItemIds, oversizedGroups } = limitIssues.value
       const issues: string[] = []
 
       if (outOfBoundsItemIds.length > 0) {
@@ -177,8 +179,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     }
 
     // 3. 处理数据
-    const outOfBoundsIds = new Set(editorStore.limitIssues.outOfBoundsItemIds)
-    const oversizedGroupIds = new Set(editorStore.limitIssues.oversizedGroups)
+    const outOfBoundsIds = new Set(limitIssues.value.outOfBoundsItemIds)
+    const oversizedGroupIds = new Set(limitIssues.value.oversizedGroups)
 
     const gameItems: GameItem[] = editorStore.items
       .filter((item) => !outOfBoundsIds.has(item.internalId)) // 移除越界物品

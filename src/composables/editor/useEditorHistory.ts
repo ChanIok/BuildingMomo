@@ -1,7 +1,13 @@
-import { toRaw, type Ref } from 'vue'
-import type { AppItem, HistorySnapshot, HistoryStack, HomeScheme } from '../../types/editor'
+import { toRaw } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useEditorStore } from '../../stores/editorStore'
+import type { AppItem, HistorySnapshot, HistoryStack } from '../../types/editor'
 
-export function useEditorHistory(activeScheme: Ref<HomeScheme | null>) {
+export function useEditorHistory() {
+  const store = useEditorStore()
+  // 使用 storeToRefs 保持响应性
+  const { activeScheme } = storeToRefs(store)
+
   // 初始化历史栈
   function initHistoryStack(): HistoryStack {
     return {

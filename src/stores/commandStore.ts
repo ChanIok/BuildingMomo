@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useEditorStore } from './editorStore'
+import { useEditorHistory } from '../composables/editor/useEditorHistory'
+import { useClipboard } from '../composables/useClipboard'
+import { useEditorSelection } from '../composables/editor/useEditorSelection'
+import { useEditorGroups } from '../composables/editor/useEditorGroups'
+import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from './uiStore'
 import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
@@ -21,6 +26,12 @@ export type CommandCategory = 'file' | 'edit' | 'view' | 'help' | 'tool'
 
 export const useCommandStore = defineStore('command', () => {
   const editorStore = useEditorStore()
+  const { undo, redo, canUndo, canRedo } = useEditorHistory()
+  const { copy: copyCmd, cut: cutCmd, pasteItems, clipboard } = useClipboard()
+  const { selectAll, clearSelection, invertSelection } = useEditorSelection()
+  const { groupSelected, ungroupSelected } = useEditorGroups()
+  const { deleteSelected } = useEditorManipulation()
+
   const uiStore = useUIStore()
   const settingsStore = useSettingsStore()
 
@@ -144,10 +155,10 @@ export const useCommandStore = defineStore('command', () => {
       label: '撤销',
       shortcut: 'Ctrl+Z',
       category: 'edit',
-      enabled: () => editorStore.canUndo(),
+      enabled: () => canUndo(),
       execute: () => {
         console.log('[Command] 撤销')
-        editorStore.undo()
+        undo()
       },
     },
     {
@@ -155,10 +166,10 @@ export const useCommandStore = defineStore('command', () => {
       label: '重做',
       shortcut: 'Ctrl+Y',
       category: 'edit',
-      enabled: () => editorStore.canRedo(),
+      enabled: () => canRedo(),
       execute: () => {
         console.log('[Command] 重做')
-        editorStore.redo()
+        redo()
       },
     },
     {
@@ -169,7 +180,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.selectedItemIds.size > 0,
       execute: () => {
         console.log('[Command] 剪切')
-        editorStore.cutToClipboard()
+        cutCmd()
       },
     },
     {
@@ -180,7 +191,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.selectedItemIds.size > 0,
       execute: () => {
         console.log('[Command] 复制')
-        editorStore.copyToClipboard()
+        copyCmd()
       },
     },
     {
@@ -188,10 +199,10 @@ export const useCommandStore = defineStore('command', () => {
       label: '粘贴',
       shortcut: 'Ctrl+V',
       category: 'edit',
-      enabled: () => editorStore.clipboard.length > 0,
+      enabled: () => clipboard.value.length > 0,
       execute: () => {
         console.log('[Command] 粘贴')
-        editorStore.pasteFromClipboard(0, 0)
+        pasteItems(clipboard.value, 0, 0)
       },
     },
     {
@@ -213,7 +224,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.selectedItemIds.size > 0,
       execute: () => {
         console.log('[Command] 删除')
-        editorStore.deleteSelected()
+        deleteSelected()
       },
     },
     {
@@ -224,7 +235,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.items.length > 0,
       execute: () => {
         console.log('[Command] 全选')
-        editorStore.selectAll()
+        selectAll()
       },
     },
     {
@@ -235,7 +246,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.selectedItemIds.size > 0,
       execute: () => {
         console.log('[Command] 取消选择')
-        editorStore.clearSelection()
+        clearSelection()
       },
     },
     {
@@ -246,7 +257,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.items.length > 0,
       execute: () => {
         console.log('[Command] 反选')
-        editorStore.invertSelection()
+        invertSelection()
       },
     },
     {
@@ -270,7 +281,7 @@ export const useCommandStore = defineStore('command', () => {
       },
       execute: () => {
         console.log('[Command] 成组')
-        editorStore.groupSelected()
+        groupSelected()
       },
     },
     {
@@ -284,7 +295,7 @@ export const useCommandStore = defineStore('command', () => {
       },
       execute: () => {
         console.log('[Command] 取消组合')
-        editorStore.ungroupSelected()
+        ungroupSelected()
       },
     },
 
@@ -497,7 +508,7 @@ export const useCommandStore = defineStore('command', () => {
   return {
     commands,
     commandMap,
-    clipboard: computed(() => editorStore.clipboard),
+    clipboard,
     fileOps,
     getCommandsByCategory,
     executeCommand,

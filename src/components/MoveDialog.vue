@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from '../stores/uiStore'
 import {
   Dialog,
@@ -24,6 +25,7 @@ const emit = defineEmits<{
 }>()
 
 const editorStore = useEditorStore()
+const { updateSelectedItemsTransform } = useEditorManipulation()
 const uiStore = useUIStore()
 
 // 表单数据
@@ -161,8 +163,7 @@ function handleConfirm() {
         }
       : undefined
 
-  // 调用 store 方法
-  editorStore.updateSelectedItemsTransform({
+  updateSelectedItemsTransform({
     mode: mode.value,
     position,
     rotation,

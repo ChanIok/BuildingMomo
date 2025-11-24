@@ -1,12 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { AppItem, GameItem, GameDataFile, HomeScheme, TransformParams } from '../types/editor'
+import type { AppItem, GameItem, GameDataFile, HomeScheme } from '../types/editor'
 import { useTabStore } from './tabStore'
-import { useSettingsStore } from './settingsStore'
-import { useEditorHistory } from '../composables/editor/useEditorHistory'
-import { useEditorValidation } from '../composables/editor/useEditorValidation'
-import { useEditorGroups } from '../composables/editor/useEditorGroups'
-import { useClipboard } from '../composables/useClipboard'
 
 // 生成简单的UUID
 function generateUUID(): string {
@@ -17,62 +12,7 @@ function generateUUID(): string {
   })
 }
 
-// 3D旋转：将点绕中心旋转（群组旋转）
-function rotatePoint3D(
-  point: { x: number; y: number; z: number },
-  center: { x: number; y: number; z: number },
-  rotation: { x?: number; y?: number; z?: number }
-): { x: number; y: number; z: number } {
-  // 转换为相对中心的坐标
-  let px = point.x - center.x
-  let py = point.y - center.y
-  let pz = point.z - center.z
-
-  // 依次应用旋转（顺序：X -> Y -> Z，对应 Roll -> Pitch -> Yaw）
-  // 1. 绕X轴旋转（Roll）
-  if (rotation.x) {
-    const angleRad = (rotation.x * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-    const newPy = py * cos - pz * sin
-    const newPz = py * sin + pz * cos
-    py = newPy
-    pz = newPz
-  }
-
-  // 2. 绕Y轴旋转（Pitch）
-  if (rotation.y) {
-    const angleRad = (rotation.y * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-    const newPx = px * cos + pz * sin
-    const newPz = -px * sin + pz * cos
-    px = newPx
-    pz = newPz
-  }
-
-  // 3. 绕Z轴旋转（Yaw）
-  if (rotation.z) {
-    const angleRad = (rotation.z * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-    const newPx = px * cos - py * sin
-    const newPy = px * sin + py * cos
-    px = newPx
-    py = newPy
-  }
-
-  // 转回世界坐标
-  return {
-    x: px + center.x,
-    y: py + center.y,
-    z: pz + center.z,
-  }
-}
-
 export const useEditorStore = defineStore('editor', () => {
-  const settingsStore = useSettingsStore()
-
   // 多方案状态
   const schemes = ref<HomeScheme[]>([])
   const activeSchemeId = ref<string | null>(null)
@@ -204,20 +144,6 @@ export const useEditorStore = defineStore('editor', () => {
     return items.value.filter((item) => selectedItemIds.value.has(item.internalId))
   })
 
-  // ========== 历史记录 (Composables) ==========
-  const { saveHistory, undo, redo, canUndo, canRedo } = useEditorHistory(activeScheme)
-
-  // ========== 组管理 (Composables) ==========
-  const {
-    groupSelected,
-    ungroupSelected,
-    getGroupItems,
-    getItemGroupId,
-    getAllGroupIds,
-    getGroupColor,
-    getNextGroupId,
-  } = useEditorGroups(activeScheme, itemsMap, groupsMap, saveHistory)
-
   // 获取下一个唯一的 InstanceID（自增策略）
   function getNextInstanceId(): number {
     if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
@@ -225,28 +151,6 @@ export const useEditorStore = defineStore('editor', () => {
     const maxId = activeScheme.value.items.reduce((max, item) => Math.max(max, item.instanceId), 0)
     return maxId + 1
   }
-
-  // ========== 剪贴板 (Composables) ==========
-  const { copyToClipboard, cutToClipboard, pasteFromClipboard, pasteItems, clipboard } =
-    useClipboard(activeScheme, clipboardRef, saveHistory, getNextGroupId, getNextInstanceId)
-
-  // ========== 验证逻辑 (Composables + Worker) ==========
-  const {
-    duplicateGroups,
-    hasDuplicate,
-    duplicateItemCount,
-    selectDuplicateItems,
-    limitIssues,
-    hasLimitIssues,
-    selectOutOfBoundsItems,
-    selectOversizedGroupItems,
-  } = useEditorValidation(
-    activeScheme,
-    buildableAreas,
-    isBuildableAreaLoaded,
-    computed(() => settingsStore.settings),
-    saveHistory
-  )
 
   // ========== 方案管理 ==========
 
@@ -400,278 +304,7 @@ export const useEditorStore = defineStore('editor', () => {
     clipboardRef.value = []
   }
 
-  // ========== 选择操作 ==========
-
-  function toggleSelection(itemId: string, additive: boolean) {
-    if (!activeScheme.value) return
-
-    // 保存历史（选择操作，会合并）
-    saveHistory('selection')
-
-    if (additive) {
-      if (activeScheme.value.selectedItemIds.has(itemId)) {
-        // 取消选择：如果是组，取消整组
-        const groupId = getItemGroupId(itemId)
-        if (groupId > 0) {
-          const groupItems = getGroupItems(groupId)
-          groupItems.forEach((item) => activeScheme.value!.selectedItemIds.delete(item.internalId))
-        } else {
-          activeScheme.value.selectedItemIds.delete(itemId)
-        }
-      } else {
-        // 添加选择：如果是组，选中整组
-        const groupId = getItemGroupId(itemId)
-        if (groupId > 0) {
-          const groupItems = getGroupItems(groupId)
-          groupItems.forEach((item) => activeScheme.value!.selectedItemIds.add(item.internalId))
-        } else {
-          activeScheme.value.selectedItemIds.add(itemId)
-        }
-      }
-    } else {
-      activeScheme.value.selectedItemIds.clear()
-      // 如果是组，选中整组
-      const groupId = getItemGroupId(itemId)
-      if (groupId > 0) {
-        const groupItems = getGroupItems(groupId)
-        groupItems.forEach((item) => activeScheme.value!.selectedItemIds.add(item.internalId))
-      } else {
-        activeScheme.value.selectedItemIds.add(itemId)
-      }
-    }
-  }
-
-  function updateSelection(itemIds: string[], additive: boolean) {
-    if (!activeScheme.value) return
-
-    // 保存历史(选择操作,会合并)
-    saveHistory('selection')
-
-    if (!additive) {
-      activeScheme.value.selectedItemIds.clear()
-    }
-
-    // 扩展选择到整组(框选行为)
-    const initialSelection = new Set(itemIds)
-    const expandedSelection = expandSelectionToGroups(initialSelection)
-    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
-  }
-
-  // 扩展选择到整组（内部辅助函数）
-  function expandSelectionToGroups(itemIds: Set<string>): Set<string> {
-    if (!activeScheme.value) return itemIds
-
-    const expandedIds = new Set(itemIds)
-    const groupsToExpand = new Set<number>()
-
-    // 收集所有涉及的组ID
-    itemIds.forEach((id) => {
-      const groupId = getItemGroupId(id)
-      if (groupId > 0) {
-        groupsToExpand.add(groupId)
-      }
-    })
-
-    // 扩展选择到整组（直接使用 groupsMap 获取 itemIds）
-    groupsToExpand.forEach((groupId) => {
-      const itemIds = groupsMap.value.get(groupId)
-      if (itemIds) {
-        itemIds.forEach((itemId) => expandedIds.add(itemId))
-      }
-    })
-
-    return expandedIds
-  }
-
-  // 减选功能:从当前选择中移除指定物品
-  function deselectItems(itemIds: string[]) {
-    if (!activeScheme.value) return
-
-    // 保存历史(选择操作,会合并)
-    saveHistory('selection')
-
-    // 扩展选择到整组(框选行为)
-    const initialSelection = new Set(itemIds)
-    const expandedSelection = expandSelectionToGroups(initialSelection)
-    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.delete(id))
-  }
-
-  function clearSelection() {
-    if (!activeScheme.value) return
-
-    // 保存历史（选择操作，会合并）
-    saveHistory('selection')
-
-    activeScheme.value.selectedItemIds.clear()
-  }
-
-  // 全选可见物品
-  function selectAll() {
-    if (!activeScheme.value) return
-
-    // 保存历史（选择操作，会合并）
-    saveHistory('selection')
-
-    activeScheme.value.selectedItemIds.clear()
-    items.value.forEach((item) => {
-      activeScheme.value!.selectedItemIds.add(item.internalId)
-    })
-  }
-
-  // 反选
-  function invertSelection() {
-    if (!activeScheme.value) return
-
-    // 保存历史（选择操作，会合并）
-    saveHistory('selection')
-
-    const newSelection = new Set<string>()
-    items.value.forEach((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        newSelection.add(item.internalId)
-      }
-    })
-    activeScheme.value.selectedItemIds = newSelection
-  }
-
   // ========== 编辑操作 ==========
-
-  // 移动选中物品（XYZ），不在此保存历史，由调用方控制
-  function moveSelectedItems3D(dx: number, dy: number, dz: number) {
-    if (!activeScheme.value) {
-      return
-    }
-
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return item
-      }
-
-      const newX = item.x + dx
-      const newY = item.y + dy
-      const newZ = item.z + dz
-
-      return {
-        ...item,
-        x: newX,
-        y: newY,
-        z: newZ,
-        originalData: {
-          ...item.originalData,
-          Location: {
-            ...item.originalData.Location,
-            X: newX,
-            Y: newY,
-            Z: newZ,
-          },
-        },
-      }
-    })
-  }
-
-  // 删除选中物品
-  function deleteSelected() {
-    if (!activeScheme.value) return
-
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    activeScheme.value.items = activeScheme.value.items.filter(
-      (item) => !activeScheme.value!.selectedItemIds.has(item.internalId)
-    )
-    activeScheme.value.selectedItemIds.clear()
-  }
-
-  // 精确变换选中物品（位置和旋转）
-  function updateSelectedItemsTransform(params: TransformParams) {
-    if (!activeScheme.value) return
-
-    // 保存历史（编辑操作）
-    saveHistory('edit')
-
-    const { mode, position, rotation } = params
-    const selected = selectedItems.value
-
-    if (selected.length === 0) return
-
-    // 计算选区中心（用于旋转和绝对位置）
-    const center = getSelectedItemsCenter()
-    if (!center) return
-
-    // 计算位置偏移量
-    let positionOffset = { x: 0, y: 0, z: 0 }
-
-    if (mode === 'absolute' && position) {
-      // 绝对模式：移动到指定坐标
-      positionOffset = {
-        x: (position.x ?? center.x) - center.x,
-        y: (position.y ?? center.y) - center.y,
-        z: (position.z ?? center.z) - center.z,
-      }
-    } else if (mode === 'relative' && position) {
-      // 相对模式：偏移指定距离
-      positionOffset = {
-        x: position.x ?? 0,
-        y: position.y ?? 0,
-        z: position.z ?? 0,
-      }
-    }
-
-    // 更新物品
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return item
-      }
-
-      let newX = item.x
-      let newY = item.y
-      let newZ = item.z
-      const currentRotation = item.originalData.Rotation
-      let newRoll = currentRotation.Roll
-      let newPitch = currentRotation.Pitch
-      let newYaw = currentRotation.Yaw
-
-      // 应用旋转（群组旋转：位置绕中心旋转 + 朝向同步旋转）
-      if (rotation && (rotation.x || rotation.y || rotation.z)) {
-        // 1. 位置绕中心旋转（公转）
-        const rotatedPos = rotatePoint3D({ x: item.x, y: item.y, z: item.z }, center, rotation)
-        newX = rotatedPos.x
-        newY = rotatedPos.y
-        newZ = rotatedPos.z
-
-        // 2. 朝向同步旋转（自转）
-        newRoll += rotation.x ?? 0
-        newPitch += rotation.y ?? 0
-        newYaw += rotation.z ?? 0
-      }
-
-      // 应用位置偏移
-      newX += positionOffset.x
-      newY += positionOffset.y
-      newZ += positionOffset.z
-
-      return {
-        ...item,
-        x: newX,
-        y: newY,
-        z: newZ,
-        originalData: {
-          ...item.originalData,
-          Location: {
-            ...item.originalData.Location,
-            X: newX,
-            Y: newY,
-            Z: newZ,
-          },
-          Rotation: {
-            Pitch: newPitch,
-            Yaw: newYaw,
-            Roll: newRoll,
-          },
-        },
-      }
-    })
-  }
 
   // 获取选中物品的中心坐标（用于UI显示）
   function getSelectedItemsCenter(): { x: number; y: number; z: number } | null {
@@ -692,7 +325,11 @@ export const useEditorStore = defineStore('editor', () => {
     schemes,
     activeSchemeId,
     activeScheme,
-    clipboard, // 来自 useClipboard 的 computed
+    itemsMap, // 导出以便 Composables 使用
+    groupsMap, // 导出以便 Composables 使用
+    buildableAreas,
+    isBuildableAreaLoaded,
+    clipboardList: clipboardRef, // 导出给 useClipboard 使用
     currentTool,
 
     // 向后兼容的计算属性
@@ -701,18 +338,6 @@ export const useEditorStore = defineStore('editor', () => {
     stats,
     selectedItemIds,
     selectedItems,
-
-    // 重复物品检测 (来自 Composable)
-    duplicateGroups,
-    hasDuplicate,
-    duplicateItemCount,
-    selectDuplicateItems,
-
-    // Limitation Detection (来自 Composable)
-    limitIssues,
-    hasLimitIssues,
-    selectOutOfBoundsItems,
-    selectOversizedGroupItems,
 
     // 方案管理
     createScheme,
@@ -724,39 +349,8 @@ export const useEditorStore = defineStore('editor', () => {
     getSavedViewConfig,
     clearData,
 
-    // 选择操作
-    toggleSelection,
-    updateSelection,
-    deselectItems,
-    clearSelection,
-    selectAll,
-    invertSelection,
-
     // 编辑操作
-    moveSelectedItems3D,
-    deleteSelected,
-    updateSelectedItemsTransform,
     getSelectedItemsCenter,
-
-    // 跨方案剪贴板 (来自 Composable)
-    copyToClipboard,
-    cutToClipboard,
-    pasteFromClipboard,
-    pasteItems,
-
-    // 历史记录 (来自 Composable)
-    saveHistory,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-
-    // 组编辑 (来自 Composable)
-    groupSelected,
-    ungroupSelected,
-    getGroupItems,
-    getItemGroupId,
-    getAllGroupIds,
-    getGroupColor,
+    getNextInstanceId, // 导出以便 Composables 使用
   }
 })

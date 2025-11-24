@@ -3,6 +3,8 @@ import { Object3D, Vector3 } from 'three'
 import type { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { coordinates3D } from '@/lib/coordinates'
+import { useEditorHistory } from '@/composables/editor/useEditorHistory'
+import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 
 export function useThreeTransformGizmo(
   editorStore: ReturnType<typeof useEditorStore>,
@@ -22,6 +24,8 @@ export function useThreeTransformGizmo(
   const lastThreePosition = ref<Vector3 | null>(null)
 
   const settingsStore = useSettingsStore()
+  const { saveHistory } = useEditorHistory()
+  const { moveSelectedItems } = useEditorManipulation()
   const shouldShowGizmo = computed(
     () => editorStore.selectedItemIds.size > 0 && settingsStore.settings.showGizmo
   )
@@ -104,9 +108,7 @@ export function useThreeTransformGizmo(
 
     if (hasStartedTransform.value && (last.x !== 0 || last.y !== 0 || last.z !== 0)) {
       // 提交真实数据更新
-      if (editorStore.moveSelectedItems3D) {
-        editorStore.moveSelectedItems3D(last.x, last.y, last.z)
-      }
+      moveSelectedItems(last.x, last.y, last.z, { saveHistory: false })
     }
 
     _isTransformDragging.value = false
@@ -144,7 +146,7 @@ export function useThreeTransformGizmo(
 
     // 第一次真正发生位移时保存历史
     if (!hasStartedTransform.value) {
-      editorStore.saveHistory?.('edit')
+      saveHistory('edit')
       hasStartedTransform.value = true
     }
 

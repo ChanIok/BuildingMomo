@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Switch } from '@/components/ui/switch'
 import { Item } from '@/components/ui/item'
 
 const editorStore = useEditorStore()
+const { updateSelectedItemsTransform } = useEditorManipulation()
 
 // 两个独立的开关，默认都开启绝对模式 (false)
 const isPositionRelative = ref(false)
@@ -96,7 +98,7 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     const posArgs: any = { x: 0, y: 0, z: 0 }
     posArgs[axis] = delta
 
-    editorStore.updateSelectedItemsTransform({
+    updateSelectedItemsTransform({
       mode: 'relative',
       position: posArgs,
     })
@@ -108,7 +110,7 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     const current = selectionInfo.value.center
     const newPos = { ...current, [axis]: value }
 
-    editorStore.updateSelectedItemsTransform({
+    updateSelectedItemsTransform({
       mode: 'absolute',
       position: newPos,
     })
@@ -126,7 +128,7 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     const rotationArgs: any = {}
     rotationArgs[axis] = delta
 
-    editorStore.updateSelectedItemsTransform({
+    updateSelectedItemsTransform({
       mode: 'relative',
       rotation: rotationArgs,
     })
@@ -142,7 +144,7 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
       const rotationArgs: any = {}
       rotationArgs[axis] = delta
 
-      editorStore.updateSelectedItemsTransform({
+      updateSelectedItemsTransform({
         mode: 'relative', // 计算增量并相对应用以达到绝对结果
         rotation: rotationArgs,
       })
@@ -153,7 +155,7 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
       const rotationArgs: any = {}
       rotationArgs[axis] = delta
 
-      editorStore.updateSelectedItemsTransform({
+      updateSelectedItemsTransform({
         mode: 'relative',
         rotation: rotationArgs,
       })

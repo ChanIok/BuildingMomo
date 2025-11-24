@@ -1,5 +1,9 @@
-import { computed, type Ref } from 'vue'
-import type { AppItem, HomeScheme } from '../types/editor'
+import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useEditorStore } from '../stores/editorStore'
+import { useEditorHistory } from './editor/useEditorHistory'
+import { useEditorGroups } from './editor/useEditorGroups'
+import type { AppItem } from '../types/editor'
 
 // 生成简单的UUID (局部工具函数，或从 utils 导入)
 function generateUUID(): string {
@@ -10,13 +14,14 @@ function generateUUID(): string {
   })
 }
 
-export function useClipboard(
-  activeScheme: Ref<HomeScheme | null>,
-  clipboard: Ref<AppItem[]>,
-  saveHistory: (type: 'edit') => void,
-  getNextGroupId: () => number,
-  getNextInstanceId: () => number
-) {
+export function useClipboard() {
+  const store = useEditorStore()
+  const { activeScheme, clipboardList: clipboard } = storeToRefs(store)
+  const { getNextInstanceId } = store
+
+  const { saveHistory } = useEditorHistory()
+  const { getNextGroupId } = useEditorGroups()
+
   const hasClipboardData = computed(() => clipboard.value.length > 0)
 
   // 跨方案剪贴板：复制到剪贴板
@@ -105,13 +110,6 @@ export function useClipboard(
     return newIds
   }
 
-  // 跨方案剪贴板：从剪贴板粘贴
-  function pasteFromClipboard(offsetX: number = 0, offsetY: number = 0): string[] {
-    if (!activeScheme.value || clipboard.value.length === 0) return []
-
-    return pasteItems(clipboard.value, offsetX, offsetY)
-  }
-
   // 复制选中项到剪贴板 (对外 API)
   function copy() {
     if (!activeScheme.value || activeScheme.value.selectedItemIds.size === 0) {
@@ -141,8 +139,8 @@ export function useClipboard(
       return
     }
 
-    // 使用Store的跨方案粘贴（不偏移位置）
-    pasteFromClipboard(0, 0)
+    // 粘贴剪贴板物品（不偏移位置）
+    pasteItems(clipboard.value, 0, 0)
     console.log(`[Clipboard] Pasted ${clipboard.value.length} items`)
   }
 
@@ -158,8 +156,7 @@ export function useClipboard(
     copy,
     cut,
     paste,
-    pasteFromClipboard, // 暴露给 Store 用于拖拽复制等
-    pasteItems, // 暴露给 Store 用于拖拽复制等
+    pasteItems, // 暴露给 Store 和其他需要自定义偏移的场景
     clearClipboard,
     copyToClipboard, // 保留兼容性
     cutToClipboard, // 保留兼容性

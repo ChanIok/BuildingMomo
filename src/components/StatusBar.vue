@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useDateFormat } from '@vueuse/core'
 import { useEditorStore } from '../stores/editorStore'
+import { useEditorValidation } from '../composables/editor/useEditorValidation'
 import { useUIStore } from '../stores/uiStore'
 import { useCommandStore } from '../stores/commandStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -9,6 +10,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Copy, AlertTriangle, Layers } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
+const {
+  hasDuplicate,
+  duplicateItemCount,
+  limitIssues,
+  selectDuplicateItems,
+  selectOutOfBoundsItems,
+  selectOversizedGroupItems,
+} = useEditorValidation()
 const uiStore = useUIStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
@@ -71,11 +80,6 @@ const handleCoordinateClick = () => {
 
 // 重复物品检测
 const duplicateDetectionEnabled = computed(() => settingsStore.settings.enableDuplicateDetection)
-const hasDuplicate = computed(() => editorStore.hasDuplicate)
-const duplicateItemCount = computed(() => editorStore.duplicateItemCount)
-
-// 限制检查
-const limitIssues = computed(() => editorStore.limitIssues)
 
 const duplicateTooltip = computed(() => {
   if (!duplicateDetectionEnabled.value) return ''
@@ -85,7 +89,7 @@ const duplicateTooltip = computed(() => {
 
 const handleDuplicateClick = () => {
   if (hasDuplicate.value) {
-    editorStore.selectDuplicateItems()
+    selectDuplicateItems()
   }
 }
 </script>
@@ -126,7 +130,7 @@ const handleDuplicateClick = () => {
           <TooltipTrigger as-child>
             <div
               class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-50"
-              @click="editorStore.selectOutOfBoundsItems()"
+              @click="selectOutOfBoundsItems()"
             >
               <AlertTriangle :size="14" />
               <span class="text-xs">{{ limitIssues.outOfBoundsItemIds.length }} 超出区域</span>
@@ -142,7 +146,7 @@ const handleDuplicateClick = () => {
           <TooltipTrigger as-child>
             <div
               class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-orange-600 transition-colors hover:bg-orange-50"
-              @click="editorStore.selectOversizedGroupItems()"
+              @click="selectOversizedGroupItems()"
             >
               <Layers :size="14" />
               <span class="text-xs">{{ limitIssues.oversizedGroups.length }} 组过大</span>

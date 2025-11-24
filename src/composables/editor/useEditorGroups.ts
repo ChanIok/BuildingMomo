@@ -1,12 +1,14 @@
-import { type Ref, type ComputedRef } from 'vue'
-import type { AppItem, HomeScheme } from '../../types/editor'
+import { storeToRefs } from 'pinia'
+import { useEditorStore } from '../../stores/editorStore'
+import { useEditorHistory } from './useEditorHistory'
+import type { AppItem } from '../../types/editor'
 
-export function useEditorGroups(
-  activeScheme: Ref<HomeScheme | null>,
-  itemsMap: ComputedRef<Map<string, AppItem>>,
-  groupsMap: ComputedRef<Map<number, Set<string>>>,
-  saveHistory: (type: 'edit') => void
-) {
+export function useEditorGroups() {
+  const store = useEditorStore()
+  // 注意：itemsMap 和 groupsMap 必须在 store 中导出
+  const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
+  const { saveHistory } = useEditorHistory()
+
   // 获取下一个唯一的 GroupID（自增策略）
   function getNextGroupId(): number {
     if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
