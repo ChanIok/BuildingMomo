@@ -1,6 +1,6 @@
-import { toRaw } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
+import { deepToRaw } from '../../lib/deepToRaw'
 import type { AppItem, HistorySnapshot, HistoryStack } from '../../types/editor'
 
 export function useEditorHistory() {
@@ -17,10 +17,12 @@ export function useEditorHistory() {
     }
   }
 
-  // 深拷贝物品数组（使用 structuredClone 优化性能）
+  // 深拷贝物品数组
   function cloneItems(items: AppItem[]): AppItem[] {
-    // 必须先解包 Proxy，否则 structuredClone 可能会失败
-    return structuredClone(toRaw(items))
+    // 使用 structuredClone + deepToRaw 替代 JSON 序列化
+    // 1. deepToRaw 彻底去除 Proxy，避免 DataCloneError
+    // 2. structuredClone 比 JSON.parse(JSON.stringify) 性能更好且支持更多类型
+    return structuredClone(deepToRaw(items))
   }
 
   // 深拷贝选择集合

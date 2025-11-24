@@ -3,7 +3,8 @@ import type { useEditorStore } from '../stores/editorStore'
 import type { GameDataFile, GameItem, FileWatchState } from '../types/editor'
 import { useNotification } from './useNotification'
 import { useSettingsStore } from '../stores/settingsStore'
-import { useEditorValidation } from './editor/useEditorValidation'
+import { storeToRefs } from 'pinia'
+import { useValidationStore } from '../stores/validationStore'
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -106,7 +107,9 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   const fileInputRef = ref<HTMLInputElement | null>(null)
 
   const settingsStore = useSettingsStore()
-  const { hasDuplicate, duplicateItemCount, hasLimitIssues, limitIssues } = useEditorValidation()
+  const validationStore = useValidationStore()
+  const { hasDuplicate, duplicateItemCount, hasLimitIssues, limitIssues } =
+    storeToRefs(validationStore)
 
   // 文件监控状态
   const watchState = ref<FileWatchState>({

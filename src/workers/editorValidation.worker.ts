@@ -28,8 +28,6 @@ function detectDuplicates(items: AppItem[], enableDetection: boolean): AppItem[]
     return []
   }
 
-  const startTime = performance.now()
-
   // Map索引：key = "gameId,x,y,z,pitch,yaw,roll,scaleX,scaleY,scaleZ", value = AppItem[]
   const itemMap = new Map<string, AppItem[]>()
 
@@ -45,13 +43,6 @@ function detectDuplicates(items: AppItem[], enableDetection: boolean): AppItem[]
 
   // 过滤出重复的组（count > 1）
   const duplicates = Array.from(itemMap.values()).filter((group) => group.length > 1)
-
-  const elapsed = performance.now() - startTime
-  if (items.length > 100) {
-    console.log(
-      `[Worker: Duplicate Detection] ${elapsed.toFixed(2)}ms for ${items.length} items, found ${duplicates.length} duplicate groups`
-    )
-  }
 
   return duplicates
 }

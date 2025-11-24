@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useDateFormat } from '@vueuse/core'
+import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
-import { useEditorValidation } from '../composables/editor/useEditorValidation'
+import { useValidationStore } from '../stores/validationStore'
 import { useUIStore } from '../stores/uiStore'
 import { useCommandStore } from '../stores/commandStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -10,14 +11,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Copy, AlertTriangle, Layers } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
-const {
-  hasDuplicate,
-  duplicateItemCount,
-  limitIssues,
-  selectDuplicateItems,
-  selectOutOfBoundsItems,
-  selectOversizedGroupItems,
-} = useEditorValidation()
+const validationStore = useValidationStore()
+const { hasDuplicate, duplicateItemCount, limitIssues } = storeToRefs(validationStore)
+
+const { selectDuplicateItems, selectOutOfBoundsItems, selectOversizedGroupItems } = validationStore
 const uiStore = useUIStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()

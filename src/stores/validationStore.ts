@@ -1,21 +1,23 @@
-import { ref, watch, computed, toRaw } from 'vue'
+import { defineStore, storeToRefs } from 'pinia'
+import { ref, computed, watch } from 'vue'
 import * as Comlink from 'comlink'
 import { useDebounceFn } from '@vueuse/core'
-import { storeToRefs } from 'pinia'
-import type { AppItem } from '../../types/editor'
-import type { ValidationWorkerApi } from '../../workers/editorValidation.worker'
-import Worker from '../../workers/editorValidation.worker?worker'
-import { useEditorStore } from '../../stores/editorStore'
-import { useSettingsStore } from '../../stores/settingsStore'
-import { useEditorHistory } from './useEditorHistory'
+import type { AppItem } from '../types/editor'
+import type { ValidationWorkerApi } from '../workers/editorValidation.worker'
+import Worker from '../workers/editorValidation.worker?worker'
+import { useEditorStore } from './editorStore'
+import { useSettingsStore } from './settingsStore'
+import { useEditorHistory } from '../composables/editor/useEditorHistory'
+import { deepToRaw } from '../lib/deepToRaw'
 
-export function useEditorValidation() {
+export const useValidationStore = defineStore('validation', () => {
   const editorStore = useEditorStore()
   const settingsStore = useSettingsStore()
   const { saveHistory } = useEditorHistory()
 
   const { activeScheme, buildableAreas, isBuildableAreaLoaded } = storeToRefs(editorStore)
   const settings = computed(() => settingsStore.settings)
+
   // Worker 实例
   const worker = new Worker()
   const workerApi = Comlink.wrap<ValidationWorkerApi>(worker)
@@ -27,9 +29,6 @@ export function useEditorValidation() {
     oversizedGroups: [],
   })
   const isValidating = ref(false)
-
-  // 映射回 Store 的对象 (如果需要)
-  // 目前 limitIssues 存储的是 IDs，duplicateGroups 存储的是 Copies (Worker 返回的)
 
   // 计算属性：是否存在重复物品
   const hasDuplicate = computed(() => duplicateGroups.value.length > 0)
@@ -56,11 +55,14 @@ export function useEditorValidation() {
     }
 
     isValidating.value = true
+    const startTime = performance.now()
 
     try {
-      // 准备数据 (toRaw 去除 Proxy)
-      const items = toRaw(activeScheme.value.items)
-      const areas = toRaw(buildableAreas.value)
+      // 准备数据 (使用 deepToRaw 彻底去除 Proxy，避免 DataCloneError)
+      // 注意：postMessage 会自动执行结构化克隆，所以这里只需去除 Proxy 即可，无需手动 structuredClone
+      const items = deepToRaw(activeScheme.value.items)
+      const areas =
+        isBuildableAreaLoaded.value && buildableAreas.value ? deepToRaw(buildableAreas.value) : null
       const enableDup = settings.value.enableDuplicateDetection
 
       // 并行执行两个任务
@@ -71,6 +73,9 @@ export function useEditorValidation() {
 
       duplicateGroups.value = duplicates
       limitIssues.value = limits
+
+      const duration = performance.now() - startTime
+      console.log(`[EditorValidation] Validation completed in ${duration.toFixed(2)}ms`)
     } catch (err) {
       console.error('[EditorValidation] Validation failed:', err)
     } finally {
@@ -151,4 +156,4 @@ export function useEditorValidation() {
     selectOutOfBoundsItems,
     selectOversizedGroupItems,
   }
-}
+})
