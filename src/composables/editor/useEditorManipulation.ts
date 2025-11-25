@@ -1,58 +1,72 @@
 import { storeToRefs } from 'pinia'
+import { Vector3, Quaternion, Euler, MathUtils } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
+import type { AppItem } from '../../types/editor'
 
-// 3D旋转：将点绕中心旋转（群组旋转）
-function rotatePoint3D(
-  point: { x: number; y: number; z: number },
+/**
+ * 计算物品在群组旋转后的新位置和姿态
+ * 使用四元数确保旋转在世界坐标系下正确应用
+ *
+ * @param item - 要变换的物品
+ * @param center - 旋转中心点
+ * @param rotationDelta - 旋转增量 (度数: x=Roll, y=Pitch, z=Yaw)
+ * @param positionOffset - 位置偏移
+ */
+function calculateNewTransform(
+  item: AppItem,
   center: { x: number; y: number; z: number },
-  rotation: { x?: number; y?: number; z?: number }
-): { x: number; y: number; z: number } {
-  // 转换为相对中心的坐标
-  let px = point.x - center.x
-  let py = point.y - center.y
-  let pz = point.z - center.z
+  rotationDelta: { x?: number; y?: number; z?: number },
+  positionOffset: { x: number; y: number; z: number }
+) {
+  // 1. 准备基础数据
+  const currentPos = new Vector3(item.x, item.y, item.z)
+  const centerPos = new Vector3(center.x, center.y, center.z)
 
-  // 依次应用旋转（顺序：X -> Y -> Z，对应 Roll -> Pitch -> Yaw）
-  // 1. 绕X轴旋转（Roll）
-  if (rotation.x) {
-    const angleRad = (rotation.x * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-    const newPy = py * cos - pz * sin
-    const newPz = py * sin + pz * cos
-    py = newPy
-    pz = newPz
-  }
+  // 构建当前姿态四元数 (注意顺序 ZYX，单位转弧度)
+  const currentEuler = new Euler(
+    MathUtils.degToRad(item.originalData.Rotation.Roll),
+    MathUtils.degToRad(item.originalData.Rotation.Pitch),
+    MathUtils.degToRad(item.originalData.Rotation.Yaw),
+    'ZYX'
+  )
+  const qCurrent = new Quaternion().setFromEuler(currentEuler)
 
-  // 2. 绕Y轴旋转（Pitch）
-  if (rotation.y) {
-    const angleRad = (rotation.y * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-    const newPx = px * cos + pz * sin
-    const newPz = -px * sin + pz * cos
-    px = newPx
-    pz = newPz
-  }
+  // 构建增量旋转四元数 (同样使用 ZYX 顺序)
+  const deltaEuler = new Euler(
+    MathUtils.degToRad(rotationDelta.x ?? 0),
+    MathUtils.degToRad(rotationDelta.y ?? 0),
+    MathUtils.degToRad(rotationDelta.z ?? 0),
+    'ZYX'
+  )
+  const qDelta = new Quaternion().setFromEuler(deltaEuler)
 
-  // 3. 绕Z轴旋转（Yaw）
-  if (rotation.z) {
-    const angleRad = (rotation.z * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-    const newPx = px * cos - py * sin
-    const newPy = px * sin + py * cos
-    px = newPx
-    py = newPy
-  }
+  // 2. 计算新位置 (公转 + 平移)
+  // 向量：中心 -> 物体
+  const relativePos = currentPos.clone().sub(centerPos)
+  // 应用旋转
+  relativePos.applyQuaternion(qDelta)
+  // 加回中心 + 加绝对偏移
+  const newPos = centerPos
+    .clone()
+    .add(relativePos)
+    .add(new Vector3(positionOffset.x, positionOffset.y, positionOffset.z))
 
-  // 转回世界坐标
+  // 3. 计算新姿态 (自转)
+  // 左乘 qDelta 表示基于世界坐标系的旋转叠加
+  const qNew = qDelta.clone().multiply(qCurrent)
+
+  // 转回欧拉角
+  const newEuler = new Euler().setFromQuaternion(qNew, 'ZYX')
+
   return {
-    x: px + center.x,
-    y: py + center.y,
-    z: pz + center.z,
+    x: newPos.x,
+    y: newPos.y,
+    z: newPos.z,
+    Roll: MathUtils.radToDeg(newEuler.x),
+    Pitch: MathUtils.radToDeg(newEuler.y),
+    Yaw: MathUtils.radToDeg(newEuler.z),
   }
 }
 
@@ -116,50 +130,26 @@ export function useEditorManipulation() {
         return item
       }
 
-      let newX = item.x
-      let newY = item.y
-      let newZ = item.z
-      const currentRotation = item.originalData.Rotation
-      let newRoll = currentRotation.Roll
-      let newPitch = currentRotation.Pitch
-      let newYaw = currentRotation.Yaw
-
-      // 应用旋转（群组旋转：位置绕中心旋转 + 朝向同步旋转）
-      if (rotation && (rotation.x || rotation.y || rotation.z)) {
-        // 1. 位置绕中心旋转（公转）
-        const rotatedPos = rotatePoint3D({ x: item.x, y: item.y, z: item.z }, center, rotation)
-        newX = rotatedPos.x
-        newY = rotatedPos.y
-        newZ = rotatedPos.z
-
-        // 2. 朝向同步旋转（自转）
-        newRoll += rotation.x ?? 0
-        newPitch += rotation.y ?? 0
-        newYaw += rotation.z ?? 0
-      }
-
-      // 应用位置偏移
-      newX += positionOffset.x
-      newY += positionOffset.y
-      newZ += positionOffset.z
+      // 使用新算法计算变换
+      const result = calculateNewTransform(item, center, rotation || {}, positionOffset)
 
       return {
         ...item,
-        x: newX,
-        y: newY,
-        z: newZ,
+        x: result.x,
+        y: result.y,
+        z: result.z,
         originalData: {
           ...item.originalData,
           Location: {
             ...item.originalData.Location,
-            X: newX,
-            Y: newY,
-            Z: newZ,
+            X: result.x,
+            Y: result.y,
+            Z: result.z,
           },
           Rotation: {
-            Pitch: newPitch,
-            Yaw: newYaw,
-            Roll: newRoll,
+            Roll: result.Roll,
+            Pitch: result.Pitch,
+            Yaw: result.Yaw,
           },
         },
       }

@@ -358,8 +358,8 @@ export function useThreeCamera(
 
     if (w.value) push(forward, 1)
     if (s.value) push(forward, -1)
-    if (a.value) push(right, 1)
-    if (d.value) push(right, -1)
+    if (a.value) push(right, -1)
+    if (d.value) push(right, 1)
     if (space.value) push(up, 1)
     if (q.value) push(up, -1)
 
@@ -425,7 +425,7 @@ export function useThreeCamera(
     if (deps.isTransformDragging?.value) return
 
     // 更新 yaw/pitch（透视视角下始终视为透视预设的连续变体）
-    state.value.yaw -= evt.movementX * mouseSensitivity
+    state.value.yaw += evt.movementX * mouseSensitivity
     state.value.pitch = clamp(
       state.value.pitch - evt.movementY * mouseSensitivity,
       pitchMinRad,

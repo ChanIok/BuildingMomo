@@ -497,8 +497,8 @@ export function useThreeInstancedRenderer(
         scratchEuler.set(
           (Rotation.Roll * Math.PI) / 180,
           (Rotation.Pitch * Math.PI) / 180, // Pitch around Y
-          -(Rotation.Yaw * Math.PI) / 180, // Yaw around Z
-          'XYZ'
+          (Rotation.Yaw * Math.PI) / 180, // Yaw around Z
+          'ZYX'
         )
         scratchQuaternion.setFromEuler(scratchEuler)
 
@@ -522,17 +522,6 @@ export function useThreeInstancedRenderer(
             .set(currentIconUp.value[0], currentIconUp.value[1], currentIconUp.value[2])
             .normalize()
 
-          // lookAt logic similar to before but axis swapped
-          // Plane Normal is +Z.
-          // If we want Normal to face Camera, we want Plane +Z to point to Camera.
-          // Matrix4 lookAt makes -Z point to target.
-          // So if we lookAt(Camera), -Z -> Camera, so +Z -> Away.
-          // We want +Z -> Camera.
-          // So we should lookAt(2*Pos - Camera) (Away from Camera)? No.
-          // We want +Z aligned with Normal.
-          // lookAt(eye, target, up): Constructs matrix where -Z points from eye to target.
-          // If we set eye=0, target=-Normal, then -Z points to -Normal, so +Z points to Normal. Correct.
-
           scratchLookAtTarget.set(-scratchTmpVec3.x, -scratchTmpVec3.y, -scratchTmpVec3.z)
           scratchMatrix.lookAt(new Vector3(0, 0, 0), scratchLookAtTarget, scratchUpVec3)
           scratchQuaternion.setFromRotationMatrix(scratchMatrix)
@@ -554,8 +543,8 @@ export function useThreeInstancedRenderer(
         scratchEuler.set(
           (Rotation.Roll * Math.PI) / 180,
           (Rotation.Pitch * Math.PI) / 180,
-          -(Rotation.Yaw * Math.PI) / 180,
-          'XYZ'
+          (Rotation.Yaw * Math.PI) / 180,
+          'ZYX'
         )
         scratchQuaternion.setFromEuler(scratchEuler)
 
