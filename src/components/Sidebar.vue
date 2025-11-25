@@ -14,11 +14,11 @@ const editorStore = useEditorStore()
     <!-- 顶部工具栏 -->
     <SidebarHeader />
 
-    <!-- 可滚动内容区域 -->
-    <ScrollArea class="flex-1">
-      <div class="flex flex-col gap-3 p-3">
-        <Tabs default-value="structure" class="w-full">
-          <TabsList class="mb-4 grid w-full grid-cols-2 bg-white">
+    <!-- 内容区域 -->
+    <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Tabs default-value="structure" class="flex h-full w-full flex-col">
+        <div class="shrink-0 px-3 pt-3">
+          <TabsList class="grid w-full grid-cols-2 bg-background p-0">
             <TabsTrigger
               value="structure"
               class="data-[state=active]:bg-gray-100 data-[state=active]:shadow-none"
@@ -27,39 +27,43 @@ const editorStore = useEditorStore()
             </TabsTrigger>
             <TabsTrigger
               value="transform"
-              :disabled="editorStore.selectedItems.length === 0"
               class="data-[state=active]:bg-gray-100 data-[state=active]:shadow-none"
             >
               变换
             </TabsTrigger>
           </TabsList>
+        </div>
 
-          <TabsContent value="structure" class="mt-0 flex flex-col gap-3">
-            <!-- 选中物品组件 -->
-            <SidebarSelection />
+        <TabsContent
+          value="structure"
+          :force-mount="true"
+          class="mt-0 flex min-h-0 flex-1 flex-col gap-3 px-3 pb-3 data-[state=inactive]:hidden"
+        >
+          <!-- 选中物品组件 -->
+          <SidebarSelection class="min-h-0 flex-1" />
+        </TabsContent>
 
-            <!-- 提示信息 -->
-            <div
-              v-if="editorStore.items.length === 0"
-              class="mt-4 text-center text-xs text-gray-500"
-            >
-              请导入建造数据文件开始编辑
-            </div>
-            <div
-              v-else-if="editorStore.selectedItems.length === 0"
-              class="mt-4 text-center text-xs text-gray-500"
-            >
-              请选择物品查看详情或进行操作
-            </div>
-          </TabsContent>
-
-          <TabsContent value="transform" class="mt-0">
-            <!-- 变换面板 -->
+        <TabsContent
+          value="transform"
+          :force-mount="true"
+          class="mt-0 min-h-0 flex-1 px-3 pb-3 data-[state=inactive]:hidden"
+        >
+          <!-- 变换面板 -->
+          <ScrollArea class="h-full">
             <SidebarTransform />
-          </TabsContent>
-        </Tabs>
-      </div>
-      <ScrollBar orientation="vertical" class="!w-1.5" />
-    </ScrollArea>
+
+            <ScrollBar orientation="vertical" class="!w-1.5" />
+          </ScrollArea>
+        </TabsContent>
+
+        <!-- 全局提示信息 -->
+        <div
+          v-if="editorStore.selectedItems.length === 0"
+          class="px-3 pb-3 text-center text-xs text-gray-500"
+        >
+          请选择物品查看详情或进行操作
+        </div>
+      </Tabs>
+    </div>
   </div>
 </template>

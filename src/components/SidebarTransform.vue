@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Item } from '@/components/ui/item'
 
 const editorStore = useEditorStore()
@@ -17,6 +17,28 @@ const isRotationRelative = ref(false)
 const rotationState = ref({ x: 0, y: 0, z: 0 })
 // 位置相对输入的临时状态
 const positionState = ref({ x: 0, y: 0, z: 0 })
+
+// Tabs 绑定的计算属性
+const positionMode = computed({
+  get: () => (isPositionRelative.value ? 'relative' : 'absolute'),
+  set: (val) => {
+    isPositionRelative.value = val === 'relative'
+  },
+})
+
+const rotationMode = computed({
+  get: () => {
+    // 多选强制相对，单选遵循用户偏好
+    if (selectionInfo.value?.count && selectionInfo.value.count > 1) {
+      return 'relative'
+    }
+    return isRotationRelative.value ? 'relative' : 'absolute'
+  },
+  set: (val) => {
+    // 只更新用户偏好
+    isRotationRelative.value = val === 'relative'
+  },
+})
 
 // 监听选择变化以重置输入
 watch(
@@ -75,16 +97,6 @@ const selectionInfo = computed(() => {
     bounds,
   }
 })
-
-// 监听选择数量，多选时强制使用相对旋转
-watch(
-  () => selectionInfo.value?.count,
-  (count) => {
-    if (count && count > 1) {
-      isRotationRelative.value = true
-    }
-  }
-)
 
 // 更新处理函数
 function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
@@ -174,10 +186,22 @@ const fmt = (n: number) => Math.round(n * 100) / 100
     <div class="space-y-2">
       <div class="flex items-center justify-between">
         <label class="text-xs font-bold text-gray-700">位置</label>
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] text-gray-400">{{ isPositionRelative ? '相对' : '绝对' }}</span>
-          <Switch v-model="isPositionRelative" class="scale-75" />
-        </div>
+        <Tabs v-model="positionMode" class="w-auto">
+          <TabsList class="h-6 p-0.5">
+            <TabsTrigger
+              value="absolute"
+              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+            >
+              绝对
+            </TabsTrigger>
+            <TabsTrigger
+              value="relative"
+              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+            >
+              相对
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div
@@ -277,14 +301,23 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             </Tooltip>
           </TooltipProvider>
         </div>
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] text-gray-400">{{ isRotationRelative ? '相对' : '绝对' }}</span>
-          <Switch
-            v-model="isRotationRelative"
-            :disabled="selectionInfo?.count > 1"
-            class="scale-75"
-          />
-        </div>
+        <Tabs v-model="rotationMode" class="w-auto">
+          <TabsList class="h-6 p-0.5">
+            <TabsTrigger
+              value="absolute"
+              :disabled="selectionInfo?.count > 1"
+              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+            >
+              绝对
+            </TabsTrigger>
+            <TabsTrigger
+              value="relative"
+              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+            >
+              相对
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <!-- Roll (X) -->

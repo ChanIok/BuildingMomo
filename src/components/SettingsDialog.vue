@@ -32,7 +32,7 @@ const settingsStore = useSettingsStore()
     <DialogContent class="max-h-[80vh] max-w-2xl">
       <DialogHeader>
         <DialogTitle>设置</DialogTitle>
-        <DialogDescription> 配置应用的显示选项和数据管理设置 </DialogDescription>
+        <DialogDescription> 配置应用的显示选项和编辑设置 </DialogDescription>
       </DialogHeader>
 
       <div class="space-y-4 py-4">
@@ -75,7 +75,7 @@ const settingsStore = useSettingsStore()
           <div class="space-y-0.5">
             <Label>启用方案合规性检测</Label>
             <p class="text-xs text-muted-foreground">
-              自动检测越界物品和过大的组合。关闭后将解除限制，允许强制保存。
+              自动检测越界物品和过大的组合。关闭则代表您已知悉风险，允许强制保存。
             </p>
           </div>
           <Switch v-model="settingsStore.settings.enableLimitDetection" />

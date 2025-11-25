@@ -1,18 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Ruler } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemMedia,
-  ItemTitle,
-} from '@/components/ui/item'
+import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item'
 
 const editorStore = useEditorStore()
 const furnitureStore = useFurnitureStore()
@@ -62,11 +56,22 @@ const selectedItemDetails = computed(() => {
 
     const furniture = furnitureStore.getFurniture(item.gameId)
 
+    // 计算尺寸字符串
+    let dimensions = null
+    if (furniture) {
+      const size = furniture.size
+      const scale = item.originalData.Scale
+      const l = parseFloat((size[0] * scale.X).toFixed(1))
+      const w = parseFloat((size[1] * scale.Y).toFixed(1))
+      const h = parseFloat((size[2] * scale.Z).toFixed(1))
+      dimensions = `${l}x${w}x${h} cm`
+    }
     return {
       type: 'single' as const,
       name: furniture?.name_cn || `物品 ${item.gameId}`,
       icon: furniture ? furnitureStore.getIconUrl(item.gameId) : null,
       itemId: item.gameId,
+      dimensions,
       x: item.x,
       y: item.y,
       z: item.z,
@@ -127,9 +132,13 @@ function handleIconError(e: Event) {
 </script>
 
 <template>
-  <Item v-if="selectedItemDetails" variant="outline" class="flex-col items-stretch">
+  <Item
+    v-if="selectedItemDetails"
+    variant="outline"
+    class="flex h-full flex-col items-stretch overflow-hidden"
+  >
     <!-- 标题栏 -->
-    <div class="flex items-center justify-between">
+    <div class="flex shrink-0 items-center justify-between">
       <div class="flex items-center gap-2">
         <h2 class="text-sm font-semibold text-gray-700">选中列表</h2>
         <span class="font-semibold text-blue-600">{{ editorStore.stats.selectedItems }}</span>
@@ -152,39 +161,43 @@ function handleIconError(e: Event) {
     </div>
 
     <!-- 物品详情内容 -->
-    <div class="space-y-2">
-      <ScrollArea class="max-h-64">
+    <div class="mt-2 flex min-h-0 flex-1 flex-col">
+      <ScrollArea class="min-h-0 flex-1">
         <!-- 单个物品 -->
-        <div v-if="selectedItemDetails.type === 'single'" class="space-y-3 pr-3">
-          <Item class="gap-3 border-none p-0 hover:bg-transparent">
-            <ItemMedia
-              v-if="selectedItemDetails.icon"
-              variant="image"
-              class="size-12 rounded border border-gray-200"
+        <div v-if="selectedItemDetails.type === 'single'" class="space-y-3">
+          <div class="flex flex-col gap-3">
+            <!-- 大图标展示区 -->
+            <div
+              class="flex h-[150px] w-full items-center justify-center rounded-md bg-secondary p-4"
             >
               <img
+                v-if="selectedItemDetails.icon"
                 :src="selectedItemDetails.icon"
                 :alt="selectedItemDetails.name"
+                class="h-full w-full object-contain transition-transform hover:scale-105"
                 @error="handleIconError"
               />
-            </ItemMedia>
-            <ItemMedia
-              v-else
-              class="flex size-12 items-center justify-center rounded border border-gray-200 bg-gray-50 text-xs text-gray-400"
-            >
-              无图标
-            </ItemMedia>
-            <ItemContent>
-              <ItemTitle class="font-medium text-gray-800">{{
-                selectedItemDetails.name
-              }}</ItemTitle>
-              <ItemDescription>ID: {{ selectedItemDetails.itemId }}</ItemDescription>
-            </ItemContent>
-          </Item>
+              <div v-else class="text-sm text-gray-400">无图标</div>
+            </div>
+
+            <!-- 物品信息 -->
+            <div class="space-y-2">
+              <div class="font-medium text-gray-900">
+                {{ selectedItemDetails.name }}
+              </div>
+              <div
+                v-if="selectedItemDetails.dimensions"
+                class="flex items-center gap-1 text-xs text-gray-500"
+              >
+                <Ruler class="mr-1 h-3 w-3" />
+                {{ selectedItemDetails.dimensions }}
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 多个物品 - 聚合统计 -->
-        <div v-else-if="selectedItemDetails.type === 'multiple'" class="space-y-2 pr-3">
+        <div v-else-if="selectedItemDetails.type === 'multiple'" class="space-y-2">
           <Item
             v-for="item in selectedItemDetails.items"
             :key="item.itemId"
