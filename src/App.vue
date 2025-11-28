@@ -11,6 +11,7 @@ import StatusBar from './components/StatusBar.vue'
 import ThreeEditor from './components/ThreeEditor.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
+import SchemeSettingsDialog from './components/SchemeSettingsDialog.vue'
 import DocsViewer from './components/DocsViewer.vue'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'vue-sonner'
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { TriangleAlert, Wrench, CircleX, CheckCircle2 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const notificationStore = useNotificationStore()
@@ -117,15 +119,70 @@ onMounted(async () => {
 
   <!-- 工作坐标系设置对话框 -->
   <CoordinateDialog v-model:open="commandStore.showCoordinateDialog" />
+  <!-- 方案设置对话框 -->
+  <SchemeSettingsDialog v-model:open="commandStore.showSchemeSettingsDialog" />
 
   <!-- 全局 AlertDialog -->
   <AlertDialog :open="dialogOpen">
     <AlertDialogContent v-if="notificationStore.currentAlert">
       <AlertDialogHeader>
         <AlertDialogTitle>{{ notificationStore.currentAlert.title }}</AlertDialogTitle>
-        <AlertDialogDescription class="whitespace-pre-line">
-          {{ notificationStore.currentAlert.description }}
-        </AlertDialogDescription>
+
+        <div class="flex flex-col gap-4 py-2">
+          <!-- 普通描述文本 -->
+          <AlertDialogDescription
+            v-if="notificationStore.currentAlert.description"
+            class="text-sm whitespace-pre-line text-gray-500"
+          >
+            {{ notificationStore.currentAlert.description }}
+          </AlertDialogDescription>
+
+          <!-- 详情列表 -->
+          <div
+            v-if="
+              notificationStore.currentAlert.details &&
+              notificationStore.currentAlert.details.length > 0
+            "
+            class="flex flex-col gap-3"
+          >
+            <div
+              v-for="(detail, index) in notificationStore.currentAlert.details"
+              :key="index"
+              class="rounded-md border p-3 text-sm"
+              :class="{
+                'border-amber-200 bg-amber-50': detail.type === 'warning',
+                'border-blue-200 bg-blue-50': detail.type === 'info',
+                'border-red-200 bg-red-50': detail.type === 'error',
+                'border-green-200 bg-green-50': detail.type === 'success',
+              }"
+            >
+              <!-- 标题行 -->
+              <div
+                class="mb-1 flex items-center gap-2 font-medium"
+                :class="{
+                  'text-amber-700': detail.type === 'warning',
+                  'text-blue-700': detail.type === 'info',
+                  'text-red-700': detail.type === 'error',
+                  'text-green-700': detail.type === 'success',
+                }"
+              >
+                <TriangleAlert v-if="detail.type === 'warning'" class="h-4 w-4" />
+                <Wrench v-else-if="detail.type === 'info'" class="h-4 w-4" />
+                <CircleX v-else-if="detail.type === 'error'" class="h-4 w-4" />
+                <CheckCircle2 v-else-if="detail.type === 'success'" class="h-4 w-4" />
+                <span>{{ detail.title }}</span>
+              </div>
+
+              <!-- 内容 -->
+              <div class="space-y-1 pl-6 text-gray-600">
+                <p v-if="detail.text">{{ detail.text }}</p>
+                <ul v-if="detail.list && detail.list.length > 0" class="list-disc space-y-0.5 pl-4">
+                  <li v-for="(item, i) in detail.list" :key="i">{{ item }}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel

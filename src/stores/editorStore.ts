@@ -214,8 +214,8 @@ export const useEditorStore = defineStore('editor', () => {
         originalData: gameItem,
       }))
 
-      // 从文件名提取方案名称（去除.json后缀）
-      const schemeName = fileName.replace(/\.json$/i, '')
+      // 从文件名提取方案名称（默认使用“方案 N”形式，避免重复）
+      const schemeName = `方案 ${schemes.value.length + 1}`
 
       // 创建新方案
       const newScheme: HomeScheme = {
@@ -277,16 +277,26 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
-  // 方案管理：重命名方案
-  function renameScheme(schemeId: string, newName: string) {
+  // 方案管理：更新方案信息（名称、文件路径）
+  function updateSchemeInfo(schemeId: string, info: { name?: string; filePath?: string }) {
     const scheme = schemes.value.find((s) => s.id === schemeId)
     if (scheme) {
-      scheme.name = newName
+      if (info.name !== undefined) {
+        scheme.name = info.name
+        // 同步到 TabStore
+        const tabStore = useTabStore()
+        tabStore.updateSchemeTabName(schemeId, info.name)
+      }
 
-      // 同步到 TabStore
-      const tabStore = useTabStore()
-      tabStore.updateSchemeTabName(schemeId, newName)
+      if (info.filePath !== undefined) {
+        scheme.filePath = info.filePath
+      }
     }
+  }
+
+  // 方案管理：重命名方案（向后兼容）
+  function renameScheme(schemeId: string, newName: string) {
+    updateSchemeInfo(schemeId, { name: newName })
   }
 
   // 保存当前视图配置
@@ -351,6 +361,7 @@ export const useEditorStore = defineStore('editor', () => {
     closeScheme,
     setActiveScheme,
     renameScheme,
+    updateSchemeInfo,
     saveCurrentViewConfig,
     getSavedViewConfig,
     clearData,

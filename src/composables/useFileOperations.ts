@@ -3,6 +3,7 @@ import type { useEditorStore } from '../stores/editorStore'
 import type { GameDataFile, GameItem, FileWatchState } from '../types/editor'
 import { useNotification } from './useNotification'
 import { useSettingsStore } from '../stores/settingsStore'
+import type { AlertDetailItem } from '../stores/notificationStore'
 import { storeToRefs } from 'pinia'
 import { useValidationStore } from '../stores/validationStore'
 
@@ -129,49 +130,50 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   const POLL_INTERVAL_ACTIVE = 3000 // 页面活跃时：3秒
   const POLL_INTERVAL_HIDDEN = 10000 // 页面隐藏时：10秒（降低频率）
 
-  // 检查重复物品（辅助函数）
-  async function checkDuplicateItems(): Promise<boolean> {
-    // 如果启用了重复物品检测且存在重复物品
-    if (settingsStore.settings.enableDuplicateDetection && hasDuplicate.value) {
-      const confirmed = await notification.confirm({
-        title: '检测到重复物品',
-        description: `当前方案中检测到 ${duplicateItemCount.value} 个重复物品。\n\n这些物品的位置、旋转和缩放完全相同，会在游戏中完全重叠，可能不是您期望的摆放效果。\n\n是否继续？`,
-        confirmText: '继续',
-        cancelText: '取消',
-      })
-
-      if (!confirmed) {
-        console.log('[FileOps] 用户取消操作（存在重复物品）')
-        return false
-      }
-    }
-
-    return true
-  }
-
   // 准备保存数据（处理限制）
   async function prepareDataForSave(): Promise<GameItem[] | null> {
+    const details: AlertDetailItem[] = []
+
     // 1. 检查重复物品
-    const canProceed = await checkDuplicateItems()
-    if (!canProceed) {
-      return null
+    if (settingsStore.settings.enableDuplicateDetection && hasDuplicate.value) {
+      details.push({
+        type: 'warning',
+        title: '重复物品',
+        list: [
+          `检测到 ${duplicateItemCount.value} 个重复物品。`,
+          '这些物品的位置、旋转和缩放完全相同，会在游戏中完全重叠，可能不是您期望的摆放效果。',
+        ],
+      })
     }
 
     // 2. 检查限制问题
     if (hasLimitIssues.value) {
       const { outOfBoundsItemIds, oversizedGroups } = limitIssues.value
-      const issues: string[] = []
+      const limitMsgs: string[] = []
 
       if (outOfBoundsItemIds.length > 0) {
-        issues.push(`- ${outOfBoundsItemIds.length} 个物品超出可建造区域 (将被移除)`)
+        limitMsgs.push(`${outOfBoundsItemIds.length} 个物品超出可建造区域 (将被移除)`)
       }
       if (oversizedGroups.length > 0) {
-        issues.push(`- ${oversizedGroups.length} 个组合超过 50 个物品上限 (将被解组)`)
+        limitMsgs.push(`${oversizedGroups.length} 个组合超过 50 个物品上限 (将被解组)`)
       }
 
+      if (limitMsgs.length > 0) {
+        details.push({
+          type: 'info',
+          title: '限制自动处理',
+          text: '保存时将自动修复以下问题：',
+          list: limitMsgs,
+        })
+      }
+    }
+
+    // 3. 如果有问题，统一弹窗
+    if (details.length > 0) {
       const confirmed = await notification.confirm({
-        title: '存在限制问题',
-        description: `检测到以下问题，保存时将自动处理：\n\n${issues.join('\n')}\n\n是否继续保存？`,
+        title: '保存确认',
+        description: '检测到以下问题，请确认是否继续保存？',
+        details: details,
         confirmText: '继续保存',
         cancelText: '取消',
       })
@@ -181,7 +183,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       }
     }
 
-    // 3. 处理数据
+    // 4. 处理数据
     const outOfBoundsIds = new Set(limitIssues.value.outOfBoundsItemIds)
     const oversizedGroupIds = new Set(limitIssues.value.oversizedGroups)
 
@@ -273,8 +275,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       PlaceInfo: gameItems,
     }
 
-    // 生成 JSON 字符串
-    const jsonString = JSON.stringify(exportData, null, 2)
+    // 生成 JSON 字符串（紧凑格式）
+    const jsonString = JSON.stringify(exportData)
 
     // 创建 Blob 并下载
     const blob = new Blob([jsonString], { type: 'application/json' })
@@ -282,7 +284,16 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
     const link = document.createElement('a')
     link.href = url
-    link.download = filename || `edited_${Date.now()}.json`
+    // 确定文件名：优先使用传入文件名 > 原文件名 > 默认生成
+    let downloadName = filename
+    if (!downloadName) {
+      if (editorStore.activeScheme?.filePath) {
+        downloadName = editorStore.activeScheme.filePath
+      } else {
+        downloadName = `BUILD_SAVEDATA_${Date.now()}.json`
+      }
+    }
+    link.download = downloadName
     link.click()
 
     // 清理
@@ -314,7 +325,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         PlaceInfo: gameItems,
       }
 
-      const jsonString = JSON.stringify(exportData, null, 2)
+      const jsonString = JSON.stringify(exportData)
 
       // 2. 请求写入权限（如果需要）
       const handle = watchState.value.fileHandle!

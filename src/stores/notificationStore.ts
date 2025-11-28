@@ -1,11 +1,20 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+// 详情项接口
+export interface AlertDetailItem {
+  type: 'warning' | 'info' | 'error' | 'success'
+  title: string
+  list?: string[] // 列表项
+  text?: string // 普通文本
+}
+
 // AlertDialog 配置接口
 export interface AlertConfig {
   id: string
   title: string
-  description: string
+  description?: string
+  details?: AlertDetailItem[]
   confirmText?: string
   cancelText?: string
   onConfirm?: () => void | Promise<void>
@@ -41,7 +50,8 @@ export const useNotificationStore = defineStore('notification', () => {
   // 显示 Confirm（返回 Promise）
   function confirm(config: {
     title: string
-    description: string
+    description?: string
+    details?: AlertDetailItem[]
     confirmText?: string
     cancelText?: string
   }): Promise<boolean> {

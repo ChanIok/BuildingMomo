@@ -75,6 +75,10 @@ const handleCoordinateClick = () => {
   commandStore.executeCommand('view.coordinateSystem')
 }
 
+const handleFileNameClick = () => {
+  commandStore.showSchemeSettingsDialog = true
+}
+
 // 重复物品检测
 const duplicateDetectionEnabled = computed(() => settingsStore.settings.enableDuplicateDetection)
 
@@ -104,11 +108,14 @@ const handleDuplicateClick = () => {
         </span>
         <Tooltip>
           <TooltipTrigger as-child>
-            <span class="shrink-0 truncate text-xs text-gray-800">{{ fileName }}</span>
+            <span
+              class="shrink-0 cursor-pointer truncate rounded px-1.5 py-0.5 text-xs text-gray-800 transition-colors hover:bg-gray-200"
+              @click="handleFileNameClick"
+            >
+              {{ fileName }}
+            </span>
           </TooltipTrigger>
-          <TooltipContent>
-            {{ fileName }}
-          </TooltipContent>
+          <TooltipContent> {{ fileName }} - 点击重命名 </TooltipContent>
         </Tooltip>
         <Tooltip v-if="shortTime">
           <TooltipTrigger as-child>

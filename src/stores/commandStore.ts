@@ -46,6 +46,8 @@ export const useCommandStore = defineStore('command', () => {
 
   // 工作坐标系对话框状态
   const showCoordinateDialog = ref(false)
+  // 方案设置对话框状态
+  const showSchemeSettingsDialog = ref(false)
 
   // 剪贴板和文件操作
   const fileOps = useFileOperations(editorStore)
@@ -506,5 +508,6 @@ export const useCommandStore = defineStore('command', () => {
     setZoomFunctions,
     setViewPresetFunction,
     showCoordinateDialog,
+    showSchemeSettingsDialog,
   }
 })

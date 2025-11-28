@@ -77,7 +77,12 @@ export function useNotification() {
      *   description: '操作成功',
      * })
      */
-    alert: (config: { title: string; description: string; confirmText?: string }) => {
+    alert: (config: {
+      title: string
+      description?: string
+      details?: any[]
+      confirmText?: string
+    }) => {
       notificationStore.showAlert({
         ...config,
         cancelText: undefined, // 不显示取消按钮
