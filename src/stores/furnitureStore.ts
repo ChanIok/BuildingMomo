@@ -1,15 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type {
-  FurnitureItem,
-  BuildingMomoFurniture,
-  RawFurnitureEntry,
-} from '../types/furniture'
+import type { FurnitureItem, BuildingMomoFurniture, RawFurnitureEntry } from '../types/furniture'
 
 // 远程数据源 (Build time fetched)
-const FURNITURE_DATA_URL = '/assets/data/building-momo-furniture.json'
+const FURNITURE_DATA_URL = import.meta.env.BASE_URL + 'assets/data/building-momo-furniture.json'
 // 本地图标路径
-const ICON_BASE_URL = '/assets/furniture-icon/'
+const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 
 export const useFurnitureStore = defineStore('furniture', () => {
   // ========== 状态 ==========
