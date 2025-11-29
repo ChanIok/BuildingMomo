@@ -14,6 +14,7 @@ import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
 import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRenderer'
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
+import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
@@ -233,30 +234,38 @@ watch(
 
     let normal: [number, number, number] = [0, 0, 1]
 
-    // 如果是正交视图预设，使用固定朝向（保持现有逻辑）
+    // 如果是正交视图预设，使用固定朝向
     if (preset && preset !== 'perspective') {
+      let up: [number, number, number] = [0, 0, 1]
+
       switch (preset) {
         case 'top':
           normal = [0, 0, 1] // 顶视图看 XY 平面
+          up = [0, 1, 0] // Y轴朝上
           break
         case 'bottom':
           normal = [0, 0, -1]
+          up = [0, -1, 0] // 翻转 180 度
           break
         case 'front':
           normal = [0, -1, 0]
+          up = [0, 0, 1] // Z轴朝上
           break
         case 'back':
           normal = [0, 1, 0]
+          up = [0, 0, 1] // Z轴朝上
           break
         case 'right':
           normal = [1, 0, 0]
+          up = [0, 0, 1] // Z轴朝上
           break
         case 'left':
           normal = [-1, 0, 0]
+          up = [0, 0, 1] // Z轴朝上
           break
       }
       // 正交视图：立即更新，无需节流（切换频率低）
-      updateIconFacing(normal)
+      updateIconFacing(normal, up)
     } else {
       // 透视视图：计算从目标点指向相机的方向，使图标法线朝向相机（图标面向相机）
       const dirX = camPos[0] - camTarget[0]
@@ -513,24 +522,8 @@ const orthoFrustum = computed(() => {
   }
 })
 
-// 根据当前视图计算网格的旋转角度
-const gridRotation = computed<[number, number, number]>(() => {
-  const preset = currentViewPreset.value
-
-  // 1. 前/后视图：显示 XZ 平面
-  if (preset === 'front') return [0, 0, 0]
-  if (preset === 'back') return [Math.PI, 0, 0] // 翻转 180 度以面向后视图
-
-  // 2. 左/右视图：显示 YZ 平面
-  if (preset === 'left') return [0, 0, Math.PI / 2]
-  if (preset === 'right') return [0, 0, -Math.PI / 2] // 反向旋转 90 度以面向右视图
-
-  // 3. 底视图：显示 XY 平面 (反向)
-  if (preset === 'bottom') return [-Math.PI / 2, 0, 0]
-
-  // 4. 默认 (透视/顶)：显示 XY 平面 (地面，需绕 X 轴转 90 度)
-  return [Math.PI / 2, 0, 0]
-})
+// 网格控制逻辑
+const { containerRotation, innerRotation, gridPosition } = useThreeGrid(uiStore, backgroundPosition)
 
 // 背景显示条件
 const shouldShowBackground = computed(() => {
@@ -541,6 +534,14 @@ const shouldShowBackground = computed(() => {
     return false
   }
   return true
+})
+
+// 判断是否需要禁用地图深度写入（实现透视效果）
+// 当处于 图标/简易方块 模式 且 处于 顶视图/底视图 时，让地图不参与遮挡
+const isMapDepthDisabled = computed(() => {
+  const isTopOrBottom = currentViewPreset.value === 'top' || currentViewPreset.value === 'bottom'
+  const isSimpleMode = shouldShowIconMesh.value || shouldShowSimpleBoxMesh.value
+  return isTopOrBottom && isSimpleMode
 })
 
 // 视图切换函数（供命令系统调用）
@@ -698,9 +699,15 @@ onDeactivated(() => {
             v-if="backgroundTexture && shouldShowBackground"
             :position="backgroundPosition"
             :scale="[1, -1, 1]"
+            :render-order="isMapDepthDisabled ? -1 : 0"
           >
             <TresPlaneGeometry :args="[backgroundSize.width, backgroundSize.height]" />
-            <TresMeshBasicMaterial :map="backgroundTexture" :tone-mapped="false" :side="2" />
+            <TresMeshBasicMaterial
+              :map="backgroundTexture"
+              :tone-mapped="false"
+              :side="2"
+              :depth-write="!isMapDepthDisabled"
+            />
           </TresMesh>
 
           <TresAxesHelper ref="axesRef" :args="[5000]" />
@@ -723,20 +730,8 @@ onDeactivated(() => {
         </TresGroup>
 
         <!-- 辅助元素 - 适配大场景 - 移至世界空间 -->
-        <TresGroup
-          v-if="backgroundTexture"
-          :rotation="gridRotation"
-          :position="[backgroundPosition[0], -backgroundPosition[1], 0]"
-        >
-          <TresGroup
-            :rotation="[
-              0,
-              uiStore.workingCoordinateSystem.enabled
-                ? (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-                : 0,
-              0,
-            ]"
-          >
+        <TresGroup v-if="backgroundTexture" :position="gridPosition" :rotation="containerRotation">
+          <TresGroup :rotation="innerRotation">
             <!-- Grid 组件 -->
             <Grid
               :args="[backgroundSize.width, backgroundSize.height]"
