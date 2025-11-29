@@ -132,15 +132,14 @@ function handleIconError(e: Event) {
 </script>
 
 <template>
-  <Item
+  <div
     v-if="selectedItemDetails"
-    variant="outline"
-    class="flex h-full flex-col items-stretch overflow-hidden"
+    class="flex h-full flex-col items-stretch overflow-hidden p-4 pr-0"
   >
     <!-- 标题栏 -->
-    <div class="flex shrink-0 items-center justify-between">
+    <div class="flex shrink-0 items-center justify-between pr-2">
       <div class="flex items-center gap-2">
-        <h2 class="text-sm font-semibold text-gray-700">选中列表</h2>
+        <h2 class="text-sm font-semibold">选中列表</h2>
         <span class="font-semibold text-blue-600">{{ editorStore.stats.selectedItems }}</span>
       </div>
       <!-- 组信息徽章 -->
@@ -197,7 +196,7 @@ function handleIconError(e: Event) {
         </div>
 
         <!-- 多个物品 - 聚合统计 -->
-        <div v-else-if="selectedItemDetails.type === 'multiple'" class="space-y-2">
+        <div v-else-if="selectedItemDetails.type === 'multiple'" class="space-y-2 pr-2">
           <Item
             v-for="item in selectedItemDetails.items"
             :key="item.itemId"
@@ -230,7 +229,7 @@ function handleIconError(e: Event) {
     </div>
 
     <!-- 成组/取消组合按钮 -->
-    <div class="flex gap-2">
+    <div class="flex gap-2 pt-2 pr-2">
       <Button
         @click="groupSelected()"
         :disabled="editorStore.selectedItemIds.size < 2 || selectedGroupInfo?.type === 'single'"
@@ -251,5 +250,5 @@ function handleIconError(e: Event) {
         取消组合
       </Button>
     </div>
-  </Item>
+  </div>
 </template>

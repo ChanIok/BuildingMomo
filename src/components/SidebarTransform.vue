@@ -5,7 +5,6 @@ import { useEditorManipulation } from '../composables/editor/useEditorManipulati
 import { useUIStore } from '../stores/uiStore'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Item } from '@/components/ui/item'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
@@ -218,252 +217,258 @@ const fmt = (n: number) => Math.round(n * 100) / 100
 </script>
 
 <template>
-  <Item v-if="selectionInfo" variant="outline" class="flex-col items-stretch">
-    <!-- 位置 -->
-    <div class="space-y-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1">
-          <label class="text-xs font-bold text-gray-700">位置</label>
-          <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <span class="cursor-help text-[10px] font-medium text-blue-600">(工作坐标系)</span>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                当前数值已转换为工作坐标系<br />
-                旋转角度: {{ uiStore.workingCoordinateSystem.rotationAngle }}°
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        <Tabs v-model="positionMode" class="w-auto">
-          <TabsList class="h-6 p-0.5">
-            <TabsTrigger
-              value="absolute"
-              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
-            >
-              绝对
-            </TabsTrigger>
-            <TabsTrigger
-              value="relative"
-              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
-            >
-              相对
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div
-          class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
-        >
-          <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none"
-            >X</span
-          >
-          <input
-            type="number"
-            :value="
-              isPositionRelative
-                ? positionState.x === 0
-                  ? ''
-                  : positionState.x
-                : fmt(selectionInfo.center.x)
-            "
-            @change="(e) => updatePosition('x', Number((e.target as HTMLInputElement).value))"
-            :placeholder="isPositionRelative ? '0' : ''"
-            class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          />
-        </div>
-        <div
-          class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
-        >
-          <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none"
-            >Y</span
-          >
-          <input
-            type="number"
-            :value="
-              isPositionRelative
-                ? positionState.y === 0
-                  ? ''
-                  : positionState.y
-                : fmt(selectionInfo.center.y)
-            "
-            @change="(e) => updatePosition('y', Number((e.target as HTMLInputElement).value))"
-            :placeholder="isPositionRelative ? '0' : ''"
-            class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          />
-        </div>
-        <div
-          class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
-        >
-          <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none"
-            >Z</span
-          >
-          <input
-            type="number"
-            :value="
-              isPositionRelative
-                ? positionState.z === 0
-                  ? ''
-                  : positionState.z
-                : fmt(selectionInfo.center.z)
-            "
-            @change="(e) => updatePosition('z', Number((e.target as HTMLInputElement).value))"
-            :placeholder="isPositionRelative ? '0' : ''"
-            class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- 旋转 -->
-    <div class="space-y-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1">
-          <label class="text-xs font-bold text-gray-700">旋转 (°)</label>
-          <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <span class="cursor-help text-[10px] font-medium text-blue-600">(校正)</span>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                Z轴旋转显示已校正<br />
-                实际旋转 = 显示值 + {{ uiStore.workingCoordinateSystem.rotationAngle }}°
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        <Tabs v-model="rotationMode" class="w-auto">
-          <TabsList class="h-6 p-0.5">
-            <TabsTrigger
-              value="absolute"
-              :disabled="selectionInfo?.count > 1"
-              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
-            >
-              绝对
-            </TabsTrigger>
-            <TabsTrigger
-              value="relative"
-              class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
-            >
-              相对
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <!-- Roll (X) -->
-        <div
-          class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
-        >
-          <div
-            class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600 select-none"
-          >
-            X
+  <div v-if="selectionInfo" class="p-4 pr-2">
+    <div class="flex flex-col items-stretch gap-3">
+      <!-- 位置 -->
+      <div class="flex flex-col items-stretch gap-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1">
+            <label class="text-xs font-bold text-gray-700">位置</label>
+            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] font-medium text-blue-600"
+                    >(工作坐标系)</span
+                  >
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  当前数值已转换为工作坐标系<br />
+                  旋转角度: {{ uiStore.workingCoordinateSystem.rotationAngle }}°
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          <input
-            type="number"
-            :value="
-              isRotationRelative
-                ? rotationState.x === 0
-                  ? ''
-                  : rotationState.x
-                : fmt(selectionInfo.rotation.x)
-            "
-            @change="(e) => updateRotation('x', Number((e.target as HTMLInputElement).value))"
-            class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            :placeholder="isRotationRelative ? '0' : ''"
-          />
+          <Tabs v-model="positionMode" class="w-auto">
+            <TabsList class="h-6 p-0.5">
+              <TabsTrigger
+                value="absolute"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                绝对
+              </TabsTrigger>
+              <TabsTrigger
+                value="relative"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                相对
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <!-- Pitch (Y) -->
-        <div
-          class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
-        >
+        <div class="grid grid-cols-2 gap-2">
           <div
-            class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-100 text-[10px] font-bold text-green-600 select-none"
+            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
           >
-            Y
+            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none"
+              >X</span
+            >
+            <input
+              type="number"
+              :value="
+                isPositionRelative
+                  ? positionState.x === 0
+                    ? ''
+                    : positionState.x
+                  : fmt(selectionInfo.center.x)
+              "
+              @change="(e) => updatePosition('x', Number((e.target as HTMLInputElement).value))"
+              :placeholder="isPositionRelative ? '0' : ''"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
           </div>
-          <input
-            type="number"
-            :value="
-              isRotationRelative
-                ? rotationState.y === 0
-                  ? ''
-                  : rotationState.y
-                : fmt(selectionInfo.rotation.y)
-            "
-            @change="(e) => updateRotation('y', Number((e.target as HTMLInputElement).value))"
-            class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            :placeholder="isRotationRelative ? '0' : ''"
-          />
+          <div
+            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+          >
+            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none"
+              >Y</span
+            >
+            <input
+              type="number"
+              :value="
+                isPositionRelative
+                  ? positionState.y === 0
+                    ? ''
+                    : positionState.y
+                  : fmt(selectionInfo.center.y)
+              "
+              @change="(e) => updatePosition('y', Number((e.target as HTMLInputElement).value))"
+              :placeholder="isPositionRelative ? '0' : ''"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div
+            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+          >
+            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none"
+              >Z</span
+            >
+            <input
+              type="number"
+              :value="
+                isPositionRelative
+                  ? positionState.z === 0
+                    ? ''
+                    : positionState.z
+                  : fmt(selectionInfo.center.z)
+              "
+              @change="(e) => updatePosition('z', Number((e.target as HTMLInputElement).value))"
+              :placeholder="isPositionRelative ? '0' : ''"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
         </div>
-        <!-- Yaw (Z) -->
-        <div
-          class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
-        >
-          <div
-            class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-600 select-none"
-          >
-            Z
+      </div>
+      <!-- 旋转 -->
+      <div class="flex flex-col items-stretch gap-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1">
+            <label class="text-xs font-bold text-gray-700">旋转 (°)</label>
+            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] font-medium text-blue-600">(校正)</span>
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  Z轴旋转显示已校正<br />
+                  实际旋转 = 显示值 + {{ uiStore.workingCoordinateSystem.rotationAngle }}°
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          <input
-            type="number"
-            :value="
-              isRotationRelative
-                ? rotationState.z === 0
-                  ? ''
-                  : rotationState.z
-                : fmt(selectionInfo.rotation.z)
-            "
-            @change="(e) => updateRotation('z', Number((e.target as HTMLInputElement).value))"
-            class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            :placeholder="isRotationRelative ? '0' : ''"
-          />
+          <Tabs v-model="rotationMode" class="w-auto">
+            <TabsList class="h-6 p-0.5">
+              <TabsTrigger
+                value="absolute"
+                :disabled="selectionInfo?.count > 1"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                绝对
+              </TabsTrigger>
+              <TabsTrigger
+                value="relative"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                相对
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <!-- Roll (X) -->
+          <div
+            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+          >
+            <div
+              class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600 select-none"
+            >
+              X
+            </div>
+            <input
+              type="number"
+              :value="
+                isRotationRelative
+                  ? rotationState.x === 0
+                    ? ''
+                    : rotationState.x
+                  : fmt(selectionInfo.rotation.x)
+              "
+              @change="(e) => updateRotation('x', Number((e.target as HTMLInputElement).value))"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              :placeholder="isRotationRelative ? '0' : ''"
+            />
+          </div>
+          <!-- Pitch (Y) -->
+          <div
+            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+          >
+            <div
+              class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-100 text-[10px] font-bold text-green-600 select-none"
+            >
+              Y
+            </div>
+            <input
+              type="number"
+              :value="
+                isRotationRelative
+                  ? rotationState.y === 0
+                    ? ''
+                    : rotationState.y
+                  : fmt(selectionInfo.rotation.y)
+              "
+              @change="(e) => updateRotation('y', Number((e.target as HTMLInputElement).value))"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              :placeholder="isRotationRelative ? '0' : ''"
+            />
+          </div>
+          <!-- Yaw (Z) -->
+          <div
+            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+          >
+            <div
+              class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-600 select-none"
+            >
+              Z
+            </div>
+            <input
+              type="number"
+              :value="
+                isRotationRelative
+                  ? rotationState.z === 0
+                    ? ''
+                    : rotationState.z
+                  : fmt(selectionInfo.rotation.z)
+              "
+              @change="(e) => updateRotation('z', Number((e.target as HTMLInputElement).value))"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              :placeholder="isRotationRelative ? '0' : ''"
+            />
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 多选包围盒 -->
-    <div v-if="selectionInfo.bounds" class="mt-2 space-y-2 border-t border-gray-100 pt-2">
-      <div class="text-xs font-medium text-gray-500">包围盒尺寸</div>
-      <div class="grid grid-cols-3 gap-2 text-[10px] text-gray-600">
-        <div class="flex flex-col items-center rounded bg-gray-50 p-1">
-          <span class="font-bold text-gray-400">宽(X)</span>
-          <span>{{ fmt(selectionInfo.bounds.size.x) }}</span>
-        </div>
-        <div class="flex flex-col items-center rounded bg-gray-50 p-1">
-          <span class="font-bold text-gray-400">长(Y)</span>
-          <span>{{ fmt(selectionInfo.bounds.size.y) }}</span>
-        </div>
-        <div class="flex flex-col items-center rounded bg-gray-50 p-1">
-          <span class="font-bold text-gray-400">高(Z)</span>
-          <span>{{ fmt(selectionInfo.bounds.size.z) }}</span>
+    <div v-if="selectionInfo.bounds" class="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
+      <div class="flex flex-col gap-2">
+        <div class="text-xs font-medium text-gray-500">包围盒尺寸</div>
+        <div class="grid grid-cols-3 gap-2 text-[10px] text-gray-600">
+          <div class="flex flex-col items-center rounded bg-gray-50 p-1">
+            <span class="font-bold text-gray-400">宽(X)</span>
+            <span>{{ fmt(selectionInfo.bounds.size.x) }}</span>
+          </div>
+          <div class="flex flex-col items-center rounded bg-gray-50 p-1">
+            <span class="font-bold text-gray-400">长(Y)</span>
+            <span>{{ fmt(selectionInfo.bounds.size.y) }}</span>
+          </div>
+          <div class="flex flex-col items-center rounded bg-gray-50 p-1">
+            <span class="font-bold text-gray-400">高(Z)</span>
+            <span>{{ fmt(selectionInfo.bounds.size.z) }}</span>
+          </div>
         </div>
       </div>
-
-      <div class="mt-2 text-xs font-medium text-gray-500">范围 (Min ~ Max)</div>
-      <div class="space-y-1 text-xs text-gray-600">
-        <div class="flex justify-between border-b border-gray-50 pb-0.5">
-          <span class="font-bold text-red-400">X</span>
-          <span class="font-mono"
-            >{{ fmt(selectionInfo.bounds.min.x) }} ~ {{ fmt(selectionInfo.bounds.max.x) }}</span
-          >
-        </div>
-        <div class="flex justify-between border-b border-gray-50 pb-0.5">
-          <span class="font-bold text-green-400">Y</span>
-          <span class="font-mono"
-            >{{ fmt(selectionInfo.bounds.min.y) }} ~ {{ fmt(selectionInfo.bounds.max.y) }}</span
-          >
-        </div>
-        <div class="flex justify-between border-b border-gray-50 pb-0.5">
-          <span class="font-bold text-blue-400">Z</span>
-          <span class="font-mono"
-            >{{ fmt(selectionInfo.bounds.min.z) }} ~ {{ fmt(selectionInfo.bounds.max.z) }}</span
-          >
+      <div class="flex flex-col gap-2">
+        <div class="mt-2 text-xs font-medium text-gray-500">范围 (Min ~ Max)</div>
+        <div class="space-y-1 text-xs text-gray-600">
+          <div class="flex justify-between border-b border-gray-50 pb-0.5">
+            <span class="font-bold text-red-400">X</span>
+            <span class="font-mono"
+              >{{ fmt(selectionInfo.bounds.min.x) }} ~ {{ fmt(selectionInfo.bounds.max.x) }}</span
+            >
+          </div>
+          <div class="flex justify-between border-b border-gray-50 pb-0.5">
+            <span class="font-bold text-green-400">Y</span>
+            <span class="font-mono"
+              >{{ fmt(selectionInfo.bounds.min.y) }} ~ {{ fmt(selectionInfo.bounds.max.y) }}</span
+            >
+          </div>
+          <div class="flex justify-between border-b border-gray-50 pb-0.5">
+            <span class="font-bold text-blue-400">Z</span>
+            <span class="font-mono"
+              >{{ fmt(selectionInfo.bounds.min.z) }} ~ {{ fmt(selectionInfo.bounds.max.z) }}</span
+            >
+          </div>
         </div>
       </div>
     </div>
-  </Item>
+  </div>
 </template>
