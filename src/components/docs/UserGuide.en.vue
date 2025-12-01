@@ -55,7 +55,7 @@
     <ul>
       <li><strong>Transform Panel:</strong> Edit Rotation (°)</li>
       <li>
-        <strong>Axes:</strong>
+        <strong>Axes: </strong>
         <span style="color: #ef4444">X (Pitch)</span>, <span style="color: #84cc16">Y (Yaw)</span>,
         <span style="color: #3b82f6">Z (Roll)</span>
       </li>
@@ -185,7 +185,7 @@
         Cut complex sections to a new tab to edit in isolation, then paste back.
       </li>
       <li>
-        <strong>2D Workflow:</strong>
+        <strong>2D Workflow: </strong>
         <strong>80% of work can be done in Top View + Block Mode.</strong> It's faster and more
         precise than flying around in 3D.
       </li>

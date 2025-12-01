@@ -48,6 +48,16 @@ const currentComponent = computed(() => {
   return defineAsyncComponent(loader)
 })
 
+// 移动端组件集 - 根据语言动态加载
+const mobileComponents = computed(() => {
+  const comps = docsComponents[locale.value]
+  return {
+    QuickStart: defineAsyncComponent(comps.QuickStart as AsyncComponentLoader<any>),
+    UserGuide: defineAsyncComponent(comps.UserGuide as AsyncComponentLoader<any>),
+    FAQ: defineAsyncComponent(comps.FAQ as AsyncComponentLoader<any>),
+  }
+})
+
 // 滚动区域引用
 const desktopScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
 const mobileScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
@@ -183,13 +193,13 @@ function switchDoc(value: string | number) {
       <!-- 内容区 -->
       <ScrollArea ref="mobileScrollRef" class="min-h-0 flex-1">
         <TabsContent value="quickstart">
-          <QuickStart />
+          <component :is="mobileComponents.QuickStart" />
         </TabsContent>
         <TabsContent value="guide">
-          <UserGuide />
+          <component :is="mobileComponents.UserGuide" />
         </TabsContent>
         <TabsContent value="faq">
-          <FAQ />
+          <component :is="mobileComponents.FAQ" />
         </TabsContent>
       </ScrollArea>
     </Tabs>
