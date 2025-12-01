@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, onActivated, nextTick } from 'vue'
 import { useTabStore } from '../stores/tabStore'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import QuickStart from './docs/QuickStart.vue'
 import UserGuide from './docs/UserGuide.vue'
 import FAQ from './docs/FAQ.vue'
+import { useEventListener, useDebounceFn } from '@vueuse/core'
 
 const tabStore = useTabStore()
 
@@ -16,12 +17,68 @@ const menuItems = [
   { id: 'faq', label: '常见问题', component: FAQ },
 ]
 
-// 当前文档页面：直接从标签读取，默认为快速上手
-const currentDoc = computed(() => tabStore.activeTab?.docPage || 'quickstart')
+// 当前文档页面：查找 doc 类型的标签，保持状态稳定
+const docTab = computed(() => tabStore.tabs.find((t) => t.type === 'doc'))
+const currentDoc = computed(() => docTab.value?.docPage || 'quickstart')
 
 // 当前文档组件
 const currentComponent = computed(() => {
   return menuItems.find((item) => item.id === currentDoc.value)?.component || QuickStart
+})
+
+// 滚动区域引用
+const desktopScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
+const mobileScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
+const savedScrollTop = ref(0)
+
+// 获取滚动视口元素
+function getViewport(instance: InstanceType<typeof ScrollArea> | null) {
+  return instance?.$el?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement | null
+}
+
+// 监听滚动并记录（防抖处理）
+const handleScroll = useDebounceFn((e: Event) => {
+  const target = e.target as HTMLElement
+  if (target) {
+    savedScrollTop.value = target.scrollTop
+  }
+}, 100)
+
+// 绑定滚动监听
+function attachScrollListener(viewport: HTMLElement | null) {
+  if (!viewport) return
+  useEventListener(viewport, 'scroll', handleScroll)
+}
+
+// 切换文档页面时：重置滚动位置
+watch(currentDoc, async () => {
+  savedScrollTop.value = 0
+  await nextTick()
+
+  const desktopViewport = getViewport(desktopScrollRef.value)
+  if (desktopViewport) desktopViewport.scrollTop = 0
+
+  const mobileViewport = getViewport(mobileScrollRef.value)
+  if (mobileViewport) mobileViewport.scrollTop = 0
+})
+
+// 进入标签时：恢复滚动位置并绑定监听
+onActivated(async () => {
+  await nextTick()
+
+  // 桌面端处理
+  const desktopViewport = getViewport(desktopScrollRef.value)
+  if (desktopViewport) {
+    desktopViewport.scrollTop = savedScrollTop.value
+    attachScrollListener(desktopViewport)
+  }
+
+  // 移动端处理
+  const mobileViewport = getViewport(mobileScrollRef.value)
+  if (mobileViewport) {
+    mobileViewport.scrollTop = savedScrollTop.value
+    attachScrollListener(mobileViewport)
+  }
 })
 
 // 切换文档页面：更新标签的 docPage 属性
@@ -80,7 +137,7 @@ function switchDoc(value: string | number) {
       </nav>
 
       <!-- 右侧内容区 -->
-      <ScrollArea class="min-w-0 flex-1 bg-background">
+      <ScrollArea ref="desktopScrollRef" class="min-w-0 flex-1 bg-background">
         <component :is="currentComponent" />
       </ScrollArea>
     </div>
@@ -102,7 +159,7 @@ function switchDoc(value: string | number) {
       </div>
 
       <!-- 内容区 -->
-      <ScrollArea class="min-h-0 flex-1">
+      <ScrollArea ref="mobileScrollRef" class="min-h-0 flex-1">
         <TabsContent value="quickstart">
           <QuickStart />
         </TabsContent>
