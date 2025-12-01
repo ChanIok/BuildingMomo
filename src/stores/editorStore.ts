@@ -121,25 +121,10 @@ export const useEditorStore = defineStore('editor', () => {
 
   // 计算属性：统计信息
   const stats = computed(() => {
-    // 统计组信息
-    const groups = new Map<number, number>() // groupId -> count
-    items.value.forEach((item) => {
-      const gid = item.groupId
-      if (gid > 0) {
-        groups.set(gid, (groups.get(gid) || 0) + 1)
-      }
-    })
-
-    const groupedItemsCount = Array.from(groups.values()).reduce((a, b) => a + b, 0)
-
     return {
       totalItems: items.value.length,
       selectedItems: selectedItemIds.value.size,
-      groups: {
-        totalGroups: groups.size,
-        groupedItems: groupedItemsCount,
-        ungroupedItems: items.value.length - groupedItemsCount,
-      },
+      totalGroups: groupsMap.value.size,
     }
   })
 

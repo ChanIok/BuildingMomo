@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, ref } from 'vue'
 import { useDateFormat } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
@@ -57,11 +57,7 @@ const stats = computed(() => ({
 const isRenderLimitExceeded = computed(() => stats.value.total > MAX_RENDER_INSTANCES)
 
 // 组信息
-const groupStats = computed(() => ({
-  count: editorStore.stats.groups.totalGroups,
-  grouped: editorStore.stats.groups.groupedItems,
-  ungrouped: editorStore.stats.groups.ungroupedItems,
-}))
+const groupCount = computed(() => editorStore.stats.totalGroups)
 
 // 工作坐标系
 const coordinateSystem = computed(() => ({
@@ -96,6 +92,33 @@ const handleDuplicateClick = () => {
     selectDuplicateItems()
   }
 }
+
+const isDialogClosing = ref(false)
+
+// 监听对话框关闭事件，在焦点还原后立即移除焦点
+// 这解决了 Dialog 关闭后 Tooltip 仍保持打开（因为触发器获得了焦点）的问题
+watch(
+  [() => commandStore.showCoordinateDialog, () => commandStore.showSchemeSettingsDialog],
+  ([newCoord, newScheme], [oldCoord, oldScheme]) => {
+    // 任何一个对话框打开时
+    if (newCoord || newScheme) {
+      isDialogClosing.value = true
+    }
+
+    // 当任一对话框从打开变为关闭时
+    if ((oldCoord && !newCoord) || (oldScheme && !newScheme)) {
+      isDialogClosing.value = true
+      // 使用 setTimeout 确保在 Radix UI 还原焦点之后执行
+      setTimeout(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur()
+        }
+
+        isDialogClosing.value = false
+      }, 500)
+    }
+  }
+)
 </script>
 
 <template>
@@ -112,13 +135,14 @@ const handleDuplicateClick = () => {
         <Tooltip>
           <TooltipTrigger as-child>
             <span
+              tabindex="0"
               class="shrink-0 cursor-pointer truncate rounded px-1.5 py-0.5 text-xs text-gray-800 transition-colors hover:bg-gray-200"
               @click="handleFileNameClick"
             >
               {{ fileName }}
             </span>
           </TooltipTrigger>
-          <TooltipContent> {{ fileName }} - 点击重命名 </TooltipContent>
+          <TooltipContent v-if="!isDialogClosing"> {{ fileName }} - 点击重命名 </TooltipContent>
         </Tooltip>
         <Tooltip v-if="shortTime">
           <TooltipTrigger as-child>
@@ -201,7 +225,7 @@ const handleDuplicateClick = () => {
           <span class="text-gray-300">|</span>
           <span
             class="text-xs"
-            :class="stats.selected > 0 ? 'font-semibold text-blue-600' : 'text-gray-400'"
+            :class="stats.selected > 0 ? 'font-semibold text-blue-500' : 'text-gray-400'"
           >
             已选 {{ stats.selected }}
           </span>
@@ -209,16 +233,14 @@ const handleDuplicateClick = () => {
 
         <!-- 组信息 -->
         <div class="flex shrink-0 items-center gap-1 text-purple-600">
-          <span class="text-xs">组 {{ groupStats.count }}</span>
-          <span class="text-xs text-gray-500"
-            >({{ groupStats.grouped }}/{{ groupStats.ungrouped }})</span
-          >
+          <span class="text-xs">组 {{ groupCount }}</span>
         </div>
 
         <!-- 工作坐标系 -->
         <Tooltip>
           <TooltipTrigger as-child>
             <div
+              tabindex="0"
               class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-gray-100"
               :class="coordinateSystem.enabled ? 'font-medium text-orange-600' : 'text-gray-400'"
               @click="handleCoordinateClick"
@@ -227,7 +249,7 @@ const handleDuplicateClick = () => {
               <span class="text-xs">{{ coordinateSystem.angle }}°</span>
             </div>
           </TooltipTrigger>
-          <TooltipContent>
+          <TooltipContent v-if="!isDialogClosing">
             {{ coordinateTooltip }}
           </TooltipContent>
         </Tooltip>
