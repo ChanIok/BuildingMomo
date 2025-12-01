@@ -20,12 +20,12 @@ import {
   SquareMousePointer,
   Lasso,
 } from 'lucide-vue-next'
-import { Toggle } from '@/components/ui/toggle'
 import { useEditorSelectionAction } from '@/composables/useEditorSelectionAction'
 import IconSelectionNew from '@/components/icons/IconSelectionNew.vue'
 import IconSelectionAdd from '@/components/icons/IconSelectionAdd.vue'
 import IconSelectionSubtract from '@/components/icons/IconSelectionSubtract.vue'
 import IconSelectionIntersect from '@/components/icons/IconSelectionIntersect.vue'
+import SidebarToggleItem from './SidebarToggleItem.vue'
 
 const editorStore = useEditorStore()
 const settingsStore = useSettingsStore()
@@ -87,6 +87,33 @@ const viewPreset = computed({
     }
   },
 })
+
+// 配置数据
+const selectionActions = [
+  { id: 'new', label: '新选区 (默认)', icon: IconSelectionNew },
+  { id: 'add', label: '加选 (Shift)', icon: IconSelectionAdd },
+  { id: 'subtract', label: '减选 (Alt)', icon: IconSelectionSubtract },
+  {
+    id: 'intersect',
+    label: '交叉选区 (Shift+Alt)',
+    icon: IconSelectionIntersect,
+  },
+] as const
+
+const displayModes = [
+  { id: 'box', label: '完整体积', icon: Cuboid },
+  { id: 'simple-box', label: '简化方块', icon: Box },
+  { id: 'icon', label: '图标模式', icon: ImageIcon },
+] as const
+
+const viewPresets = [
+  { id: 'top', label: '顶视图', icon: ChevronsUp },
+  { id: 'front', label: '前视图', icon: ChevronsRight },
+  { id: 'left', label: '左视图', icon: ChevronLeft },
+  { id: 'right', label: '右视图', icon: ChevronRight },
+  { id: 'back', label: '后视图', icon: ChevronsLeft },
+  { id: 'bottom', label: '底视图', icon: ChevronsDown },
+] as const
 </script>
 
 <template>
@@ -97,66 +124,58 @@ const viewPreset = computed({
       <div class="flex flex-col items-start gap-1">
         <span class="text-[10px] font-medium text-gray-400 select-none">工具</span>
         <div class="flex items-center gap-0.5">
-          <Toggle
-            size="sm"
+          <SidebarToggleItem
             :model-value="currentTool === 'select' && selectionMode === 'box'"
             @update:model-value="
-              (v: boolean) => {
+              (v) => {
                 if (v) {
                   currentTool = 'select'
                   selectionMode = 'box'
                 }
               }
             "
-            aria-label="方形选框"
-            title="方形选框"
+            tooltip="方形选框 (V)"
           >
             <SquareMousePointer class="h-4 w-4" />
-          </Toggle>
-          <Toggle
-            size="sm"
+          </SidebarToggleItem>
+          <SidebarToggleItem
             :model-value="currentTool === 'select' && selectionMode === 'lasso'"
             @update:model-value="
-              (v: boolean) => {
+              (v) => {
                 if (v) {
                   currentTool = 'select'
                   selectionMode = 'lasso'
                 }
               }
             "
-            aria-label="套索工具"
-            title="套索工具"
+            tooltip="套索工具"
           >
             <Lasso class="h-4 w-4" />
-          </Toggle>
-          <Toggle
-            size="sm"
+          </SidebarToggleItem>
+          <SidebarToggleItem
             :model-value="currentTool === 'hand'"
             @update:model-value="
-              (v: boolean) => {
+              (v) => {
                 if (v) currentTool = 'hand'
               }
             "
-            aria-label="拖拽工具"
-            title="拖拽工具 (H)"
+            tooltip="拖拽工具 (H)"
           >
             <Hand class="h-4 w-4" />
-          </Toggle>
+          </SidebarToggleItem>
 
           <!-- Gizmo 开关 -->
-          <Toggle
-            size="sm"
+          <SidebarToggleItem
             :model-value="settingsStore.settings.showGizmo"
             @update:model-value="
-              (v: boolean) => {
+              (v) => {
                 settingsStore.settings.showGizmo = v
               }
             "
-            aria-label="显示变换轴"
-            title="显示变换轴 (G)"
+            tooltip="显示变换轴 (G)"
           >
             <Move class="h-4 w-4" />
-          </Toggle>
+          </SidebarToggleItem>
         </div>
       </div>
     </div>
@@ -165,54 +184,19 @@ const viewPreset = computed({
     <div class="flex flex-col items-start gap-1">
       <span class="text-[10px] font-medium text-gray-400 select-none">选择模式</span>
       <div class="flex items-center gap-0.5">
-        <Toggle
-          size="sm"
-          :model-value="activeAction === 'new'"
+        <SidebarToggleItem
+          v-for="action in selectionActions"
+          :key="action.id"
+          :model-value="activeAction === action.id"
           @update:model-value="
-            (v: boolean) => {
-              if (v) selectionAction = 'new'
+            (v) => {
+              if (v) selectionAction = action.id
             }
           "
-          title="新选区 (默认)"
+          :tooltip="action.label"
         >
-          <IconSelectionNew class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="activeAction === 'add'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) selectionAction = 'add'
-            }
-          "
-          title="加选 (Shift)"
-        >
-          <IconSelectionAdd class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="activeAction === 'subtract'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) selectionAction = 'subtract'
-            }
-          "
-          title="减选 (Alt)"
-        >
-          <IconSelectionSubtract class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="activeAction === 'intersect'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) selectionAction = 'intersect'
-            }
-          "
-          title="交叉选区 (Shift+Alt)"
-        >
-          <IconSelectionIntersect class="h-4 w-4" />
-        </Toggle>
+          <component :is="action.icon" class="h-4 w-4" />
+        </SidebarToggleItem>
       </div>
     </div>
 
@@ -220,45 +204,19 @@ const viewPreset = computed({
     <div class="flex flex-col items-start gap-1">
       <span class="text-[10px] font-medium text-gray-400 select-none">显示</span>
       <div class="flex items-center gap-0.25">
-        <Toggle
-          size="sm"
-          :model-value="displayMode === 'box'"
+        <SidebarToggleItem
+          v-for="mode in displayModes"
+          :key="mode.id"
+          :model-value="displayMode === mode.id"
           @update:model-value="
-            (v: boolean) => {
-              if (v) displayMode = 'box'
+            (v) => {
+              if (v) displayMode = mode.id
             }
           "
-          aria-label="完整体积"
-          title="完整体积"
+          :tooltip="mode.label"
         >
-          <Cuboid class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="displayMode === 'simple-box'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) displayMode = 'simple-box'
-            }
-          "
-          aria-label="简化方块"
-          title="简化方块"
-        >
-          <Box class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="displayMode === 'icon'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) displayMode = 'icon'
-            }
-          "
-          aria-label="图标模式"
-          title="图标模式"
-        >
-          <ImageIcon class="h-4 w-4" />
-        </Toggle>
+          <component :is="mode.icon" class="h-4 w-4" />
+        </SidebarToggleItem>
       </div>
     </div>
 
@@ -266,93 +224,33 @@ const viewPreset = computed({
     <div class="flex flex-col items-start gap-1">
       <span class="text-[10px] font-medium text-gray-400 select-none">视图</span>
       <div class="flex w-full items-center justify-between">
-        <Toggle
-          size="sm"
+        <SidebarToggleItem
           :model-value="viewPreset === 'perspective'"
           @update:model-value="
-            (v: boolean) => {
+            (v) => {
               if (v) viewPreset = 'perspective'
             }
           "
-          title="透视视图"
+          tooltip="透视视图"
         >
           <Camera class="h-4 w-4" />
-        </Toggle>
+        </SidebarToggleItem>
 
         <div class="mx-0.5 h-4 w-px bg-gray-200"></div>
 
-        <Toggle
-          size="sm"
-          :model-value="viewPreset === 'top'"
+        <SidebarToggleItem
+          v-for="view in viewPresets"
+          :key="view.id"
+          :model-value="viewPreset === view.id"
           @update:model-value="
-            (v: boolean) => {
-              if (v) viewPreset = 'top'
+            (v) => {
+              if (v) viewPreset = view.id
             }
           "
-          title="顶视图"
+          :tooltip="view.label"
         >
-          <ChevronsUp class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="viewPreset === 'front'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) viewPreset = 'front'
-            }
-          "
-          title="前视图"
-        >
-          <ChevronsRight class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="viewPreset === 'left'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) viewPreset = 'left'
-            }
-          "
-          title="左视图"
-        >
-          <ChevronLeft class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="viewPreset === 'right'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) viewPreset = 'right'
-            }
-          "
-          title="右视图"
-        >
-          <ChevronRight class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="viewPreset === 'back'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) viewPreset = 'back'
-            }
-          "
-          title="后视图"
-        >
-          <ChevronsLeft class="h-4 w-4" />
-        </Toggle>
-        <Toggle
-          size="sm"
-          :model-value="viewPreset === 'bottom'"
-          @update:model-value="
-            (v: boolean) => {
-              if (v) viewPreset = 'bottom'
-            }
-          "
-          title="底视图"
-        >
-          <ChevronsDown class="h-4 w-4" />
-        </Toggle>
+          <component :is="view.icon" class="h-4 w-4" />
+        </SidebarToggleItem>
       </div>
     </div>
   </div>

@@ -86,17 +86,20 @@ const selectionInfo = computed(() => {
   // 边界（最小/最大值）
   let bounds = null
   if (selected.length > 1) {
-    const xs = selected.map((i) => i.x)
-    const ys = selected.map((i) => i.y)
-    const zs = selected.map((i) => i.z)
+    const points = selected.map((i) => ({ x: i.x, y: i.y, z: i.z }))
+
+    // 如果启用了工作坐标系，将所有点转换到工作坐标系
+    const transformedPoints = uiStore.workingCoordinateSystem.enabled
+      ? points.map((p) => uiStore.globalToWorking(p))
+      : points
+
+    const xs = transformedPoints.map((p) => p.x)
+    const ys = transformedPoints.map((p) => p.y)
+    const zs = transformedPoints.map((p) => p.z)
+
     bounds = {
       min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
       max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
-      size: {
-        x: Math.max(...xs) - Math.min(...xs),
-        y: Math.max(...ys) - Math.min(...ys),
-        z: Math.max(...zs) - Math.min(...zs),
-      },
     }
   }
 
@@ -214,6 +217,29 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
       rotationState.value[axis] = value
     }
   }
+}
+
+function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number) {
+  if (!selectionInfo.value?.bounds) return
+
+  const currentVal = selectionInfo.value.bounds[type][axis]
+  const delta = value - currentVal
+
+  if (delta === 0) return
+
+  // 构造位移向量
+  let posArgs: any = { x: 0, y: 0, z: 0 }
+  posArgs[axis] = delta
+
+  // 如果启用了工作坐标系，将位移向量从工作坐标系转回全局坐标系
+  if (uiStore.workingCoordinateSystem.enabled) {
+    posArgs = uiStore.workingToGlobal(posArgs)
+  }
+
+  updateSelectedItemsTransform({
+    mode: 'relative',
+    position: posArgs,
+  })
 }
 
 // 数字格式化辅助函数
@@ -362,11 +388,9 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <div
             class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
           >
-            <div
-              class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-600 select-none"
+            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none"
+              >X</span
             >
-              X
-            </div>
             <input
               type="number"
               :value="
@@ -385,11 +409,9 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <div
             class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
           >
-            <div
-              class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-green-100 text-[10px] font-bold text-green-600 select-none"
+            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none"
+              >Y</span
             >
-              Y
-            </div>
             <input
               type="number"
               :value="
@@ -408,11 +430,9 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <div
             class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
           >
-            <div
-              class="mr-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-600 select-none"
+            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none"
+              >Z</span
             >
-              Z
-            </div>
             <input
               type="number"
               :value="
@@ -431,45 +451,93 @@ const fmt = (n: number) => Math.round(n * 100) / 100
       </div>
     </div>
 
-    <!-- 多选包围盒 -->
+    <!-- 多选范围 -->
     <div v-if="selectionInfo.bounds" class="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
       <div class="flex flex-col gap-2">
-        <div class="text-xs font-medium text-gray-500">包围盒尺寸</div>
-        <div class="grid grid-cols-3 gap-2 text-[10px] text-gray-600">
-          <div class="flex flex-col items-center rounded bg-gray-50 p-1">
-            <span class="font-bold text-gray-400">宽(X)</span>
-            <span>{{ fmt(selectionInfo.bounds.size.x) }}</span>
-          </div>
-          <div class="flex flex-col items-center rounded bg-gray-50 p-1">
-            <span class="font-bold text-gray-400">长(Y)</span>
-            <span>{{ fmt(selectionInfo.bounds.size.y) }}</span>
-          </div>
-          <div class="flex flex-col items-center rounded bg-gray-50 p-1">
-            <span class="font-bold text-gray-400">高(Z)</span>
-            <span>{{ fmt(selectionInfo.bounds.size.z) }}</span>
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-medium text-gray-500">范围 (Min ~ Max)</span>
+          <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <span class="cursor-help text-[10px] font-medium text-blue-600">(工作坐标系)</span>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                当前范围基于工作坐标系<br />
+                旋转角度: {{ uiStore.workingCoordinateSystem.rotationAngle }}°
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <!-- X Axis -->
+        <div class="flex items-center gap-2">
+          <span class="w-3 text-[10px] font-bold text-red-500 select-none">X</span>
+          <div class="flex flex-1 items-center gap-2">
+            <input
+              type="number"
+              :value="fmt(selectionInfo.bounds.min.x)"
+              @change="
+                (e) => updateBounds('x', 'min', Number((e.target as HTMLInputElement).value))
+              "
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span class="text-[10px] text-gray-400">~</span>
+            <input
+              type="number"
+              :value="fmt(selectionInfo.bounds.max.x)"
+              @change="
+                (e) => updateBounds('x', 'max', Number((e.target as HTMLInputElement).value))
+              "
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
           </div>
         </div>
-      </div>
-      <div class="flex flex-col gap-2">
-        <div class="mt-2 text-xs font-medium text-gray-500">范围 (Min ~ Max)</div>
-        <div class="space-y-1 text-xs text-gray-600">
-          <div class="flex justify-between border-b border-gray-50 pb-0.5">
-            <span class="font-bold text-red-400">X</span>
-            <span class="font-mono"
-              >{{ fmt(selectionInfo.bounds.min.x) }} ~ {{ fmt(selectionInfo.bounds.max.x) }}</span
-            >
+
+        <!-- Y Axis -->
+        <div class="flex items-center gap-2">
+          <span class="w-3 text-[10px] font-bold text-green-500 select-none">Y</span>
+          <div class="flex flex-1 items-center gap-2">
+            <input
+              type="number"
+              :value="fmt(selectionInfo.bounds.min.y)"
+              @change="
+                (e) => updateBounds('y', 'min', Number((e.target as HTMLInputElement).value))
+              "
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span class="text-[10px] text-gray-400">~</span>
+            <input
+              type="number"
+              :value="fmt(selectionInfo.bounds.max.y)"
+              @change="
+                (e) => updateBounds('y', 'max', Number((e.target as HTMLInputElement).value))
+              "
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
           </div>
-          <div class="flex justify-between border-b border-gray-50 pb-0.5">
-            <span class="font-bold text-green-400">Y</span>
-            <span class="font-mono"
-              >{{ fmt(selectionInfo.bounds.min.y) }} ~ {{ fmt(selectionInfo.bounds.max.y) }}</span
-            >
-          </div>
-          <div class="flex justify-between border-b border-gray-50 pb-0.5">
-            <span class="font-bold text-blue-400">Z</span>
-            <span class="font-mono"
-              >{{ fmt(selectionInfo.bounds.min.z) }} ~ {{ fmt(selectionInfo.bounds.max.z) }}</span
-            >
+        </div>
+
+        <!-- Z Axis -->
+        <div class="flex items-center gap-2">
+          <span class="w-3 text-[10px] font-bold text-blue-500 select-none">Z</span>
+          <div class="flex flex-1 items-center gap-2">
+            <input
+              type="number"
+              :value="fmt(selectionInfo.bounds.min.z)"
+              @change="
+                (e) => updateBounds('z', 'min', Number((e.target as HTMLInputElement).value))
+              "
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span class="text-[10px] text-gray-400">~</span>
+            <input
+              type="number"
+              :value="fmt(selectionInfo.bounds.max.z)"
+              @change="
+                (e) => updateBounds('z', 'max', Number((e.target as HTMLInputElement).value))
+              "
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
           </div>
         </div>
       </div>

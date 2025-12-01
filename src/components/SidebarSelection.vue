@@ -140,7 +140,7 @@ function handleIconError(e: Event) {
     <div class="flex shrink-0 items-center justify-between pr-2">
       <div class="flex items-center gap-2">
         <h2 class="text-sm font-semibold">选中列表</h2>
-        <span class="font-semibold text-blue-600">{{ editorStore.stats.selectedItems }}</span>
+        <span class="font-semibold text-blue-500">{{ editorStore.stats.selectedItems }}</span>
       </div>
       <!-- 组信息徽章 -->
       <div v-if="groupBadgeText" class="flex items-center gap-1">
@@ -220,7 +220,7 @@ function handleIconError(e: Event) {
               <ItemTitle class="text-sm font-medium text-gray-800">{{ item.name }}</ItemTitle>
             </ItemContent>
             <ItemActions>
-              <span class="text-sm font-semibold text-blue-600">×{{ item.count }}</span>
+              <span class="text-sm font-semibold text-blue-500">×{{ item.count }}</span>
             </ItemActions>
           </Item>
         </div>

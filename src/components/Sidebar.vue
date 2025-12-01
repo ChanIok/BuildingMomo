@@ -2,11 +2,10 @@
 import { ref } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Toggle } from '@/components/ui/toggle'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
 import SidebarTransform from './SidebarTransform.vue'
+import SidebarToggleItem from './SidebarToggleItem.vue'
 import { Layers, Settings2 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
@@ -23,48 +22,29 @@ const currentView = ref<'structure' | 'transform'>('structure')
       <div class="flex h-full w-full flex-col">
         <div class="shrink-0 border-b p-2 pl-4">
           <div class="flex gap-1 bg-transparent p-0">
-            <TooltipProvider>
-              <Tooltip :delay-duration="300">
-                <TooltipTrigger as-child>
-                  <div class="inline-flex">
-                    <Toggle
-                      size="sm"
-                      :model-value="currentView === 'structure'"
-                      @update:model-value="
-                        (v: boolean) => {
-                          if (v) currentView = 'structure'
-                        }
-                      "
-                    >
-                      <Layers class="h-4 w-4" />
-                    </Toggle>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" class="text-xs"> 结构 </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <SidebarToggleItem
+              :model-value="currentView === 'structure'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) currentView = 'structure'
+                }
+              "
+              tooltip="结构"
+            >
+              <Layers class="h-4 w-4" />
+            </SidebarToggleItem>
 
-            <TooltipProvider>
-              <Tooltip :delay-duration="300">
-                <TooltipTrigger as-child>
-                  <div class="inline-flex">
-                    <Toggle
-                      size="sm"
-                      :model-value="currentView === 'transform'"
-                      @update:model-value="
-                        (v: boolean) => {
-                          if (v) currentView = 'transform'
-                        }
-                      "
-                      class="h-9 w-9 p-0 data-[state=on]:bg-gray-100 data-[state=on]:shadow-none"
-                    >
-                      <Settings2 class="h-4 w-4" />
-                    </Toggle>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" class="text-xs"> 变换 </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <SidebarToggleItem
+              :model-value="currentView === 'transform'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) currentView = 'transform'
+                }
+              "
+              tooltip="变换"
+            >
+              <Settings2 class="h-4 w-4" />
+            </SidebarToggleItem>
           </div>
         </div>
 
