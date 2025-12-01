@@ -2,6 +2,7 @@ import { ref, markRaw, type Ref } from 'vue'
 import { Raycaster, Vector2, type Camera, type InstancedMesh } from 'three'
 import type { useFurnitureStore } from '@/stores/furnitureStore'
 import type { useEditorStore } from '@/stores/editorStore'
+import { useI18n } from './useI18n'
 
 export interface ThreeTooltipData {
   name: string
@@ -26,6 +27,7 @@ export function useThreeTooltip(
 ) {
   const raycaster = markRaw(new Raycaster())
   const pointerNdc = markRaw(new Vector2())
+  const { t, locale } = useI18n()
 
   const tooltipVisible = ref(false)
   const tooltipData = ref<ThreeTooltipData | null>(null)
@@ -102,8 +104,18 @@ export function useThreeTooltip(
 
     const furnitureInfo = furnitureStore.getFurniture(item.gameId)
 
+    let name = ''
+    if (!furnitureInfo) {
+      name = t('sidebar.itemDefaultName', { id: item.gameId })
+    } else {
+      name =
+        locale.value === 'zh'
+          ? furnitureInfo.name_cn
+          : furnitureInfo.name_en || furnitureInfo.name_cn
+    }
+
     tooltipData.value = {
-      name: furnitureInfo?.name_cn || `物品 ${item.gameId}`,
+      name,
       icon: furnitureInfo ? furnitureStore.getIconUrl(item.gameId) : '',
       position: { x, y },
     }

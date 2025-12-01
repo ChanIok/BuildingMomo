@@ -7,6 +7,7 @@ import { useValidationStore } from '../stores/validationStore'
 import { useUIStore } from '../stores/uiStore'
 import { useCommandStore } from '../stores/commandStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useI18n } from '@/composables/useI18n'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Copy, AlertTriangle, Layers, EyeOff } from 'lucide-vue-next'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
@@ -19,10 +20,11 @@ const { selectDuplicateItems, selectOutOfBoundsItems, selectOversizedGroupItems 
 const uiStore = useUIStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
+const { t } = useI18n()
 
 // 方案信息
 const fileName = computed(() => {
-  return editorStore.activeScheme?.filePath?.replace(/\\/g, '/') || '未命名'
+  return editorStore.activeScheme?.filePath?.replace(/\\/g, '/') || t('status.unnamed')
 })
 
 const currentIndex = computed(() => {
@@ -45,7 +47,10 @@ const shortTime = computed(() => {
 
 const fullTimeTooltip = computed(() => {
   if (!lastModified.value) return ''
-  return `最后修改: ${useDateFormat(lastModified.value, 'YYYY-MM-DD HH:mm:ss').value}`
+  return t('status.lastModified').replace(
+    '{time}',
+    useDateFormat(lastModified.value, 'YYYY-MM-DD HH:mm:ss').value
+  )
 })
 
 // 统计信息
@@ -66,8 +71,12 @@ const coordinateSystem = computed(() => ({
 }))
 
 const coordinateTooltip = computed(() => {
-  const state = coordinateSystem.value.enabled ? '已启用' : '未启用'
-  return `工作坐标系: ${coordinateSystem.value.angle}° (${state}) - 点击调整`
+  const state = coordinateSystem.value.enabled
+    ? t('status.coordinate.enabled')
+    : t('status.coordinate.disabled')
+  return t('status.coordinate.tooltip')
+    .replace('{angle}', String(coordinateSystem.value.angle))
+    .replace('{state}', state)
 })
 
 const handleCoordinateClick = () => {
@@ -84,7 +93,7 @@ const duplicateDetectionEnabled = computed(() => settingsStore.settings.enableDu
 const duplicateTooltip = computed(() => {
   if (!duplicateDetectionEnabled.value) return ''
   if (!hasDuplicate.value) return ''
-  return `发现 ${duplicateItemCount.value} 个重复物品 - 点击选中`
+  return t('status.duplicate.found').replace('{count}', String(duplicateItemCount.value))
 })
 
 const handleDuplicateClick = () => {
@@ -142,7 +151,9 @@ watch(
               {{ fileName }}
             </span>
           </TooltipTrigger>
-          <TooltipContent v-if="!isDialogClosing"> {{ fileName }} - 点击重命名 </TooltipContent>
+          <TooltipContent v-if="!isDialogClosing">
+            {{ t('status.rename').replace('{name}', fileName) }}
+          </TooltipContent>
         </Tooltip>
         <Tooltip v-if="shortTime">
           <TooltipTrigger as-child>
@@ -164,11 +175,21 @@ watch(
               @click="selectOutOfBoundsItems()"
             >
               <AlertTriangle :size="14" />
-              <span class="text-xs">{{ limitIssues.outOfBoundsItemIds.length }} 超出区域</span>
+              <span class="text-xs">{{
+                t('status.limit.outOfBounds').replace(
+                  '{count}',
+                  String(limitIssues.outOfBoundsItemIds.length)
+                )
+              }}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            {{ limitIssues.outOfBoundsItemIds.length }} 个物品超出可建造区域 - 点击选中
+            {{
+              t('status.limit.outOfBoundsTip').replace(
+                '{count}',
+                String(limitIssues.outOfBoundsItemIds.length)
+              )
+            }}
           </TooltipContent>
         </Tooltip>
 
@@ -180,11 +201,21 @@ watch(
               @click="selectOversizedGroupItems()"
             >
               <Layers :size="14" />
-              <span class="text-xs">{{ limitIssues.oversizedGroups.length }} 组过大</span>
+              <span class="text-xs">{{
+                t('status.limit.oversized').replace(
+                  '{count}',
+                  String(limitIssues.oversizedGroups.length)
+                )
+              }}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            {{ limitIssues.oversizedGroups.length }} 个组合超过 50 个物品上限 - 点击选中
+            {{
+              t('status.limit.oversizedTip').replace(
+                '{count}',
+                String(limitIssues.oversizedGroups.length)
+              )
+            }}
           </TooltipContent>
         </Tooltip>
 
@@ -196,7 +227,9 @@ watch(
               @click="handleDuplicateClick"
             >
               <Copy :size="14" />
-              <span class="text-xs">{{ duplicateItemCount }} 个重复物品</span>
+              <span class="text-xs">{{
+                t('status.duplicate.label').replace('{count}', String(duplicateItemCount))
+              }}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
@@ -211,29 +244,37 @@ watch(
               class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-50"
             >
               <EyeOff :size="14" />
-              <span class="text-xs">渲染受限</span>
+              <span class="text-xs">{{ t('status.render.limited') }}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            渲染数量超限：当前物品 {{ stats.total }} 个，仅显示前 {{ MAX_RENDER_INSTANCES }} 个
+            {{
+              t('status.render.limitedTip')
+                .replace('{total}', String(stats.total))
+                .replace('{max}', String(MAX_RENDER_INSTANCES))
+            }}
           </TooltipContent>
         </Tooltip>
 
         <!-- 统计信息 -->
         <div class="flex shrink-0 items-center gap-3 text-gray-600">
-          <span class="text-xs">总计 {{ stats.total }}</span>
+          <span class="text-xs">{{
+            t('status.stats.total').replace('{count}', String(stats.total))
+          }}</span>
           <span class="text-gray-300">|</span>
           <span
             class="text-xs"
             :class="stats.selected > 0 ? 'font-semibold text-blue-500' : 'text-gray-400'"
           >
-            已选 {{ stats.selected }}
+            {{ t('status.stats.selected').replace('{count}', String(stats.selected)) }}
           </span>
         </div>
 
         <!-- 组信息 -->
         <div class="flex shrink-0 items-center gap-1 text-purple-600">
-          <span class="text-xs">组 {{ groupCount }}</span>
+          <span class="text-xs">{{
+            t('status.stats.groups').replace('{count}', String(groupCount))
+          }}</span>
         </div>
 
         <!-- 工作坐标系 -->

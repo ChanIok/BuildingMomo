@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
 
+import type { Locale } from '../composables/useI18n'
+
 // 应用设置接口
 export interface AppSettings {
   // 显示设置
@@ -18,6 +20,9 @@ export interface AppSettings {
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' // 3D 显示模式：立方体、图标或简化方块
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
+
+  // 语言设置
+  language: Locale
 }
 
 // 默认设置
@@ -30,6 +35,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   showGizmo: true,
   threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
+  language: 'zh',
 }
 
 const STORAGE_KEY = 'buildingmomo_settings'

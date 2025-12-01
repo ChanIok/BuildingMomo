@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+import { useI18n } from '@/composables/useI18n'
+
 const props = defineProps<{
   open: boolean
 }>()
@@ -21,6 +23,7 @@ const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
 
+const { t } = useI18n()
 const uiStore = useUIStore()
 
 // 坐标系角度（默认为 0）
@@ -89,8 +92,8 @@ function handleCancel() {
   <Dialog :open="open" @update:open="emit('update:open', $event)">
     <DialogContent class="sm:max-w-[450px]">
       <DialogHeader>
-        <DialogTitle>工作坐标系设置</DialogTitle>
-        <DialogDescription> 设置工作坐标系的旋转角度，0° 即为全局坐标系。 </DialogDescription>
+        <DialogTitle>{{ t('coordinate.title') }}</DialogTitle>
+        <DialogDescription> {{ t('coordinate.description') }} </DialogDescription>
       </DialogHeader>
 
       <div class="grid gap-6 py-4">
@@ -98,7 +101,11 @@ function handleCancel() {
         <div class="flex justify-center">
           <div class="rounded-lg bg-gray-50 p-4">
             <div class="mb-2 text-center text-sm font-medium text-gray-700">
-              {{ workingAngle === 0 ? '全局坐标系 0°' : `工作坐标系 ${workingAngle}°` }}
+              {{
+                workingAngle === 0
+                  ? t('coordinate.globalLabel')
+                  : t('coordinate.workingLabel', { angle: workingAngle })
+              }}
             </div>
             <svg width="120" height="120" viewBox="-60 -60 120 120" class="mx-auto">
               <!-- 背景圆 -->
@@ -182,10 +189,10 @@ function handleCancel() {
 
         <!-- 工作坐标系角度调整 -->
         <div class="grid gap-3">
-          <Label class="text-sm font-medium">旋转角度</Label>
+          <Label class="text-sm font-medium">{{ t('coordinate.rotationLabel') }}</Label>
           <div class="flex items-center gap-2">
             <Input v-model.number="workingAngle" type="number" class="h-9 w-24" />
-            <span class="text-sm text-muted-foreground">度</span>
+            <span class="text-sm text-muted-foreground">{{ t('coordinate.unit') }}</span>
           </div>
 
           <!-- 快捷角度按钮 -->
@@ -235,8 +242,8 @@ function handleCancel() {
       </div>
 
       <DialogFooter>
-        <Button variant="outline" @click="handleCancel">取消</Button>
-        <Button @click="handleConfirm">确定</Button>
+        <Button variant="outline" @click="handleCancel">{{ t('common.cancel') }}</Button>
+        <Button @click="handleConfirm">{{ t('common.confirm') }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

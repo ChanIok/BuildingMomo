@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useCommandStore } from '../stores/commandStore'
 import { useTabStore } from '../stores/tabStore'
+import { useI18n } from '../composables/useI18n'
 import {
   FolderSearch,
   FileJson,
@@ -14,6 +15,7 @@ import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/comp
 
 const commandStore = useCommandStore()
 const tabStore = useTabStore()
+const { t } = useI18n()
 
 // 检查 File System Access API 是否支持
 const isWatchModeSupported = computed(() => commandStore.fileOps.isFileSystemAccessSupported)
@@ -46,18 +48,18 @@ function openQuickStart() {
           alt="BuildingMomo Logo"
           class="mx-auto mb-6 h-32 w-32 drop-shadow-lg"
         />
-        <h1 class="mb-3 text-4xl font-bold text-gray-900">搬砖吧大喵</h1>
-        <p class="text-lg text-gray-600">《无限暖暖》家园方案可视化编辑工具</p>
+        <h1 class="mb-3 text-4xl font-bold text-gray-900">{{ t('welcome.title') }}</h1>
+        <p class="text-lg text-gray-600">{{ t('welcome.subtitle') }}</p>
       </div>
 
       <!-- 功能简介 -->
       <div class="mb-8 px-4 text-sm text-gray-500">
         <p class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-          <span>快速移动/复制/删除大型建筑群</span>
+          <span>{{ t('welcome.features.0') }}</span>
           <span class="text-gray-300">·</span>
-          <span>在不同家园方案间自由合并建筑群</span>
+          <span>{{ t('welcome.features.1') }}</span>
           <span class="text-gray-300">·</span>
-          <span>可视化编辑坐标</span>
+          <span>{{ t('welcome.features.2') }}</span>
         </p>
       </div>
 
@@ -66,9 +68,9 @@ function openQuickStart() {
         <div class="rounded-lg border-2 border-orange-200 bg-orange-50/60 p-6 text-center">
           <div class="mb-2 flex items-center justify-center gap-2">
             <Monitor :size="16" class="text-orange-600" :stroke-width="1.5" />
-            <p class="text-base font-medium text-gray-900">仅支持电脑端</p>
+            <p class="text-base font-medium text-gray-900">{{ t('welcome.mobileOnly.title') }}</p>
           </div>
-          <p class="text-sm text-gray-600">本工具用于编辑本地游戏文件</p>
+          <p class="text-sm text-gray-600">{{ t('welcome.mobileOnly.desc') }}</p>
         </div>
       </div>
 
@@ -106,7 +108,7 @@ function openQuickStart() {
                 isWatchModeSupported ? 'text-gray-900' : 'text-gray-500',
               ]"
             >
-              选择游戏目录
+              {{ t('welcome.selectGameDir') }}
             </ItemTitle>
             <ItemDescription
               :class="[
@@ -114,7 +116,9 @@ function openQuickStart() {
                 isWatchModeSupported ? 'text-gray-600' : 'text-gray-400',
               ]"
             >
-              {{ isWatchModeSupported ? '自动检测建造数据更新' : '您的浏览器不支持此功能' }}
+              {{
+                isWatchModeSupported ? t('welcome.selectGameDirDesc') : t('welcome.notSupported')
+              }}
             </ItemDescription>
           </ItemContent>
         </Item>
@@ -132,9 +136,11 @@ function openQuickStart() {
           </ItemMedia>
 
           <ItemContent>
-            <ItemTitle class="text-lg font-semibold text-gray-900"> 导入建造数据 </ItemTitle>
+            <ItemTitle class="text-lg font-semibold text-gray-900">{{
+              t('welcome.importData')
+            }}</ItemTitle>
             <ItemDescription class="mt-2 text-left text-sm text-gray-600">
-              手动选择建造数据文件
+              {{ t('welcome.importDataDesc') }}
             </ItemDescription>
           </ItemContent>
         </Item>
@@ -149,7 +155,7 @@ function openQuickStart() {
           class="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors hover:text-blue-600"
         >
           <Code2 :size="16" />
-          <span>GitHub 仓库</span>
+          <span>{{ t('welcome.github') }}</span>
           <ExternalLink :size="14" class="hidden md:inline" />
         </a>
         <span class="text-gray-300">·</span>
@@ -160,12 +166,12 @@ function openQuickStart() {
           class="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors hover:text-blue-600"
         >
           <img src="https://chaniok.github.io/SpinningMomo/logo.png" class="h-4 w-4" />
-          <span>旋转吧大喵</span>
+          <span>{{ t('welcome.spinningMomo') }}</span>
           <ExternalLink :size="14" class="hidden md:inline" />
         </a>
       </div>
 
-      <!-- 底部提示与致谢信息 -->
+      <!-- 井部提示与致谢信息 -->
       <div class="mt-8 px-4 text-xs text-gray-400">
         <p class="mb-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
           <span class="flex items-center">
@@ -174,32 +180,32 @@ function openQuickStart() {
               @click="showSafetyNotice"
               class="cursor-pointer text-orange-500 underline underline-offset-2 hover:text-orange-600"
             >
-              使用前请阅读安全须知
+              {{ t('welcome.safety') }}
             </button>
           </span>
           <span class="text-gray-300">·</span>
-          <span>仅供学习交流，风险自负</span>
+          <span>{{ t('welcome.riskDisclaimer') }}</span>
         </p>
 
         <p class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
           <span
-            >文件将在本地处理，首次使用可阅读
-            <a href="#" @click.prevent="openQuickStart" class="text-blue-400 hover:underline"
-              >帮助文档</a
-            ></span
+            >{{ t('welcome.processLocal') }}
+            <a href="#" @click.prevent="openQuickStart" class="text-blue-400 hover:underline">{{
+              t('welcome.helpDoc')
+            }}</a></span
           >
           <span class="text-gray-300">·</span>
           <span>
-            物品数据与图标服务由
+            {{ t('welcome.credit') }}
             <a
               href="https://NUAN5.PRO"
               target="_blank"
               rel="noopener noreferrer"
               class="text-green-500 transition-colors hover:text-green-600"
             >
-              NUAN5.PRO
+              {{ t('welcome.creditLink') }}
             </a>
-            强力驱动
+            {{ t('welcome.creditPowered') }}
           </span>
         </p>
       </div>

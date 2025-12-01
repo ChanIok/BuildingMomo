@@ -15,6 +15,7 @@ import { useThreeInstancedRenderer } from '@/composables/useThreeInstancedRender
 import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
+import { useI18n } from '@/composables/useI18n'
 import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
@@ -29,6 +30,8 @@ import {
 
 // 设置 Three.js 全局 Z 轴向上
 Object3D.DEFAULT_UP.set(0, 0, 1)
+
+const { t } = useI18n()
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
@@ -594,21 +597,21 @@ onDeactivated(() => {
           :disabled="!commandStore.isCommandEnabled('edit.cut')"
           @select="commandStore.executeCommand('edit.cut')"
         >
-          <span>剪切</span>
+          <span>{{ t('command.edit.cut') }}</span>
           <DropdownMenuShortcut>Ctrl+X</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
           :disabled="!commandStore.isCommandEnabled('edit.copy')"
           @select="commandStore.executeCommand('edit.copy')"
         >
-          <span>复制</span>
+          <span>{{ t('command.edit.copy') }}</span>
           <DropdownMenuShortcut>Ctrl+C</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem
           :disabled="!commandStore.isCommandEnabled('edit.paste')"
           @select="commandStore.executeCommand('edit.paste')"
         >
-          <span>粘贴</span>
+          <span>{{ t('command.edit.paste') }}</span>
           <DropdownMenuShortcut>Ctrl+V</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -616,7 +619,7 @@ onDeactivated(() => {
           :disabled="!commandStore.isCommandEnabled('view.focusSelection')"
           @select="commandStore.executeCommand('view.focusSelection')"
         >
-          <span>聚焦选中</span>
+          <span>{{ t('command.view.focusSelection') }}</span>
           <DropdownMenuShortcut>F</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -625,7 +628,7 @@ onDeactivated(() => {
           @select="commandStore.executeCommand('edit.delete')"
           variant="destructive"
         >
-          <span>删除</span>
+          <span>{{ t('command.edit.delete') }}</span>
           <DropdownMenuShortcut>Delete</DropdownMenuShortcut>
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -824,14 +827,20 @@ onDeactivated(() => {
       >
         <div>
           <div class="font-medium">
-            {{ isOrthographic ? '正交视图' : controlMode === 'flight' ? '漫游模式' : '透视视图' }}
+            {{
+              isOrthographic
+                ? t('editor.viewMode.orthographic')
+                : controlMode === 'flight'
+                  ? t('editor.viewMode.flight')
+                  : t('editor.viewMode.perspective')
+            }}
           </div>
           <div class="mt-1 text-[10px] text-gray-500">
-            <template v-if="isOrthographic"> 左键选择 · 中键/空格平移 · 滚轮缩放 </template>
+            <template v-if="isOrthographic"> {{ t('editor.controls.ortho') }} </template>
             <template v-else-if="controlMode === 'orbit'">
-              左键选择 · 中键环绕 · 滚轮缩放 · F 聚焦选中 · WASD 漫游
+              {{ t('editor.controls.orbit') }}
             </template>
-            <template v-else> WASD 平移 · Space/Q 升降 · 按住中键转向 · F 聚焦选中 </template>
+            <template v-else> {{ t('editor.controls.flight') }} </template>
           </div>
         </div>
       </div>
@@ -848,9 +857,13 @@ onDeactivated(() => {
           <div class="mb-2 flex items-center justify-between">
             <div class="flex items-baseline gap-2 pr-4">
               <ItemTitle class="text-xs font-medium">
-                {{ shouldShowSimpleBoxMesh ? '方块大小' : '图标大小' }}
+                {{
+                  shouldShowSimpleBoxMesh
+                    ? t('editor.sizeControl.box')
+                    : t('editor.sizeControl.icon')
+                }}
               </ItemTitle>
-              <span class="text-[10px] text-gray-500">Ctrl + 滚轮快速调整</span>
+              <span class="text-[10px] text-gray-500">{{ t('editor.sizeControl.shortcut') }}</span>
             </div>
             <span class="w-8 text-right text-xs text-gray-500"
               >{{ Math.round(settingsStore.settings.threeSymbolScale * 100) }}%</span
@@ -867,46 +880,62 @@ onDeactivated(() => {
         @click="showCameraDebug = !showCameraDebug"
         class="rounded bg-gray-800/80 px-2 py-1 text-xs text-white hover:bg-gray-700/80"
       >
-        {{ showCameraDebug ? '隐藏' : '显示' }}相机调试
+        {{ showCameraDebug ? t('editor.debug.hide') : t('editor.debug.show') }}
       </button>
       <div
         v-if="showCameraDebug"
         class="mt-2 max-h-96 overflow-y-auto rounded bg-gray-900/90 px-3 py-2 font-mono text-xs text-green-400 shadow-lg"
         style="max-width: 350px"
       >
-        <div class="mb-1 font-bold text-green-300">📷 相机状态</div>
+        <div class="mb-1 font-bold text-green-300">{{ t('editor.debug.title') }}</div>
         <div class="space-y-0.5">
-          <div><span class="text-gray-400">模式:</span> {{ controlMode }}</div>
           <div>
-            <span class="text-gray-400">视图:</span>
-            {{ !isOrthographic ? '透视' : currentViewPreset || '正交' }}
+            <span class="text-gray-400">{{ t('editor.debug.mode') }}:</span> {{ controlMode }}
           </div>
-          <div><span class="text-gray-400">投影:</span> {{ isOrthographic ? '正交' : '透视' }}</div>
-          <div class="mt-1 text-gray-400">位置:</div>
+          <div>
+            <span class="text-gray-400">{{ t('editor.debug.view') }}:</span>
+            {{
+              !isOrthographic
+                ? t('editor.viewMode.perspective')
+                : currentViewPreset || t('editor.viewMode.orthographic')
+            }}
+          </div>
+          <div>
+            <span class="text-gray-400">{{ t('editor.debug.projection') }}:</span>
+            {{
+              isOrthographic ? t('editor.viewMode.orthographic') : t('editor.viewMode.perspective')
+            }}
+          </div>
+          <div class="mt-1 text-gray-400">{{ t('editor.debug.position') }}:</div>
           <div class="pl-2">
             X: {{ cameraPosition[0].toFixed(1) }}<br />
             Y: {{ cameraPosition[1].toFixed(1) }}<br />
             Z: {{ cameraPosition[2].toFixed(1) }}
           </div>
-          <div class="mt-1 text-gray-400">目标:</div>
+          <div class="mt-1 text-gray-400">{{ t('editor.debug.target') }}:</div>
           <div class="pl-2">
             X: {{ cameraLookAt[0].toFixed(1) }}<br />
             Y: {{ cameraLookAt[1].toFixed(1) }}<br />
             Z: {{ cameraLookAt[2].toFixed(1) }}
           </div>
-          <div class="mt-1 text-gray-400">轨道中心:</div>
+          <div class="mt-1 text-gray-400">{{ t('editor.debug.orbitCenter') }}:</div>
           <div class="pl-2">
             X: {{ orbitTarget[0].toFixed(1) }}<br />
             Y: {{ orbitTarget[1].toFixed(1) }}<br />
             Z: {{ orbitTarget[2].toFixed(1) }}
           </div>
           <div class="mt-1">
-            <span class="text-gray-400">视图聚焦:</span> {{ isViewFocused ? '是' : '否' }}
+            <span class="text-gray-400">{{ t('editor.debug.viewFocused') }}:</span>
+            {{ isViewFocused ? t('editor.debug.yes') : t('editor.debug.no') }}
           </div>
           <div>
-            <span class="text-gray-400">导航键:</span> {{ isNavKeyPressed ? '激活' : '未激活' }}
+            <span class="text-gray-400">{{ t('editor.debug.navKey') }}:</span>
+            {{ isNavKeyPressed ? t('editor.debug.active') : t('editor.debug.inactive') }}
           </div>
-          <div><span class="text-gray-400">缩放:</span> {{ cameraZoom.toFixed(2) }}</div>
+          <div>
+            <span class="text-gray-400">{{ t('editor.debug.zoom') }}:</span>
+            {{ cameraZoom.toFixed(2) }}
+          </div>
         </div>
       </div>
     </div>

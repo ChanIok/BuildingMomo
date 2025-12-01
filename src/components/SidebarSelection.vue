@@ -4,6 +4,7 @@ import { Ruler } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
+import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item'
@@ -11,6 +12,14 @@ import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/componen
 const editorStore = useEditorStore()
 const furnitureStore = useFurnitureStore()
 const { getGroupItems, groupSelected, ungroupSelected } = useEditorGroups()
+const { t, locale } = useI18n()
+
+// 辅助函数：根据语言获取名称
+function getFurnitureName(furniture: any, fallbackId: number) {
+  if (!furniture) return t('sidebar.itemDefaultName', { id: fallbackId })
+  if (locale.value === 'zh') return furniture.name_cn
+  return furniture.name_en || furniture.name_cn
+}
 
 // 计算属性:选中物品的组信息
 const selectedGroupInfo = computed(() => {
@@ -68,7 +77,7 @@ const selectedItemDetails = computed(() => {
     }
     return {
       type: 'single' as const,
-      name: furniture?.name_cn || `物品 ${item.gameId}`,
+      name: getFurnitureName(furniture, item.gameId),
       icon: furniture ? furnitureStore.getIconUrl(item.gameId) : null,
       itemId: item.gameId,
       dimensions,
@@ -97,7 +106,7 @@ const selectedItemDetails = computed(() => {
       const furniture = furnitureStore.getFurniture(item.gameId)
       itemStats.set(item.gameId, {
         itemId: item.gameId,
-        name: furniture?.name_cn || `物品 ${item.gameId}`,
+        name: getFurnitureName(furniture, item.gameId),
         icon: furniture ? furnitureStore.getIconUrl(item.gameId) : null,
         count: 1,
       })
@@ -119,9 +128,9 @@ const groupBadgeText = computed(() => {
   if (!selectedGroupInfo.value) return null
 
   if (selectedGroupInfo.value.type === 'single') {
-    return `组 #${selectedGroupInfo.value.groupId}`
+    return t('sidebar.groupSingle', { id: selectedGroupInfo.value.groupId ?? 0 })
   } else if (selectedGroupInfo.value.type === 'multiple') {
-    return `${selectedGroupInfo.value.groupCount} 个组`
+    return t('sidebar.groupMultiple', { count: selectedGroupInfo.value.groupCount ?? 0 })
   }
   return null
 })
@@ -139,7 +148,7 @@ function handleIconError(e: Event) {
     <!-- 标题栏 -->
     <div class="flex shrink-0 items-center justify-between pr-2">
       <div class="flex items-center gap-2">
-        <h2 class="text-sm font-semibold">选中列表</h2>
+        <h2 class="text-sm font-semibold">{{ t('sidebar.selectionList') }}</h2>
         <span class="font-semibold text-blue-500">{{ editorStore.stats.selectedItems }}</span>
       </div>
       <!-- 组信息徽章 -->
@@ -176,7 +185,7 @@ function handleIconError(e: Event) {
                 class="h-full w-full object-contain transition-transform hover:scale-105"
                 @error="handleIconError"
               />
-              <div v-else class="text-sm text-gray-400">无图标</div>
+              <div v-else class="text-sm text-gray-400">{{ t('sidebar.noIcon') }}</div>
             </div>
 
             <!-- 物品信息 -->
@@ -237,7 +246,7 @@ function handleIconError(e: Event) {
         size="sm"
         title="Ctrl+G"
       >
-        成组
+        {{ t('sidebar.group') }}
       </Button>
       <Button
         @click="ungroupSelected()"
@@ -247,7 +256,7 @@ function handleIconError(e: Event) {
         size="sm"
         title="Ctrl+Shift+G"
       >
-        取消组合
+        {{ t('sidebar.ungroup') }}
       </Button>
     </div>
   </div>

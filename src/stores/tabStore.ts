@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import type { Tab } from '../types/tab'
 import type { HomeScheme } from '../types/editor'
 
+import { useI18n } from '@/composables/useI18n'
+
 // 生成简单的UUID
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
@@ -13,6 +15,8 @@ function generateUUID(): string {
 }
 
 export const useTabStore = defineStore('tab', () => {
+  const { t } = useI18n()
+
   // 标签列表
   const tabs = ref<Tab[]>([])
 
@@ -62,7 +66,7 @@ export const useTabStore = defineStore('tab', () => {
       const newTab: Tab = {
         id: generateUUID(),
         type: 'doc',
-        title: '帮助文档',
+        title: t('command.help.openDocs'),
         docPage,
       }
       tabs.value.push(newTab)

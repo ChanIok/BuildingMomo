@@ -1,29 +1,51 @@
 <script setup lang="ts">
-import { computed, ref, watch, onActivated, nextTick } from 'vue'
+import { computed, ref, watch, onActivated, nextTick, defineAsyncComponent } from 'vue'
+import type { AsyncComponentLoader } from 'vue'
 import { useTabStore } from '../stores/tabStore'
+import { useI18n } from '../composables/useI18n'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import QuickStart from './docs/QuickStart.vue'
-import UserGuide from './docs/UserGuide.vue'
-import FAQ from './docs/FAQ.vue'
 import { useEventListener, useDebounceFn } from '@vueuse/core'
 
-const tabStore = useTabStore()
+// 动态导入文档组件，支持语言切换
+const docsComponents = {
+  zh: {
+    QuickStart: () => import('./docs/QuickStart.vue'),
+    UserGuide: () => import('./docs/UserGuide.vue'),
+    FAQ: () => import('./docs/FAQ.vue'),
+  },
+  en: {
+    QuickStart: () => import('./docs/QuickStart.en.vue'),
+    UserGuide: () => import('./docs/UserGuide.en.vue'),
+    FAQ: () => import('./docs/FAQ.en.vue'),
+  },
+}
 
-// 菜单项配置
-const menuItems = [
-  { id: 'quickstart', label: '快速上手', component: QuickStart },
-  { id: 'guide', label: '使用指南', component: UserGuide },
-  { id: 'faq', label: '常见问题', component: FAQ },
-]
+const tabStore = useTabStore()
+const { t, locale } = useI18n()
+
+// 菜单项配置 - 根据语言加载对应文档
+const menuItems = computed(() => [
+  { id: 'quickstart', label: t('doc.quickstart') },
+  { id: 'guide', label: t('doc.guide') },
+  { id: 'faq', label: t('doc.faq') },
+])
 
 // 当前文档页面：查找 doc 类型的标签，保持状态稳定
 const docTab = computed(() => tabStore.tabs.find((t) => t.type === 'doc'))
 const currentDoc = computed(() => docTab.value?.docPage || 'quickstart')
 
-// 当前文档组件
+// 当前文档组件 - 根据语言动态加载
 const currentComponent = computed(() => {
-  return menuItems.find((item) => item.id === currentDoc.value)?.component || QuickStart
+  // 映射 ID 到组件属性名
+  const componentMap: Record<string, 'QuickStart' | 'UserGuide' | 'FAQ'> = {
+    quickstart: 'QuickStart',
+    guide: 'UserGuide',
+    faq: 'FAQ',
+  }
+  const componentName = componentMap[currentDoc.value] || 'QuickStart'
+  const loader = docsComponents[locale.value][componentName] as AsyncComponentLoader<any>
+  return defineAsyncComponent(loader)
 })
 
 // 滚动区域引用
@@ -100,8 +122,8 @@ function switchDoc(value: string | number) {
       <nav class="flex w-64 shrink-0 flex-col border-r bg-muted/40">
         <!-- 标题区 -->
         <div class="border-b p-6">
-          <h2 class="text-lg font-semibold text-foreground">搬砖吧大喵 文档</h2>
-          <p class="mt-1 text-xs text-muted-foreground">使用指南与帮助</p>
+          <h2 class="text-lg font-semibold text-foreground">{{ t('doc.title') }}</h2>
+          <p class="mt-1 text-xs text-muted-foreground">{{ t('doc.subtitle') }}</p>
         </div>
 
         <!-- 菜单列表 -->
@@ -131,7 +153,7 @@ function switchDoc(value: string | number) {
             rel="noopener noreferrer"
             class="text-blue-600 hover:underline dark:text-blue-400"
           >
-            GitHub 仓库
+            {{ t('doc.github') }}
           </a>
         </div>
       </nav>
@@ -152,9 +174,9 @@ function switchDoc(value: string | number) {
       <!-- 标签头 -->
       <div class="p-4">
         <TabsList class="grid w-full grid-cols-3">
-          <TabsTrigger value="quickstart">快速上手</TabsTrigger>
-          <TabsTrigger value="guide">使用指南</TabsTrigger>
-          <TabsTrigger value="faq">常见问题</TabsTrigger>
+          <TabsTrigger value="quickstart">{{ t('doc.quickstart') }}</TabsTrigger>
+          <TabsTrigger value="guide">{{ t('doc.guide') }}</TabsTrigger>
+          <TabsTrigger value="faq">{{ t('doc.faq') }}</TabsTrigger>
         </TabsList>
       </div>
 

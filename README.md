@@ -18,7 +18,7 @@
   <p>
     <b>
       <a href="https://chaniok.github.io/BuildingMomo">🌐 在线使用</a> •
-      <a href="https://github.com/ChanIok/SpinningMomo">🎬 SpinningMomo</a>
+      <a href="README.en.md">English</a>
     </b>
   </p>
 
@@ -61,14 +61,6 @@ npm run dev
 # 构建生产版本
 npm run build
 ```
-
-## 🚧 开发状态
-
-**项目开发中 (约 90% 完成)**
-
-✅ **已完成**：导入/导出方案、可视化渲染、高度过滤、画布缩放/平移、精确移动与旋转、工作坐标系、撤销重做、组合编辑、3D视角控制
-
-🔨 **进行中**：UI/UX优化、英文支持
 
 ## 🛠️ 技术栈
 

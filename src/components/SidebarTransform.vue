@@ -3,11 +3,13 @@ import { computed, ref, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from '../stores/uiStore'
+import { useI18n } from '../composables/useI18n'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
+const { t } = useI18n()
 const { updateSelectedItemsTransform } = useEditorManipulation()
 
 // 两个独立的开关，默认都开启绝对模式 (false)
@@ -253,17 +255,22 @@ const fmt = (n: number) => Math.round(n * 100) / 100
       <div class="flex flex-col items-stretch gap-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1">
-            <label class="text-xs font-bold text-gray-700">位置</label>
+            <label class="text-xs font-bold text-gray-700">{{ t('transform.position') }}</label>
             <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
               <Tooltip :delay-duration="300">
                 <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] font-medium text-blue-600"
-                    >(工作坐标系)</span
-                  >
+                  <span class="cursor-help text-[10px] font-medium text-blue-600">{{
+                    t('transform.workingCoord')
+                  }}</span>
                 </TooltipTrigger>
                 <TooltipContent class="text-xs" variant="light">
-                  当前数值已转换为工作坐标系<br />
-                  旋转角度: {{ uiStore.workingCoordinateSystem.rotationAngle }}°
+                  <div
+                    v-html="
+                      t('transform.workingCoordTip', {
+                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                      })
+                    "
+                  ></div>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -274,13 +281,13 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                 value="absolute"
                 class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
               >
-                绝对
+                {{ t('transform.absolute') }}
               </TabsTrigger>
               <TabsTrigger
                 value="relative"
                 class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
               >
-                相对
+                {{ t('transform.relative') }}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -352,15 +359,22 @@ const fmt = (n: number) => Math.round(n * 100) / 100
       <div class="flex flex-col items-stretch gap-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1">
-            <label class="text-xs font-bold text-gray-700">旋转 (°)</label>
+            <label class="text-xs font-bold text-gray-700">{{ t('transform.rotation') }}</label>
             <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
               <Tooltip :delay-duration="300">
                 <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] font-medium text-blue-600">(校正)</span>
+                  <span class="cursor-help text-[10px] font-medium text-blue-600">{{
+                    t('transform.correction')
+                  }}</span>
                 </TooltipTrigger>
                 <TooltipContent class="text-xs" variant="light">
-                  Z轴旋转显示已校正<br />
-                  实际旋转 = 显示值 + {{ uiStore.workingCoordinateSystem.rotationAngle }}°
+                  <div
+                    v-html="
+                      t('transform.correctionTip', {
+                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                      })
+                    "
+                  ></div>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -372,13 +386,13 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                 :disabled="selectionInfo?.count > 1"
                 class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
               >
-                绝对
+                {{ t('transform.absolute') }}
               </TabsTrigger>
               <TabsTrigger
                 value="relative"
                 class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
               >
-                相对
+                {{ t('transform.relative') }}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -455,15 +469,22 @@ const fmt = (n: number) => Math.round(n * 100) / 100
     <div v-if="selectionInfo.bounds" class="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
       <div class="flex flex-col gap-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-medium text-gray-500">范围 (Min ~ Max)</span>
+          <span class="text-xs font-medium text-gray-500">{{ t('transform.range') }}</span>
           <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
             <Tooltip :delay-duration="300">
               <TooltipTrigger as-child>
-                <span class="cursor-help text-[10px] font-medium text-blue-600">(工作坐标系)</span>
+                <span class="cursor-help text-[10px] font-medium text-blue-600">{{
+                  t('transform.workingCoord')
+                }}</span>
               </TooltipTrigger>
               <TooltipContent class="text-xs" variant="light">
-                当前范围基于工作坐标系<br />
-                旋转角度: {{ uiStore.workingCoordinateSystem.rotationAngle }}°
+                <div
+                  v-html="
+                    t('transform.rangeTip', {
+                      angle: uiStore.workingCoordinateSystem.rotationAngle,
+                    })
+                  "
+                ></div>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

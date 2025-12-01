@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
@@ -9,6 +10,7 @@ import SidebarToggleItem from './SidebarToggleItem.vue'
 import { Layers, Settings2 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
+const { t } = useI18n()
 const currentView = ref<'structure' | 'transform'>('structure')
 </script>
 
@@ -29,7 +31,7 @@ const currentView = ref<'structure' | 'transform'>('structure')
                   if (v) currentView = 'structure'
                 }
               "
-              tooltip="结构"
+              :tooltip="t('sidebar.structure')"
             >
               <Layers class="h-4 w-4" />
             </SidebarToggleItem>
@@ -41,7 +43,7 @@ const currentView = ref<'structure' | 'transform'>('structure')
                   if (v) currentView = 'transform'
                 }
               "
-              tooltip="变换"
+              :tooltip="t('sidebar.transform')"
             >
               <Settings2 class="h-4 w-4" />
             </SidebarToggleItem>
@@ -53,7 +55,7 @@ const currentView = ref<'structure' | 'transform'>('structure')
           v-if="editorStore.selectedItems.length === 0"
           class="pt-10 text-center text-xs text-gray-500"
         >
-          请选择物品查看详情或进行操作
+          {{ t('sidebar.noSelection') }}
         </div>
 
         <div v-if="currentView === 'structure'" class="mt-0 flex min-h-0 flex-1 flex-col gap-3">

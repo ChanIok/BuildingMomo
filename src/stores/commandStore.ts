@@ -10,6 +10,7 @@ import { useUIStore } from './uiStore'
 import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
+import { useI18n } from '../composables/useI18n'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
 // 命令接口
@@ -34,6 +35,7 @@ export const useCommandStore = defineStore('command', () => {
 
   const uiStore = useUIStore()
   const settingsStore = useSettingsStore()
+  const { t } = useI18n()
 
   // 缩放函数引用（需要从外部设置）
   const zoomInFn = ref<(() => void) | null>(null)
@@ -57,7 +59,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 文件菜单 =====
     {
       id: 'file.new',
-      label: '新建空白方案',
+      label: t('command.file.new'),
       shortcut: 'Ctrl+N',
       category: 'file',
       enabled: () => true,
@@ -68,7 +70,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.startWatchMode',
-      label: '选择游戏目录',
+      label: t('command.file.startWatchMode'),
       shortcut: 'Ctrl+O',
       category: 'file',
       enabled: () => fileOps.isFileSystemAccessSupported && !fileOps.watchState.value.isActive,
@@ -79,7 +81,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.stopWatchMode',
-      label: '停止监控',
+      label: t('command.file.stopWatchMode'),
       category: 'file',
       enabled: () => fileOps.watchState.value.isActive,
       execute: () => {
@@ -89,7 +91,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.import',
-      label: '导入建造数据',
+      label: t('command.file.import'),
       shortcut: 'Ctrl+Shift+O',
       category: 'file',
       enabled: () => true,
@@ -100,7 +102,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.export',
-      label: '导出建造数据',
+      label: t('command.file.export'),
       shortcut: 'Ctrl+Shift+S',
       category: 'file',
       enabled: () => editorStore.items.length > 0,
@@ -111,7 +113,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.saveToGame',
-      label: '保存到游戏',
+      label: t('command.file.saveToGame'),
       shortcut: 'Ctrl+S',
       category: 'file',
       enabled: () =>
@@ -127,7 +129,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 工具菜单 =====
     {
       id: 'tool.select',
-      label: '选择工具',
+      label: t('command.tool.select'),
       shortcut: 'V',
       category: 'tool',
       enabled: () => true,
@@ -138,7 +140,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'tool.hand',
-      label: '拖拽工具',
+      label: t('command.tool.hand'),
       shortcut: 'H',
       category: 'tool',
       enabled: () => true,
@@ -149,7 +151,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'tool.toggleGizmo',
-      label: '切换变换轴显示',
+      label: t('command.tool.toggleGizmo'),
       shortcut: 'G',
       category: 'tool',
       enabled: () => uiStore.viewMode === '3d',
@@ -162,7 +164,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 编辑菜单 =====
     {
       id: 'edit.undo',
-      label: '撤销',
+      label: t('command.edit.undo'),
       shortcut: 'Ctrl+Z',
       category: 'edit',
       enabled: () => canUndo(),
@@ -173,7 +175,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.redo',
-      label: '重做',
+      label: t('command.edit.redo'),
       shortcut: 'Ctrl+Y',
       category: 'edit',
       enabled: () => canRedo(),
@@ -184,7 +186,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.cut',
-      label: '剪切',
+      label: t('command.edit.cut'),
       shortcut: 'Ctrl+X',
       category: 'edit',
       enabled: () => editorStore.selectedItemIds.size > 0,
@@ -195,7 +197,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.copy',
-      label: '复制',
+      label: t('command.edit.copy'),
       shortcut: 'Ctrl+C',
       category: 'edit',
       enabled: () => editorStore.selectedItemIds.size > 0,
@@ -206,7 +208,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.paste',
-      label: '粘贴',
+      label: t('command.edit.paste'),
       shortcut: 'Ctrl+V',
       category: 'edit',
       enabled: () => clipboard.value.length > 0,
@@ -217,7 +219,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.delete',
-      label: '删除',
+      label: t('command.edit.delete'),
       shortcut: 'Delete',
       category: 'edit',
       enabled: () => editorStore.selectedItemIds.size > 0,
@@ -228,7 +230,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.selectAll',
-      label: '全选',
+      label: t('command.edit.selectAll'),
       shortcut: 'Ctrl+A',
       category: 'edit',
       enabled: () => editorStore.items.length > 0,
@@ -239,7 +241,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.deselectAll',
-      label: '取消选择',
+      label: t('command.edit.deselectAll'),
       shortcut: 'Escape',
       category: 'edit',
       enabled: () => editorStore.selectedItemIds.size > 0,
@@ -250,7 +252,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.invertSelection',
-      label: '反选',
+      label: t('command.edit.invertSelection'),
       shortcut: 'Ctrl+Shift+A',
       category: 'edit',
       enabled: () => editorStore.items.length > 0,
@@ -261,7 +263,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.group',
-      label: '成组',
+      label: t('command.edit.group'),
       shortcut: 'Ctrl+G',
       category: 'edit',
       enabled: () => {
@@ -285,7 +287,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'edit.ungroup',
-      label: '取消组合',
+      label: t('command.edit.ungroup'),
       shortcut: 'Ctrl+Shift+G',
       category: 'edit',
       enabled: () => {
@@ -301,7 +303,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 视图菜单 =====
     {
       id: 'view.zoomIn',
-      label: '放大',
+      label: t('command.view.zoomIn'),
       shortcut: 'Ctrl+=',
       category: 'view',
       enabled: () => editorStore.items.length > 0 && zoomInFn.value !== null,
@@ -312,7 +314,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.zoomOut',
-      label: '缩小',
+      label: t('command.view.zoomOut'),
       shortcut: 'Ctrl+-',
       category: 'view',
       enabled: () => editorStore.items.length > 0 && zoomOutFn.value !== null,
@@ -323,7 +325,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.fitToView',
-      label: '重置视图',
+      label: t('command.view.fitToView'),
       category: 'view',
       enabled: () => fitToViewFn.value !== null,
       execute: () => {
@@ -333,7 +335,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.focusSelection',
-      label: '聚焦选中物品',
+      label: t('command.view.focusSelection'),
       shortcut: 'F',
       category: 'view',
       enabled: () => editorStore.selectedItemIds.size > 0 && focusSelectionFn.value !== null,
@@ -344,7 +346,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.coordinateSystem',
-      label: '工作坐标系设置',
+      label: t('command.view.coordinateSystem'),
       category: 'view',
       enabled: () => editorStore.items.length > 0,
       execute: () => {
@@ -356,7 +358,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 3D视图预设 =====
     {
       id: 'view.setViewPerspective',
-      label: '透视视图',
+      label: t('command.view.setViewPerspective'),
       shortcut: '0',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
@@ -367,7 +369,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.setViewTop',
-      label: '顶视图',
+      label: t('command.view.setViewTop'),
       shortcut: '7',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
@@ -378,7 +380,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.setViewBottom',
-      label: '底视图',
+      label: t('command.view.setViewBottom'),
       shortcut: '9',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
@@ -389,7 +391,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.setViewFront',
-      label: '前视图',
+      label: t('command.view.setViewFront'),
       shortcut: '1',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
@@ -400,7 +402,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.setViewBack',
-      label: '后视图',
+      label: t('command.view.setViewBack'),
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -410,7 +412,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.setViewRight',
-      label: '右侧视图',
+      label: t('command.view.setViewRight'),
       shortcut: '3',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
@@ -421,7 +423,7 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'view.setViewLeft',
-      label: '左侧视图',
+      label: t('command.view.setViewLeft'),
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -433,7 +435,7 @@ export const useCommandStore = defineStore('command', () => {
     // ===== 帮助菜单 =====
     {
       id: 'help.openDocs',
-      label: '打开帮助文档',
+      label: t('command.help.openDocs'),
       shortcut: 'F1',
       category: 'help',
       enabled: () => true,

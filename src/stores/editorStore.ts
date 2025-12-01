@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AppItem, GameItem, GameDataFile, HomeScheme } from '../types/editor'
 import { useTabStore } from './tabStore'
+import { useI18n } from '../composables/useI18n'
 
 // 生成简单的UUID
 function generateUUID(): string {
@@ -13,6 +14,8 @@ function generateUUID(): string {
 }
 
 export const useEditorStore = defineStore('editor', () => {
+  const { t } = useI18n()
+
   // 多方案状态
   const schemes = ref<HomeScheme[]>([])
   const activeSchemeId = ref<string | null>(null)
@@ -144,10 +147,10 @@ export const useEditorStore = defineStore('editor', () => {
   // ========== 方案管理 ==========
 
   // 方案管理：创建新方案
-  function createScheme(name: string = '未命名方案'): string {
+  function createScheme(name?: string): string {
     const newScheme: HomeScheme = {
       id: generateUUID(),
-      name,
+      name: name || t('scheme.unnamed'),
       items: [],
       selectedItemIds: new Set(),
     }
@@ -209,7 +212,7 @@ export const useEditorStore = defineStore('editor', () => {
       })
 
       // 从文件名提取方案名称（默认使用“方案 N”形式，避免重复）
-      const schemeName = `方案 ${schemes.value.length + 1}`
+      const schemeName = t('scheme.defaultName', { n: schemes.value.length + 1 })
 
       // 创建新方案
       const newScheme: HomeScheme = {

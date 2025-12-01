@@ -18,13 +18,15 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { useCommandStore } from '../stores/commandStore'
 import { useEditorStore } from '../stores/editorStore'
 import { useTabStore } from '../stores/tabStore'
+import { useI18n } from '../composables/useI18n'
 import { X, Settings, BookOpen } from 'lucide-vue-next'
 import SettingsDialog from './SettingsDialog.vue'
 
-// 使用命令系统 Store
+// 使用命令系統 Store
 const commandStore = useCommandStore()
 const editorStore = useEditorStore()
 const tabStore = useTabStore()
+const { t } = useI18n()
 
 // 按分类获取命令
 const fileCommands = computed(() => commandStore.getCommandsByCategory('file'))
@@ -147,7 +149,7 @@ onMounted(() => {
     <Menubar class="flex-none border-none bg-transparent shadow-none">
       <!-- 文件菜单 -->
       <MenubarMenu>
-        <MenubarTrigger class="text-sm font-medium">文件</MenubarTrigger>
+        <MenubarTrigger class="text-sm font-medium">{{ t('menu.file') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
           <template v-for="cmd in fileCommands" :key="cmd.id">
             <!-- 在"保存到游戏"、"选择游戏目录"、"导入"之前添加分隔线 -->
@@ -168,7 +170,7 @@ onMounted(() => {
 
       <!-- 编辑菜单 -->
       <MenubarMenu>
-        <MenubarTrigger class="text-sm font-medium">编辑</MenubarTrigger>
+        <MenubarTrigger class="text-sm font-medium">{{ t('menu.edit') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
           <template v-for="cmd in editCommands" :key="cmd.id">
             <!-- 在"剪切 "、"移动"、"删除"、"全选"、"成组"之前添加分隔线 -->
@@ -191,7 +193,7 @@ onMounted(() => {
 
       <!-- 视图菜单 -->
       <MenubarMenu>
-        <MenubarTrigger class="text-sm font-medium">视图</MenubarTrigger>
+        <MenubarTrigger class="text-sm font-medium">{{ t('menu.view') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
           <!-- 主视图命令（缩放、重置视图、聚焦、2D/3D、工作坐标系等） -->
           <template v-for="cmd in mainViewCommands" :key="cmd.id">
@@ -210,7 +212,7 @@ onMounted(() => {
 
           <!-- 视图预设子菜单：透视视图 + 正交六视图 -->
           <MenubarSub>
-            <MenubarSubTrigger>视图预设</MenubarSubTrigger>
+            <MenubarSubTrigger>{{ t('command.view.viewPreset') }}</MenubarSubTrigger>
             <MenubarSubContent>
               <template v-for="cmd in viewPresetCommands" :key="cmd.id">
                 <!-- 在“顶视图”之前添加分隔线，将透视视图与正交视图分组 -->
@@ -227,10 +229,10 @@ onMounted(() => {
 
       <!-- 帮助菜单 -->
       <MenubarMenu>
-        <MenubarTrigger class="text-sm font-medium">帮助</MenubarTrigger>
+        <MenubarTrigger class="text-sm font-medium">{{ t('menu.help') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
           <MenubarItem @click="tabStore.openDocTab()">
-            打开帮助文档
+            {{ t('command.help.openDocs') }}
             <MenubarShortcut>F1</MenubarShortcut>
           </MenubarItem>
         </MenubarContent>

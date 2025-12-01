@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useI18n } from '../composables/useI18n'
+import type { Locale } from '../composables/useI18n'
 import {
   Dialog,
   DialogContent,
@@ -10,6 +12,13 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 const props = defineProps<{
   open: boolean
@@ -25,22 +34,51 @@ const isOpen = computed({
 })
 
 const settingsStore = useSettingsStore()
+const { t, locale, setLocale } = useI18n()
+
+const languageOptions = [
+  { value: 'zh' as Locale, label: '中文' },
+  { value: 'en' as Locale, label: 'English' },
+]
+
+function handleLanguageChange(newLocale: Locale) {
+  setLocale(newLocale)
+  // 同步到设置（可选）
+  settingsStore.settings.language = newLocale
+}
 </script>
 
 <template>
   <Dialog v-model:open="isOpen">
     <DialogContent class="max-h-[80vh] max-w-2xl">
       <DialogHeader>
-        <DialogTitle>设置</DialogTitle>
-        <DialogDescription> 配置应用的显示选项和编辑设置 </DialogDescription>
+        <DialogTitle>{{ t('settings.title') }}</DialogTitle>
+        <DialogDescription>{{ t('settings.description') }}</DialogDescription>
       </DialogHeader>
 
       <div class="space-y-4 py-4">
+        <!-- 语言选择 -->
+        <div class="flex items-center justify-between">
+          <div class="space-y-0.5">
+            <Label>{{ t('settings.language') }}</Label>
+            <p class="text-xs text-muted-foreground">{{ t('settings.languageHint') }}</p>
+          </div>
+          <Select :model-value="locale" @update:model-value="handleLanguageChange as any">
+            <SelectTrigger class="w-40">
+              <SelectValue :placeholder="t('settings.language')" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="opt in languageOptions" :key="opt.value" :value="opt.value">{{
+                opt.label
+              }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <!-- 家具Tooltip开关 -->
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <Label>显示家具名称提示</Label>
-            <p class="text-xs text-muted-foreground">鼠标悬停在物品上时显示名称和图标</p>
+            <Label>{{ t('settings.furnitureTooltip.label') }}</Label>
+            <p class="text-xs text-muted-foreground">{{ t('settings.furnitureTooltip.hint') }}</p>
           </div>
           <Switch v-model="settingsStore.settings.showFurnitureTooltip" />
         </div>
@@ -48,23 +86,23 @@ const settingsStore = useSettingsStore()
         <!-- 背景图开关 -->
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <Label>显示家园背景图</Label>
-            <p class="text-xs text-muted-foreground">在画布上显示参考背景图</p>
+            <Label>{{ t('settings.background.label') }}</Label>
+            <p class="text-xs text-muted-foreground">{{ t('settings.background.hint') }}</p>
           </div>
           <Switch v-model="settingsStore.settings.showBackground" />
         </div>
 
         <!-- 分割线 -->
         <div class="border-t pt-4">
-          <h3 class="mb-3 text-sm font-medium">编辑辅助</h3>
+          <h3 class="mb-3 text-sm font-medium">{{ t('settings.editAssist') }}</h3>
         </div>
 
         <!-- 重复物品检测开关 -->
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <Label>启用重复物品检测</Label>
+            <Label>{{ t('settings.duplicateDetection.label') }}</Label>
             <p class="text-xs text-muted-foreground">
-              自动检测位置、旋转、缩放完全相同的物品，在状态栏显示提示
+              {{ t('settings.duplicateDetection.hint') }}
             </p>
           </div>
           <Switch v-model="settingsStore.settings.enableDuplicateDetection" />
@@ -73,9 +111,9 @@ const settingsStore = useSettingsStore()
         <!-- 限制检测开关 -->
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <Label>启用方案合规性检测</Label>
+            <Label>{{ t('settings.limitDetection.label') }}</Label>
             <p class="text-xs text-muted-foreground">
-              自动检测越界物品和过大的组合。关闭则代表您已知悉风险，允许强制保存。
+              {{ t('settings.limitDetection.hint') }}
             </p>
           </div>
           <Switch v-model="settingsStore.settings.enableLimitDetection" />

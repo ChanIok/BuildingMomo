@@ -5,6 +5,7 @@ import { useNotificationStore } from './stores/notificationStore'
 import { useFurnitureStore } from './stores/furnitureStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useTabStore } from './stores/tabStore'
+import { useI18n } from './composables/useI18n'
 import Toolbar from './components/Toolbar.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
@@ -35,6 +36,7 @@ const notificationStore = useNotificationStore()
 const furnitureStore = useFurnitureStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
+const { t } = useI18n()
 
 // 导入 commandStore 用于对话框控制
 import { useCommandStore } from './stores/commandStore'
@@ -67,7 +69,7 @@ onMounted(async () => {
     console.log('[App] Furniture data initialized')
   } catch (error) {
     console.error('[App] Failed to initialize furniture data:', error)
-    toast.error('家具数据加载失败，部分功能可能不可用')
+    toast.error(t('notification.furnitureDataLoadFailed'))
   }
 })
 </script>

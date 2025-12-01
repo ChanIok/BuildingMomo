@@ -4,6 +4,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useI18n } from '@/composables/useI18n'
 import {
   Hand,
   Move,
@@ -31,6 +32,7 @@ const editorStore = useEditorStore()
 const settingsStore = useSettingsStore()
 const commandStore = useCommandStore()
 const uiStore = useUIStore()
+const { t } = useI18n()
 
 const { activeAction } = useEditorSelectionAction()
 
@@ -89,31 +91,31 @@ const viewPreset = computed({
 })
 
 // 配置数据
-const selectionActions = [
-  { id: 'new', label: '新选区 (默认)', icon: IconSelectionNew },
-  { id: 'add', label: '加选 (Shift)', icon: IconSelectionAdd },
-  { id: 'subtract', label: '减选 (Alt)', icon: IconSelectionSubtract },
+const selectionActions = computed(() => [
+  { id: 'new', label: t('sidebar.selectionMode.new'), icon: IconSelectionNew },
+  { id: 'add', label: t('sidebar.selectionMode.add'), icon: IconSelectionAdd },
+  { id: 'subtract', label: t('sidebar.selectionMode.subtract'), icon: IconSelectionSubtract },
   {
     id: 'intersect',
-    label: '交叉选区 (Shift+Alt)',
+    label: t('sidebar.selectionMode.intersect'),
     icon: IconSelectionIntersect,
   },
-] as const
+])
 
-const displayModes = [
-  { id: 'box', label: '完整体积', icon: Cuboid },
-  { id: 'simple-box', label: '简化方块', icon: Box },
-  { id: 'icon', label: '图标模式', icon: ImageIcon },
-] as const
+const displayModes = computed(() => [
+  { id: 'box', label: t('sidebar.displayMode.box'), icon: Cuboid },
+  { id: 'simple-box', label: t('sidebar.displayMode.simpleBox'), icon: Box },
+  { id: 'icon', label: t('sidebar.displayMode.icon'), icon: ImageIcon },
+])
 
-const viewPresets = [
-  { id: 'top', label: '顶视图', icon: ChevronsUp },
-  { id: 'front', label: '前视图', icon: ChevronsRight },
-  { id: 'left', label: '左视图', icon: ChevronLeft },
-  { id: 'right', label: '右视图', icon: ChevronRight },
-  { id: 'back', label: '后视图', icon: ChevronsLeft },
-  { id: 'bottom', label: '底视图', icon: ChevronsDown },
-] as const
+const viewPresets = computed(() => [
+  { id: 'top', label: t('command.view.setViewTop'), icon: ChevronsUp },
+  { id: 'front', label: t('command.view.setViewFront'), icon: ChevronsRight },
+  { id: 'left', label: t('command.view.setViewLeft'), icon: ChevronLeft },
+  { id: 'right', label: t('command.view.setViewRight'), icon: ChevronRight },
+  { id: 'back', label: t('command.view.setViewBack'), icon: ChevronsLeft },
+  { id: 'bottom', label: t('command.view.setViewBottom'), icon: ChevronsDown },
+])
 </script>
 
 <template>
@@ -122,7 +124,9 @@ const viewPresets = [
     <div class="flex items-start justify-between">
       <!-- 左侧：选择/拖拽工具 -->
       <div class="flex flex-col items-start gap-1">
-        <span class="text-[10px] font-medium text-gray-400 select-none">工具</span>
+        <span class="text-[10px] font-medium text-gray-400 select-none">{{
+          t('sidebar.tools.label')
+        }}</span>
         <div class="flex items-center gap-0.5">
           <SidebarToggleItem
             :model-value="currentTool === 'select' && selectionMode === 'box'"
@@ -134,7 +138,7 @@ const viewPresets = [
                 }
               }
             "
-            tooltip="方形选框 (V)"
+            :tooltip="t('sidebar.tools.box')"
           >
             <SquareMousePointer class="h-4 w-4" />
           </SidebarToggleItem>
@@ -148,7 +152,7 @@ const viewPresets = [
                 }
               }
             "
-            tooltip="套索工具"
+            :tooltip="t('sidebar.tools.lasso')"
           >
             <Lasso class="h-4 w-4" />
           </SidebarToggleItem>
@@ -159,7 +163,7 @@ const viewPresets = [
                 if (v) currentTool = 'hand'
               }
             "
-            tooltip="拖拽工具 (H)"
+            :tooltip="t('sidebar.tools.hand')"
           >
             <Hand class="h-4 w-4" />
           </SidebarToggleItem>
@@ -172,7 +176,7 @@ const viewPresets = [
                 settingsStore.settings.showGizmo = v
               }
             "
-            tooltip="显示变换轴 (G)"
+            :tooltip="t('sidebar.tools.gizmo')"
           >
             <Move class="h-4 w-4" />
           </SidebarToggleItem>
@@ -182,7 +186,9 @@ const viewPresets = [
 
     <!-- 工具栏第二行：选择行为模式 -->
     <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-gray-400 select-none">选择模式</span>
+      <span class="text-[10px] font-medium text-gray-400 select-none">{{
+        t('sidebar.selectionMode.label')
+      }}</span>
       <div class="flex items-center gap-0.5">
         <SidebarToggleItem
           v-for="action in selectionActions"
@@ -190,7 +196,7 @@ const viewPresets = [
           :model-value="activeAction === action.id"
           @update:model-value="
             (v) => {
-              if (v) selectionAction = action.id
+              if (v) selectionAction = action.id as any
             }
           "
           :tooltip="action.label"
@@ -202,7 +208,9 @@ const viewPresets = [
 
     <!-- 工具栏第三行：显示模式 -->
     <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-gray-400 select-none">显示</span>
+      <span class="text-[10px] font-medium text-gray-400 select-none">{{
+        t('sidebar.displayMode.label')
+      }}</span>
       <div class="flex items-center gap-0.25">
         <SidebarToggleItem
           v-for="mode in displayModes"
@@ -210,7 +218,7 @@ const viewPresets = [
           :model-value="displayMode === mode.id"
           @update:model-value="
             (v) => {
-              if (v) displayMode = mode.id
+              if (v) displayMode = mode.id as any
             }
           "
           :tooltip="mode.label"
@@ -222,7 +230,7 @@ const viewPresets = [
 
     <!-- 工具栏第四行：视图控制 -->
     <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-gray-400 select-none">视图</span>
+      <span class="text-[10px] font-medium text-gray-400 select-none">{{ t('menu.view') }}</span>
       <div class="flex w-full items-center justify-between">
         <SidebarToggleItem
           :model-value="viewPreset === 'perspective'"
@@ -231,7 +239,7 @@ const viewPresets = [
               if (v) viewPreset = 'perspective'
             }
           "
-          tooltip="透视视图"
+          :tooltip="t('command.view.setViewPerspective')"
         >
           <Camera class="h-4 w-4" />
         </SidebarToggleItem>
@@ -244,7 +252,7 @@ const viewPresets = [
           :model-value="viewPreset === view.id"
           @update:model-value="
             (v) => {
-              if (v) viewPreset = view.id
+              if (v) viewPreset = view.id as any
             }
           "
           :tooltip="view.label"
