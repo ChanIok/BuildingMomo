@@ -633,7 +633,10 @@ export function useThreeInstancedRenderer(
 
   // 物品集合变化时重建实例；选中状态变化时仅刷新颜色
   watch(
-    () => editorStore.activeScheme?.items.value,
+    [
+      () => editorStore.activeScheme?.items.value, // 监听引用变化（切换方案时）
+      () => editorStore.sceneVersion, // 监听版本号（内容修改时）
+    ],
     () => {
       // 拖拽时不触发全量更新，由 handleGizmoChange 直接更新实例矩阵
       if (isTransformDragging?.value) {
@@ -641,7 +644,7 @@ export function useThreeInstancedRenderer(
       }
       rebuildInstances()
     },
-    { deep: true, immediate: true }
+    { deep: false, immediate: true }
   )
 
   // 监听显示模式变化，立即重建实例

@@ -4,7 +4,6 @@ import { get, set } from 'idb-keyval'
 import { useEditorStore } from '../stores/editorStore'
 import { useTabStore } from '../stores/tabStore'
 import { useSettingsStore } from '../stores/settingsStore'
-import { deepToRaw } from '../lib/deepToRaw'
 import type { HomeScheme } from '../types/editor'
 import type { Tab } from '../types/tab'
 
@@ -50,11 +49,11 @@ export function useWorkspacePersistence() {
             version: CURRENT_VERSION,
             updatedAt: Date.now(),
             editor: {
-              schemes: deepToRaw(editorStore.schemes),
+              schemes: editorStore.schemes,
               activeSchemeId: editorStore.activeSchemeId,
             },
             tab: {
-              tabs: deepToRaw(tabStore.tabs),
+              tabs: tabStore.tabs,
               activeTabId: tabStore.activeTabId,
             },
           }

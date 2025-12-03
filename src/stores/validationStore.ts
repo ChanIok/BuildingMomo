@@ -8,7 +8,6 @@ import Worker from '../workers/editorValidation.worker?worker'
 import { useEditorStore } from './editorStore'
 import { useSettingsStore } from './settingsStore'
 import { useEditorHistory } from '../composables/editor/useEditorHistory'
-import { deepToRaw } from '../lib/deepToRaw'
 
 export const useValidationStore = defineStore('validation', () => {
   const editorStore = useEditorStore()
@@ -82,7 +81,7 @@ export const useValidationStore = defineStore('validation', () => {
       }))
 
       const areas =
-        isBuildableAreaLoaded.value && buildableAreas.value ? deepToRaw(buildableAreas.value) : null
+        isBuildableAreaLoaded.value && buildableAreas.value ? buildableAreas.value : null
       const enableDup = settings.value.enableDuplicateDetection
       const enableLimit = settings.value.enableLimitDetection
 
@@ -119,7 +118,8 @@ export const useValidationStore = defineStore('validation', () => {
 
   watch(
     [
-      () => activeScheme.value?.items.value, // 监听 items.value (ShallowRef)
+      () => activeScheme.value?.items.value, // 监听 items.value (ShallowRef) 引用变化
+      () => editorStore.sceneVersion, // 监听场景版本号（处理原地修改）
       () => settings.value.enableDuplicateDetection,
       () => settings.value.enableLimitDetection,
       isBuildableAreaLoaded,

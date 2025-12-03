@@ -31,7 +31,7 @@ export const useEditorStore = defineStore('editor', () => {
   const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect'>('new')
 
   // 可建造区域数据
-  const buildableAreas = ref<Record<string, number[][]> | null>(null)
+  const buildableAreas = shallowRef<Record<string, number[][]> | null>(null)
   const isBuildableAreaLoaded = ref(false)
 
   // 加载可建造区域数据
@@ -89,17 +89,21 @@ export const useEditorStore = defineStore('editor', () => {
     return map
   })
 
+  // 场景版本号，用于通知外部监听者（如 ValidationStore）场景内容发生了变更
+  // 即使是原地修改 (In-Place Mutation) 也会触发此版本号更新
+  const sceneVersion = ref(0)
+
   // 手动触发更新的方法
   function triggerSceneUpdate() {
     if (activeScheme.value) {
       triggerRef(activeScheme.value.items)
+      sceneVersion.value++
     }
   }
 
   function triggerSelectionUpdate() {
     if (activeScheme.value) {
-      // 强制替换引用以触发 computed 更新，解决 triggerRef 在某些情况下无法穿透 computed 缓存的问题
-      activeScheme.value.selectedItemIds.value = new Set(activeScheme.value.selectedItemIds.value)
+      triggerRef(activeScheme.value.selectedItemIds)
     }
   }
 
@@ -115,7 +119,7 @@ export const useEditorStore = defineStore('editor', () => {
     return max + 1
   }
 
-  // ========== 方案管理 ==========\
+  // ========== 方案管理 ==========
 
   // 方案管理：创建新方案
   function createScheme(name?: string): string {
@@ -326,6 +330,7 @@ export const useEditorStore = defineStore('editor', () => {
     getNextInstanceId,
 
     // 手动触发更新 (Crucial for ShallowRef pattern)
+    sceneVersion,
     triggerSceneUpdate,
     triggerSelectionUpdate,
   }

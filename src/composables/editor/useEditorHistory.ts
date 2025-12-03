@@ -1,7 +1,6 @@
 import { storeToRefs } from 'pinia'
 import { markRaw } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
-import { deepToRaw } from '../../lib/deepToRaw'
 import type { AppItem, HistorySnapshot, HistoryStack } from '../../types/editor'
 
 export function useEditorHistory() {
@@ -18,17 +17,12 @@ export function useEditorHistory() {
     }
   }
 
-  // 深拷贝物品数组（优化版：共享 originalData 引用以减少内存占用）
+  // 浅拷贝物品数组（共享 originalData 引用以节省内存）
   function cloneItems(items: AppItem[]): AppItem[] {
-    // 性能优化策略：
-    // 1. 使用 deepToRaw 去除 Vue 响应式代理
-    // 2. 浅拷贝 AppItem 对象本身（x, y, z, internalId 等）
-    // 3. 保持 originalData 的引用共享（因为代码中所有修改都是不可变更新，会创建新对象）
-    //    这样 50 个历史快照不会重复存储 originalData，大幅减少内存占用
-    const rawItems = deepToRaw(items)
-    return rawItems.map((item) => ({
-      ...item, // 浅拷贝基础属性
-      extra: item.extra, // 保持引用！不深拷贝 extra
+    // 性能优化：只拷贝基础属性，共享 originalData 引用
+    return items.map((item) => ({
+      ...item,
+      extra: item.extra, // 保持引用，避免重复存储
     }))
   }
 
