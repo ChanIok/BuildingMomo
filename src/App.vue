@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useWorkspacePersistence } from './composables/useWorkspacePersistence'
 import { TriangleAlert, Wrench, CircleX, CheckCircle2 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
@@ -37,6 +38,7 @@ const furnitureStore = useFurnitureStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
 const { t } = useI18n()
+const { restore: restoreWorkspace, startMonitoring } = useWorkspacePersistence()
 
 // 导入 commandStore 用于对话框控制
 import { useCommandStore } from './stores/commandStore'
@@ -62,6 +64,16 @@ const dialogOpen = computed({
 onMounted(async () => {
   // 初始化设置
   settingsStore.initialize()
+
+  // 恢复工作区状态 (Auto-Save)
+  // 即使恢复失败，也要启动监控以保证后续操作被保存
+  try {
+    await restoreWorkspace()
+  } catch (e) {
+    console.error('[App] Restore failed:', e)
+  } finally {
+    startMonitoring()
+  }
 
   // 初始化家具数据
   try {

@@ -223,6 +223,10 @@ export const zhLocale = {
       label: '启用方案合规性检测',
       hint: '自动检测越界物品和过大的组合。关闭则代表您已知悉风险，允许强制保存。',
     },
+    autoSave: {
+      label: '自动保存 (防崩溃)',
+      hint: '每隔几秒将当前编辑状态保存到浏览器数据库，防止意外关闭丢失数据。',
+    },
     autoUpdateFurniture: '自动更新家具数据',
     showGizmo: '显示变换轴',
     threeDisplayMode: '3D显示模式',

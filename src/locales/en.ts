@@ -225,6 +225,10 @@ export const enLocale = {
       label: 'Enable Limit Detection',
       hint: 'Detects out-of-bounds items and oversized groups. Disable to bypass checks and force save.',
     },
+    autoSave: {
+      label: 'Auto-Save (Crash Protection)',
+      hint: 'Automatically save current edit state to browser database periodically to prevent data loss.',
+    },
     autoUpdateFurniture: 'Auto-Update Furniture Data',
     showGizmo: 'Show Transform Gizmo',
     threeDisplayMode: '3D Display Mode',
