@@ -40,6 +40,14 @@ export const useValidationStore = defineStore('validation', () => {
     limitIssues.value = results.limitIssues
   }
 
+  function clearResults() {
+    duplicateGroups.value = []
+    limitIssues.value = {
+      outOfBoundsItemIds: [],
+      oversizedGroups: [],
+    }
+  }
+
   // 监听方案切换，重置或重新获取验证结果
   // (由于方案切换也会触发 Persistence 的 syncScheme，这里其实也可以简化，
   // 但为了 UI 响应速度，可以先保留或清理旧状态)
@@ -108,6 +116,7 @@ export const useValidationStore = defineStore('validation', () => {
     hasLimitIssues,
     isValidating,
     setValidationResults, // Exported action
+    clearResults,
     selectDuplicateItems,
     selectOutOfBoundsItems,
     selectOversizedGroupItems,

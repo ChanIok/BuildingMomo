@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
-import { useWorkspacePersistence } from './composables/useWorkspacePersistence'
+import { useWorkspaceWorker } from './composables/useWorkspaceWorker'
 import { TriangleAlert, Wrench, CircleX, CheckCircle2 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
@@ -38,7 +38,7 @@ const furnitureStore = useFurnitureStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
 const { t } = useI18n()
-const { restore: restoreWorkspace, startMonitoring } = useWorkspacePersistence()
+const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorkspaceWorker()
 
 // 导入 commandStore 用于对话框控制
 import { useCommandStore } from './stores/commandStore'
@@ -82,10 +82,6 @@ onMounted(async () => {
   if (!shouldRestore) {
     isAppReady.value = true
 
-    if (settingsStore.settings.enableAutoSave) {
-      startMonitoring()
-    }
-
     initFurniture()
   } else {
     try {
@@ -94,9 +90,13 @@ onMounted(async () => {
     } catch (e) {
       console.error('[App] Restore failed:', e)
     } finally {
-      startMonitoring()
       isAppReady.value = true
     }
+  }
+
+  // 启动监控
+  if (isWorkerActive.value) {
+    startMonitoring()
   }
 })
 </script>

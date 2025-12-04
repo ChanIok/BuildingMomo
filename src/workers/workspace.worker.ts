@@ -219,7 +219,7 @@ const api = {
   },
 
   // 3. 统一增量同步 (结构 + 内容)
-  async syncWorkspace(payload: {
+  async updateState(payload: {
     // 元数据
     meta: {
       activeSchemeId: string
@@ -237,12 +237,9 @@ const api = {
     }
     // 是否立即保存（跳过防抖）
     immediate?: boolean
-  }): Promise<ValidationResult> {
+  }): Promise<{ validation?: ValidationResult }> {
     if (!currentSnapshot) {
-      return {
-        duplicateGroups: [],
-        limitIssues: { outOfBoundsItemIds: [], oversizedGroups: [] },
-      }
+      return {}
     }
 
     // 1. 更新元数据 & 结构 (合并方案列表)
@@ -283,26 +280,42 @@ const api = {
       }
     }
 
-    // 3. 触发保存
+    // 3. 触发保存 (仅当开启自动保存时)
     currentSnapshot.updatedAt = Date.now()
 
-    if (payload.immediate) {
-      forceSave()
+    if (settings.enableAutoSave) {
+      if (payload.immediate) {
+        forceSave()
+      } else {
+        scheduleSave()
+      }
     } else {
-      scheduleSave()
+      // 如果自动保存被关闭，确保没有任何待定的保存任务
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
     }
 
-    // 4. 返回验证结果 (基于刚刚更新的数据)
-    if (targetScheme) {
-      return runValidation(targetScheme.items, settings)
-    } else {
-      // 如果没有更新内容，或者更新的是非激活方案（不太可能），尝试验证当前的 activeScheme
-      return runValidationOnSnapshot()
+    // 4. 返回验证结果 (仅当开启验证且有目标方案时)
+    // 只要有一个验证开关开启，就执行验证
+    const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
+
+    if (shouldValidate) {
+      if (targetScheme) {
+        return { validation: runValidation(targetScheme.items, settings) }
+      } else {
+        return { validation: runValidationOnSnapshot() }
+      }
     }
+
+    return {}
   },
 
-  // 5. 主动触发全量验证
-  revalidate(): ValidationResult {
+  // 4. 主动触发全量验证
+  revalidate(): ValidationResult | null {
+    const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
+    if (!shouldValidate) return null
     return runValidationOnSnapshot()
   },
 
@@ -313,17 +326,42 @@ const api = {
     enableAutoSave?: boolean
   }) {
     const oldAutoSave = settings.enableAutoSave
+
     settings = { ...settings, ...newSettings }
 
-    // 如果刚刚开启了自动保存，且有数据，立即尝试保存一次
-    if (!oldAutoSave && settings.enableAutoSave && currentSnapshot) {
-      scheduleSave()
+    const newValidation = settings.enableDuplicateDetection || settings.enableLimitDetection
+
+    // 1. 处理自动保存开关变化
+    if (settings.enableAutoSave) {
+      // 开启：如果之前没开，立即尝试保存一次
+      if (!oldAutoSave && currentSnapshot) {
+        scheduleSave()
+      }
+    } else {
+      // 关闭：取消任何待定的保存
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
     }
+
+    // 2. 处理验证开关变化 -> 返回验证结果
+    if (newValidation && currentSnapshot) {
+      return { validation: runValidationOnSnapshot() }
+    }
+
+    return {}
   },
 
   // 7. 更新可建造区域 (缓存)
   updateBuildableAreas(areas: Record<string, number[][]> | null) {
     buildableAreas = areas
+
+    const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
+    if (shouldValidate) {
+      return { validation: runValidationOnSnapshot() }
+    }
+    return {}
   },
 }
 
