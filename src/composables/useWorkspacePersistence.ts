@@ -13,6 +13,8 @@ import type { WorkspaceSnapshot, HomeSchemeSnapshot } from '../types/persistence
 const STORAGE_KEY = 'workspace_snapshot'
 const CURRENT_VERSION = 1
 
+const SESSION_MARKER_KEY = 'has_unsaved_session'
+
 export function useWorkspacePersistence() {
   const editorStore = useEditorStore()
   const tabStore = useTabStore()
@@ -24,11 +26,25 @@ export function useWorkspacePersistence() {
   const isRestoring = ref(false)
   const lastSavedTime = ref(0)
 
+  // 辅助：更新会话标记 (Local Storage)
+  // 用于 App 启动时快速判断是否需要恢复数据，避免不必要的 IndexedDB 等待
+  const updateSessionMarker = () => {
+    const hasTabs = tabStore.tabs.length > 0
+    if (hasTabs) {
+      localStorage.setItem(SESSION_MARKER_KEY, 'true')
+    } else {
+      localStorage.removeItem(SESSION_MARKER_KEY)
+    }
+  }
+
   // --- 增量同步 (主线程 -> Worker) ---
 
   // 统一同步逻辑：结构 + 内容
-  const syncWorkspace = async () => {
+  const syncWorkspace = async (immediate = false) => {
     if (isRestoring.value) return
+
+    // 0. 更新轻量级标记
+    updateSessionMarker()
 
     // 1. 准备元数据 (Meta)
     const meta = {
@@ -61,6 +77,7 @@ export function useWorkspacePersistence() {
       const validationResults = await workerApi.syncWorkspace({
         meta,
         activeSchemeData,
+        immediate,
       })
 
       // 4. 更新验证状态
@@ -117,9 +134,13 @@ export function useWorkspacePersistence() {
   }
 
   const cleanupFns: (() => void)[] = []
+  const isMonitoring = ref(false)
 
   function startMonitoring() {
+    if (isMonitoring.value) return
+
     console.log('[Persistence] 监控已启动 (增量模式)')
+    isMonitoring.value = true
 
     // 1. 初始同步
     syncSettings()
@@ -128,22 +149,28 @@ export function useWorkspacePersistence() {
     cleanupFns.forEach((fn) => fn())
     cleanupFns.length = 0
 
-    // 2. 监听所有相关状态变化
-    // 无论是内容变了(sceneVersion)，还是结构变了(Tabs/ActiveScheme)，
-    // 都触发同一个防抖函数，确保原子性同步。
-    const unwatchAll = watch(
-      [
-        () => editorStore.sceneVersion,
-        () => editorStore.selectionVersion,
-        () => tabStore.tabs,
-        () => tabStore.activeTabId,
-      ],
+    // 2. 监听状态变化 (拆分为结构性和内容性)
+
+    // 2a. 结构性变化 (Tabs, ActiveTab) -> 立即保存 (Worker 端跳过 2s 节流)
+    // 这种变化频率低，但用户期望即时生效（如关闭标签）
+    const unwatchStructure = watch(
+      [() => tabStore.tabs, () => tabStore.activeTabId],
       () => {
-        debouncedSyncWorkspace()
+        debouncedSyncWorkspace(true)
       },
       { deep: true } // 深度监听，因为 tabs 内部属性可能变化
     )
-    cleanupFns.push(unwatchAll)
+    cleanupFns.push(unwatchStructure)
+
+    // 2b. 内容性变化 (Scene, Selection) -> 延迟保存 (Worker 端保持 2s 节流)
+    // 这种变化频率高，且可以容忍轻微延迟
+    const unwatchContent = watch(
+      [() => editorStore.sceneVersion, () => editorStore.selectionVersion],
+      () => {
+        debouncedSyncWorkspace(false)
+      }
+    )
+    cleanupFns.push(unwatchContent)
 
     // 3. 监听设置变化 (独立逻辑，保持不变)
     const unwatchSettings = watch(
@@ -172,6 +199,7 @@ export function useWorkspacePersistence() {
   onUnmounted(() => {
     cleanupFns.forEach((fn) => fn())
     cleanupFns.length = 0
+    isMonitoring.value = false
   })
 
   // --- 恢复 (主线程 -> 运行时) ---
@@ -194,6 +222,9 @@ export function useWorkspacePersistence() {
 
     tabStore.tabs = snapshot.tab.tabs
     tabStore.activeTabId = snapshot.tab.activeTabId
+
+    // 恢复完成后，确认一下标记状态 (防止极端情况下的不一致)
+    updateSessionMarker()
   }
 
   async function restore() {
@@ -255,6 +286,17 @@ export function useWorkspacePersistence() {
       },
     }
   }
+
+  // 自动监听设置开启，动态启动监控
+  // 即使初始化时没开，后续开启也应该自动启动监控
+  watch(
+    () => settingsStore.settings.enableAutoSave,
+    (enabled) => {
+      if (enabled) {
+        startMonitoring()
+      }
+    }
+  )
 
   return {
     restore,

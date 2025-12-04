@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useEditorStore } from './stores/editorStore'
 import { useNotificationStore } from './stores/notificationStore'
 import { useFurnitureStore } from './stores/furnitureStore'
@@ -60,27 +60,42 @@ const dialogOpen = computed({
   },
 })
 
+const isAppReady = ref(false)
+
 // 初始化
 onMounted(async () => {
-  // 初始化家具数据
-  try {
-    await furnitureStore.initialize()
-    console.log('[App] Furniture data initialized')
-  } catch (error) {
-    console.error('[App] Failed to initialize furniture data:', error)
-    toast.error(t('notification.furnitureDataLoadFailed'))
+  // 快速检查：是否存在未保存的会话标记 (Local Storage 同步读取)
+  const hasUnsavedSession = localStorage.getItem('has_unsaved_session') === 'true'
+  const shouldRestore = settingsStore.settings.enableAutoSave && hasUnsavedSession
+
+  // 定义家具初始化任务
+  const initFurniture = async () => {
+    try {
+      await furnitureStore.initialize()
+      console.log('[App] Furniture data initialized')
+    } catch (error) {
+      console.error('[App] Failed to initialize furniture data:', error)
+      toast.error(t('notification.furnitureDataLoadFailed'))
+    }
   }
 
-  // 只有在启用自动保存功能时才恢复工作区状态
-  if (settingsStore.settings.enableAutoSave) {
-    // 恢复工作区状态 (Auto-Save)
-    // 即使恢复失败，也要启动监控以保证后续操作被保存
+  if (!shouldRestore) {
+    isAppReady.value = true
+
+    if (settingsStore.settings.enableAutoSave) {
+      startMonitoring()
+    }
+
+    initFurniture()
+  } else {
     try {
+      await initFurniture()
       await restoreWorkspace()
     } catch (e) {
       console.error('[App] Restore failed:', e)
     } finally {
       startMonitoring()
+      isAppReady.value = true
     }
   }
 })
@@ -99,10 +114,13 @@ onMounted(async () => {
         >
           <!-- 画布区域 -->
           <div class="relative flex min-w-0 flex-1 flex-col">
-            <!-- 欢迎界面：没有标签时 -->
-            <WelcomeScreen v-if="tabStore.tabs.length === 0" />
+            <!-- 0. 初始化加载中 (空白占位) -->
+            <div v-if="!isAppReady" class="flex-1 bg-background"></div>
 
-            <!-- 有标签时：根据类型渲染 -->
+            <!-- 1. 欢迎界面：没有标签时 -->
+            <WelcomeScreen v-else-if="tabStore.tabs.length === 0" />
+
+            <!-- 2. 有标签时：根据类型渲染 -->
             <template v-else>
               <!-- 方案编辑器 -->
               <KeepAlive>
@@ -113,7 +131,10 @@ onMounted(async () => {
 
               <!-- 文档查看器 -->
               <KeepAlive>
-                <DocsViewer v-if="tabStore.activeTab?.type === 'doc'" key="docs-viewer" />
+                <DocsViewer
+                  v-if="tabStore.activeTab?.type === 'doc' && isAppReady"
+                  key="docs-viewer"
+                />
               </KeepAlive>
             </template>
           </div>

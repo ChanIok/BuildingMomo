@@ -147,19 +147,22 @@ function runValidation(
   }
 }
 
-// --- 工具函数 ---
+// --- 持久化逻辑 ---
 
-function debounce<T extends (...args: any[]) => void>(fn: T, delay: number) {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  return function (...args: Parameters<T>) {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      fn(...args)
-    }, delay)
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+const forceSave = async () => {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
   }
+  await saveSnapshot()
 }
 
-// --- 持久化逻辑 ---
+const scheduleSave = () => {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(saveSnapshot, 2000)
+}
 
 const saveSnapshot = async () => {
   // 关键修改：检查 enableAutoSave
@@ -172,8 +175,6 @@ const saveSnapshot = async () => {
     console.error('[Worker] Failed to save snapshot', e)
   }
 }
-
-const scheduleSave = debounce(saveSnapshot, 2000)
 
 // 内部辅助：基于当前快照状态运行验证
 function runValidationOnSnapshot(): ValidationResult {
@@ -234,6 +235,8 @@ const api = {
       currentViewConfig: any
       viewState: any
     }
+    // 是否立即保存（跳过防抖）
+    immediate?: boolean
   }): Promise<ValidationResult> {
     if (!currentSnapshot) {
       return {
@@ -282,7 +285,12 @@ const api = {
 
     // 3. 触发保存
     currentSnapshot.updatedAt = Date.now()
-    scheduleSave()
+
+    if (payload.immediate) {
+      forceSave()
+    } else {
+      scheduleSave()
+    }
 
     // 4. 返回验证结果 (基于刚刚更新的数据)
     if (targetScheme) {
