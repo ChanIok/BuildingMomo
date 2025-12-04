@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Ruler } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
@@ -133,6 +133,41 @@ const selectedItemDetails = computed(() => {
   }
 })
 
+// 分帧渲染逻辑
+const renderLimit = ref(30)
+
+const visibleItems = computed(() => {
+  const details = selectedItemDetails.value
+  if (details?.type !== 'multiple') return []
+  return details.items.slice(0, renderLimit.value)
+})
+
+watch(
+  () => selectedItemDetails.value,
+  (newVal) => {
+    // 重置显示数量，确保首屏快速响应
+    renderLimit.value = 30
+
+    // 如果列表较长，启动分帧加载
+    if (newVal?.type === 'multiple' && newVal.items.length > 30) {
+      const animate = () => {
+        // 再次检查状态，防止在异步过程中数据已变化
+        if (!selectedItemDetails.value || selectedItemDetails.value.type !== 'multiple') return
+
+        // 如果已全部显示，停止
+        if (renderLimit.value >= selectedItemDetails.value.items.length) return
+
+        // 每一帧多渲染 20 个，既保持流畅又快速加载完
+        renderLimit.value += 20
+
+        requestAnimationFrame(animate)
+      }
+      requestAnimationFrame(animate)
+    }
+  },
+  { immediate: true }
+)
+
 // 计算组信息文本标签
 const groupBadgeText = computed(() => {
   if (!selectedGroupInfo.value) return null
@@ -219,7 +254,7 @@ function handleIconError(e: Event) {
         <!-- 多个物品 - 聚合统计 -->
         <div v-else-if="selectedItemDetails.type === 'multiple'" class="space-y-2 pr-2">
           <Item
-            v-for="item in selectedItemDetails.items"
+            v-for="item in visibleItems"
             :key="item.itemId"
             variant="muted"
             class="gap-2 bg-gray-50 p-2"
