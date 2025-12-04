@@ -119,6 +119,17 @@ function handleLanguageChange(newLocale: Locale) {
           <Switch v-model="settingsStore.settings.enableLimitDetection" />
         </div>
 
+        <!-- 自动保存开关 -->
+        <div class="flex items-center justify-between">
+          <div class="space-y-0.5">
+            <Label>{{ t('settings.autoSave.label') }}</Label>
+            <p class="text-xs text-muted-foreground">
+              {{ t('settings.autoSave.hint') }}
+            </p>
+          </div>
+          <Switch v-model="settingsStore.settings.enableAutoSave" />
+        </div>
+
         <!-- 3D 视图设置分组 -->
         <!-- 3D 视图显示模式选择已移至侧边栏顶部工具栏 -->
       </div>

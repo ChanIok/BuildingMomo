@@ -16,7 +16,7 @@ import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useI18n } from '@/composables/useI18n'
-import { useThrottleFn, useMagicKeys, useElementSize } from '@vueuse/core'
+import { useThrottleFn, useMagicKeys, useElementSize, useResizeObserver } from '@vueuse/core'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
 import {
@@ -46,6 +46,20 @@ const isDev = import.meta.env.DEV
 const threeContainerRef = ref<HTMLElement | null>(null)
 // 监听容器尺寸变化，用于更新正交相机视锥体
 const { width: containerWidth, height: containerHeight } = useElementSize(threeContainerRef)
+
+// 监听容器 Rect 变化并同步到 UI Store，供其他 Composable 使用（性能优化）
+useResizeObserver(threeContainerRef, (entries) => {
+  const entry = entries[0]
+  if (entry && entry.target) {
+    const rect = entry.target.getBoundingClientRect()
+    uiStore.updateEditorContainerRect({
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    })
+  }
+})
 
 const cameraRef = ref<any | null>(null) // 透视相机
 const orthoCameraRef = ref<any | null>(null) // 正交相机

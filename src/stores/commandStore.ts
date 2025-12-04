@@ -105,7 +105,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.file.export'),
       shortcut: 'Ctrl+Shift+S',
       category: 'file',
-      enabled: () => editorStore.items.length > 0,
+      enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: async () => {
         console.log('[Command] 导出建造数据')
         await fileOps.exportJSON()
@@ -119,7 +119,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () =>
         fileOps.watchState.value.isActive &&
         fileOps.watchState.value.fileHandle !== null &&
-        editorStore.items.length > 0,
+        (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: async () => {
         console.log('[Command] 保存到游戏')
         await fileOps.saveToGame()
@@ -189,7 +189,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.cut'),
       shortcut: 'Ctrl+X',
       category: 'edit',
-      enabled: () => editorStore.selectedItemIds.size > 0,
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 剪切')
         cutCmd()
@@ -200,7 +200,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.copy'),
       shortcut: 'Ctrl+C',
       category: 'edit',
-      enabled: () => editorStore.selectedItemIds.size > 0,
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 复制')
         copyCmd()
@@ -222,7 +222,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.delete'),
       shortcut: 'Delete',
       category: 'edit',
-      enabled: () => editorStore.selectedItemIds.size > 0,
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 删除')
         deleteSelected()
@@ -233,7 +233,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.selectAll'),
       shortcut: 'Ctrl+A',
       category: 'edit',
-      enabled: () => editorStore.items.length > 0,
+      enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
         console.log('[Command] 全选')
         selectAll()
@@ -244,7 +244,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.deselectAll'),
       shortcut: 'Escape',
       category: 'edit',
-      enabled: () => editorStore.selectedItemIds.size > 0,
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 取消选择')
         clearSelection()
@@ -255,7 +255,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.invertSelection'),
       shortcut: 'Ctrl+Shift+A',
       category: 'edit',
-      enabled: () => editorStore.items.length > 0,
+      enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
         console.log('[Command] 反选')
         invertSelection()
@@ -267,10 +267,13 @@ export const useCommandStore = defineStore('command', () => {
       shortcut: 'Ctrl+G',
       category: 'edit',
       enabled: () => {
-        if (editorStore.selectedItemIds.size < 2) return false
+        const scheme = editorStore.activeScheme
+        if (!scheme || scheme.selectedItemIds.value.size < 2) return false
 
+        const ids = scheme.selectedItemIds.value
         // 获取所有选中物品的组ID
-        const groupIds = new Set(editorStore.selectedItems.map((item) => item.groupId))
+        const selectedItems = scheme.items.value.filter((item) => ids.has(item.internalId))
+        const groupIds = new Set(selectedItems.map((item) => item.groupId))
 
         // 如果所有物品都属于同一个组（且该组ID > 0），则不允许成组
         if (groupIds.size === 1) {
@@ -292,7 +295,12 @@ export const useCommandStore = defineStore('command', () => {
       category: 'edit',
       enabled: () => {
         // 检查选中物品是否有组
-        return editorStore.selectedItems.some((item) => item.groupId > 0)
+        const scheme = editorStore.activeScheme
+        if (!scheme) return false
+        const ids = scheme.selectedItemIds.value
+        return scheme.items.value
+          .filter((item) => ids.has(item.internalId))
+          .some((item) => item.groupId > 0)
       },
       execute: () => {
         console.log('[Command] 取消组合')
@@ -306,7 +314,8 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.view.zoomIn'),
       shortcut: 'Ctrl+=',
       category: 'view',
-      enabled: () => editorStore.items.length > 0 && zoomInFn.value !== null,
+      enabled: () =>
+        (editorStore.activeScheme?.items.value.length ?? 0) > 0 && zoomInFn.value !== null,
       execute: () => {
         console.log('[Command] 放大')
         zoomInFn.value?.()
@@ -317,7 +326,8 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.view.zoomOut'),
       shortcut: 'Ctrl+-',
       category: 'view',
-      enabled: () => editorStore.items.length > 0 && zoomOutFn.value !== null,
+      enabled: () =>
+        (editorStore.activeScheme?.items.value.length ?? 0) > 0 && zoomOutFn.value !== null,
       execute: () => {
         console.log('[Command] 缩小')
         zoomOutFn.value?.()
@@ -338,7 +348,9 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.view.focusSelection'),
       shortcut: 'F',
       category: 'view',
-      enabled: () => editorStore.selectedItemIds.size > 0 && focusSelectionFn.value !== null,
+      enabled: () =>
+        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0 &&
+        focusSelectionFn.value !== null,
       execute: () => {
         console.log('[Command] 聚焦选中物品')
         focusSelectionFn.value?.()
@@ -348,7 +360,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'view.coordinateSystem',
       label: t('command.view.coordinateSystem'),
       category: 'view',
-      enabled: () => editorStore.items.length > 0,
+      enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
         console.log('[Command] 打开工作坐标系设置')
         showCoordinateDialog.value = true

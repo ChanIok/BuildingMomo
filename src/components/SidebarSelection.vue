@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Ruler } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
 import { useFurnitureStore } from '../stores/furnitureStore'
@@ -21,15 +21,25 @@ function getFurnitureName(furniture: any, fallbackId: number) {
   return furniture.name_en || furniture.name_cn
 }
 
+// 计算属性:选中物品列表
+const selectedItems = computed(() => {
+  const scheme = editorStore.activeScheme
+  if (!scheme) return []
+  const ids = scheme.selectedItemIds.value
+  if (ids.size === 0) return []
+  return scheme.items.value.filter((item) => ids.has(item.internalId))
+})
+
 // 计算属性:选中物品的组信息
 const selectedGroupInfo = computed(() => {
-  if (editorStore.selectedItems.length === 0) return null
+  const items = selectedItems.value
+  if (items.length === 0) return null
 
-  const groupIds = new Set(editorStore.selectedItems.map((item) => item.groupId))
+  const groupIds = new Set(items.map((item) => item.groupId))
 
   // 如果所有选中物品都是无组
   if (groupIds.size === 1 && groupIds.has(0)) {
-    return { type: 'none', count: editorStore.selectedItems.length }
+    return { type: 'none', count: items.length }
   }
 
   // 如果所有选中物品都属于同一组
@@ -39,7 +49,7 @@ const selectedGroupInfo = computed(() => {
     return {
       type: 'single',
       groupId,
-      selectedCount: editorStore.selectedItems.length,
+      selectedCount: items.length,
       totalCount: groupItems.length,
     }
   }
@@ -49,13 +59,13 @@ const selectedGroupInfo = computed(() => {
   return {
     type: 'multiple',
     groupCount,
-    selectedCount: editorStore.selectedItems.length,
+    selectedCount: items.length,
   }
 })
 
 // 计算属性:选中物品详情
 const selectedItemDetails = computed(() => {
-  const selected = editorStore.selectedItems
+  const selected = selectedItems.value
   if (selected.length === 0) return null
 
   // 单个物品
@@ -123,6 +133,41 @@ const selectedItemDetails = computed(() => {
   }
 })
 
+// 分帧渲染逻辑
+const renderLimit = ref(30)
+
+const visibleItems = computed(() => {
+  const details = selectedItemDetails.value
+  if (details?.type !== 'multiple') return []
+  return details.items.slice(0, renderLimit.value)
+})
+
+watch(
+  () => selectedItemDetails.value,
+  (newVal) => {
+    // 重置显示数量，确保首屏快速响应
+    renderLimit.value = 30
+
+    // 如果列表较长，启动分帧加载
+    if (newVal?.type === 'multiple' && newVal.items.length > 30) {
+      const animate = () => {
+        // 再次检查状态，防止在异步过程中数据已变化
+        if (!selectedItemDetails.value || selectedItemDetails.value.type !== 'multiple') return
+
+        // 如果已全部显示，停止
+        if (renderLimit.value >= selectedItemDetails.value.items.length) return
+
+        // 每一帧多渲染 20 个，既保持流畅又快速加载完
+        renderLimit.value += 20
+
+        requestAnimationFrame(animate)
+      }
+      requestAnimationFrame(animate)
+    }
+  },
+  { immediate: true }
+)
+
 // 计算组信息文本标签
 const groupBadgeText = computed(() => {
   if (!selectedGroupInfo.value) return null
@@ -149,7 +194,9 @@ function handleIconError(e: Event) {
     <div class="flex shrink-0 items-center justify-between pr-2">
       <div class="flex items-center gap-2">
         <h2 class="text-sm font-semibold">{{ t('sidebar.selectionList') }}</h2>
-        <span class="font-semibold text-blue-500">{{ editorStore.stats.selectedItems }}</span>
+        <span class="font-semibold text-blue-500">{{
+          editorStore.activeScheme?.selectedItemIds.value.size ?? 0
+        }}</span>
       </div>
       <!-- 组信息徽章 -->
       <div v-if="groupBadgeText" class="flex items-center gap-1">
@@ -207,7 +254,7 @@ function handleIconError(e: Event) {
         <!-- 多个物品 - 聚合统计 -->
         <div v-else-if="selectedItemDetails.type === 'multiple'" class="space-y-2 pr-2">
           <Item
-            v-for="item in selectedItemDetails.items"
+            v-for="item in visibleItems"
             :key="item.itemId"
             variant="muted"
             class="gap-2 bg-gray-50 p-2"
@@ -241,7 +288,10 @@ function handleIconError(e: Event) {
     <div class="flex gap-2 pt-2 pr-2">
       <Button
         @click="groupSelected()"
-        :disabled="editorStore.selectedItemIds.size < 2 || selectedGroupInfo?.type === 'single'"
+        :disabled="
+          (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) < 2 ||
+          selectedGroupInfo?.type === 'single'
+        "
         class="flex-1"
         size="sm"
         title="Ctrl+G"
@@ -250,7 +300,7 @@ function handleIconError(e: Event) {
       </Button>
       <Button
         @click="ungroupSelected()"
-        :disabled="!editorStore.selectedItems.some((item) => item.groupId > 0)"
+        :disabled="!selectedItems.some((item) => item.groupId > 0)"
         variant="secondary"
         class="flex-1"
         size="sm"

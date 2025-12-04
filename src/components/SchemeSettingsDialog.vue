@@ -39,8 +39,8 @@ watch(
     if (isOpen) {
       if (editorStore.activeScheme) {
         formData.value = {
-          name: editorStore.activeScheme.name,
-          filePath: editorStore.activeScheme.filePath || '',
+          name: editorStore.activeScheme.name.value,
+          filePath: editorStore.activeScheme.filePath.value || '',
         }
       } else {
         // 理论上不应该发生，如果没有激活方案就不应该打开此对话框

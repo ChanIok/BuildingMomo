@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { updateSelectedItemsTransform } = useEditorManipulation()
+const { updateSelectedItemsTransform, getSelectedItemsCenter } = useEditorManipulation()
 
 // 两个独立的开关，默认都开启绝对模式 (false)
 const isPositionRelative = ref(false)
@@ -45,7 +45,7 @@ const rotationMode = computed({
 
 // 监听选择变化以重置输入
 watch(
-  () => editorStore.selectedItemIds,
+  () => editorStore.activeScheme?.selectedItemIds.value,
   () => {
     rotationState.value = { x: 0, y: 0, z: 0 }
     positionState.value = { x: 0, y: 0, z: 0 }
@@ -54,11 +54,14 @@ watch(
 )
 
 const selectionInfo = computed(() => {
-  const selected = editorStore.selectedItems
-  if (selected.length === 0) return null
+  const scheme = editorStore.activeScheme
+  if (!scheme) return null
+  const ids = scheme.selectedItemIds.value
+  if (ids.size === 0) return null
+  const selected = scheme.items.value.filter((item) => ids.has(item.internalId))
 
   // 位置中心点（用于绝对模式显示）
-  let center = editorStore.getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
+  let center = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
 
   // 如果启用了工作坐标系，将中心点转换到工作坐标系
   if (uiStore.workingCoordinateSystem.enabled) {

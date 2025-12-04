@@ -9,6 +9,7 @@ import {
   type Ref,
 } from 'vue'
 import { useRafFn, useMagicKeys } from '@vueuse/core'
+import { calculateBounds } from '@/lib/geometry'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -190,11 +191,12 @@ export function useThreeCamera(
 
   // === 场景中心与距离计算 ===
   const sceneCenter = computed<Vec3>(() => {
-    if (editorStore.items.length === 0) {
+    const items = editorStore.activeScheme?.items.value ?? []
+    if (items.length === 0) {
       return deps.defaultCenter?.value ?? [0, 0, 0]
     }
 
-    const bounds = editorStore.bounds
+    const bounds = calculateBounds(items)
 
     // 安全检查：bounds 可能为 null
     if (!bounds) {
@@ -212,12 +214,13 @@ export function useThreeCamera(
   const cameraDistance = ref(40000)
 
   function updateCameraDistance() {
-    if (editorStore.items.length === 0) {
+    const items = editorStore.activeScheme?.items.value ?? []
+    if (items.length === 0) {
       cameraDistance.value = 40000
       return
     }
 
-    const bounds = editorStore.bounds
+    const bounds = calculateBounds(items)
     if (!bounds) {
       cameraDistance.value = 3000
       return
@@ -239,9 +242,10 @@ export function useThreeCamera(
       // 更新一次基准距离
       updateCameraDistance()
 
-      if (scheme?.viewState) {
+      // scheme.viewState 是 Ref，需要传入 .value
+      if (scheme?.viewState.value) {
         // 恢复状态
-        restoreSnapshot(scheme.viewState)
+        restoreSnapshot(scheme.viewState.value)
       } else {
         // 无状态（如新导入），默认使用顶视图并聚焦到物品中心
         setViewPreset('top', sceneCenter.value, cameraDistance.value, 1)
@@ -255,7 +259,7 @@ export function useThreeCamera(
     state,
     (newVal) => {
       if (editorStore.activeScheme) {
-        editorStore.activeScheme.viewState = {
+        editorStore.activeScheme.viewState.value = {
           position: [...newVal.position],
           target: [...newVal.target],
           preset: uiStore.currentViewPreset,
@@ -768,37 +772,22 @@ export function useThreeCamera(
   }
 
   function focusOnSelection() {
-    const selectedItems = editorStore.selectedItems
+    const scheme = editorStore.activeScheme
+    if (!scheme) return
+
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return
+
+    const selectedItems = scheme.items.value.filter((item) => selectedIds.has(item.internalId))
     if (selectedItems.length === 0) return
 
-    // 1. 计算包围盒
-    let minX = Infinity,
-      maxX = -Infinity
-    let minY = Infinity,
-      maxY = -Infinity
-    let minZ = Infinity,
-      maxZ = -Infinity
-
-    selectedItems.forEach((item) => {
-      minX = Math.min(minX, item.x)
-      maxX = Math.max(maxX, item.x)
-      minY = Math.min(minY, item.y)
-      maxY = Math.max(maxY, item.y)
-      minZ = Math.min(minZ, item.z)
-      maxZ = Math.max(maxZ, item.z)
-    })
-
-    const centerX = (minX + maxX) / 2
-    const centerY = (minY + maxY) / 2
-    const centerZ = (minZ + maxZ) / 2
+    const bounds = calculateBounds(selectedItems)
+    if (!bounds) return
 
     // Z-up: Y 取反适配 Three.js 坐标系
-    const target: Vec3 = [centerX, -centerY, centerZ]
+    const target: Vec3 = [bounds.centerX, -bounds.centerY, bounds.centerZ]
 
-    const sizeX = maxX - minX
-    const sizeY = maxY - minY
-    const sizeZ = maxZ - minZ
-    const maxDim = Math.max(sizeX, sizeY, sizeZ)
+    const maxDim = Math.max(bounds.width, bounds.height, bounds.depth)
 
     // 确保切换到 Orbit 模式
     switchToOrbitMode()

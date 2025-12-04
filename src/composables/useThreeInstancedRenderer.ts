@@ -182,116 +182,143 @@ export function useThreeInstancedRenderer(
   simpleBoxInstancedMesh.value = markRaw(simpleBoxMesh)
 
   // === Icon 模式（新增） ===
-  const planeGeometry = new PlaneGeometry(100, 100)
-
-  // 初始化纹理数组（使用 Texture2DArray）
-  const iconManager = getThreeIconManager()
-  const arrayTexture = iconManager.initTextureArray()
-
-  // 为每个实例添加纹理索引属性（1个float: 纹理层索引）
+  // 资源延迟初始化
+  let planeGeometry: PlaneGeometry | null = null
+  let iconMaterial: ShaderMaterial | null = null
+  let iconMesh: InstancedMesh | null = null
+  // 纹理索引属性数组（复用，按最大实例数分配）
   const textureIndices = new Float32Array(MAX_INSTANCES)
-  planeGeometry.setAttribute('textureIndex', new InstancedBufferAttribute(textureIndices, 1))
 
-  // 使用自定义 Shader 支持纹理数组和实例颜色
-  const iconMaterial = new ShaderMaterial({
-    uniforms: {
-      textureArray: { value: arrayTexture },
-      textureDepth: { value: iconManager.getCurrentCapacity() }, // 动态纹理深度
-      uDefaultColor: { value: new Color(0x94a3b8) }, // 默认颜色
-    },
-    vertexShader: `
-      // 自定义 attribute
-      in float textureIndex;
-      
-      // Varyings
-      out vec2 vUv;
-      out float vTextureIndex;
-      out vec3 vInstanceColor;
-      
-      void main() {
-        vUv = uv;
-        vTextureIndex = textureIndex;
+  const iconManager = getThreeIconManager()
+
+  // 确保图标相关资源已初始化
+  function ensureIconResources(minCapacity: number = 32) {
+    if (iconInstancedMesh.value) return
+
+    console.log(`[ThreeInstancedRenderer] 初始化图标资源，请求容量: ${minCapacity}`)
+
+    // 1. 初始化纹理数组
+    // 如果已经初始化过且容量足够，initTextureArray 内部会直接返回现有纹理
+    const arrayTexture = iconManager.initTextureArray(minCapacity)
+
+    // 2. 初始化几何体
+    if (!planeGeometry) {
+      planeGeometry = new PlaneGeometry(100, 100)
+      // 为每个实例添加纹理索引属性（1个float: 纹理层索引）
+      planeGeometry.setAttribute('textureIndex', new InstancedBufferAttribute(textureIndices, 1))
+    }
+
+    // 3. 初始化材质
+    if (!iconMaterial) {
+      iconMaterial = new ShaderMaterial({
+        uniforms: {
+          textureArray: { value: arrayTexture },
+          textureDepth: { value: iconManager.getCurrentCapacity() }, // 动态纹理深度
+          uDefaultColor: { value: new Color(0x94a3b8) }, // 默认颜色
+        },
+        vertexShader: `
+        // 自定义 attribute
+        in float textureIndex;
         
-        // instanceColor 由 Three.js 自动注入（当 USE_INSTANCING_COLOR 定义时）
-        #ifdef USE_INSTANCING_COLOR
-          vInstanceColor = instanceColor;
-        #else
-          vInstanceColor = vec3(1.0);
-        #endif
+        // Varyings
+        out vec2 vUv;
+        out float vTextureIndex;
+        out vec3 vInstanceColor;
         
-        // 应用实例矩阵变换（instanceMatrix 由 Three.js 自动注入）
-        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `,
-    fragmentShader: `
-      precision highp sampler3D;
-      
-      uniform sampler3D textureArray;  // 3D 纹理数组
-      uniform float textureDepth;      // 纹理数组的深度（动态）
-      uniform vec3 uDefaultColor;      // 默认颜色
-      
-      in vec2 vUv;
-      in float vTextureIndex;
-      in vec3 vInstanceColor;
-      
-      out vec4 fragColor;
-      
-      void main() {
-        // 将索引转换为归一化的 Z 坐标 (0.0 ~ 1.0)
-        // 注意：为了精准采样，需要偏移到层中心
-        float z = (vTextureIndex + 0.5) / textureDepth;
-        
-        // 从 3D 纹理中采样
-        vec4 texColor = texture(textureArray, vec3(vUv.x, 1.0 - vUv.y, z));
-        
-        // 计算边框 (3% 宽度)
-        float borderW = 0.03;
-        bool isBorder = vUv.x < borderW || vUv.x > (1.0 - borderW) || 
-                       vUv.y < borderW || vUv.y > (1.0 - borderW);
-                       
-        // 检查是否为默认颜色
-        // 使用 uniform 传入的默认颜色进行比较，避免硬编码导致的精度问题
-        float colorDist = distance(vInstanceColor, uDefaultColor);
-        // 稍微放宽容差以防万一
-        bool isDefaultColor = colorDist < 0.05;
-        
-        if (isBorder && !isDefaultColor) {
-          // 显示实心边框
-          fragColor = vec4(vInstanceColor, 1.0);
-        } else {
-          // 仅显示图标 (无底色)
-          fragColor = texColor;
+        void main() {
+          vUv = uv;
+          vTextureIndex = textureIndex;
+          
+          // instanceColor 由 Three.js 自动注入（当 USE_INSTANCING_COLOR 定义时）
+          #ifdef USE_INSTANCING_COLOR
+            vInstanceColor = instanceColor;
+          #else
+            vInstanceColor = vec3(1.0);
+          #endif
+          
+          // 应用实例矩阵变换（instanceMatrix 由 Three.js 自动注入）
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
         }
+      `,
+        fragmentShader: `
+        precision highp sampler3D;
         
-        // Alpha 测试：如果几乎完全透明，则丢弃像素
-        // 解决 depthWrite: true 导致的透明遮挡问题
-        if (fragColor.a < 0.5) {
-          discard;
+        uniform sampler3D textureArray;  // 3D 纹理数组
+        uniform float textureDepth;      // 纹理数组的深度（动态）
+        uniform vec3 uDefaultColor;      // 默认颜色
+        
+        in vec2 vUv;
+        in float vTextureIndex;
+        in vec3 vInstanceColor;
+        
+        out vec4 fragColor;
+        
+        void main() {
+          // 将索引转换为归一化的 Z 坐标 (0.0 ~ 1.0)
+          // 注意：为了精准采样，需要偏移到层中心
+          float z = (vTextureIndex + 0.5) / textureDepth;
+          
+          // 从 3D 纹理中采样
+          vec4 texColor = texture(textureArray, vec3(vUv.x, 1.0 - vUv.y, z));
+          
+          // 计算边框 (3% 宽度)
+          float borderW = 0.03;
+          bool isBorder = vUv.x < borderW || vUv.x > (1.0 - borderW) || 
+                         vUv.y < borderW || vUv.y > (1.0 - borderW);
+                         
+          // 检查是否为默认颜色
+          // 使用 uniform 传入的默认颜色进行比较，避免硬编码导致的精度问题
+          float colorDist = distance(vInstanceColor, uDefaultColor);
+          // 稍微放宽容差以防万一
+          bool isDefaultColor = colorDist < 0.05;
+          
+          if (isBorder && !isDefaultColor) {
+            // 显示实心边框
+            fragColor = vec4(vInstanceColor, 1.0);
+          } else {
+            // 仅显示图标 (无底色)
+            fragColor = texColor;
+          }
+          
+          // Alpha 测试：如果几乎完全透明，则丢弃像素
+          // 解决 depthWrite: true 导致的透明遮挡问题
+          if (fragColor.a < 0.5) {
+            discard;
+          }
         }
+      `,
+        transparent: false,
+        depthWrite: true,
+        depthTest: true,
+        glslVersion: GLSL3, // 启用 GLSL 3.0 （WebGL2）
+        side: DoubleSide, // 双面渲染，确保 Raycaster 即使从背面射入也能检测到，且防止因镜像缩放导致的背面剔除
+      })
+    } else {
+      // 如果材质已存在（可能是之前 dispose 后又重建），更新 uniforms
+      if (iconMaterial.uniforms.textureArray) {
+        iconMaterial.uniforms.textureArray.value = arrayTexture
       }
-    `,
-    transparent: false,
-    depthWrite: true,
-    depthTest: true,
-    glslVersion: GLSL3, // 启用 GLSL 3.0 （WebGL2）
-    side: DoubleSide, // 双面渲染，确保 Raycaster 即使从背面射入也能检测到，且防止因镜像缩放导致的背面剔除
-  })
+      if (iconMaterial.uniforms.textureDepth) {
+        iconMaterial.uniforms.textureDepth.value = iconManager.getCurrentCapacity()
+      }
+    }
+
+    // 4. 初始化 Mesh
+    if (!iconMesh) {
+      iconMesh = new InstancedMesh(planeGeometry, iconMaterial, MAX_INSTANCES)
+      // 关闭视锥体剔除，避免因包围球未更新导致大场景下消失
+      iconMesh.frustumCulled = false
+      // 确保 Raycaster 始终检测实例
+      iconMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
+      iconMesh.instanceMatrix.setUsage(DynamicDrawUsage)
+      iconMesh.count = 0
+    }
+
+    iconInstancedMesh.value = markRaw(iconMesh)
+  }
 
   const iconInstancedMesh = ref<InstancedMesh | null>(null)
-
-  // Icon 模式使用相同的索引映射（与 Box 模式共享）
-
-  // 初始化 Icon 实例
-  const iconMesh = new InstancedMesh(planeGeometry, iconMaterial, MAX_INSTANCES)
-  // 关闭视锥体剔除，避免因包围球未更新导致大场景下消失
-  iconMesh.frustumCulled = false
-  // 确保 Raycaster 始终检测实例
-  iconMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
-  iconMesh.instanceMatrix.setUsage(DynamicDrawUsage)
-  iconMesh.count = 0
-
-  iconInstancedMesh.value = markRaw(iconMesh)
 
   // 存储当前的图标朝向（默认朝上，适配默认视图）
   // Z-Up: 默认朝向 +Z (0,0,1)
@@ -326,8 +353,10 @@ export function useThreeInstancedRenderer(
       return type === 'icon' ? 0xf59e0b : 0xf59e0b // Icon & Box/SimpleBox: amber-400
     }
 
+    const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+
     // 其次是选中高亮
-    if (editorStore.selectedItemIds.has(item.internalId)) {
+    if (selectedItemIds.has(item.internalId)) {
       return type === 'icon' ? 0x60a5fa : 0x60a5fa // Icon & Box/SimpleBox: blue-400
     }
 
@@ -346,7 +375,7 @@ export function useThreeInstancedRenderer(
     const iconMeshTarget = iconInstancedMesh.value
     const simpleBoxMeshTarget = simpleBoxInstancedMesh.value
 
-    const items = editorStore.items
+    const items = editorStore.activeScheme?.items.value ?? []
     const map = indexToIdMap.value
     if (!map || map.size === 0) return
 
@@ -393,7 +422,7 @@ export function useThreeInstancedRenderer(
     const index = idToIndexMap.value.get(id)
     if (index === undefined) return
 
-    const item = editorStore.items.find((it) => it.internalId === id)
+    const item = editorStore.activeScheme?.items.value.find((it) => it.internalId === id)
     if (!item) return
 
     if (mode === 'box' && meshTarget) {
@@ -440,16 +469,35 @@ export function useThreeInstancedRenderer(
   async function rebuildInstances() {
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = instancedMesh.value
-    const iconMeshTarget = iconInstancedMesh.value
     const simpleBoxMeshTarget = simpleBoxInstancedMesh.value
 
     // 至少需要当前模式的 mesh 存在
     if (mode === 'box' && !meshTarget) return
-    if (mode === 'icon' && !iconMeshTarget) return
+    // Icon 模式支持延迟加载，下方会处理
     if (mode === 'simple-box' && !simpleBoxMeshTarget) return
 
-    const items = editorStore.items
+    const items = editorStore.activeScheme?.items.value ?? []
     const instanceCount = Math.min(items.length, MAX_INSTANCES)
+
+    // 延迟初始化 Icon 资源（如果当前是 icon 模式）
+    if (mode === 'icon') {
+      // 1. 计算所需的唯一图标数量
+      const uniqueItemIds = new Set(items.slice(0, instanceCount).map((item) => item.gameId))
+      const uniqueCount = uniqueItemIds.size
+
+      // 2. 智能计算初始容量：至少 32，或当前唯一物品数 + 16 冗余
+      // 这样可以一次性分配足够内存，避免后续频繁扩容
+      const initialCapacity = Math.max(32, uniqueCount + 16)
+
+      // 3. 确保资源就位（如果已初始化，此函数会忽略）
+      ensureIconResources(initialCapacity)
+    }
+
+    // 重新获取 ref (因为 ensureIconResources 可能刚刚赋值了)
+    const currentIconMeshTarget = iconInstancedMesh.value
+
+    // 如果模式不匹配或 Mesh 仍未准备好，停止渲染
+    if (mode === 'icon' && !currentIconMeshTarget) return
 
     if (items.length > MAX_INSTANCES) {
       console.warn(
@@ -459,18 +507,18 @@ export function useThreeInstancedRenderer(
 
     // 仅更新当前模式的 count
     if (mode === 'box' && meshTarget) meshTarget.count = instanceCount
-    if (mode === 'icon' && iconMeshTarget) iconMeshTarget.count = instanceCount
+    if (mode === 'icon' && currentIconMeshTarget) currentIconMeshTarget.count = instanceCount
     if (mode === 'simple-box' && simpleBoxMeshTarget) simpleBoxMeshTarget.count = instanceCount
 
     // 如果是 Icon 模式，需要预加载纹理
-    if (mode === 'icon' && iconMeshTarget) {
+    if (mode === 'icon' && currentIconMeshTarget) {
       const itemIds = items.slice(0, instanceCount).map((item) => item.gameId)
       await iconManager.preloadIcons(itemIds).catch((err) => {
         console.warn('[ThreeInstancedRenderer] 图标预加载失败:', err)
       })
 
       // 预加载后更新纹理和深度 uniform
-      const material = iconMeshTarget.material as ShaderMaterial
+      const material = currentIconMeshTarget.material as ShaderMaterial
       if (material.uniforms) {
         if (material.uniforms.textureArray) {
           material.uniforms.textureArray.value = iconManager.getTextureArray()
@@ -516,7 +564,7 @@ export function useThreeInstancedRenderer(
       }
 
       // 2. Icon 模式计算
-      if (mode === 'icon' && iconMeshTarget) {
+      if (mode === 'icon' && currentIconMeshTarget) {
         // 1. 计算基础旋转矩阵 (World Space LookAt)
         scratchTmpVec3
           .set(currentIconNormal.value[0], currentIconNormal.value[1], currentIconNormal.value[2])
@@ -549,7 +597,7 @@ export function useThreeInstancedRenderer(
         // 4. 应用位置
         scratchMatrix.setPosition(scratchPosition)
 
-        iconMeshTarget.setMatrixAt(index, scratchMatrix)
+        currentIconMeshTarget.setMatrixAt(index, scratchMatrix)
 
         const texIndex = iconManager.getTextureIndex(item.gameId)
         textureIndices[index] = texIndex
@@ -577,9 +625,9 @@ export function useThreeInstancedRenderer(
 
     // 标记更新
     if (mode === 'box' && meshTarget) meshTarget.instanceMatrix.needsUpdate = true
-    if (mode === 'icon' && iconMeshTarget) {
-      iconMeshTarget.instanceMatrix.needsUpdate = true
-      const textureIndexAttr = planeGeometry.getAttribute('textureIndex')
+    if (mode === 'icon' && currentIconMeshTarget) {
+      currentIconMeshTarget.instanceMatrix.needsUpdate = true
+      const textureIndexAttr = planeGeometry?.getAttribute('textureIndex')
       if (textureIndexAttr) textureIndexAttr.needsUpdate = true
     }
     if (mode === 'simple-box' && simpleBoxMeshTarget)
@@ -631,7 +679,10 @@ export function useThreeInstancedRenderer(
 
   // 物品集合变化时重建实例；选中状态变化时仅刷新颜色
   watch(
-    () => editorStore.items,
+    [
+      () => editorStore.activeScheme?.items.value, // 监听引用变化（切换方案时）
+      () => editorStore.sceneVersion, // 监听版本号（内容修改时）
+    ],
     () => {
       // 拖拽时不触发全量更新，由 handleGizmoChange 直接更新实例矩阵
       if (isTransformDragging?.value) {
@@ -639,7 +690,7 @@ export function useThreeInstancedRenderer(
       }
       rebuildInstances()
     },
-    { deep: true, immediate: true }
+    { deep: false, immediate: true }
   )
 
   // 监听显示模式变化，立即重建实例
@@ -752,20 +803,25 @@ export function useThreeInstancedRenderer(
   )
 
   watch(
-    () => Array.from(editorStore.selectedItemIds),
+    [
+      () => editorStore.activeScheme?.selectedItemIds.value, // 监听 Set 引用变化（切换方案时）
+      () => editorStore.selectionVersion, // 监听版本号（选择变化时）
+    ],
     () => {
       if (isTransformDragging?.value) {
         return
       }
 
+      const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+
       // 1. 处理刚刚被选中的情况：抑制 Hover，使其显示选中色
-      if (hoveredItemId.value && editorStore.selectedItemIds.has(hoveredItemId.value)) {
+      if (hoveredItemId.value && selectedItemIds.has(hoveredItemId.value)) {
         suppressedHoverId.value = hoveredItemId.value
         hoveredItemId.value = null
       }
 
       // 2. 处理被抑制的物品不再被选中的情况：解除抑制
-      if (suppressedHoverId.value && !editorStore.selectedItemIds.has(suppressedHoverId.value)) {
+      if (suppressedHoverId.value && !selectedItemIds.has(suppressedHoverId.value)) {
         suppressedHoverId.value = null
       }
 
@@ -777,11 +833,11 @@ export function useThreeInstancedRenderer(
     console.log('[ThreeInstancedRenderer] Disposing resources')
 
     // 1. 显式断开材质对纹理的引用（关键：打破对巨大 Uint8Array 的引用链）
-    if (iconMaterial.uniforms.textureArray) {
+    if (iconMaterial?.uniforms.textureArray) {
       iconMaterial.uniforms.textureArray.value = null
     }
     // 辅助：断开其他引用
-    if (iconMaterial.uniforms.uDefaultColor) {
+    if (iconMaterial?.uniforms.uDefaultColor) {
       iconMaterial.uniforms.uDefaultColor.value = null
     }
 
@@ -789,8 +845,8 @@ export function useThreeInstancedRenderer(
     baseGeometry.dispose()
     material.dispose()
     simpleBoxMaterial.dispose()
-    planeGeometry.dispose()
-    iconMaterial.dispose()
+    planeGeometry?.dispose()
+    iconMaterial?.dispose()
 
     // 3. 显式断开 Mesh 对 Geometry 和 Material 的引用，并置空 ref
     if (instancedMesh.value) {
@@ -798,9 +854,12 @@ export function useThreeInstancedRenderer(
       instancedMesh.value.material = null as any
       instancedMesh.value = null
     }
+    if (iconMesh) {
+      iconMesh.geometry = null as any
+      iconMesh.material = null as any
+      iconMesh = null
+    }
     if (iconInstancedMesh.value) {
-      iconInstancedMesh.value.geometry = null as any
-      iconInstancedMesh.value.material = null as any
       iconInstancedMesh.value = null
     }
     if (simpleBoxInstancedMesh.value) {

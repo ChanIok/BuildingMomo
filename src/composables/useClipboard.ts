@@ -28,8 +28,8 @@ export function useClipboard() {
   function copyToClipboard() {
     if (!activeScheme.value) return
 
-    clipboard.value = activeScheme.value.items
-      .filter((item) => activeScheme.value!.selectedItemIds.has(item.internalId))
+    clipboard.value = activeScheme.value.items.value
+      .filter((item) => activeScheme.value!.selectedItemIds.value.has(item.internalId))
       .map((item) => ({ ...item })) // 深拷贝
   }
 
@@ -43,10 +43,14 @@ export function useClipboard() {
     copyToClipboard()
 
     // 剪切后删除
-    activeScheme.value.items = activeScheme.value.items.filter(
-      (item) => !activeScheme.value!.selectedItemIds.has(item.internalId)
+    activeScheme.value.items.value = activeScheme.value.items.value.filter(
+      (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
     )
-    activeScheme.value.selectedItemIds.clear()
+    activeScheme.value.selectedItemIds.value.clear()
+
+    // 触发更新
+    store.triggerSceneUpdate()
+    store.triggerSelectionUpdate()
   }
 
   // 粘贴物品（内部方法）
@@ -94,18 +98,22 @@ export function useClipboard() {
       })
     })
 
-    activeScheme.value.items.push(...newItems)
+    activeScheme.value.items.value.push(...newItems)
 
     // 选中新粘贴的物品
-    activeScheme.value.selectedItemIds.clear()
-    newIds.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
+    activeScheme.value.selectedItemIds.value.clear()
+    newIds.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
+
+    // 触发更新
+    store.triggerSceneUpdate()
+    store.triggerSelectionUpdate()
 
     return newIds
   }
 
   // 复制选中项到剪贴板 (对外 API)
   function copy() {
-    if (!activeScheme.value || activeScheme.value.selectedItemIds.size === 0) {
+    if (!activeScheme.value || activeScheme.value.selectedItemIds.value.size === 0) {
       console.warn('[Clipboard] No items selected to copy')
       return
     }
@@ -116,7 +124,7 @@ export function useClipboard() {
 
   // 剪切选中项（复制 + 删除） (对外 API)
   function cut() {
-    if (!activeScheme.value || activeScheme.value.selectedItemIds.size === 0) {
+    if (!activeScheme.value || activeScheme.value.selectedItemIds.value.size === 0) {
       console.warn('[Clipboard] No items selected to cut')
       return
     }

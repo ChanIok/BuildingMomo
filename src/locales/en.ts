@@ -209,24 +209,28 @@ export const enLocale = {
     language: 'Language',
     languageHint: 'Switch interface language, reloads UI text and documentation',
     furnitureTooltip: {
-      label: 'Show Furniture Tooltip',
+      label: 'Furniture Tooltips',
       hint: 'Show name and icon when hovering over items',
     },
     background: {
-      label: 'Show Background Image',
+      label: 'Background Image',
       hint: 'Show reference background image on canvas',
     },
     editAssist: 'Editor Assistance',
     duplicateDetection: {
-      label: 'Enable Duplicate Detection',
+      label: 'Duplicate Detection',
       hint: 'Detects items with identical position, rotation, and scale.',
     },
     limitDetection: {
-      label: 'Enable Limit Detection',
+      label: 'Limit Detection',
       hint: 'Detects out-of-bounds items and oversized groups. Disable to bypass checks and force save.',
     },
+    autoSave: {
+      label: 'Workspace Memory',
+      hint: 'Automatically save current state to resume editing later.',
+    },
     autoUpdateFurniture: 'Auto-Update Furniture Data',
-    showGizmo: 'Show Transform Gizmo',
+    showGizmo: 'Transform Gizmo',
     threeDisplayMode: '3D Display Mode',
     threeSymbolScale: 'Icon/Block Scale',
     reset: 'Reset to Default Settings',

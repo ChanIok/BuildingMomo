@@ -52,7 +52,7 @@ const currentView = ref<'structure' | 'transform'>('structure')
 
         <!-- 全局提示信息 -->
         <div
-          v-if="editorStore.selectedItems.length === 0"
+          v-if="(editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0"
           class="pt-10 text-center text-xs text-gray-500"
         >
           {{ t('sidebar.noSelection') }}

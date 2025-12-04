@@ -1,6 +1,7 @@
 import { storeToRefs } from 'pinia'
 import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
+import { calculateBounds } from '../../lib/geometry'
 import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
@@ -105,9 +106,31 @@ function calculateNewTransform(
 
 export function useEditorManipulation() {
   const store = useEditorStore()
-  const { activeScheme, selectedItems } = storeToRefs(store)
-  const { getSelectedItemsCenter } = store // This is still in store, or we could move it here too.
+  const { activeScheme } = storeToRefs(store)
   const { saveHistory } = useEditorHistory()
+
+  /**
+   * 获取选中物品的中心坐标（包围盒中心）
+   * 算法：(Min + Max) / 2
+   */
+  function getSelectedItemsCenter(): { x: number; y: number; z: number } | null {
+    const scheme = activeScheme.value
+    if (!scheme) return null
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return null
+
+    const list = scheme.items.value
+    const selectedItems = list.filter((item) => selectedIds.has(item.internalId))
+
+    const bounds = calculateBounds(selectedItems)
+    if (!bounds) return null
+
+    return {
+      x: bounds.centerX,
+      y: bounds.centerY,
+      z: bounds.centerZ,
+    }
+  }
 
   // 删除选中物品
   function deleteSelected() {
@@ -115,10 +138,13 @@ export function useEditorManipulation() {
 
     saveHistory('edit')
 
-    activeScheme.value.items = activeScheme.value.items.filter(
-      (item) => !activeScheme.value!.selectedItemIds.has(item.internalId)
+    activeScheme.value.items.value = activeScheme.value.items.value.filter(
+      (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
     )
-    activeScheme.value.selectedItemIds.clear()
+    activeScheme.value.selectedItemIds.value.clear()
+
+    store.triggerSceneUpdate()
+    store.triggerSelectionUpdate()
   }
 
   // 精确变换选中物品（位置和旋转）
@@ -128,9 +154,9 @@ export function useEditorManipulation() {
     saveHistory('edit')
 
     const { mode, position, rotation } = params
-    const selected = selectedItems.value
-
-    if (selected.length === 0) return
+    const scheme = activeScheme.value
+    const ids = scheme.selectedItemIds.value
+    if (ids.size === 0) return
 
     // 计算选区中心（用于旋转和绝对位置）
     const center = getSelectedItemsCenter()
@@ -156,8 +182,9 @@ export function useEditorManipulation() {
     }
 
     // 更新物品
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
+    // 注意：使用 ShallowRef 后，map 返回新数组会直接触发更新
+    activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
+      if (!activeScheme.value!.selectedItemIds.value.has(item.internalId)) {
         return item
       }
 
@@ -205,6 +232,9 @@ export function useEditorManipulation() {
         },
       }
     })
+
+    // 显式触发更新 (虽然直接赋值 .value = mapResult 也会触发，但保持一致性)
+    store.triggerSceneUpdate()
   }
 
   // 移动选中物品（XYZ）
@@ -222,25 +252,31 @@ export function useEditorManipulation() {
       saveHistory('edit')
     }
 
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return item
-      }
+    // 优化：如果只是移动，可以直接修改对象属性，然后 triggerRef，避免 map 创建新数组
+    // 对于高性能移动（如拖拽中），这是关键
+    // 但 moveSelectedItems 目前主要用于“完成后的提交”或“步进移动”
+    // 为了撤销/重做系统的简单性（它依赖不可变性或快照），这里如果修改原对象，需要确保 History 存的是拷贝
 
-      const newX = item.x + dx
-      const newY = item.y + dy
-      const newZ = item.z + dz
+    // 这里我们采用：原地修改 + triggerRef 模式，以获得最佳性能
+    // 注意：useEditorHistory.ts 中的 cloneItems 需要正确处理这种情况（深拷贝或浅拷贝+Extra引用）
 
-      return {
-        ...item,
-        x: newX,
-        y: newY,
-        z: newZ,
+    const list = activeScheme.value.items.value
+    const selected = activeScheme.value.selectedItemIds.value
+
+    for (const item of list) {
+      if (selected.has(item.internalId)) {
+        item.x += dx
+        item.y += dy
+        item.z += dz
       }
-    })
+    }
+
+    // 必须手动触发更新
+    store.triggerSceneUpdate()
   }
 
   return {
+    getSelectedItemsCenter,
     deleteSelected,
     updateSelectedItemsTransform,
     moveSelectedItems,

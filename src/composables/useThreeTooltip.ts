@@ -2,6 +2,7 @@ import { ref, markRaw, type Ref } from 'vue'
 import { Raycaster, Vector2, type Camera, type InstancedMesh } from 'three'
 import type { useFurnitureStore } from '@/stores/furnitureStore'
 import type { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from './useI18n'
 
 export interface ThreeTooltipData {
@@ -28,9 +29,14 @@ export function useThreeTooltip(
   const raycaster = markRaw(new Raycaster())
   const pointerNdc = markRaw(new Vector2())
   const { t, locale } = useI18n()
+  const uiStore = useUIStore()
 
   const tooltipVisible = ref(false)
   const tooltipData = ref<ThreeTooltipData | null>(null)
+
+  // 射线检测的时间戳，用于手动节流
+  let lastRaycastTime = 0
+  const RAYCAST_INTERVAL = 50 // ms
 
   function hideTooltip() {
     if (tooltipVisible.value || tooltipData.value) {
@@ -57,15 +63,28 @@ export function useThreeTooltip(
       return
     }
 
-    const rect = container.getBoundingClientRect()
+    // 性能优化：直接从 Store 获取缓存的 Rect，避免触发 Layout Thrashing
+    const rect = uiStore.editorContainerRect
     const x = evt.clientX - rect.left
     const y = evt.clientY - rect.top
+
+    // 1. 优先更新位置：如果 Tooltip 当前可见，必须实时更新位置以保证视觉流畅（跟随鼠标）
+    if (tooltipData.value) {
+      tooltipData.value.position = { x, y }
+    }
 
     // 防御：指针不在容器内
     if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
       hideTooltip()
       return
     }
+
+    // 2. 节流检测：限制昂贵的 Raycaster 调用频率
+    const now = Date.now()
+    if (now - lastRaycastTime < RAYCAST_INTERVAL) {
+      return
+    }
+    lastRaycastTime = now
 
     pointerNdc.x = (x / rect.width) * 2 - 1
     pointerNdc.y = -(y / rect.height) * 2 + 1
@@ -95,7 +114,8 @@ export function useThreeTooltip(
       return
     }
 
-    const item = editorStore.items.find((it) => it.internalId === internalId)
+    // 性能优化：使用 Map O(1) 查找替代数组 find O(N)
+    const item = editorStore.itemsMap.get(internalId)
 
     if (!item) {
       hideTooltip()

@@ -14,6 +14,14 @@ export const useUIStore = defineStore('ui', () => {
   // 当前视图预设（透视、顶、前...）
   const currentViewPreset = ref<ViewPreset>('perspective')
 
+  // Three.js 容器的布局信息（用于性能优化，避免频繁调用 getBoundingClientRect）
+  const editorContainerRect = ref<{ left: number; top: number; width: number; height: number }>({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+  })
+
   // 工作坐标系状态
   const workingCoordinateSystem = ref<WorkingCoordinateSystem>({
     enabled: false,
@@ -35,6 +43,15 @@ export const useUIStore = defineStore('ui', () => {
   function setCurrentViewPreset(preset: ViewPreset) {
     currentViewPreset.value = preset
     // console.log('[UIStore] Current view preset set to:', preset)
+  }
+
+  function updateEditorContainerRect(rect: {
+    left: number
+    top: number
+    width: number
+    height: number
+  }) {
+    editorContainerRect.value = rect
   }
 
   // ========== 工作坐标系管理 ==========
@@ -100,6 +117,8 @@ export const useUIStore = defineStore('ui', () => {
     setViewMode,
     currentViewPreset,
     setCurrentViewPreset,
+    editorContainerRect,
+    updateEditorContainerRect,
 
     // 工作坐标系
     setWorkingCoordinateSystem,

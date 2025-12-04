@@ -137,7 +137,7 @@ export const useTabStore = defineStore('tab', () => {
         tabs.value.push({
           id: generateUUID(),
           type: 'scheme',
-          title: scheme.name,
+          title: scheme.name.value,
           schemeId: scheme.id,
         })
       }

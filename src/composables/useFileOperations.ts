@@ -120,7 +120,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   // 辅助函数：预加载当前方案的图标
   function preloadActiveSchemeIcons() {
     if (editorStore.activeScheme) {
-      const uniqueIds = [...new Set(editorStore.activeScheme.items.map((i) => i.gameId))]
+      // items 是 ShallowRef，需要访问 .value
+      const uniqueIds = [...new Set(editorStore.activeScheme.items.value.map((i) => i.gameId))]
       getIconLoader().preloadIcons(uniqueIds)
     }
   }
@@ -203,7 +204,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     const outOfBoundsIds = new Set(limitIssues.value.outOfBoundsItemIds)
     const oversizedGroupIds = new Set(limitIssues.value.oversizedGroups)
 
-    const gameItems: GameItem[] = editorStore.items
+    // editorStore.items 已经是一个 computed 属性，返回的是 items.value，所以这里不需要改
+    const gameItems: GameItem[] = (editorStore.activeScheme?.items.value ?? [])
       .filter((item) => !outOfBoundsIds.has(item.internalId)) // 移除越界物品
       .map((item) => {
         const originalGroupId = item.groupId
@@ -290,7 +292,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
   // 导出 JSON 文件
   async function exportJSON(filename?: string): Promise<void> {
-    if (editorStore.items.length === 0) {
+    if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
       notification.warning(t('fileOps.export.noData'))
       return
     }
@@ -317,8 +319,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     // 确定文件名：优先使用传入文件名 > 原文件名 > 默认生成
     let downloadName = filename
     if (!downloadName) {
-      if (editorStore.activeScheme?.filePath) {
-        downloadName = editorStore.activeScheme.filePath
+      if (editorStore.activeScheme?.filePath.value) {
+        downloadName = editorStore.activeScheme.filePath.value
       } else {
         downloadName = `BUILD_SAVEDATA_${Date.now()}.json`
       }
@@ -340,7 +342,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       return
     }
 
-    if (editorStore.items.length === 0) {
+    if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
       notification.warning(t('fileOps.saveToGame.noData'))
       return
     }

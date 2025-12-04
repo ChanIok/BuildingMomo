@@ -4,7 +4,7 @@ import { useEditorHistory } from './useEditorHistory'
 
 export function useEditorSelection() {
   const store = useEditorStore()
-  const { activeScheme, itemsMap, groupsMap, items } = storeToRefs(store)
+  const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
 
   const { saveHistory } = useEditorHistory()
 
@@ -63,36 +63,41 @@ export function useEditorSelection() {
     saveHistory('selection')
 
     if (additive) {
-      if (activeScheme.value.selectedItemIds.has(itemId)) {
+      if (activeScheme.value.selectedItemIds.value.has(itemId)) {
         // 取消选择：如果是组，取消整组
         const groupId = getItemGroupIdLocal(itemId)
         if (groupId > 0) {
           const groupItems = getGroupItemsLocal(groupId)
-          groupItems.forEach((item) => activeScheme.value!.selectedItemIds.delete(item.internalId))
+          groupItems.forEach((item) =>
+            activeScheme.value!.selectedItemIds.value.delete(item.internalId)
+          )
         } else {
-          activeScheme.value.selectedItemIds.delete(itemId)
+          activeScheme.value.selectedItemIds.value.delete(itemId)
         }
       } else {
         // 添加选择：如果是组，选中整组
         const groupId = getItemGroupIdLocal(itemId)
         if (groupId > 0) {
           const groupItems = getGroupItemsLocal(groupId)
-          groupItems.forEach((item) => activeScheme.value!.selectedItemIds.add(item.internalId))
+          groupItems.forEach((item) =>
+            activeScheme.value!.selectedItemIds.value.add(item.internalId)
+          )
         } else {
-          activeScheme.value.selectedItemIds.add(itemId)
+          activeScheme.value.selectedItemIds.value.add(itemId)
         }
       }
     } else {
-      activeScheme.value.selectedItemIds.clear()
+      activeScheme.value.selectedItemIds.value.clear()
       // 如果是组，选中整组
       const groupId = getItemGroupIdLocal(itemId)
       if (groupId > 0) {
         const groupItems = getGroupItemsLocal(groupId)
-        groupItems.forEach((item) => activeScheme.value!.selectedItemIds.add(item.internalId))
+        groupItems.forEach((item) => activeScheme.value!.selectedItemIds.value.add(item.internalId))
       } else {
-        activeScheme.value.selectedItemIds.add(itemId)
+        activeScheme.value.selectedItemIds.value.add(itemId)
       }
     }
+    store.triggerSelectionUpdate()
   }
 
   function updateSelection(itemIds: string[], additive: boolean) {
@@ -102,13 +107,15 @@ export function useEditorSelection() {
     saveHistory('selection')
 
     if (!additive) {
-      activeScheme.value.selectedItemIds.clear()
+      activeScheme.value.selectedItemIds.value.clear()
     }
 
     // 扩展选择到整组(框选行为)
     const initialSelection = new Set(itemIds)
     const expandedSelection = expandSelectionToGroups(initialSelection)
-    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.add(id))
+    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
+
+    store.triggerSelectionUpdate()
   }
 
   // 减选功能:从当前选择中移除指定物品
@@ -121,7 +128,9 @@ export function useEditorSelection() {
     // 扩展选择到整组(框选行为)
     const initialSelection = new Set(itemIds)
     const expandedSelection = expandSelectionToGroups(initialSelection)
-    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.delete(id))
+    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
+
+    store.triggerSelectionUpdate()
   }
 
   function clearSelection() {
@@ -130,7 +139,9 @@ export function useEditorSelection() {
     // 保存历史（选择操作，会合并）
     saveHistory('selection')
 
-    activeScheme.value.selectedItemIds.clear()
+    activeScheme.value.selectedItemIds.value.clear()
+
+    store.triggerSelectionUpdate()
   }
 
   // 全选可见物品
@@ -140,10 +151,12 @@ export function useEditorSelection() {
     // 保存历史（选择操作，会合并）
     saveHistory('selection')
 
-    activeScheme.value.selectedItemIds.clear()
-    items.value.forEach((item) => {
-      activeScheme.value!.selectedItemIds.add(item.internalId)
+    activeScheme.value.selectedItemIds.value.clear()
+    activeScheme.value.items.value.forEach((item: any) => {
+      activeScheme.value!.selectedItemIds.value.add(item.internalId)
     })
+
+    store.triggerSelectionUpdate()
   }
 
   // 反选
@@ -154,12 +167,14 @@ export function useEditorSelection() {
     saveHistory('selection')
 
     const newSelection = new Set<string>()
-    items.value.forEach((item) => {
-      if (!activeScheme.value!.selectedItemIds.has(item.internalId)) {
+    activeScheme.value.items.value.forEach((item: any) => {
+      if (!activeScheme.value!.selectedItemIds.value.has(item.internalId)) {
         newSelection.add(item.internalId)
       }
     })
-    activeScheme.value.selectedItemIds = newSelection
+    activeScheme.value.selectedItemIds.value = newSelection
+
+    store.triggerSelectionUpdate()
   }
 
   // 交叉选择：只保留当前选择与新选择的重叠部分
@@ -173,7 +188,7 @@ export function useEditorSelection() {
     const initialSelection = new Set(itemIds)
     const expandedSelection = expandSelectionToGroups(initialSelection)
 
-    const currentSelection = activeScheme.value.selectedItemIds
+    const currentSelection = activeScheme.value.selectedItemIds.value
     const newSelection = new Set<string>()
 
     // 计算交集
@@ -183,7 +198,9 @@ export function useEditorSelection() {
       }
     })
 
-    activeScheme.value.selectedItemIds = newSelection
+    activeScheme.value.selectedItemIds.value = newSelection
+
+    store.triggerSelectionUpdate()
   }
 
   return {

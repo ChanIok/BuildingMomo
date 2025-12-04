@@ -26,9 +26,11 @@ export function useThreeTransformGizmo(
   const settingsStore = useSettingsStore()
   const uiStore = useUIStore()
   const { saveHistory } = useEditorHistory()
-  const { moveSelectedItems } = useEditorManipulation()
+  const { moveSelectedItems, getSelectedItemsCenter } = useEditorManipulation()
   const shouldShowGizmo = computed(
-    () => editorStore.selectedItemIds.size > 0 && settingsStore.settings.showGizmo
+    () =>
+      (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0 &&
+      settingsStore.settings.showGizmo
   )
 
   // Gizmo 空间模式：如果启用了工作坐标系，则使用 local 模式
@@ -42,7 +44,7 @@ export function useThreeTransformGizmo(
       return
     }
 
-    const center = editorStore.getSelectedItemsCenter?.()
+    const center = getSelectedItemsCenter()
     const pivot = pivotRef.value
 
     if (!center || !pivot) {
@@ -176,7 +178,10 @@ export function useThreeTransformGizmo(
     deltaItemVisual.y = -deltaItemVisual.y
 
     // 直接更新实例矩阵（视觉变换，不触发 store）
-    updateSelectedInstancesMatrix(editorStore.selectedItemIds, deltaItemVisual)
+    updateSelectedInstancesMatrix(
+      editorStore.activeScheme?.selectedItemIds.value ?? new Set(),
+      deltaItemVisual
+    )
 
     // 更新记录位置
     lastThreePosition.value = markRaw(current.clone())

@@ -410,7 +410,6 @@ let refCount = 0
 export function getThreeIconManager(): ReturnType<typeof useThreeIconManager> {
   if (!managerInstance) {
     managerInstance = useThreeIconManager()
-    managerInstance.initTextureArray() // 立即初始化
     console.log('[IconManager] 创建新实例')
   }
   refCount++

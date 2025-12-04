@@ -2,6 +2,7 @@ import { ref, markRaw, type Ref } from 'vue'
 import { Raycaster, Vector2, Vector3, type Camera, type InstancedMesh } from 'three'
 import { coordinates3D } from '@/lib/coordinates'
 import type { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useEditorSelection } from './editor/useEditorSelection'
 import { useEditorSelectionAction } from './useEditorSelectionAction'
 
@@ -26,6 +27,7 @@ export function useThreeSelection(
 ) {
   const raycaster = markRaw(new Raycaster())
   const pointerNdc = markRaw(new Vector2())
+  const uiStore = useUIStore()
 
   const selectionRect = ref<SelectionRect | null>(null)
   const isSelecting = ref(false)
@@ -40,9 +42,8 @@ export function useThreeSelection(
   const { activeAction: effectiveAction } = useEditorSelectionAction()
 
   function getRelativePosition(evt: any) {
-    const el = containerRef.value
-    if (!el) return null
-    const rect = el.getBoundingClientRect()
+    // 性能优化：使用 Store 中的缓存 Rect，避免 getBoundingClientRect()
+    const rect = uiStore.editorContainerRect
     return {
       x: evt.clientX - rect.left,
       y: evt.clientY - rect.top,
@@ -214,10 +215,9 @@ export function useThreeSelection(
 
   function performBoxSelection(rect: SelectionRect) {
     const camera = cameraRef.value
-    const container = containerRef.value
-    if (!camera || !container) return
+    if (!camera) return
 
-    const containerRect = container.getBoundingClientRect()
+    const containerRect = uiStore.editorContainerRect
 
     const selLeft = rect.x
     const selTop = rect.y
@@ -227,13 +227,8 @@ export function useThreeSelection(
     const idMap = selectionSources.indexToIdMap.value
     if (!idMap) return
 
-    const visibleItems = editorStore.items
-
-    // 先构建一个 id -> item 的映射，确保只处理当前实例化的物品
-    const itemById = new Map<string, any>()
-    for (const item of visibleItems) {
-      itemById.set(item.internalId, item)
-    }
+    const itemById = editorStore.itemsMap
+    if (!itemById) return
 
     const selectedIds: string[] = []
 
@@ -290,21 +285,15 @@ export function useThreeSelection(
 
   function performLassoSelection(points: { x: number; y: number }[]) {
     const camera = cameraRef.value
-    const container = containerRef.value
-    if (!camera || !container || points.length < 3) return
+    if (!camera || points.length < 3) return
 
-    const containerRect = container.getBoundingClientRect()
+    const containerRect = uiStore.editorContainerRect
 
     const idMap = selectionSources.indexToIdMap.value
     if (!idMap) return
 
-    const visibleItems = editorStore.items
-
-    // 先构建一个 id -> item 的映射
-    const itemById = new Map<string, any>()
-    for (const item of visibleItems) {
-      itemById.set(item.internalId, item)
-    }
+    const itemById = editorStore.itemsMap
+    if (!itemById) return
 
     const selectedIds: string[] = []
 

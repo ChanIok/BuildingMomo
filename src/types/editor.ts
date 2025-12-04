@@ -1,3 +1,4 @@
+import type { Ref, ShallowRef } from 'vue'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
 // 游戏内物品原始数据结构（对应JSON格式）
@@ -25,7 +26,7 @@ export interface GameItem {
   TempInfo?: Record<string, any>
 }
 
-// 应用内部使用的物品数据结构
+// 应用内部使用的物品数据结构 - 纯数据对象 (Plain Object)
 export interface AppItem {
   internalId: string // 内部唯一ID（用于Vue key）
   gameId: number // 原始游戏ItemID
@@ -71,21 +72,28 @@ export interface ThreeViewState {
   zoom: number // 相机缩放 (正交视图必需)
 }
 
-// 家园方案（多文档架构）
+// 家园方案（多文档架构） - 高性能重构版
 export interface HomeScheme {
-  id: string // 方案唯一ID
-  name: string // 方案名称（从文件名提取）
-  filePath?: string // 原始文件路径（可选）
-  lastModified?: number // 文件最后修改时间（毫秒时间戳）
+  readonly id: string // 方案唯一ID (不可变)
 
-  // 每个方案独立的状态
-  items: AppItem[]
-  selectedItemIds: Set<string>
-  currentViewConfig?: { scale: number; x: number; y: number } // 用户当前视图配置
-  viewState?: ThreeViewState // 3D视图状态
+  // 元数据 (使用 Ref 保持 UI 响应式)
+  name: Ref<string>
+  filePath: Ref<string | undefined>
+  lastModified: Ref<number | undefined>
 
-  // 历史记录栈（每个方案独立）
-  history?: HistoryStack
+  // 核心数据 (使用 ShallowRef 优化性能)
+  // items.value 是原生数组，AppItem 是原生对象
+  items: ShallowRef<AppItem[]>
+
+  // 选择集 (使用 ShallowRef)
+  selectedItemIds: ShallowRef<Set<string>>
+
+  // 视图配置 (Ref)
+  currentViewConfig: Ref<{ scale: number; x: number; y: number } | undefined>
+  viewState: Ref<ThreeViewState | undefined>
+
+  // 历史记录栈 (ShallowRef)
+  history: ShallowRef<HistoryStack | undefined>
 }
 
 // 文件监控状态
@@ -123,8 +131,7 @@ export interface WorkingCoordinateSystem {
 
 // 历史记录快照
 export interface HistorySnapshot {
-  // 对于编辑类操作（type: 'edit'），需要完整的物品数据快照；
-  // 对于选择类操作（type: 'selection'），可以为 null，仅保存选择状态以减少开销。
+  // 注意：items 保存的是对象引用的浅拷贝或深拷贝，取决于具体实现
   items: AppItem[] | null
   selectedItemIds: Set<string> // 选择状态快照
   timestamp: number // 时间戳

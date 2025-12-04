@@ -11,9 +11,13 @@ export function useEditorGroups() {
 
   // 获取下一个唯一的 GroupID（自增策略）
   function getNextGroupId(): number {
-    if (!activeScheme.value || activeScheme.value.items.length === 0) return 1
+    if (!activeScheme.value || activeScheme.value.items.value.length === 0) return 1
 
-    const maxId = activeScheme.value.items.reduce((max, item) => Math.max(max, item.groupId), 0)
+    // 注意：items 是 ShallowRef，需要访问 .value
+    const maxId = activeScheme.value.items.value.reduce(
+      (max, item) => Math.max(max, item.groupId),
+      0
+    )
     return maxId + 1
   }
 
@@ -48,7 +52,7 @@ export function useEditorGroups() {
   // 成组：将选中的物品成组
   function groupSelected() {
     if (!activeScheme.value) return
-    if (activeScheme.value.selectedItemIds.size < 2) {
+    if (activeScheme.value.selectedItemIds.value.size < 2) {
       console.warn('[Group] 至少需要选中2个物品才能成组')
       return
     }
@@ -58,29 +62,36 @@ export function useEditorGroups() {
 
     const newGroupId = getNextGroupId()
 
-    // 更新所有选中物品的 GroupID
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return {
-          ...item,
-          groupId: newGroupId,
-        }
+    // 原地更新所有选中物品的 GroupID
+    // 因为是 ShallowRef 且 items 已经是 Plain Object，我们可以直接修改并 triggerRef
+    // 避免 map 创建新数组，提高性能
+    const items = activeScheme.value.items.value
+    const selected = activeScheme.value.selectedItemIds.value
+
+    let changed = false
+    for (const item of items) {
+      if (selected.has(item.internalId)) {
+        item.groupId = newGroupId
+        changed = true
       }
-      return item
-    })
+    }
+
+    if (changed) {
+      store.triggerSceneUpdate()
+    }
 
     console.log(
-      `[Group] 成功创建组 #${newGroupId}，包含 ${activeScheme.value.selectedItemIds.size} 个物品`
+      `[Group] 成功创建组 #${newGroupId}，包含 ${activeScheme.value.selectedItemIds.value.size} 个物品`
     )
   }
 
   // 取消组合：将选中的物品解散组
   function ungroupSelected() {
     if (!activeScheme.value) return
-    if (activeScheme.value.selectedItemIds.size === 0) return
+    if (activeScheme.value.selectedItemIds.value.size === 0) return
 
     // 检查是否有组
-    const hasGroup = Array.from(activeScheme.value.selectedItemIds).some((id) => {
+    const hasGroup = Array.from(activeScheme.value.selectedItemIds.value).some((id) => {
       const groupId = getItemGroupId(id)
       return groupId > 0
     })
@@ -93,18 +104,23 @@ export function useEditorGroups() {
     // 保存历史（编辑操作）
     saveHistory('edit')
 
-    // 将所有选中物品的 GroupID 设为 0
-    activeScheme.value.items = activeScheme.value.items.map((item) => {
-      if (activeScheme.value!.selectedItemIds.has(item.internalId)) {
-        return {
-          ...item,
-          groupId: 0,
-        }
-      }
-      return item
-    })
+    // 原地将所有选中物品的 GroupID 设为 0
+    const items = activeScheme.value.items.value
+    const selected = activeScheme.value.selectedItemIds.value
 
-    console.log(`[Group] 已取消 ${activeScheme.value.selectedItemIds.size} 个物品的组合`)
+    let changed = false
+    for (const item of items) {
+      if (selected.has(item.internalId)) {
+        item.groupId = 0
+        changed = true
+      }
+    }
+
+    if (changed) {
+      store.triggerSceneUpdate()
+    }
+
+    console.log(`[Group] 已取消 ${activeScheme.value.selectedItemIds.value.size} 个物品的组合`)
   }
 
   // HSL 转 RGBA 的工具函数
