@@ -1,10 +1,7 @@
 import { defineStore, storeToRefs } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import * as Comlink from 'comlink'
-import { useDebounceFn } from '@vueuse/core'
-import type { ValidationItem } from '../types/editor'
-import type { ValidationWorkerApi } from '../workers/editorValidation.worker'
-import Worker from '../workers/editorValidation.worker?worker'
+import type { ValidationResult } from '../types/persistence'
+import { workerApi } from '../workers/client'
 import { useEditorStore } from './editorStore'
 import { useSettingsStore } from './settingsStore'
 import { useEditorHistory } from '../composables/editor/useEditorHistory'
@@ -16,10 +13,6 @@ export const useValidationStore = defineStore('validation', () => {
 
   const { activeScheme, buildableAreas, isBuildableAreaLoaded } = storeToRefs(editorStore)
   const settings = computed(() => settingsStore.settings)
-
-  // Worker 实例
-  const worker = new Worker()
-  const workerApi = Comlink.wrap<ValidationWorkerApi>(worker)
 
   // 响应式状态
   const duplicateGroups = ref<string[][]>([])
@@ -45,90 +38,41 @@ export const useValidationStore = defineStore('validation', () => {
     )
   })
 
-  // 核心验证函数 (运行在 Worker 中)
-  const runValidation = async () => {
-    if (!activeScheme.value) {
-      duplicateGroups.value = []
-      limitIssues.value = { outOfBoundsItemIds: [], oversizedGroups: [] }
-      return
-    }
-
-    isValidating.value = true
-    const startTime = performance.now()
-
-    try {
-      // 准备数据: 构造轻量级的 ValidationItem 数组
-      // 避免使用 deepToRaw 递归去代理，避免 Worker 结构化克隆大量无用数据
-      // 这里的 map 操作虽然在主线程，但对于 10k items 也是毫秒级的
-      // items 是 ShallowRef，需要访问 .value
-      const items: ValidationItem[] = activeScheme.value.items.value.map((item) => ({
-        internalId: item.internalId,
-        gameId: item.gameId,
-        x: item.x,
-        y: item.y,
-        z: item.z,
-        groupId: item.groupId,
-        scale: {
-          X: item.extra.Scale.X,
-          Y: item.extra.Scale.Y,
-          Z: item.extra.Scale.Z,
-        },
-        rotation: {
-          Pitch: item.rotation.y,
-          Yaw: item.rotation.z,
-          Roll: item.rotation.x,
-        },
-      }))
-
-      const areas =
-        isBuildableAreaLoaded.value && buildableAreas.value ? buildableAreas.value : null
-      const enableDup = settings.value.enableDuplicateDetection
-      const enableLimit = settings.value.enableLimitDetection
-
-      // 并行执行任务
-      const promises: Promise<any>[] = [workerApi.detectDuplicates(items, enableDup)]
-
-      // 只有开启了限制检测才执行检查
-      if (enableLimit) {
-        // Z 轴范围限制
-        const zRange = { min: -3500, max: 10200 }
-        promises.push(
-          workerApi.checkLimits(items, isBuildableAreaLoaded.value ? areas : null, zRange)
-        )
-      } else {
-        promises.push(Promise.resolve({ outOfBoundsItemIds: [], oversizedGroups: [] }))
-      }
-
-      const [duplicates, limits] = await Promise.all(promises)
-
-      duplicateGroups.value = duplicates
-      limitIssues.value = limits
-
-      const duration = performance.now() - startTime
-      console.log(`[EditorValidation] Validation completed in ${duration.toFixed(2)}ms`)
-    } catch (err) {
-      console.error('[EditorValidation] Validation failed:', err)
-    } finally {
-      isValidating.value = false
-    }
+  // 接收外部（Persistence/Worker）传来的验证结果
+  function setValidationResults(results: ValidationResult) {
+    duplicateGroups.value = results.duplicateGroups
+    limitIssues.value = results.limitIssues
   }
 
-  // 防抖监听
-  const debouncedValidation = useDebounceFn(runValidation, 500)
-
+  // 监听设置变化，通知 Worker 更新设置并重新验证
   watch(
-    [
-      () => activeScheme.value?.items.value, // 监听 items.value (ShallowRef) 引用变化
-      () => editorStore.sceneVersion, // 监听场景版本号（处理原地修改）
-      () => settings.value.enableDuplicateDetection,
-      () => settings.value.enableLimitDetection,
-      isBuildableAreaLoaded,
-    ],
-    () => {
-      debouncedValidation()
-    },
-    { deep: false }
+    [() => settings.value.enableDuplicateDetection, () => settings.value.enableLimitDetection],
+    async ([enableDup, enableLimit]) => {
+      isValidating.value = true
+      try {
+        const results = await workerApi.updateSettings({
+          enableDuplicateDetection: enableDup,
+          enableLimitDetection: enableLimit,
+        })
+        setValidationResults(results)
+      } finally {
+        isValidating.value = false
+      }
+    }
   )
+
+  // 监听可建造区域变化
+  watch([isBuildableAreaLoaded, buildableAreas], async ([loaded, areas]) => {
+    if (loaded && areas) {
+      isValidating.value = true
+      try {
+        const results = await workerApi.updateBuildableAreas(areas)
+        setValidationResults(results)
+      } finally {
+        isValidating.value = false
+      }
+    }
+  })
 
   // 选择所有重复的物品
   function selectDuplicateItems() {
@@ -147,6 +91,7 @@ export const useValidationStore = defineStore('validation', () => {
     console.log(
       `[Duplicate Detection] Selected ${duplicateItemCount.value} duplicate items (excluding first of each group)`
     )
+    editorStore.triggerSelectionUpdate()
   }
 
   // 选择超出限制的物品
@@ -159,6 +104,7 @@ export const useValidationStore = defineStore('validation', () => {
     limitIssues.value.outOfBoundsItemIds.forEach((id) => {
       activeScheme.value!.selectedItemIds.value.add(id)
     })
+    editorStore.triggerSelectionUpdate()
   }
 
   // 选择超大组的物品
@@ -175,6 +121,7 @@ export const useValidationStore = defineStore('validation', () => {
         activeScheme.value!.selectedItemIds.value.add(item.internalId)
       }
     })
+    editorStore.triggerSelectionUpdate()
   }
 
   return {
@@ -184,6 +131,7 @@ export const useValidationStore = defineStore('validation', () => {
     limitIssues,
     hasLimitIssues,
     isValidating,
+    setValidationResults, // Exported action
     selectDuplicateItems,
     selectOutOfBoundsItems,
     selectOversizedGroupItems,

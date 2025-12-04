@@ -227,13 +227,8 @@ export function useThreeSelection(
     const idMap = selectionSources.indexToIdMap.value
     if (!idMap) return
 
-    const visibleItems = editorStore.activeScheme?.items.value ?? []
-
-    // 先构建一个 id -> item 的映射，确保只处理当前实例化的物品
-    const itemById = new Map<string, any>()
-    for (const item of visibleItems) {
-      itemById.set(item.internalId, item)
-    }
+    const itemById = editorStore.itemsMap
+    if (!itemById) return
 
     const selectedIds: string[] = []
 
@@ -298,13 +293,8 @@ export function useThreeSelection(
     const idMap = selectionSources.indexToIdMap.value
     if (!idMap) return
 
-    const visibleItems = editorStore.activeScheme?.items.value ?? []
-
-    // 先构建一个 id -> item 的映射
-    const itemById = new Map<string, any>()
-    for (const item of visibleItems) {
-      itemById.set(item.internalId, item)
-    }
+    const itemById = editorStore.itemsMap
+    if (!itemById) return
 
     const selectedIds: string[] = []
 
