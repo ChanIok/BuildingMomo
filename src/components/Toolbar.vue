@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, onMounted, watch } from 'vue'
+import { computed, ref, nextTick, onMounted, watch, onUnmounted } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import {
   Menubar,
@@ -96,8 +96,155 @@ function isEnabled(commandId: string): boolean {
   return commandStore.isCommandEnabled(commandId)
 }
 
+// --- 拖拽逻辑 (Pointer Events) ---
+
+const draggingTabId = ref<string | null>(null)
+const pressedTabId = ref<string | null>(null)
+const pressedTabEl = ref<HTMLElement | null>(null)
+const dragOffset = ref(0)
+const dragStartX = ref(0)
+const initialTabX = ref(0)
+
+// 启动拖拽
+function handlePointerDown(tabId: string, event: PointerEvent) {
+  // 忽略非左键点击
+  if (event.button !== 0) return
+
+  // 忽略点击关闭按钮的情况
+  const target = event.target as HTMLElement
+  if (target.closest('button')?.getAttribute('title')?.startsWith('关闭')) {
+    return
+  }
+
+  const tabEl = event.currentTarget as HTMLElement
+  if (!tabEl) return
+
+  // 记录初始状态，但不立即捕获或设置拖拽状态
+  pressedTabId.value = tabId
+  pressedTabEl.value = tabEl
+  dragStartX.value = event.clientX
+  // 记录初始位置相对视口的 x 坐标，用于后续计算回弹
+  initialTabX.value = tabEl.getBoundingClientRect().x
+  dragOffset.value = 0
+
+  // 添加全局移动和释放监听
+  window.addEventListener('pointermove', handlePointerMove)
+  window.addEventListener('pointerup', handlePointerUp)
+  window.addEventListener('pointercancel', handlePointerUp)
+}
+
+function handlePointerMove(event: PointerEvent) {
+  // 如果正在拖拽
+  if (draggingTabId.value) {
+    // 计算偏移量
+    const currentX = event.clientX
+    const deltaX = currentX - dragStartX.value
+    dragOffset.value = deltaX
+
+    // --- 核心交换逻辑 ---
+    // 只有移动距离超过一定阈值（防止抖动）才开始检测
+    if (Math.abs(deltaX) > 10) {
+      checkSwap(currentX)
+    }
+    return
+  }
+
+  // 如果处于待机状态（按下但未开始拖拽）
+  if (pressedTabId.value) {
+    const currentX = event.clientX
+    const moveDist = Math.abs(currentX - dragStartX.value)
+
+    // 移动超过阈值，开始拖拽
+    if (moveDist > 5) {
+      draggingTabId.value = pressedTabId.value
+
+      // 捕获指针
+      if (pressedTabEl.value) {
+        try {
+          pressedTabEl.value.setPointerCapture(event.pointerId)
+        } catch (e) {
+          // 忽略捕获失败
+        }
+      }
+
+      // 更新初始偏移
+      dragOffset.value = currentX - dragStartX.value
+    }
+  }
+}
+
+function checkSwap(cursorX: number) {
+  if (!draggingTabId.value) return
+
+  const currentIndex = tabStore.tabs.findIndex((t) => t.id === draggingTabId.value)
+  if (currentIndex === -1) return
+
+  // 获取所有标签元素
+  const container = (tabsContainer.value as any)?.$el || tabsContainer.value
+  if (!container) return
+
+  const tabElements = Array.from(container.children) as HTMLElement[]
+
+  // 检查前一个
+  if (currentIndex > 0) {
+    const prevEl = tabElements[currentIndex - 1]
+    if (!prevEl) return
+
+    const prevRect = prevEl.getBoundingClientRect()
+    const prevCenter = prevRect.x + prevRect.width / 2
+
+    // 如果鼠标（或者当前拖拽元素的左边缘）跨过了前一个元素的中心
+    if (cursorX < prevCenter) {
+      // 交换数据
+      tabStore.moveTab(currentIndex, currentIndex - 1)
+
+      // 修正 dragStartX：因为 DOM 元素位置变了，如果不修正，deltaX 会突变
+      dragStartX.value -= prevRect.width // 向左换了，DOM位置变小，为了保持视觉位置，Offset需要变大，所以Start要变小
+      dragOffset.value = cursorX - dragStartX.value
+      return
+    }
+  }
+
+  // 检查后一个
+  if (currentIndex < tabStore.tabs.length - 1) {
+    const nextEl = tabElements[currentIndex + 1]
+    if (!nextEl) return
+
+    const nextRect = nextEl.getBoundingClientRect()
+    const nextCenter = nextRect.x + nextRect.width / 2
+
+    if (cursorX > nextCenter) {
+      tabStore.moveTab(currentIndex, currentIndex + 1)
+      dragStartX.value += nextRect.width // 向右换了，DOM位置变大，为了保持视觉位置，Offset需要变小，所以Start要变大
+      dragOffset.value = cursorX - dragStartX.value
+    }
+  }
+}
+
+function handlePointerUp() {
+  // 清理状态
+  draggingTabId.value = null
+  pressedTabId.value = null
+  pressedTabEl.value = null
+  dragOffset.value = 0
+
+  // 移除监听
+  window.removeEventListener('pointermove', handlePointerMove)
+  window.removeEventListener('pointerup', handlePointerUp)
+  window.removeEventListener('pointercancel', handlePointerUp)
+}
+
+onUnmounted(() => {
+  window.removeEventListener('pointermove', handlePointerMove)
+  window.removeEventListener('pointerup', handlePointerUp)
+  window.removeEventListener('pointercancel', handlePointerUp)
+})
+
 // 切换标签
 function switchTab(tabId: string) {
+  // 如果正在拖拽中且位移较大，不要触发切换（避免误触）
+  if (draggingTabId.value && Math.abs(dragOffset.value) > 5) return
+
   tabStore.setActiveTab(tabId)
 
   // 如果是方案标签，同步更新 editorStore
@@ -108,7 +255,9 @@ function switchTab(tabId: string) {
 
   // 滚动到激活的标签
   nextTick(() => {
-    const activeTab = tabsContainer.value?.querySelector('[data-tab-active="true"]')
+    // 兼容 TransitionGroup 组件引用
+    const containerEl = (tabsContainer.value as any)?.$el || tabsContainer.value
+    const activeTab = containerEl?.querySelector('[data-tab-active="true"]')
     activeTab?.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest',
@@ -295,61 +444,77 @@ onMounted(() => {
 
     <!-- 中间：标签栏（可滚动） -->
     <ScrollArea v-if="tabStore.tabs.length > 0" ref="scrollAreaRef" class="min-w-0 flex-1">
-      <div ref="tabsContainer" class="flex w-max gap-1">
-        <ContextMenu v-for="tab in tabStore.tabs" :key="tab.id">
-          <ContextMenuTrigger as-child>
-            <button
-              :data-tab-active="tabStore.activeTabId === tab.id"
-              @click="switchTab(tab.id)"
-              class="group relative my-2 flex flex-none items-center gap-2 rounded-sm border px-3 py-1 text-sm font-medium shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
-              :class="
-                tabStore.activeTabId === tab.id
-                  ? 'border-border bg-background text-foreground'
-                  : 'border-border/60 bg-secondary text-muted-foreground hover:border-border hover:bg-secondary/80'
-              "
-            >
-              <!-- 文档标签图标 -->
-              <BookOpen v-if="tab.type === 'doc'" class="h-3 w-3" />
-
-              <span class="max-w-[150px] truncate">
-                {{ tab.title }}
-              </span>
-              <Button
-                @click="handleCloseTabClick(tab.id, $event)"
-                variant="ghost"
-                size="icon"
-                :class="[
-                  'h-4 w-4 flex-shrink-0 transition-opacity',
+      <TransitionGroup ref="tabsContainer" tag="div" name="tab-list" class="flex w-max gap-1">
+        <div
+          v-for="tab in tabStore.tabs"
+          :key="tab.id"
+          @pointerdown="handlePointerDown(tab.id, $event)"
+          class="flex-none touch-none"
+          :style="{
+            transform: draggingTabId === tab.id ? `translateX(${dragOffset}px)` : '',
+            zIndex: draggingTabId === tab.id ? 50 : 'auto',
+            position: 'relative',
+          }"
+          :class="{
+            'cursor-grabbing': draggingTabId === tab.id,
+            'cursor-pointer': !draggingTabId,
+          }"
+        >
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <button
+                :data-tab-active="tabStore.activeTabId === tab.id"
+                @click="switchTab(tab.id)"
+                class="group relative my-2 flex flex-none items-center gap-3 rounded-sm border py-1 pr-2 pl-3 text-sm font-medium shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+                :class="
                   tabStore.activeTabId === tab.id
-                    ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100',
-                ]"
-                :title="`关闭 ${tab.title}`"
+                    ? 'border-border bg-background text-foreground'
+                    : 'border-border/60 bg-secondary text-muted-foreground hover:border-border hover:bg-secondary/80'
+                "
               >
-                <X class="h-3 w-3" />
-              </Button>
-            </button>
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            <template v-if="tab.type === 'scheme'">
-              <ContextMenuItem @click="handleRenameTab(tab)">
-                {{ t('common.rename') }}
+                <!-- 文档标签图标 -->
+                <BookOpen v-if="tab.type === 'doc'" class="h-3 w-3" />
+
+                <span class="max-w-[150px] truncate">
+                  {{ tab.title }}
+                </span>
+                <Button
+                  @click="handleCloseTabClick(tab.id, $event)"
+                  variant="ghost"
+                  size="icon"
+                  :class="[
+                    'h-4 w-4 flex-shrink-0 transition-opacity',
+                    tabStore.activeTabId === tab.id
+                      ? 'opacity-100'
+                      : 'opacity-0 group-hover:opacity-100',
+                  ]"
+                  :title="`关闭 ${tab.title}`"
+                >
+                  <X class="h-3 w-3" />
+                </Button>
+              </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <template v-if="tab.type === 'scheme'">
+                <ContextMenuItem @click="handleRenameTab(tab)">
+                  {{ t('common.rename') }}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+              </template>
+              <ContextMenuItem @click="performCloseTab(tab.id)">
+                {{ t('common.close') }}
+              </ContextMenuItem>
+              <ContextMenuItem @click="closeOtherTabs(tab.id)">
+                {{ t('common.closeOthers') }}
               </ContextMenuItem>
               <ContextMenuSeparator />
-            </template>
-            <ContextMenuItem @click="performCloseTab(tab.id)">
-              {{ t('common.close') }}
-            </ContextMenuItem>
-            <ContextMenuItem @click="closeOtherTabs(tab.id)">
-              {{ t('common.closeOthers') }}
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem @click="closeAllTabs()">
-              {{ t('common.closeAll') }}
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-      </div>
+              <ContextMenuItem @click="closeAllTabs()">
+                {{ t('common.closeAll') }}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        </div>
+      </TransitionGroup>
       <ScrollBar orientation="horizontal" class="h-1.5" />
     </ScrollArea>
 
@@ -392,3 +557,14 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+/* 组件样式已在各自组件中定义 */
+.tab-list-move {
+  transition: transform 0.2s ease;
+}
+/* 正在被拖拽的元素不应该有过渡动画，否则会感觉迟滞 */
+.tab-list-move.cursor-grabbing {
+  transition: none;
+}
+</style>

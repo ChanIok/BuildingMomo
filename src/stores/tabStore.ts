@@ -152,6 +152,16 @@ export const useTabStore = defineStore('tab', () => {
     }
   }
 
+  /**
+   * 移动标签顺序
+   */
+  function moveTab(fromIndex: number, toIndex: number) {
+    const item = tabs.value.splice(fromIndex, 1)[0]
+    if (item) {
+      tabs.value.splice(toIndex, 0, item)
+    }
+  }
+
   return {
     tabs,
     activeTabId,
@@ -163,5 +173,6 @@ export const useTabStore = defineStore('tab', () => {
     updateSchemeTabName,
     updateDocPage,
     syncFromSchemes,
+    moveTab,
   }
 })
