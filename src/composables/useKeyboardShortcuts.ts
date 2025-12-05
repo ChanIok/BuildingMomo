@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import type { Command } from '../stores/commandStore'
+import { hasTextSelection, isTextInputFocused } from '../lib/keyboard'
 
 export interface UseKeyboardShortcutsOptions {
   commands: Command[]
@@ -52,9 +53,8 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
   // 使用 VueUse 的 onKeyStroke 处理键盘事件
   onKeyStroke(
     (event) => {
-      // 如果在输入框中，不处理快捷键
-      const target = event.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      // 优先级 1: 如果在输入框中，不处理快捷键
+      if (isTextInputFocused()) {
         return
       }
 
@@ -69,6 +69,16 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
       const commandId = shortcutMap.value.get(shortcut)
 
       if (commandId) {
+        // 优先级 2: 对于复制、剪切命令，检查是否有文本选中
+        // 如果有文本选中，允许浏览器的原生复制/剪切行为
+        const isTextOperationCommand = ['edit.copy', 'edit.cut'].includes(commandId)
+        if (isTextOperationCommand && hasTextSelection()) {
+          // 不阻止默认行为，让浏览器处理文本复制
+          console.log(`[Shortcut] Text selection detected, allowing native ${commandId}`)
+          return
+        }
+
+        // 执行自定义命令
         event.preventDefault()
         console.log(`[Shortcut] Triggered: ${shortcut} -> ${commandId}`)
         executeCommand(commandId)

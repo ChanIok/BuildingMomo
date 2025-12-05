@@ -358,7 +358,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'view.coordinateSystem',
       label: t('command.view.coordinateSystem'),
       category: 'view',
-      enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
+      enabled: () => true,
       execute: () => {
         console.log('[Command] 打开工作坐标系设置')
         showCoordinateDialog.value = true
@@ -369,7 +369,7 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewPerspective',
       label: t('command.view.setViewPerspective'),
-      shortcut: '0',
+      shortcut: '1',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -380,7 +380,7 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewTop',
       label: t('command.view.setViewTop'),
-      shortcut: '7',
+      shortcut: '2',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -389,25 +389,36 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
-      id: 'view.setViewBottom',
-      label: t('command.view.setViewBottom'),
-      shortcut: '9',
-      category: 'view',
-      enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
-      execute: () => {
-        console.log('[Command] 切换到底视图')
-        setViewPresetFn.value?.('bottom')
-      },
-    },
-    {
       id: 'view.setViewFront',
       label: t('command.view.setViewFront'),
-      shortcut: '1',
+      shortcut: '3',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
         console.log('[Command] 切换到前视图')
         setViewPresetFn.value?.('front')
+      },
+    },
+    {
+      id: 'view.setViewLeft',
+      label: t('command.view.setViewLeft'),
+      shortcut: '4',
+      category: 'view',
+      enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
+      execute: () => {
+        console.log('[Command] 切换到左侧视图')
+        setViewPresetFn.value?.('left')
+      },
+    },
+    {
+      id: 'view.setViewRight',
+      label: t('command.view.setViewRight'),
+      shortcut: '5',
+      category: 'view',
+      enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
+      execute: () => {
+        console.log('[Command] 切换到右侧视图')
+        setViewPresetFn.value?.('right')
       },
     },
     {
@@ -421,24 +432,13 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
-      id: 'view.setViewRight',
-      label: t('command.view.setViewRight'),
-      shortcut: '3',
+      id: 'view.setViewBottom',
+      label: t('command.view.setViewBottom'),
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
-        console.log('[Command] 切换到右侧视图')
-        setViewPresetFn.value?.('right')
-      },
-    },
-    {
-      id: 'view.setViewLeft',
-      label: t('command.view.setViewLeft'),
-      category: 'view',
-      enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
-      execute: () => {
-        console.log('[Command] 切换到左侧视图')
-        setViewPresetFn.value?.('left')
+        console.log('[Command] 切换到底视图')
+        setViewPresetFn.value?.('bottom')
       },
     },
 

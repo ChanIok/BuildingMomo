@@ -56,9 +56,6 @@ export function useThreeSelection(
     // 排除右键（button === 2），留给右键菜单处理
     if (evt.button === 2) return
     if (evt.button !== 0) return
-    if (typeof evt.stopPropagation === 'function') {
-      evt.stopPropagation()
-    }
     const pos = getRelativePosition(evt)
     if (!pos) return
     mouseDownPos.value = { x: pos.x, y: pos.y }

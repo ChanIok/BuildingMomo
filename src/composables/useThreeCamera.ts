@@ -280,6 +280,8 @@ export function useThreeCamera(
   const q = keys.q!
   const space = keys.space!
   const shift = keys.shift!
+  const ctrl = keys.ctrl!
+  const meta = keys.meta!
   // ============================================================
   // 📐 Geometry Helpers
   // ============================================================
@@ -335,7 +337,12 @@ export function useThreeCamera(
   // ============================================================
 
   // 检查是否有导航键按下
+  // 注意：排除修饰键（Ctrl/Meta），避免快捷键（如 Ctrl+S）触发相机移动
   function hasNavKeys(): boolean {
+    // 如果按下了 Ctrl 或 Meta（Command），则不视为导航键
+    if (ctrl.value || meta.value) {
+      return false
+    }
     return !!(w.value || a.value || s.value || d.value || q.value || space.value)
   }
 
