@@ -93,14 +93,14 @@ export const zhLocale = {
       zoomOut: '缩小',
       fitToView: '重置视图',
       focusSelection: '聚焦选中物品',
-      coordinateSystem: '工作坐标系设置',
+      coordinateSystem: '工作坐标系',
       setViewPerspective: '透视视图',
       setViewTop: '顶视图',
       setViewBottom: '底视图',
       setViewFront: '前视图',
       setViewBack: '后视图',
-      setViewRight: '右侧视图',
-      setViewLeft: '左侧视图',
+      setViewRight: '右视图',
+      setViewLeft: '左视图',
       viewPreset: '视图预设',
     },
     tool: {
@@ -109,7 +109,7 @@ export const zhLocale = {
       toggleGizmo: '切换变换轴显示',
     },
     help: {
-      openDocs: '打开帮助文档',
+      openDocs: '帮助文档',
     },
   },
 

@@ -163,6 +163,29 @@
       <li><strong>Group Size:</strong> Groups with >50 items (Game limit).</li>
     </ul>
 
+    <h2>Data Safety</h2>
+
+    <h3>Workspace Persistence</h3>
+    <p>
+      The editor includes a state persistence feature to prevent data loss from accidental closures.
+    </p>
+    <ul>
+      <li>
+        <strong>Real-time Protection</strong>: Your open tabs and unsaved changes are saved locally
+        in real-time. If the browser closes unexpectedly or reloads, the workspace will be restored
+        exactly as you left it.
+      </li>
+      <li>
+        <strong>Limitations</strong>: This feature relies on the browser's local database
+        (IndexedDB). Clearing your browser data or using "Incognito Mode" will result in the loss of
+        this temporary state.
+      </li>
+      <li>
+        <strong>Recommendation</strong>: This is for recovery purposes only. Always use
+        <strong>Save to Game</strong> or <strong>Export Data</strong> to permanently save your work.
+      </li>
+    </ul>
+
     <h2>Exporting</h2>
 
     <h3>Save to Game</h3>

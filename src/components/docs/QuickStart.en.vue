@@ -4,6 +4,10 @@
   <div class="doc-content">
     <h1>Quick Start</h1>
 
+    <p class="text-sm text-muted-foreground">
+      We recommend using Chrome or Edge browser for the best experience.
+    </p>
+
     <h2>Project Introduction</h2>
     <p>
       <strong>BuildingMomo</strong> is a visualization editor tool designed specifically for the
@@ -94,12 +98,14 @@
 
     <h2>Scenario: Multi-Story Load Limit Workaround</h2>
     <p>
-      <strong>Problem:</strong> Multi-story buildings consume high local load even when empty,
-      preventing first-floor decoration.
+      <strong>Problem:</strong> Multi-story buildings consume high local load even when empty. Since
+      the game's local load calculation covers all heights in an area, this prevents adding
+      furniture throughout the entire building.
       <br />
       <br />
-      <strong>Solution:</strong> Temporarily move upper-floor items far away to free up local load
-      calculation, decorate the first floor, then move them back.
+      <strong>Solution:</strong> Using first-floor decoration as an example, use this tool to
+      temporarily <strong>transfer upper-floor items to a newly created empty scheme</strong>. After
+      decorating the first floor, paste them back.
     </p>
 
     <h3>Step 1: Select Building</h3>
@@ -117,29 +123,34 @@
       <li>Only upper floors should remain selected</li>
     </ol>
 
-    <h3>Step 3: Move Upper Floors</h3>
+    <h3>Step 3: Transfer Upper Floors</h3>
     <ol>
-      <li>In the <strong>Transform Panel</strong> (right side), find Position</li>
-      <li>Select "Relative" mode, enter a large value (e.g., <code>5000</code>) in X or Y</li>
-      <li>Save to game</li>
+      <li>Ensure upper-floor items are selected</li>
+      <li>Press <code>Ctrl + X</code> to cut</li>
+      <li>Click <strong>File &gt; New Scheme</strong> to create a temporary tab</li>
+      <li>Press <code>Ctrl + V</code> to paste items to the temporary scheme</li>
+      <li>Switch back to original scheme tab, press <code>Ctrl + S</code> to save</li>
     </ol>
     <p class="text-sm text-muted-foreground">
-      <strong>Tip:</strong> Alternatively, cut items to a new empty scheme instead of moving
-      coordinates.
+      <strong>Tip:</strong> If you're comfortable with coordinates, you can alternatively use the
+      horizontal offset method (Relative mode in Transform Panel, X or Y = <code>5000</code>), but
+      the new scheme method is safer and more intuitive.
     </p>
 
     <h3>Step 4: Decorate First Floor</h3>
     <ol>
-      <li>In-game, load scheme. Upper floors are now gone, freeing up load capacity</li>
+      <li>In-game, load scheme. Upper floors are now transferred away, freeing up load capacity</li>
       <li>Decorate the first floor without load warnings</li>
     </ol>
 
-    <h3>Step 5: Restore</h3>
+    <h3>Step 5: Restore Building</h3>
     <ol>
-      <li>In editor, reload the scheme</li>
-      <li>Select the items you moved away</li>
-      <li>Reverse the coordinate change in Transform Panel</li>
-      <li>Save back to game. Done!</li>
+      <li>After decorating, click <strong>Recover from Stuck</strong> in-game to save progress</li>
+      <li>In editor, re-import the scheme (opens as a new tab)</li>
+      <li>Switch to the temporary scheme tab, press <code>Ctrl + A</code> to select all items</li>
+      <li>Press <code>Ctrl + X</code> to cut</li>
+      <li>Switch to the newly imported scheme tab, press <code>Ctrl + V</code> to paste back</li>
+      <li>Press <code>Ctrl + S</code> to save, return to game and restore building. Done!</li>
     </ol>
 
     <h2>Next Steps</h2>
