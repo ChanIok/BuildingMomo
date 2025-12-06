@@ -18,6 +18,8 @@ export interface AlertConfig {
   details?: AlertDetailItem[]
   confirmText?: string
   cancelText?: string
+  checkboxLabel?: string // 勾选框文本
+  checkboxChecked?: boolean // 勾选状态
   onConfirm?: () => void | Promise<void>
   onCancel?: () => void
 }
@@ -67,6 +69,32 @@ export const useNotificationStore = defineStore('notification', () => {
     })
   }
 
+  // 显示带勾选框的 Confirm（返回 Promise<{ confirmed: boolean, checked: boolean }>）
+  function confirmWithCheckbox(config: {
+    title: string
+    description?: string
+    details?: AlertDetailItem[]
+    confirmText?: string
+    cancelText?: string
+    checkboxLabel: string
+  }): Promise<{ confirmed: boolean; checked: boolean }> {
+    return new Promise((resolve) => {
+      showAlert({
+        ...config,
+        checkboxChecked: false, // 默认不勾选
+        onConfirm: () => {
+          // 获取当前的 checked 状态
+          const checked = currentAlert.value?.checkboxChecked ?? false
+          resolve({ confirmed: true, checked })
+        },
+        onCancel: () => {
+          const checked = currentAlert.value?.checkboxChecked ?? false
+          resolve({ confirmed: false, checked })
+        },
+      })
+    })
+  }
+
   // 关闭当前 Alert
   function closeCurrentAlert(): void {
     currentAlert.value = null
@@ -108,6 +136,7 @@ export const useNotificationStore = defineStore('notification', () => {
     currentAlert,
     showAlert,
     confirm,
+    confirmWithCheckbox,
     confirmCurrentAlert,
     cancelCurrentAlert,
     closeCurrentAlert,

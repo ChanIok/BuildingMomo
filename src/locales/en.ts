@@ -153,6 +153,7 @@ export const enLocale = {
       confirmTitle: 'Confirm Save',
       confirmDesc: 'Issues detected. Continue saving?',
       continue: 'Continue Save',
+      dontShowAgain: "Don't remind me this session",
     },
     import: {
       success: 'Import Successful',

@@ -151,6 +151,7 @@ export const zhLocale = {
       confirmTitle: '保存确认',
       confirmDesc: '检测到以下问题，请确认是否继续保存？',
       continue: '继续保存',
+      dontShowAgain: '本次访问不再提醒',
     },
     import: {
       success: '导入成功',

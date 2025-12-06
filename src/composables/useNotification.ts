@@ -72,6 +72,11 @@ export function useNotification() {
     confirm: notificationStore.confirm,
 
     /**
+     * 显示带复选框的确认对话框
+     */
+    confirmWithCheckbox: notificationStore.confirmWithCheckbox,
+
+    /**
      * 显示通知对话框（仅提示，不需要返回值）
      * @example
      * notification.alert({

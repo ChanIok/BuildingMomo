@@ -13,10 +13,29 @@ import backgroundUrl from '@/assets/home.webp'
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
 
+// 模块级变量：是否不再提醒保存警告（本次访问有效）
+const suppressSaveWarning = ref(false)
+
 // 辅助函数：从文件名提取 UID
 function extractUidFromFilename(filename: string): string | null {
   const match = filename.match(/BUILD_SAVEDATA_(\d+)\.json/)
   return match?.[1] ?? null
+}
+
+// 辅助函数：按路径查找子目录
+async function resolvePath(
+  startHandle: FileSystemDirectoryHandle,
+  pathParts: string[]
+): Promise<FileSystemDirectoryHandle | null> {
+  let currentHandle = startHandle
+  for (const part of pathParts) {
+    try {
+      currentHandle = await currentHandle.getDirectoryHandle(part)
+    } catch {
+      return null
+    }
+  }
+  return currentHandle
 }
 
 // 辅助函数：查找 BuildData 目录
@@ -28,47 +47,38 @@ async function findBuildDataDirectory(
     return dirHandle
   }
 
-  // 2. 尝试直接找 BuildData 子目录
+  // 2. 尝试直接找 BuildData 子目录 (对应选中 SavedData 的情况)
   try {
-    const buildData = await dirHandle.getDirectoryHandle('BuildData')
-    return buildData
+    return await dirHandle.getDirectoryHandle('BuildData')
   } catch {
-    // BuildData 不是直接子目录，继续其他方式查找
+    // 继续查找
   }
 
-  // 3. 定义完整路径链
-  const fullPath = ['InfinityNikki', 'X6Game', 'Saved', 'SavedData', 'BuildData']
-  const startIndex = fullPath.indexOf(dirHandle.name)
+  // 3. 尝试探测 X6Game (对应选中游戏根目录的情况，如 InfinityNikkiGlobal)
+  try {
+    const x6Game = await dirHandle.getDirectoryHandle('X6Game')
+    const result = await resolvePath(x6Game, ['Saved', 'SavedData', 'BuildData'])
+    if (result) return result
+  } catch {
+    // 继续查找
+  }
 
-  if (startIndex !== -1) {
-    // 当前目录在路径链上，从下一个节点开始查找
-    const remainingPath = fullPath.slice(startIndex + 1)
-    let currentHandle = dirHandle
+  // 4. 尝试探测 Saved (对应选中 X6Game 的情况)
+  try {
+    const saved = await dirHandle.getDirectoryHandle('Saved')
+    const result = await resolvePath(saved, ['SavedData', 'BuildData'])
+    if (result) return result
+  } catch {
+    // 继续查找
+  }
 
-    for (const folderName of remainingPath) {
-      try {
-        currentHandle = await currentHandle.getDirectoryHandle(folderName)
-        if (currentHandle.name === 'BuildData') {
-          return currentHandle
-        }
-      } catch {
-        break // 路径不存在，跳出
-      }
-    }
-  } else {
-    // 当前目录不在路径链上，尝试完整路径
-    let currentHandle = dirHandle
-
-    for (const folderName of fullPath) {
-      try {
-        currentHandle = await currentHandle.getDirectoryHandle(folderName)
-        if (currentHandle.name === 'BuildData') {
-          return currentHandle
-        }
-      } catch {
-        break // 路径不存在，跳出
-      }
-    }
+  // 5. 尝试探测 SavedData (对应选中 Saved 的情况)
+  try {
+    const savedData = await dirHandle.getDirectoryHandle('SavedData')
+    const result = await resolvePath(savedData, ['BuildData'])
+    if (result) return result
+  } catch {
+    // 继续查找
   }
 
   return null
@@ -187,16 +197,25 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
     // 3. 如果有问题，统一弹窗
     if (details.length > 0) {
-      const confirmed = await notification.confirm({
-        title: t('fileOps.save.confirmTitle'),
-        description: t('fileOps.save.confirmDesc'),
-        details: details,
-        confirmText: t('fileOps.save.continue'),
-        cancelText: t('common.cancel'),
-      })
+      // 如果用户之前勾选了"不再提醒"，则跳过弹窗直接保存
+      if (!suppressSaveWarning.value) {
+        const { confirmed, checked } = await notification.confirmWithCheckbox({
+          title: t('fileOps.save.confirmTitle'),
+          description: t('fileOps.save.confirmDesc'),
+          details: details,
+          confirmText: t('fileOps.save.continue'),
+          cancelText: t('common.cancel'),
+          checkboxLabel: t('fileOps.save.dontShowAgain'),
+        })
 
-      if (!confirmed) {
-        return null
+        if (!confirmed) {
+          return null
+        }
+
+        // 如果用户勾选了不再提醒，更新状态
+        if (checked) {
+          suppressSaveWarning.value = true
+        }
       }
     }
 
@@ -337,7 +356,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   // 保存到游戎
   async function saveToGame(): Promise<void> {
     // 检查全局游戎连接状态
-    if (!watchState.value.isActive || !watchState.value.fileHandle) {
+    if (!watchState.value.isActive || !watchState.value.dirHandle) {
       notification.warning(t('fileOps.saveToGame.noDir'))
       return
     }
@@ -351,16 +370,59 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     const gameItems = await prepareDataForSave()
     if (!gameItems) return
 
+    const exportData: GameDataFile = {
+      NeedRestore: true,
+      PlaceInfo: gameItems,
+    }
+
+    // 2. 确定目标文件句柄
+    let handle: FileSystemFileHandle | null = null
+    let finalFileName = ''
+
+    const currentFileName = editorStore.activeScheme?.filePath.value
+    // 正则：BUILD_SAVEDATA_数字.json
+    const match = currentFileName?.match(/^BUILD_SAVEDATA_(\d+)\.json$/)
+
+    // 判定是否为有效文件名（符合格式且不是13位时间戳）
+    let isValidName = false
+    if (match && match[1]) {
+      const idPart = match[1]
+      // 简单判断：如果是13位数字，视为时间戳，不作为有效UID
+      if (idPart.length !== 13) {
+        isValidName = true
+      }
+    }
+
     try {
-      const exportData: GameDataFile = {
-        NeedRestore: true,
-        PlaceInfo: gameItems,
+      if (isValidName && currentFileName) {
+        // 策略 A: 文件名合法，尝试直接使用（允许创建）
+        handle = await watchState.value.dirHandle.getFileHandle(currentFileName, {
+          create: true,
+        })
+        finalFileName = currentFileName
+      } else {
+        // 策略 B: 文件名无效（乱码或时间戳），回退到监控的现有文件
+        if (watchState.value.fileHandle) {
+          handle = watchState.value.fileHandle
+          finalFileName = watchState.value.fileName
+        } else {
+          // 如果没有监控的文件，尝试查找目录中最新的
+          const latest = await findLatestBuildSaveData(watchState.value.dirHandle)
+          if (latest) {
+            handle = latest.handle
+            finalFileName = latest.file.name
+          }
+        }
+      }
+
+      if (!handle) {
+        notification.error(t('fileOps.saveToGame.noData')) // 借用 noData 或需要新的 key，但这里实际上是找不到写入目标
+        return
       }
 
       const jsonString = JSON.stringify(exportData)
 
-      // 2. 请求写入权限（如果需要）
-      const handle = watchState.value.fileHandle!
+      // 3. 请求写入权限（如果需要）
       const permission = await verifyPermission(handle, true)
 
       if (!permission) {
@@ -368,16 +430,19 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         return
       }
 
-      // 3. 写入文件
+      // 4. 写入文件
       const writable = await handle.createWritable()
       await writable.write(jsonString)
       await writable.close()
 
-      // 4. 更新监控状态，避免触发文件更新通知
-      watchState.value.lastModifiedTime = Date.now()
+      // 5. 更新监控状态，指向实际写入的文件
+      const updatedFile = await handle.getFile()
+      watchState.value.fileHandle = handle
+      watchState.value.fileName = finalFileName
+      watchState.value.lastModifiedTime = updatedFile.lastModified + 1000 // +1秒缓冲
       watchState.value.lastContent = jsonString
 
-      console.log(`[FileOps] Successfully saved to game: ${watchState.value.fileName}`)
+      console.log(`[FileOps] Successfully saved to game: ${finalFileName}`)
       notification.success(t('fileOps.saveToGame.success'))
     } catch (error: any) {
       console.error('[FileOps] Failed to save to game:', error)
