@@ -96,7 +96,7 @@ const dialogOpen = computed({
           >
             <Checkbox
               id="alert-checkbox"
-              v-model:checked="notificationStore.currentAlert.checkboxChecked"
+              v-model="notificationStore.currentAlert.checkboxChecked"
             />
             <label
               for="alert-checkbox"

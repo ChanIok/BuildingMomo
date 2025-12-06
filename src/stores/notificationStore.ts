@@ -94,8 +94,6 @@ export const useNotificationStore = defineStore('notification', () => {
       })
     })
   }
-
-  // 关闭当前 Alert
   function closeCurrentAlert(): void {
     currentAlert.value = null
 
@@ -110,10 +108,12 @@ export const useNotificationStore = defineStore('notification', () => {
     if (!currentAlert.value) return
 
     const alert = currentAlert.value
-    closeCurrentAlert()
 
-    // 执行回调
+    // 先执行回调（此时 currentAlert.value 还没有被清空，回调中可以读取 checkboxChecked）
     await alert.onConfirm?.()
+
+    // 再关闭对话框
+    closeCurrentAlert()
   }
 
   // 取消当前 Alert
@@ -121,10 +121,12 @@ export const useNotificationStore = defineStore('notification', () => {
     if (!currentAlert.value) return
 
     const alert = currentAlert.value
-    closeCurrentAlert()
 
-    // 执行回调
+    // 先执行回调（此时 currentAlert.value 还没有被清空，回调中可以读取 checkboxChecked）
     alert.onCancel?.()
+
+    // 再关闭对话框
+    closeCurrentAlert()
   }
 
   // 生成唯一ID
