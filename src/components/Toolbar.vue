@@ -314,6 +314,9 @@ function openGlobalSettings() {
 
 // 自定义滚轮事件：将垂直滚动转换为横向滚动
 function handleWheel(event: WheelEvent) {
+  // 如果按下 Shift 键，使用浏览器默认的横向滚动行为
+  if (event.shiftKey) return
+
   if (!scrollAreaRef.value) return
 
   // 获取 ScrollArea 组件的根 DOM 元素
@@ -339,7 +342,8 @@ onMounted(() => {
     if (scrollAreaRef.value) {
       const scrollAreaElement = (scrollAreaRef.value as any).$el as HTMLElement
       if (scrollAreaElement) {
-        useEventListener(scrollAreaElement, 'wheel', handleWheel, { passive: false })
+        // 使用 capture: true 捕获阶段监听，确保在子元素消费事件前处理
+        useEventListener(scrollAreaElement, 'wheel', handleWheel, { passive: false, capture: true })
       }
     }
   })
