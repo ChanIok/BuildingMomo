@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vue-tsc -b && vite build && node scripts/build-i18n.js",
     "preview": "vite preview",
     "deploy": "npm run build && git add dist -f && git commit -m 'deploy' && git subtree push --prefix dist origin gh-pages",
     "fetch-data": "node scripts/fetch-data.js",

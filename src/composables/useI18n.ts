@@ -11,10 +11,26 @@ const locales: Record<Locale, Record<string, any>> = {
   en: enLocale,
 }
 
-// 检测浏览器语言
-function detectBrowserLanguage(): Locale {
+declare global {
+  interface Window {
+    __INITIAL_LANG__?: Locale
+  }
+}
+
+// 检测初始语言
+function getInitialLanguage(): Locale {
+  // 1. 静态注入 (构建脚本注入)
+  if (typeof window !== 'undefined' && window.__INITIAL_LANG__) {
+    return window.__INITIAL_LANG__
+  }
+
+  // 2. URL 路径检测
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/en')) {
+    return 'en'
+  }
+
+  // 3. 浏览器语言检测
   const browserLang = navigator.language || (navigator as any).userLanguage || 'zh'
-  // 如果浏览器语言是中文，返回 'zh'；否则返回 'en'
   if (browserLang.startsWith('zh')) {
     return 'zh'
   }
@@ -36,7 +52,18 @@ function getNestedValue(obj: Record<string, any>, path: string): any {
 }
 
 // 全局i18n状态
-const _locale = useLocalStorage<Locale>('buildingmomo_locale', detectBrowserLanguage())
+// 注意：如果当前环境强制指定了语言（如 /en/ 路径），则优先使用该语言并更新存储
+const detected = getInitialLanguage()
+const _locale = useLocalStorage<Locale>('buildingmomo_locale', detected)
+
+// 如果检测到的语言与存储的不一致，且是因为路径/注入强制要求的，则更新存储
+if (
+  typeof window !== 'undefined' &&
+  (window.__INITIAL_LANG__ || window.location.pathname.startsWith('/en')) &&
+  _locale.value !== 'en'
+) {
+  _locale.value = 'en'
+}
 
 /**
  * i18n 组合函数

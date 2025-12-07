@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://chaniok.github.io/BuildingMomo/sitemap.xml
+Sitemap: https://infinitymomo.com/sitemap.xml
