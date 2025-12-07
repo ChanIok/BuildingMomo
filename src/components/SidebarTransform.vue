@@ -175,7 +175,7 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
 function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
 
-  if (isRotationRelative.value) {
+  if (rotationMode.value === 'relative') {
     // 相对模式
     const delta = value
     if (delta === 0) return
@@ -192,6 +192,7 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     rotationState.value[axis] = 0
   } else {
     // 绝对模式
+    // 此时肯定是单选，因为多选强制为 relative
     if (selectionInfo.value.count === 1) {
       // 单选绝对模式：直接应用目标值
       const rotationArgs: any = {}
@@ -208,18 +209,6 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
         mode: 'absolute',
         rotation: rotationArgs,
       })
-    } else {
-      // 多选绝对旋转：实际表现为相对模式
-      const currentVal = rotationState.value[axis]
-      const delta = value - currentVal
-      const rotationArgs: any = {}
-      rotationArgs[axis] = delta
-
-      updateSelectedItemsTransform({
-        mode: 'relative',
-        rotation: rotationArgs,
-      })
-      rotationState.value[axis] = value
     }
   }
 }
@@ -411,7 +400,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               :value="
-                isRotationRelative
+                rotationMode === 'relative'
                   ? rotationState.x === 0
                     ? ''
                     : rotationState.x
@@ -419,7 +408,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               "
               @change="(e) => updateRotation('x', Number((e.target as HTMLInputElement).value))"
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              :placeholder="isRotationRelative ? '0' : ''"
+              :placeholder="rotationMode === 'relative' ? '0' : ''"
             />
           </div>
           <!-- Pitch (Y) -->
@@ -432,7 +421,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               :value="
-                isRotationRelative
+                rotationMode === 'relative'
                   ? rotationState.y === 0
                     ? ''
                     : rotationState.y
@@ -440,7 +429,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               "
               @change="(e) => updateRotation('y', Number((e.target as HTMLInputElement).value))"
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              :placeholder="isRotationRelative ? '0' : ''"
+              :placeholder="rotationMode === 'relative' ? '0' : ''"
             />
           </div>
           <!-- Yaw (Z) -->
@@ -453,7 +442,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               :value="
-                isRotationRelative
+                rotationMode === 'relative'
                   ? rotationState.z === 0
                     ? ''
                     : rotationState.z
@@ -461,7 +450,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               "
               @change="(e) => updateRotation('z', Number((e.target as HTMLInputElement).value))"
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              :placeholder="isRotationRelative ? '0' : ''"
+              :placeholder="rotationMode === 'relative' ? '0' : ''"
             />
           </div>
         </div>
