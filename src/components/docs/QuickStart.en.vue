@@ -98,9 +98,10 @@
 
     <h2>Scenario: Multi-Story Load Limit Workaround</h2>
     <p>
-      <strong>Problem:</strong> Multi-story buildings consume high local load even when empty. Since
-      the game's local load calculation covers all heights in an area, this prevents adding
-      furniture throughout the entire building.
+      <strong>Problem:</strong> Multi-story buildings consume high local load due to walls and
+      floors, even when unfurnished. Since the game calculates local load across all heights, this
+      often triggers the <strong>"Too many furniture items in this area"</strong> error when
+      decorating.
       <br />
       <br />
       <strong>Solution:</strong> Using first-floor decoration as an example, use this tool to
