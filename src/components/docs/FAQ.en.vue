@@ -28,8 +28,8 @@
       <li>Account restrictions (though unlikely for local file edits)</li>
     </ul>
     <p class="text-sm text-muted-foreground">
-      <strong>Recommendation:</strong> Backup your original files. Do not add non-existent items or
-      invalid coordinates.
+      <strong>Recommendation:</strong> Back up your original scheme before use, edit data with
+      caution, and avoid using out-of-range coordinates.
     </p>
 
     <h3>Disclaimer</h3>
@@ -41,7 +41,9 @@
     </ul>
 
     <div class="doc-warning">
-      <strong>If you are uncomfortable with these risks, please do not use this tool.</strong>
+      <strong>If you are uncomfortable with these risks, please do not use this tool.</strong><br />
+      This tool is designed as an interim solution for players with specific needs until official
+      building tools become available.
     </div>
 
     <h2>Data Sources</h2>
@@ -76,12 +78,11 @@
     <h2>About</h2>
     <ul>
       <li>
-        <strong>Motivation:</strong> Created purely out of personal interest to enhance the building
-        experience.
+        <strong>Motivation:</strong> The official editor was driving me crazy. Instead of waiting, I
+        built this.
       </li>
       <li>
-        <strong>Maintenance:</strong> I will provide regular updates and maintenance as long as I
-        continue playing the game.
+        <strong>Maintenance:</strong> I'll keep this updated as long as I'm still playing the game.
       </li>
       <li>
         <strong>Copyright:</strong> Code is open source under the
