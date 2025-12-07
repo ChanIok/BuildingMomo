@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { templateCompilerOptions } from '@tresjs/core'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig(() => {
@@ -16,6 +17,34 @@ export default defineConfig(() => {
         ...templateCompilerOptions,
       }),
       tailwindcss(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.ico', 'logo.png'],
+        manifest: {
+          name: 'BuildingMomo',
+          short_name: 'BuildingMomo',
+          description: 'Infinity Nikki Home Visual Editor',
+          theme_color: '#ffffff',
+          start_url: './',
+          display: 'standalone',
+          background_color: '#ffffff',
+          icons: [
+            {
+              src: 'logo.png',
+              sizes: '238x238',
+              type: 'image/png',
+            },
+            {
+              src: 'logo.png',
+              sizes: '512x512',
+              type: 'image/png',
+            },
+          ],
+        },
+        devOptions: {
+          enabled: false,
+        },
+      }),
     ],
     base,
     resolve: {
