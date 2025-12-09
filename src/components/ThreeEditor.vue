@@ -824,6 +824,13 @@ onDeactivated(() => {
           <div class="flex-shrink-0 px-1">
             <div class="font-medium">{{ tooltipData.name }}</div>
           </div>
+          <div
+            v-if="isDev"
+            class="ml-1 flex flex-col border-l pl-2 font-mono text-[12px] leading-tight text-gray-400"
+          >
+            <span>ID: {{ tooltipData.gameId }}</span>
+            <span>INS: {{ tooltipData.instanceId }}</span>
+          </div>
         </div>
       </div>
     </div>

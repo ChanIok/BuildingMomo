@@ -9,16 +9,18 @@ export function useEditorGroups() {
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
   const { saveHistory } = useEditorHistory()
 
-  // 获取下一个唯一的 GroupID（自增策略）
+  // 获取下一个唯一的 GroupID（填补空缺策略）
   function getNextGroupId(): number {
-    if (!activeScheme.value || activeScheme.value.items.value.length === 0) return 1
+    if (!activeScheme.value) return 1
 
-    // 注意：items 是 ShallowRef，需要访问 .value
-    const maxId = activeScheme.value.items.value.reduce(
-      (max, item) => Math.max(max, item.groupId),
-      0
-    )
-    return maxId + 1
+    const usedGroupIds = groupsMap.value
+    let id = 1
+    // 从1开始寻找未被使用的ID
+    // 组的数量通常较少，此循环开销极低
+    while (usedGroupIds.has(id)) {
+      id++
+    }
+    return id
   }
 
   // 获取指定组的所有物品（使用 groupsMap 和 itemsMap 优化性能）
@@ -153,6 +155,5 @@ export function useEditorGroups() {
     getItemGroupId,
     getAllGroupIds,
     getGroupColor,
-    getNextGroupId,
   }
 }

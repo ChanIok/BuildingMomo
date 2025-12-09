@@ -2,7 +2,6 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditorHistory } from './editor/useEditorHistory'
-import { useEditorGroups } from './editor/useEditorGroups'
 import type { AppItem } from '../types/editor'
 
 // 生成简单的UUID (局部工具函数，或从 utils 导入)
@@ -20,7 +19,6 @@ export function useClipboard() {
   const { getNextInstanceId } = store
 
   const { saveHistory } = useEditorHistory()
-  const { getNextGroupId } = useEditorGroups()
 
   const hasClipboardData = computed(() => clipboard.value.length > 0)
 
@@ -62,21 +60,37 @@ export function useClipboard() {
 
     const newIds: string[] = []
     const newItems: AppItem[] = []
-    let nextInstanceId = getNextInstanceId()
 
-    // 收集剪贴板物品的所有组ID，为每个组分配新的 GroupID
+    // 1. 批量操作优化：一次性构建当前已使用的 InstanceID 集合
+    const currentItems = activeScheme.value.items.value
+    const usedInstanceIds = new Set(currentItems.map((item) => item.instanceId))
+
+    // 2. 收集剪贴板物品的所有组ID，为每个组分配新的 GroupID
     const groupIdMap = new Map<number, number>() // 旧GroupID -> 新GroupID
+    const existingGroupIds = new Set(store.groupsMap.keys())
 
     clipboardItems.forEach((item) => {
       const oldGroupId = item.groupId
       if (oldGroupId > 0 && !groupIdMap.has(oldGroupId)) {
-        groupIdMap.set(oldGroupId, getNextGroupId() + groupIdMap.size)
+        // 寻找下一个可用的 GroupID
+        let newGid = 1
+        while (existingGroupIds.has(newGid)) {
+          newGid++
+        }
+        // 占用这个ID
+        existingGroupIds.add(newGid)
+        groupIdMap.set(oldGroupId, newGid)
       }
     })
 
     clipboardItems.forEach((item) => {
       const newId = generateUUID()
-      const newInstanceId = nextInstanceId++
+
+      // 3. 使用带缓存上下文的方法获取 InstanceID
+      const newInstanceId = getNextInstanceId(usedInstanceIds)
+      // 立即标记为已使用，供下一次迭代判断
+      usedInstanceIds.add(newInstanceId)
+
       newIds.push(newId)
 
       const newX = item.x + offsetX

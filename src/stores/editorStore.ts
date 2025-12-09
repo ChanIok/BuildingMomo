@@ -87,16 +87,19 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
-  // 获取下一个唯一的 InstanceID（自增策略）
-  function getNextInstanceId(): number {
+  // 获取下一个唯一的 InstanceID（填补空缺策略，支持批量操作优化）
+  // existingIds: 可选的已存在ID集合，用于批量操作时避免重复构建 Set
+  function getNextInstanceId(existingIds?: Set<number>): number {
     const list = activeScheme.value?.items.value ?? []
-    if (list.length === 0) return 1
-    // 简单遍历查找最大值
-    let max = 0
-    for (const item of list) {
-      if (item.instanceId > max) max = item.instanceId
+
+    // 如果没有传入 existingIds，则构建当前所有已使用的 ID 集合
+    const usedIds = existingIds ?? new Set(list.map((item) => item.instanceId))
+
+    let id = 10000
+    while (usedIds.has(id)) {
+      id++
     }
-    return max + 1
+    return id
   }
 
   // ========== 方案管理 ==========

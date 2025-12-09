@@ -9,6 +9,8 @@ export interface ThreeTooltipData {
   name: string
   icon: string
   position: { x: number; y: number } // 相对于 three 容器的屏幕坐标
+  gameId: number
+  instanceId: number
 }
 
 interface ThreeTooltipSources {
@@ -138,6 +140,8 @@ export function useThreeTooltip(
       name,
       icon: furnitureInfo ? gameDataStore.getIconUrl(item.gameId) : '',
       position: { x, y },
+      gameId: item.gameId,
+      instanceId: item.instanceId,
     }
 
     tooltipVisible.value = true
