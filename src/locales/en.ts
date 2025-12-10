@@ -208,7 +208,14 @@ export const enLocale = {
     title: 'Settings',
     description: 'Configure display options and editor settings',
     language: 'Language',
-    languageHint: 'Switch interface language, reloads UI text and documentation',
+    languageHint: 'Switch interface language',
+    theme: {
+      label: 'Theme',
+      hint: 'Switch between light and dark mode',
+      light: 'Light',
+      dark: 'Dark',
+      auto: 'System',
+    },
     furnitureTooltip: {
       label: 'Furniture Tooltips',
       hint: 'Show name and icon when hovering over items',

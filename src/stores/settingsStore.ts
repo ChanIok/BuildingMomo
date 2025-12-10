@@ -6,6 +6,7 @@ import type { Locale } from '../composables/useI18n'
 // 应用设置接口
 export interface AppSettings {
   // 显示设置
+  theme: 'light' | 'dark' | 'auto'
   showFurnitureTooltip: boolean
   showBackground: boolean
 
@@ -28,6 +29,7 @@ export interface AppSettings {
 
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'auto',
   showFurnitureTooltip: true,
   showBackground: true,
   autoUpdateFurniture: true,

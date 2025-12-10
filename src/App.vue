@@ -28,6 +28,25 @@ const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorksp
 import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
 
+// 这里的逻辑负责应用主题
+import { watch } from 'vue'
+
+const applyTheme = () => {
+  const theme = settingsStore.settings.theme
+  const root = document.documentElement
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+  root.classList.toggle('dark', isDark)
+}
+
+// 监听设置变化
+watch(() => settingsStore.settings.theme, applyTheme, { immediate: true })
+
+// 监听系统主题变化
+const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+mediaQuery.addEventListener('change', applyTheme)
+
 // 全局快捷键系统（单例）
 useKeyboardShortcuts({
   commands: commandStore.commands,
@@ -65,14 +84,14 @@ onMounted(async () => {
 
 <template>
   <TooltipProvider>
-    <div class="flex h-screen flex-col overflow-hidden bg-gray-50">
+    <div class="flex h-screen flex-col overflow-hidden bg-accent">
       <!-- 顶部工具栏 -->
       <Toolbar />
 
       <!-- 主体内容区 -->
       <div class="min-h-0 flex-1 p-2">
         <div
-          class="flex h-full flex-1 overflow-hidden rounded-md border border-gray-200 bg-background shadow"
+          class="flex h-full flex-1 overflow-hidden rounded-md border border-border bg-background shadow"
         >
           <!-- 画布区域 -->
           <div class="relative flex min-w-0 flex-1 flex-col">

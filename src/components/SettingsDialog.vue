@@ -74,6 +74,24 @@ function handleLanguageChange(newLocale: Locale) {
             </SelectContent>
           </Select>
         </div>
+
+        <!-- 主题选择 -->
+        <div class="flex items-center justify-between">
+          <div class="space-y-0.5">
+            <Label>{{ t('settings.theme.label') }}</Label>
+            <p class="text-xs text-muted-foreground">{{ t('settings.theme.hint') }}</p>
+          </div>
+          <Select v-model="settingsStore.settings.theme">
+            <SelectTrigger class="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="light">{{ t('settings.theme.light') }}</SelectItem>
+              <SelectItem value="dark">{{ t('settings.theme.dark') }}</SelectItem>
+              <SelectItem value="auto">{{ t('settings.theme.auto') }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <!-- 家具Tooltip开关 -->
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">

@@ -206,7 +206,14 @@ export const zhLocale = {
     title: '设置',
     description: '配置应用的显示选项和编辑设置',
     language: '语言',
-    languageHint: '切换界面语言，重载 UI 文案与文档',
+    languageHint: '切换界面语言',
+    theme: {
+      label: '外观主题',
+      hint: '切换应用的深色/浅色模式',
+      light: '浅色',
+      dark: '深色',
+      auto: '跟随系统',
+    },
     furnitureTooltip: {
       label: '家具名称提示',
       hint: '鼠标悬停在物品上时显示名称和图标',
