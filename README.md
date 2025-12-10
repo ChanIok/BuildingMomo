@@ -41,7 +41,9 @@ BuildingMomo（搬砖吧大喵）
 
 ### 🌐 在线使用
 
-访问 [Github Pages](https://chaniok.github.io/BuildingMomo) 即可开始使用。
+- [Cloudflare Pages](https://infinitymomo.com)
+- [Vercel](https://building.infinitymomo.com)
+- [Github Pages](https://chaniok.github.io/BuildingMomo)
 
 ### 💻 本地运行
 

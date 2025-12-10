@@ -19,9 +19,8 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'logo.png'],
         workbox: {
-          globPatterns: ['index.html', 'favicon.ico', 'logo.png'],
+          globPatterns: ['index.html'],
           // 运行时缓存：访问时才缓存
           runtimeCaching: [
             {

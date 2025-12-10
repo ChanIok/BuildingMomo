@@ -13,6 +13,7 @@ import {
 } from 'lucide-vue-next'
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import ScrollArea from '@/components/ui/scroll-area/ScrollArea.vue'
+import spinningLogo from '@/assets/spinning-logo.png'
 
 const commandStore = useCommandStore()
 const tabStore = useTabStore()
@@ -164,12 +165,12 @@ function openQuickStart() {
           </a>
           <span class="text-gray-300">·</span>
           <a
-            href="https://chaniok.github.io/SpinningMomo/"
+            href="https://spinning.infinitymomo.com/"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors hover:text-blue-600"
           >
-            <img src="https://chaniok.github.io/SpinningMomo/logo.png" class="h-4 w-4" />
+            <img :src="spinningLogo" class="h-4 w-4" />
             <span>{{ t('welcome.spinningMomo') }}</span>
             <ExternalLink :size="14" class="hidden md:inline" />
           </a>

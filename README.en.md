@@ -41,7 +41,9 @@ Designed for players with special building needs (complex building group adjustm
 
 ### 🌐 Online Editor
 
-Visit [Github Pages](https://chaniok.github.io/BuildingMomo) to start using it immediately.
+- [Cloudflare Pages](https://infinitymomo.com)
+- [Vercel](https://building.infinitymomo.com)
+- [Github Pages](https://chaniok.github.io/BuildingMomo)
 
 ### 💻 Local Development
 
