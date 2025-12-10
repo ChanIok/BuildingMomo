@@ -351,7 +351,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-10 items-center gap-2 px-2 pt-2">
+  <div
+    class="flex h-10 items-center gap-2 bg-header px-2 pt-2 text-header-foreground"
+    style="--accent: var(--header-accent); --accent-foreground: var(--header-accent-foreground)"
+  >
     <!-- 左侧：Menubar 菜单栏 -->
     <Menubar class="flex-none border-none bg-transparent shadow-none">
       <!-- 文件菜单 -->
@@ -469,11 +472,11 @@ onMounted(() => {
               <button
                 :data-tab-active="tabStore.activeTabId === tab.id"
                 @click="switchTab(tab.id)"
-                class="group relative my-2 flex flex-none items-center gap-3 rounded-sm border py-1 pr-2 pl-3 text-sm font-medium shadow-sm transition-all focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
+                class="group relative my-2 flex flex-none items-center gap-3 rounded-sm border py-1 pr-2 pl-3 text-sm font-medium shadow-sm transition-all"
                 :class="
                   tabStore.activeTabId === tab.id
                     ? 'border-border bg-background text-foreground'
-                    : 'border-border/60 bg-secondary text-muted-foreground hover:border-border hover:bg-secondary/80'
+                    : 'border-border/60 bg-secondary/40 text-muted-foreground hover:border-border hover:bg-secondary/80'
                 "
               >
                 <!-- 文档标签图标 -->

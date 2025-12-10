@@ -84,7 +84,7 @@ onMounted(async () => {
 
 <template>
   <TooltipProvider>
-    <div class="flex h-screen flex-col overflow-hidden bg-accent">
+    <div class="flex h-screen flex-col overflow-hidden bg-panel">
       <!-- 顶部工具栏 -->
       <Toolbar />
 

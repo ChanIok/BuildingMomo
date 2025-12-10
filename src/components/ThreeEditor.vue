@@ -15,7 +15,13 @@ import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useI18n } from '@/composables/useI18n'
-import { useThrottleFn, useMagicKeys, useElementSize, useResizeObserver } from '@vueuse/core'
+import {
+  useThrottleFn,
+  useMagicKeys,
+  useElementSize,
+  useResizeObserver,
+  usePreferredDark,
+} from '@vueuse/core'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
 import {
@@ -65,6 +71,29 @@ const orbitControlsRef = ref<any | null>(null)
 const transformRef = ref()
 const axesRef = ref()
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
+
+// 动态计算背景颜色
+const isPreferredDark = usePreferredDark()
+const canvasClearColor = computed(() => {
+  const theme = settingsStore.settings.theme
+  const isDark = theme === 'dark' || (theme === 'auto' && isPreferredDark.value)
+  // 使用与 bg-sidebar 一致的颜色
+  return isDark ? '#1F1F1F' : '#FFFFFF'
+})
+
+// 动态计算地图材质颜色（暗色模式下保留90%亮度）
+const mapColor = computed(() => {
+  const theme = settingsStore.settings.theme
+  const isDark = theme === 'dark' || (theme === 'auto' && isPreferredDark.value)
+  return isDark ? 0xe6e6e6 : 0xffffff
+})
+
+// 动态计算网格线颜色
+const gridColor = computed(() => {
+  const theme = settingsStore.settings.theme
+  const isDark = theme === 'dark' || (theme === 'auto' && isPreferredDark.value)
+  return isDark ? '#a3a3a3' : '#cccccc'
+})
 
 // 监听按键状态
 const { Ctrl, Space } = useMagicKeys()
@@ -574,7 +603,7 @@ onDeactivated(() => {
 </script>
 
 <template>
-  <div class="absolute inset-0 bg-gray-100">
+  <div class="absolute inset-0 bg-background">
     <!-- 右键菜单 -->
     <DropdownMenu v-model:open="contextMenuOpen" :modal="false">
       <!-- 虚拟触发器：不可见但存在于 DOM 中，动态定位到鼠标位置 -->
@@ -653,7 +682,7 @@ onDeactivated(() => {
       @contextmenu="handleContextMenu"
       @wheel="handleContainerWheel"
     >
-      <TresCanvas clear-color="#f3f4f6">
+      <TresCanvas :clear-color="canvasClearColor">
         <!-- 透视相机 - perspective 视图 -->
         <TresPerspectiveCamera
           v-if="!isOrthographic"
@@ -715,6 +744,7 @@ onDeactivated(() => {
             <TresPlaneGeometry :args="[backgroundSize.width, backgroundSize.height]" />
             <TresMeshBasicMaterial
               :map="backgroundTexture"
+              :color="mapColor"
               :tone-mapped="false"
               :side="2"
               :depth-write="!isMapDepthDisabled"
@@ -748,8 +778,8 @@ onDeactivated(() => {
               :args="[backgroundSize.width, backgroundSize.height]"
               :cell-size="1000"
               :section-size="1000"
-              :cell-color="'#cccccc'"
-              :section-color="'#cccccc'"
+              :cell-color="gridColor"
+              :section-color="gridColor"
               :fade-distance="50000"
               :fade-strength="0.5"
               :infinite-grid="false"
@@ -826,7 +856,7 @@ onDeactivated(() => {
           </div>
           <div
             v-if="isDev"
-            class="ml-1 flex flex-col border-l pl-2 font-mono text-[12px] leading-tight text-gray-400"
+            class="ml-1 flex flex-col border-l pl-2 font-mono text-[12px] leading-tight text-muted-foreground"
           >
             <span>ID: {{ tooltipData.gameId }}</span>
             <span>INS: {{ tooltipData.instanceId }}</span>
@@ -850,7 +880,7 @@ onDeactivated(() => {
                   : t('editor.viewMode.perspective')
             }}
           </div>
-          <div class="mt-1 text-[10px] text-gray-500">
+          <div class="mt-1 text-[10px] text-muted-foreground">
             <template v-if="isOrthographic"> {{ t('editor.controls.ortho') }} </template>
             <template v-else-if="controlMode === 'orbit'">
               {{ t('editor.controls.orbit') }}
@@ -878,9 +908,11 @@ onDeactivated(() => {
                     : t('editor.sizeControl.icon')
                 }}
               </ItemTitle>
-              <span class="text-[10px] text-gray-500">{{ t('editor.sizeControl.shortcut') }}</span>
+              <span class="text-[10px] text-muted-foreground">{{
+                t('editor.sizeControl.shortcut')
+              }}</span>
             </div>
-            <span class="w-8 text-right text-xs text-gray-500"
+            <span class="w-8 text-right text-xs text-muted-foreground"
               >{{ Math.round(settingsStore.settings.threeSymbolScale * 100) }}%</span
             >
           </div>
@@ -893,22 +925,23 @@ onDeactivated(() => {
     <div v-if="isDev" class="absolute bottom-32 left-4">
       <button
         @click="showCameraDebug = !showCameraDebug"
-        class="rounded bg-gray-800/80 px-2 py-1 text-xs text-white hover:bg-gray-700/80"
+        class="rounded border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground shadow-sm hover:bg-secondary/80"
       >
         {{ showCameraDebug ? t('editor.debug.hide') : t('editor.debug.show') }}
       </button>
       <div
         v-if="showCameraDebug"
-        class="mt-2 max-h-96 overflow-y-auto rounded bg-gray-900/90 px-3 py-2 font-mono text-xs text-green-400 shadow-lg"
+        class="mt-2 max-h-96 overflow-y-auto rounded border border-border bg-card/95 px-3 py-2 font-mono text-xs text-card-foreground shadow-xl backdrop-blur-sm"
         style="max-width: 350px"
       >
-        <div class="mb-1 font-bold text-green-300">{{ t('editor.debug.title') }}</div>
+        <div class="mb-1 font-bold text-primary">{{ t('editor.debug.title') }}</div>
         <div class="space-y-0.5">
           <div>
-            <span class="text-gray-400">{{ t('editor.debug.mode') }}:</span> {{ controlMode }}
+            <span class="text-muted-foreground">{{ t('editor.debug.mode') }}:</span>
+            {{ controlMode }}
           </div>
           <div>
-            <span class="text-gray-400">{{ t('editor.debug.view') }}:</span>
+            <span class="text-muted-foreground">{{ t('editor.debug.view') }}:</span>
             {{
               !isOrthographic
                 ? t('editor.viewMode.perspective')
@@ -916,39 +949,39 @@ onDeactivated(() => {
             }}
           </div>
           <div>
-            <span class="text-gray-400">{{ t('editor.debug.projection') }}:</span>
+            <span class="text-muted-foreground">{{ t('editor.debug.projection') }}:</span>
             {{
               isOrthographic ? t('editor.viewMode.orthographic') : t('editor.viewMode.perspective')
             }}
           </div>
-          <div class="mt-1 text-gray-400">{{ t('editor.debug.position') }}:</div>
+          <div class="mt-1 text-muted-foreground">{{ t('editor.debug.position') }}:</div>
           <div class="pl-2">
             X: {{ cameraPosition[0].toFixed(1) }}<br />
             Y: {{ cameraPosition[1].toFixed(1) }}<br />
             Z: {{ cameraPosition[2].toFixed(1) }}
           </div>
-          <div class="mt-1 text-gray-400">{{ t('editor.debug.target') }}:</div>
+          <div class="mt-1 text-muted-foreground">{{ t('editor.debug.target') }}:</div>
           <div class="pl-2">
             X: {{ cameraLookAt[0].toFixed(1) }}<br />
             Y: {{ cameraLookAt[1].toFixed(1) }}<br />
             Z: {{ cameraLookAt[2].toFixed(1) }}
           </div>
-          <div class="mt-1 text-gray-400">{{ t('editor.debug.orbitCenter') }}:</div>
+          <div class="mt-1 text-muted-foreground">{{ t('editor.debug.orbitCenter') }}:</div>
           <div class="pl-2">
             X: {{ orbitTarget[0].toFixed(1) }}<br />
             Y: {{ orbitTarget[1].toFixed(1) }}<br />
             Z: {{ orbitTarget[2].toFixed(1) }}
           </div>
           <div class="mt-1">
-            <span class="text-gray-400">{{ t('editor.debug.viewFocused') }}:</span>
+            <span class="text-muted-foreground">{{ t('editor.debug.viewFocused') }}:</span>
             {{ isViewFocused ? t('editor.debug.yes') : t('editor.debug.no') }}
           </div>
           <div>
-            <span class="text-gray-400">{{ t('editor.debug.navKey') }}:</span>
+            <span class="text-muted-foreground">{{ t('editor.debug.navKey') }}:</span>
             {{ isNavKeyPressed ? t('editor.debug.active') : t('editor.debug.inactive') }}
           </div>
           <div>
-            <span class="text-gray-400">{{ t('editor.debug.zoom') }}:</span>
+            <span class="text-muted-foreground">{{ t('editor.debug.zoom') }}:</span>
             {{ cameraZoom.toFixed(2) }}
           </div>
         </div>

@@ -245,13 +245,15 @@ const fmt = (n: number) => Math.round(n * 100) / 100
     <div class="flex flex-col items-stretch gap-3">
       <!-- 位置 -->
       <div class="flex flex-col items-stretch gap-2">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-y-2">
           <div class="flex items-center gap-1">
-            <label class="text-xs font-bold text-gray-700">{{ t('transform.position') }}</label>
+            <label class="text-xs font-bold text-sidebar-foreground">{{
+              t('transform.position')
+            }}</label>
             <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
               <Tooltip :delay-duration="300">
                 <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] font-medium text-blue-600">{{
+                  <span class="cursor-help text-[10px] font-medium text-primary">{{
                     t('transform.workingCoord')
                   }}</span>
                 </TooltipTrigger>
@@ -271,13 +273,13 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <TabsList class="h-6 p-0.5">
               <TabsTrigger
                 value="absolute"
-                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 {{ t('transform.absolute') }}
               </TabsTrigger>
               <TabsTrigger
                 value="relative"
-                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 {{ t('transform.relative') }}
               </TabsTrigger>
@@ -286,9 +288,10 @@ const fmt = (n: number) => Math.round(n * 100) / 100
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div
-            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
-            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none"
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
               >X</span
             >
             <input
@@ -302,13 +305,14 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               "
               @change="(e) => updatePosition('x', Number((e.target as HTMLInputElement).value))"
               :placeholder="isPositionRelative ? '0' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
           <div
-            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
-            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none"
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
               >Y</span
             >
             <input
@@ -322,13 +326,14 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               "
               @change="(e) => updatePosition('y', Number((e.target as HTMLInputElement).value))"
               :placeholder="isPositionRelative ? '0' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
           <div
-            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
-            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none"
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
               >Z</span
             >
             <input
@@ -342,20 +347,22 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               "
               @change="(e) => updatePosition('z', Number((e.target as HTMLInputElement).value))"
               :placeholder="isPositionRelative ? '0' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
         </div>
       </div>
       <!-- 旋转 -->
       <div class="flex flex-col items-stretch gap-2">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-y-2">
           <div class="flex items-center gap-1">
-            <label class="text-xs font-bold text-gray-700">{{ t('transform.rotation') }}</label>
+            <label class="text-xs font-bold text-sidebar-foreground">{{
+              t('transform.rotation')
+            }}</label>
             <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
               <Tooltip :delay-duration="300">
                 <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] font-medium text-blue-600">{{
+                  <span class="cursor-help text-[10px] font-medium text-primary">{{
                     t('transform.correction')
                   }}</span>
                 </TooltipTrigger>
@@ -376,13 +383,13 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               <TabsTrigger
                 value="absolute"
                 :disabled="selectionInfo?.count > 1"
-                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 {{ t('transform.absolute') }}
               </TabsTrigger>
               <TabsTrigger
                 value="relative"
-                class="h-full px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 {{ t('transform.relative') }}
               </TabsTrigger>
@@ -392,9 +399,10 @@ const fmt = (n: number) => Math.round(n * 100) / 100
         <div class="grid grid-cols-2 gap-2">
           <!-- Roll (X) -->
           <div
-            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
-            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none"
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
               >X</span
             >
             <input
@@ -407,15 +415,16 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   : fmt(selectionInfo.rotation.x)
               "
               @change="(e) => updateRotation('x', Number((e.target as HTMLInputElement).value))"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               :placeholder="rotationMode === 'relative' ? '0' : ''"
             />
           </div>
           <!-- Pitch (Y) -->
           <div
-            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
-            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none"
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
               >Y</span
             >
             <input
@@ -428,15 +437,16 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   : fmt(selectionInfo.rotation.y)
               "
               @change="(e) => updateRotation('y', Number((e.target as HTMLInputElement).value))"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               :placeholder="rotationMode === 'relative' ? '0' : ''"
             />
           </div>
           <!-- Yaw (Z) -->
           <div
-            class="group relative flex items-center rounded-md bg-gray-50 px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-white focus-within:ring-blue-500 hover:bg-gray-100"
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
-            <span class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none"
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
               >Z</span
             >
             <input
@@ -449,7 +459,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   : fmt(selectionInfo.rotation.z)
               "
               @change="(e) => updateRotation('z', Number((e.target as HTMLInputElement).value))"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-gray-700 outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs font-medium text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               :placeholder="rotationMode === 'relative' ? '0' : ''"
             />
           </div>
@@ -458,14 +468,17 @@ const fmt = (n: number) => Math.round(n * 100) / 100
     </div>
 
     <!-- 多选范围 -->
-    <div v-if="selectionInfo.bounds" class="mt-3 flex flex-col gap-3 border-t border-gray-100 pt-3">
+    <div
+      v-if="selectionInfo.bounds"
+      class="mt-3 flex flex-col gap-3 border-t border-sidebar-border pt-3"
+    >
       <div class="flex flex-col gap-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-medium text-gray-500">{{ t('transform.range') }}</span>
+          <span class="text-xs font-medium text-muted-foreground">{{ t('transform.range') }}</span>
           <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
             <Tooltip :delay-duration="300">
               <TooltipTrigger as-child>
-                <span class="cursor-help text-[10px] font-medium text-blue-600">{{
+                <span class="cursor-help text-[10px] font-medium text-primary">{{
                   t('transform.workingCoord')
                 }}</span>
               </TooltipTrigger>
@@ -484,7 +497,9 @@ const fmt = (n: number) => Math.round(n * 100) / 100
 
         <!-- X Axis -->
         <div class="flex items-center gap-2">
-          <span class="w-3 text-[10px] font-bold text-red-500 select-none">X</span>
+          <span class="w-3 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
+            >X</span
+          >
           <div class="flex flex-1 items-center gap-2">
             <input
               type="number"
@@ -492,23 +507,25 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               @change="
                 (e) => updateBounds('x', 'min', Number((e.target as HTMLInputElement).value))
               "
-              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs font-medium text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
-            <span class="text-[10px] text-gray-400">~</span>
+            <span class="text-[10px] text-muted-foreground">~</span>
             <input
               type="number"
               :value="fmt(selectionInfo.bounds.max.x)"
               @change="
                 (e) => updateBounds('x', 'max', Number((e.target as HTMLInputElement).value))
               "
-              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs font-medium text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
         </div>
 
         <!-- Y Axis -->
         <div class="flex items-center gap-2">
-          <span class="w-3 text-[10px] font-bold text-green-500 select-none">Y</span>
+          <span class="w-3 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
+            >Y</span
+          >
           <div class="flex flex-1 items-center gap-2">
             <input
               type="number"
@@ -516,23 +533,25 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               @change="
                 (e) => updateBounds('y', 'min', Number((e.target as HTMLInputElement).value))
               "
-              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs font-medium text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
-            <span class="text-[10px] text-gray-400">~</span>
+            <span class="text-[10px] text-muted-foreground">~</span>
             <input
               type="number"
               :value="fmt(selectionInfo.bounds.max.y)"
               @change="
                 (e) => updateBounds('y', 'max', Number((e.target as HTMLInputElement).value))
               "
-              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs font-medium text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
         </div>
 
         <!-- Z Axis -->
         <div class="flex items-center gap-2">
-          <span class="w-3 text-[10px] font-bold text-blue-500 select-none">Z</span>
+          <span class="w-3 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
+            >Z</span
+          >
           <div class="flex flex-1 items-center gap-2">
             <input
               type="number"
@@ -540,16 +559,16 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               @change="
                 (e) => updateBounds('z', 'min', Number((e.target as HTMLInputElement).value))
               "
-              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs font-medium text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
-            <span class="text-[10px] text-gray-400">~</span>
+            <span class="text-[10px] text-muted-foreground">~</span>
             <input
               type="number"
               :value="fmt(selectionInfo.bounds.max.z)"
               @change="
                 (e) => updateBounds('z', 'max', Number((e.target as HTMLInputElement).value))
               "
-              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-gray-50 px-2 py-1 text-right text-xs font-medium text-gray-700 ring-1 ring-transparent transition-all outline-none hover:bg-gray-100 focus:bg-white focus:ring-blue-500 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              class="w-full min-w-0 flex-1 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs font-medium text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
         </div>

@@ -15,7 +15,9 @@ const currentView = ref<'structure' | 'transform'>('structure')
 </script>
 
 <template>
-  <div class="flex h-full w-64 flex-col border-x">
+  <div
+    class="flex h-full w-64 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
+  >
     <!-- 顶部工具栏 -->
     <SidebarHeader />
 
@@ -53,7 +55,7 @@ const currentView = ref<'structure' | 'transform'>('structure')
         <!-- 全局提示信息 -->
         <div
           v-if="(editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0"
-          class="pt-10 text-center text-xs text-gray-500"
+          class="pt-10 text-center text-xs text-muted-foreground"
         >
           {{ t('sidebar.noSelection') }}
         </div>

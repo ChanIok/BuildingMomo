@@ -119,12 +119,14 @@ const viewPresets = computed(() => [
 </script>
 
 <template>
-  <div class="flex flex-col gap-3 border-b border-gray-200 bg-white p-4 pr-2">
+  <div
+    class="flex flex-col gap-3 border-b border-sidebar-border bg-sidebar p-4 pr-2 text-sidebar-foreground"
+  >
     <!-- 工具栏第一行：主要工具 -->
     <div class="flex items-start justify-between">
       <!-- 左侧：选择/拖拽工具 -->
       <div class="flex flex-col items-start gap-1">
-        <span class="text-[10px] font-medium text-gray-400 select-none">{{
+        <span class="text-[10px] font-medium text-muted-foreground select-none">{{
           t('sidebar.tools.label')
         }}</span>
         <div class="flex items-center gap-0.5">
@@ -186,7 +188,7 @@ const viewPresets = computed(() => [
 
     <!-- 工具栏第二行：选择行为模式 -->
     <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-gray-400 select-none">{{
+      <span class="text-[10px] font-medium text-muted-foreground select-none">{{
         t('sidebar.selectionMode.label')
       }}</span>
       <div class="flex items-center gap-0.5">
@@ -208,7 +210,7 @@ const viewPresets = computed(() => [
 
     <!-- 工具栏第三行：显示模式 -->
     <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-gray-400 select-none">{{
+      <span class="text-[10px] font-medium text-muted-foreground select-none">{{
         t('sidebar.displayMode.label')
       }}</span>
       <div class="flex items-center gap-0.25">
@@ -230,7 +232,9 @@ const viewPresets = computed(() => [
 
     <!-- 工具栏第四行：视图控制 -->
     <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-gray-400 select-none">{{ t('menu.view') }}</span>
+      <span class="text-[10px] font-medium text-muted-foreground select-none">{{
+        t('menu.view')
+      }}</span>
       <div class="flex w-full items-center justify-between">
         <SidebarToggleItem
           :model-value="viewPreset === 'perspective'"
@@ -244,7 +248,7 @@ const viewPresets = computed(() => [
           <Camera class="h-4 w-4" />
         </SidebarToggleItem>
 
-        <div class="mx-0.5 h-4 w-px bg-gray-200"></div>
+        <div class="mx-0.5 h-4 w-px bg-sidebar-border"></div>
 
         <SidebarToggleItem
           v-for="view in viewPresets"

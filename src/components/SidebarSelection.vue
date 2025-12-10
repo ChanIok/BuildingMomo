@@ -170,12 +170,13 @@ watch(
 
 // 计算组信息文本标签
 const groupBadgeText = computed(() => {
-  if (!selectedGroupInfo.value) return null
+  const info = selectedGroupInfo.value
+  if (!info) return null
 
-  if (selectedGroupInfo.value.type === 'single') {
-    return t('sidebar.groupSingle', { id: selectedGroupInfo.value.groupId ?? 0 })
-  } else if (selectedGroupInfo.value.type === 'multiple') {
-    return t('sidebar.groupMultiple', { count: selectedGroupInfo.value.groupCount ?? 0 })
+  if (info.type === 'single') {
+    return t('sidebar.groupMultiple', { count: 1 })
+  } else if (info.type === 'multiple') {
+    return t('sidebar.groupMultiple', { count: info.groupCount ?? 0 })
   }
   return null
 })
@@ -194,7 +195,7 @@ function handleIconError(e: Event) {
     <div class="flex shrink-0 items-center justify-between pr-2">
       <div class="flex items-center gap-2">
         <h2 class="text-sm font-semibold">{{ t('sidebar.selectionList') }}</h2>
-        <span class="font-semibold text-blue-500">{{
+        <span class="font-semibold text-blue-500 dark:text-blue-400/90">{{
           editorStore.activeScheme?.selectedItemIds.value.size ?? 0
         }}</span>
       </div>
@@ -203,11 +204,9 @@ function handleIconError(e: Event) {
         <span
           :class="[
             'rounded-full px-2 py-0.5 text-xs font-medium',
-            selectedGroupInfo?.type === 'single'
-              ? 'bg-purple-100 text-purple-700'
-              : selectedGroupInfo?.type === 'multiple'
-                ? 'bg-orange-100 text-orange-700'
-                : 'bg-gray-100 text-gray-600',
+            selectedGroupInfo?.type === 'single' || selectedGroupInfo?.type === 'multiple'
+              ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
+              : 'bg-gray-100 text-gray-600 dark:bg-secondary dark:text-muted-foreground',
           ]"
         >
           {{ groupBadgeText }}
@@ -232,17 +231,17 @@ function handleIconError(e: Event) {
                 class="h-full w-full object-contain transition-transform hover:scale-105"
                 @error="handleIconError"
               />
-              <div v-else class="text-sm text-gray-400">{{ t('sidebar.noIcon') }}</div>
+              <div v-else class="text-sm text-muted-foreground">{{ t('sidebar.noIcon') }}</div>
             </div>
 
             <!-- 物品信息 -->
             <div class="space-y-2">
-              <div class="font-medium text-gray-900">
+              <div class="font-medium text-foreground">
                 {{ selectedItemDetails.name }}
               </div>
               <div
                 v-if="selectedItemDetails.dimensions"
-                class="flex items-center gap-1 text-xs text-gray-500"
+                class="flex items-center gap-1 text-xs text-muted-foreground"
               >
                 <Ruler class="mr-1 h-3 w-3" />
                 {{ selectedItemDetails.dimensions }}
@@ -257,26 +256,24 @@ function handleIconError(e: Event) {
             v-for="item in visibleItems"
             :key="item.itemId"
             variant="muted"
-            class="gap-2 bg-gray-50 p-2"
+            class="gap-2 bg-muted/50 p-2"
           >
-            <ItemMedia
-              v-if="item.icon"
-              variant="image"
-              class="size-8 rounded border border-gray-200"
-            >
+            <ItemMedia v-if="item.icon" variant="image" class="size-8 rounded border border-border">
               <img :src="item.icon" :alt="item.name" @error="handleIconError" />
             </ItemMedia>
             <ItemMedia
               v-else
-              class="flex size-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-white text-xs text-gray-400"
+              class="flex size-8 shrink-0 items-center justify-center rounded border border-border bg-card text-xs text-muted-foreground"
             >
               ?
             </ItemMedia>
             <ItemContent>
-              <ItemTitle class="text-sm font-medium text-gray-800">{{ item.name }}</ItemTitle>
+              <ItemTitle class="text-sm font-medium text-foreground">{{ item.name }}</ItemTitle>
             </ItemContent>
             <ItemActions>
-              <span class="text-sm font-semibold text-blue-500">×{{ item.count }}</span>
+              <span class="text-sm font-semibold text-blue-500 dark:text-blue-400/90"
+                >×{{ item.count }}</span
+              >
             </ItemActions>
           </Item>
         </div>

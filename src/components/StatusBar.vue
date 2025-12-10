@@ -136,20 +136,20 @@ const handleDuplicateClick = () => {
 </script>
 
 <template>
-  <div class="h-6">
+  <div class="h-6 bg-statusbar text-statusbar-foreground">
     <div
       class="flex h-full items-center justify-between gap-4 px-3 pb-2 text-sm"
       v-if="schemeCount > 0"
     >
       <!-- 左: 方案信息 -->
-      <div class="flex min-w-0 items-center gap-2 text-gray-600">
-        <span v-if="schemeCount > 1" class="shrink-0 text-xs text-gray-400">
+      <div class="flex min-w-0 items-center gap-2 text-muted-foreground">
+        <span v-if="schemeCount > 1" class="shrink-0 text-xs text-muted-foreground">
           [{{ currentIndex }}/{{ schemeCount }}]
         </span>
         <Tooltip>
           <TooltipTrigger as-child @mouseenter="isFileNameTooltipAllowed = true">
             <span
-              class="shrink-0 cursor-pointer truncate rounded px-1.5 py-0.5 text-xs text-gray-800 transition-colors hover:bg-gray-200"
+              class="shrink-0 cursor-pointer truncate rounded px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-accent"
               @click="handleFileNameClick"
             >
               {{ fileName }}
@@ -161,7 +161,7 @@ const handleDuplicateClick = () => {
         </Tooltip>
         <Tooltip v-if="shortTime">
           <TooltipTrigger as-child>
-            <span class="shrink-0 text-xs text-gray-400"> • {{ shortTime }} </span>
+            <span class="shrink-0 text-xs text-muted-foreground"> • {{ shortTime }} </span>
           </TooltipTrigger>
           <TooltipContent>
             {{ fullTimeTooltip }}
@@ -175,7 +175,7 @@ const handleDuplicateClick = () => {
         <Tooltip v-if="limitIssues.outOfBoundsItemIds.length > 0">
           <TooltipTrigger as-child>
             <div
-              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-50"
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-500/90"
               @click="selectOutOfBoundsItems()"
             >
               <AlertTriangle :size="14" />
@@ -201,7 +201,7 @@ const handleDuplicateClick = () => {
         <Tooltip v-if="limitIssues.oversizedGroups.length > 0">
           <TooltipTrigger as-child>
             <div
-              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-orange-600 transition-colors hover:bg-orange-50"
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-orange-600 transition-colors hover:bg-orange-500/10 dark:text-orange-500/90"
               @click="selectOversizedGroupItems()"
             >
               <Layers :size="14" />
@@ -227,7 +227,7 @@ const handleDuplicateClick = () => {
         <Tooltip v-if="duplicateDetectionEnabled && hasDuplicate">
           <TooltipTrigger as-child>
             <div
-              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-amber-600 transition-colors hover:bg-amber-50"
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-amber-600 transition-colors hover:bg-amber-500/10 dark:text-amber-500/90"
               @click="handleDuplicateClick"
             >
               <Copy :size="14" />
@@ -245,7 +245,7 @@ const handleDuplicateClick = () => {
         <Tooltip v-if="isRenderLimitExceeded">
           <TooltipTrigger as-child>
             <div
-              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-50"
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-destructive transition-colors hover:bg-destructive/10"
             >
               <EyeOff :size="14" />
               <span class="text-xs">{{ t('status.render.limited') }}</span>
@@ -261,21 +261,23 @@ const handleDuplicateClick = () => {
         </Tooltip>
 
         <!-- 统计信息 -->
-        <div class="flex shrink-0 items-center gap-3 text-gray-600">
+        <div class="flex shrink-0 items-center gap-3 text-muted-foreground">
           <span class="text-xs">{{
             t('status.stats.total').replace('{count}', String(stats.total))
           }}</span>
-          <span class="text-gray-300">|</span>
+          <span class="text-border">|</span>
           <span
             class="text-xs"
-            :class="stats.selected > 0 ? 'font-semibold text-blue-500' : 'text-gray-400'"
+            :class="
+              stats.selected > 0 ? 'text-blue-500 dark:text-blue-400/90' : 'text-muted-foreground'
+            "
           >
             {{ t('status.stats.selected').replace('{count}', String(stats.selected)) }}
           </span>
         </div>
 
         <!-- 组信息 -->
-        <div class="flex shrink-0 items-center gap-1 text-purple-600">
+        <div class="flex shrink-0 items-center gap-1 text-purple-600 dark:text-purple-400">
           <span class="text-xs">{{
             t('status.stats.groups').replace('{count}', String(stats.groupsCount))
           }}</span>
@@ -285,8 +287,12 @@ const handleDuplicateClick = () => {
         <Tooltip>
           <TooltipTrigger as-child @mouseenter="isCoordinateTooltipAllowed = true">
             <div
-              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-gray-100"
-              :class="coordinateSystem.enabled ? 'font-medium text-orange-600' : 'text-gray-400'"
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-accent"
+              :class="
+                coordinateSystem.enabled
+                  ? 'font-medium text-orange-600 dark:text-orange-400/90'
+                  : 'text-muted-foreground'
+              "
               @click="handleCoordinateClick"
             >
               <span>⟲</span>
