@@ -134,6 +134,19 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 切换选择工具')
         editorStore.currentTool = 'select'
+        editorStore.selectionMode = 'box'
+      },
+    },
+    {
+      id: 'tool.lasso',
+      label: t('command.tool.lasso'),
+      shortcut: 'L',
+      category: 'tool',
+      enabled: () => true,
+      execute: () => {
+        console.log('[Command] 切换套索工具')
+        editorStore.currentTool = 'select'
+        editorStore.selectionMode = 'lasso'
       },
     },
     {
