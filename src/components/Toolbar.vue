@@ -529,10 +529,14 @@ onMounted(() => {
     <div class="ml-auto flex flex-none items-center gap-2">
       <!-- 监控状态指示器 -->
       <div v-if="watchState.isActive" class="flex flex-none items-center gap-2">
-        <div class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5">
-          <div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
-          <span class="text-xs font-medium text-green-700">{{ t('watchMode.monitoring') }}</span>
-          <span class="text-xs text-green-600">{{ watchState.dirPath }}</span>
+        <div
+          class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 dark:bg-green-950/60"
+        >
+          <div class="h-2 w-2 animate-pulse rounded-full bg-green-500 dark:bg-green-300"></div>
+          <span class="text-xs text-green-600 dark:text-green-300">
+            {{ t('watchMode.monitoring') }}
+          </span>
+          <span class="text-xs text-green-600 dark:text-green-300">{{ watchState.dirPath }}</span>
         </div>
       </div>
 

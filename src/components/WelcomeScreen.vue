@@ -17,7 +17,20 @@ import spinningLogo from '@/assets/spinning-logo.png'
 
 const commandStore = useCommandStore()
 const tabStore = useTabStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
+
+// 仓库和文档链接
+const githubUrl = computed(() => {
+  return locale.value === 'en'
+    ? 'https://github.com/ChanIok/BuildingMomo/blob/main/README.en.md'
+    : 'https://github.com/ChanIok/BuildingMomo'
+})
+
+const spinningMomoUrl = computed(() => {
+  return locale.value === 'en'
+    ? 'https://spinning.infinitymomo.com/en/'
+    : 'https://spinning.infinitymomo.com/'
+})
 
 // 检查 File System Access API 是否支持
 const isWatchModeSupported = computed(() => commandStore.fileOps.isFileSystemAccessSupported)
@@ -162,7 +175,7 @@ function openQuickStart() {
           class="flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground md:gap-6"
         >
           <a
-            href="https://github.com/ChanIok/BuildingMomo"
+            :href="githubUrl"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors hover:text-blue-500 dark:hover:text-blue-400"
@@ -173,7 +186,7 @@ function openQuickStart() {
           </a>
           <span class="text-muted-foreground/30">·</span>
           <a
-            href="https://spinning.infinitymomo.com/"
+            :href="spinningMomoUrl"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-2 rounded-lg px-4 py-2 transition-colors hover:text-blue-500 dark:hover:text-blue-400"

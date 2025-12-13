@@ -205,7 +205,7 @@ export const zhLocale = {
   settings: {
     title: '设置',
     description: '配置应用的显示选项和编辑设置',
-    language: '语言',
+    language: '语言 / Language',
     languageHint: '切换界面语言',
     theme: {
       label: '外观主题',

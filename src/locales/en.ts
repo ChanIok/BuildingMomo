@@ -207,7 +207,7 @@ export const enLocale = {
   settings: {
     title: 'Settings',
     description: 'Configure display options and editor settings',
-    language: 'Language',
+    language: '语言 / Language',
     languageHint: 'Switch interface language',
     theme: {
       label: 'Theme',
