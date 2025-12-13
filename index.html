@@ -2,6 +2,52 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- 语言路由 (早期重定向) -->
+    <script>
+      ;(() => {
+        const LOCALE_KEY = 'buildingmomo_locale'
+
+        const safeGet = () => {
+          try {
+            return localStorage.getItem(LOCALE_KEY)
+          } catch {
+            return null
+          }
+        }
+
+        const safeSet = (val) => {
+          try {
+            localStorage.setItem(LOCALE_KEY, val)
+          } catch {
+            // ignore
+          }
+        }
+
+        const stored = safeGet() // 'zh' | 'en' | null
+
+        if (!stored && typeof window !== 'undefined' && window.__INITIAL_LANG__ === 'en') return
+
+        const inEn = /\/en(\/|$)/.test(window.location.pathname)
+
+        const here = new URL(window.location.href)
+        if (!here.pathname.endsWith('/')) here.pathname += '/'
+
+        const toEn = () => window.location.replace(new URL('en/', here).toString())
+        const toRoot = () => window.location.replace(new URL('../', here).toString())
+
+        if (stored === 'en' && !inEn) return toEn()
+        if (stored === 'zh' && inEn) return toRoot()
+
+        if (!stored && !inEn) {
+          const lang = String(navigator.language || '').toLowerCase()
+          if (lang && !lang.startsWith('zh')) {
+            safeSet('en')
+            return toEn()
+          }
+        }
+      })()
+    </script>
+
     <link rel="icon" type="image/png" sizes="192x192" href="/logo.png" />
     <link rel="alternate icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,7 +62,10 @@
     <meta name="author" content="ChanIok" />
 
     <!-- Open Graph (社交分享) -->
-    <meta property="og:title" content="搬砖吧大喵 - 无限暖暖家园方案可视化编辑工具 | BuildingMomo" />
+    <meta
+      property="og:title"
+      content="搬砖吧大喵 - 无限暖暖家园方案可视化编辑工具 | BuildingMomo"
+    />
     <meta
       property="og:description"
       content="无限暖暖家园方案可视化编辑工具。支持快速移动、复制、删除大型建筑群，在不同方案间自由合并建筑群。"

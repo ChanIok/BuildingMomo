@@ -20,9 +20,18 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'autoUpdate',
         workbox: {
-          globPatterns: ['index.html'],
+          // 禁用默认的 navigation fallback（否则 /en/ 可能会被错误回退到 /index.html）
+          navigateFallback: null,
           // 运行时缓存：访问时才缓存
           runtimeCaching: [
+            {
+              // HTML 页面导航
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'html-pages',
+              },
+            },
             {
               // JS/CSS：缓存优先（带 hash，内容不变）
               urlPattern: /\.(?:js|css)$/,

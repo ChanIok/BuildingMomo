@@ -11,30 +11,13 @@ const locales: Record<Locale, Record<string, any>> = {
   en: enLocale,
 }
 
-declare global {
-  interface Window {
-    __INITIAL_LANG__?: Locale
-  }
-}
-
 // 检测初始语言
 function getInitialLanguage(): Locale {
-  // 1. 静态注入 (构建脚本注入)
-  if (typeof window !== 'undefined' && window.__INITIAL_LANG__) {
-    return window.__INITIAL_LANG__
-  }
-
-  // 2. URL 路径检测
-  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/en')) {
+  // URL 已由 index.html 的早期重定向脚本处理，直接根据路径判断
+  if (typeof window !== 'undefined' && /\/en(\/|$)/.test(window.location.pathname)) {
     return 'en'
   }
-
-  // 3. 浏览器语言检测
-  const browserLang = navigator.language || (navigator as any).userLanguage || 'zh'
-  if (browserLang.startsWith('zh')) {
-    return 'zh'
-  }
-  return 'en'
+  return 'zh'
 }
 
 // 获取嵌套属性值的辅助函数
