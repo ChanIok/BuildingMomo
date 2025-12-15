@@ -90,8 +90,6 @@ export const enLocale = {
       move: 'Move',
     },
     view: {
-      zoomIn: 'Zoom In',
-      zoomOut: 'Zoom Out',
       fitToView: 'Frame All',
       focusSelection: 'Frame Selection',
       coordinateSystem: 'Coordinate System',

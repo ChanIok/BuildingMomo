@@ -591,13 +591,13 @@ function switchToView(preset: ViewPreset) {
 
 // 当 3D 视图激活时，注册视图函数
 onActivated(() => {
-  commandStore.setZoomFunctions(null, null, fitCameraToScene, focusOnSelection)
+  commandStore.setZoomFunctions(fitCameraToScene, focusOnSelection)
   commandStore.setViewPresetFunction(switchToView)
 })
 
 // 当 3D 视图停用时，清除函数
 onDeactivated(() => {
-  commandStore.setZoomFunctions(null, null, null, null)
+  commandStore.setZoomFunctions(null, null)
   commandStore.setViewPresetFunction(null)
 })
 </script>

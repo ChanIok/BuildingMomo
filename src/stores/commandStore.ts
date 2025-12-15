@@ -37,9 +37,7 @@ export const useCommandStore = defineStore('command', () => {
   const settingsStore = useSettingsStore()
   const { t } = useI18n()
 
-  // 缩放函数引用（需要从外部设置）
-  const zoomInFn = ref<(() => void) | null>(null)
-  const zoomOutFn = ref<(() => void) | null>(null)
+  // 视图函数引用（需要从外部设置）
   const fitToViewFn = ref<(() => void) | null>(null)
   const focusSelectionFn = ref<(() => void) | null>(null)
 
@@ -321,30 +319,6 @@ export const useCommandStore = defineStore('command', () => {
 
     // ===== 视图菜单 =====
     {
-      id: 'view.zoomIn',
-      label: t('command.view.zoomIn'),
-      shortcut: 'Ctrl+=',
-      category: 'view',
-      enabled: () =>
-        (editorStore.activeScheme?.items.value.length ?? 0) > 0 && zoomInFn.value !== null,
-      execute: () => {
-        console.log('[Command] 放大')
-        zoomInFn.value?.()
-      },
-    },
-    {
-      id: 'view.zoomOut',
-      label: t('command.view.zoomOut'),
-      shortcut: 'Ctrl+-',
-      category: 'view',
-      enabled: () =>
-        (editorStore.activeScheme?.items.value.length ?? 0) > 0 && zoomOutFn.value !== null,
-      execute: () => {
-        console.log('[Command] 缩小')
-        zoomOutFn.value?.()
-      },
-    },
-    {
       id: 'view.fitToView',
       label: t('command.view.fitToView'),
       category: 'view',
@@ -504,15 +478,8 @@ export const useCommandStore = defineStore('command', () => {
     return command ? command.enabled() : false
   }
 
-  // 设置缩放函数（由编辑器调用）
-  function setZoomFunctions(
-    zoomIn: (() => void) | null,
-    zoomOut: (() => void) | null,
-    fitToView: (() => void) | null,
-    focusSelection?: (() => void) | null
-  ) {
-    zoomInFn.value = zoomIn
-    zoomOutFn.value = zoomOut
+  // 设置视图函数（由编辑器调用）
+  function setZoomFunctions(fitToView: (() => void) | null, focusSelection?: (() => void) | null) {
     fitToViewFn.value = fitToView
     focusSelectionFn.value = focusSelection || null
   }

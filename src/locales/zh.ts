@@ -89,8 +89,6 @@ export const zhLocale = {
       move: '移动',
     },
     view: {
-      zoomIn: '放大',
-      zoomOut: '缩小',
       fitToView: '重置视图',
       focusSelection: '聚焦选中物品',
       coordinateSystem: '工作坐标系',
