@@ -354,63 +354,81 @@ const axisColors = {
   z: 0x3b82f6, // blue-500
 }
 
-// 自定义 TransformControls (Gizmo) 颜色，并隐藏E轴（视野平面旋转圈）
-watch([transformRef, () => editorStore.gizmoMode, activeCameraRef], ([v]) => {
-  const controls = v?.instance || v?.value
-  if (!controls) return
+// 自定义 TransformControls (Gizmo) 颜色，并隐藏E轴（视野平面旋转圈），同时处理旋转轴限制
+watch(
+  [
+    transformRef,
+    () => editorStore.gizmoMode,
+    activeCameraRef,
+    () => settingsStore.settings.enableLimitDetection,
+  ],
+  ([v]) => {
+    const controls = v?.instance || v?.value
+    if (!controls) return
 
-  const updateGizmo = () => {
-    // 1. 颜色设置 & 收集需要移除的 'E' 轴对象
-    const objectsToRemove: any[] = []
+    // 限制处理：如果开启限制检测且处于旋转模式，则隐藏 X/Y 轴
+    const isRotate = editorStore.gizmoMode === 'rotate'
+    const isLimitEnabled = settingsStore.settings.enableLimitDetection
 
-    // 遍历 helper/gizmo 结构
-    const mainGizmo = controls.gizmo || controls.children?.[0]
-    if (mainGizmo) {
-      mainGizmo.traverse((obj: any) => {
-        // 标记需要移除的 E 轴
-        if (obj.name === 'E') {
-          objectsToRemove.push(obj)
-          return
-        }
-
-        // 设置轴颜色
-        if (!obj.material || !obj.name) return
-
-        let color
-        if (/^(X|XYZX)$/.test(obj.name)) color = axisColors.x
-        else if (/^(Y|XYZY)$/.test(obj.name)) color = axisColors.y
-        else if (/^(Z|XYZZ)$/.test(obj.name)) color = axisColors.z
-
-        if (color) {
-          obj.material.color.set(color)
-          // 关键：覆盖 tempColor 防止颜色被重置
-          obj.material.tempColor = obj.material.tempColor || new Color()
-          obj.material.tempColor.set(color)
-        }
-      })
+    if (isRotate && isLimitEnabled) {
+      controls.showX = false
+      controls.showY = false
+    } else {
+      controls.showX = true
+      controls.showY = true
     }
 
-    // 遍历 picker 结构 (用于点击检测的隐藏物体)
-    // controls.picker 在 Three.js r100+ 的 TransformControls 实现中存在
-    if (controls.picker) {
-      // picker 也是一个 Object3D (Group)，可以直接 traverse
-      controls.picker.traverse((obj: any) => {
-        if (obj.name === 'E') {
-          objectsToRemove.push(obj)
-        }
-      })
-    }
+    const updateGizmo = () => {
+      // 1. 颜色设置 & 收集需要移除的 'E' 和 'XYZE' 轴对象
+      const objectsToRemove: any[] = []
 
-    // 2. 统一移除
-    objectsToRemove.forEach((obj) => {
-      if (obj.parent) {
-        obj.parent.remove(obj)
+      // 遍历 helper/gizmo 结构
+      const mainGizmo = controls.gizmo || controls.children?.[0]
+      if (mainGizmo) {
+        mainGizmo.traverse((obj: any) => {
+          // 标记需要移除的辅助轴
+          if (obj.name === 'E' || obj.name === 'XYZE') {
+            objectsToRemove.push(obj)
+            return
+          }
+
+          // 设置轴颜色
+          if (!obj.material || !obj.name) return
+
+          let color
+          if (/^(X|XYZX)$/.test(obj.name)) color = axisColors.x
+          else if (/^(Y|XYZY)$/.test(obj.name)) color = axisColors.y
+          else if (/^(Z|XYZZ)$/.test(obj.name)) color = axisColors.z
+
+          if (color) {
+            obj.material.color.set(color)
+            // 关键：覆盖 tempColor 防止颜色被重置
+            obj.material.tempColor = obj.material.tempColor || new Color()
+            obj.material.tempColor.set(color)
+          }
+        })
       }
-    })
-  }
 
-  updateGizmo()
-})
+      // 遍历 picker 结构 (用于点击检测的隐藏物体)
+      if (controls.picker) {
+        controls.picker.traverse((obj: any) => {
+          if (obj.name === 'E' || obj.name === 'XYZE') {
+            objectsToRemove.push(obj)
+          }
+        })
+      }
+
+      // 2. 统一移除
+      objectsToRemove.forEach((obj) => {
+        if (obj.parent) {
+          obj.parent.remove(obj)
+        }
+      })
+    }
+
+    updateGizmo()
+  }
+)
 
 // 自定义 AxesHelper (坐标轴) 颜色
 watch(axesRef, (v) => {

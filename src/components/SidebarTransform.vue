@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from '../stores/uiStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { useI18n } from '../composables/useI18n'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const { updateSelectedItemsTransform, getSelectedItemsCenter } = useEditorManipulation()
 
@@ -399,6 +401,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
         <div class="grid grid-cols-2 gap-2">
           <!-- Roll (X) -->
           <div
+            v-if="!settingsStore.settings.enableLimitDetection"
             class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
             <span
@@ -421,6 +424,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           </div>
           <!-- Pitch (Y) -->
           <div
+            v-if="!settingsStore.settings.enableLimitDetection"
             class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
             <span

@@ -230,8 +230,8 @@ export const enLocale = {
       hint: 'Detects items with identical position, rotation, and scale.',
     },
     limitDetection: {
-      label: 'Limit Detection',
-      hint: 'Detects out-of-bounds items and oversized groups. Disable to bypass checks and force save.',
+      label: 'Compliance Checks',
+      hint: 'Detects out-of-bounds items, oversized groups, and restricts rotation to Z-axis only. Disable to edit freely at your own risk.',
     },
     autoSave: {
       label: 'Workspace Memory',

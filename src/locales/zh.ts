@@ -229,7 +229,7 @@ export const zhLocale = {
     },
     limitDetection: {
       label: '方案合规性检测',
-      hint: '自动检测越界物品和过大的组合。关闭则代表您已知悉风险，允许强制保存。',
+      hint: '检测越界物品、过大分组，并限制仅 Z 轴旋转。关闭后可自由编辑，风险自负。',
     },
     autoSave: {
       label: '工作台记忆',
