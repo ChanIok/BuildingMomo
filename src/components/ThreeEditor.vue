@@ -222,15 +222,17 @@ const activeCameraRef = computed(() => {
   return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
 })
 
-// 先初始化 renderer 获取 updateSelectedInstancesMatrix 函数
+// 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 updateSelectedInstancesRotation 函数
 const {
   instancedMesh,
   iconInstancedMesh,
   simpleBoxInstancedMesh,
   indexToIdMap,
   updateSelectedInstancesMatrix,
+
   setHoveredItemId,
   updateIconFacing,
+  getInstanceWorldMatrix,
 } = useThreeInstancedRenderer(isTransformDragging)
 
 // 当前 3D 显示模式（根据设置和视图类型动态决定）
@@ -329,7 +331,7 @@ watch(
   { immediate: true }
 )
 
-// 然后初始化 gizmo，传入 updateSelectedInstancesMatrix
+// 然后初始化 gizmo，传入 updateSelectedInstancesMatrix 和 updateSelectedInstancesRotation
 const {
   shouldShowGizmo,
   handleGizmoDragging,
@@ -340,6 +342,7 @@ const {
 } = useThreeTransformGizmo(
   gizmoPivot,
   updateSelectedInstancesMatrix,
+  getInstanceWorldMatrix,
   isTransformDragging,
   orbitControlsRef
 )
@@ -351,26 +354,57 @@ const axisColors = {
   z: 0x3b82f6, // blue-500
 }
 
-// 自定义 TransformControls (Gizmo) 颜色
-watch(transformRef, (v) => {
+// 自定义 TransformControls (Gizmo) 颜色，并隐藏E轴（视野平面旋转圈）
+watch([transformRef, () => editorStore.gizmoMode, activeCameraRef], ([v]) => {
   const controls = v?.instance || v?.value
   if (!controls) return
 
   const updateGizmo = () => {
-    const gizmo = controls.gizmo || controls.children?.[0]
-    gizmo?.traverse((obj: any) => {
-      if (!obj.material || !obj.name) return
+    // 1. 颜色设置 & 收集需要移除的 'E' 轴对象
+    const objectsToRemove: any[] = []
 
-      let color
-      if (/^(X|XYZX)$/.test(obj.name)) color = axisColors.x
-      else if (/^(Y|XYZY)$/.test(obj.name)) color = axisColors.y
-      else if (/^(Z|XYZZ)$/.test(obj.name)) color = axisColors.z
+    // 遍历 helper/gizmo 结构
+    const mainGizmo = controls.gizmo || controls.children?.[0]
+    if (mainGizmo) {
+      mainGizmo.traverse((obj: any) => {
+        // 标记需要移除的 E 轴
+        if (obj.name === 'E') {
+          objectsToRemove.push(obj)
+          return
+        }
 
-      if (color) {
-        obj.material.color.set(color)
-        // 关键：覆盖 tempColor 防止颜色被重置
-        obj.material.tempColor = obj.material.tempColor || new Color()
-        obj.material.tempColor.set(color)
+        // 设置轴颜色
+        if (!obj.material || !obj.name) return
+
+        let color
+        if (/^(X|XYZX)$/.test(obj.name)) color = axisColors.x
+        else if (/^(Y|XYZY)$/.test(obj.name)) color = axisColors.y
+        else if (/^(Z|XYZZ)$/.test(obj.name)) color = axisColors.z
+
+        if (color) {
+          obj.material.color.set(color)
+          // 关键：覆盖 tempColor 防止颜色被重置
+          obj.material.tempColor = obj.material.tempColor || new Color()
+          obj.material.tempColor.set(color)
+        }
+      })
+    }
+
+    // 遍历 picker 结构 (用于点击检测的隐藏物体)
+    // controls.picker 在 Three.js r100+ 的 TransformControls 实现中存在
+    if (controls.picker) {
+      // picker 也是一个 Object3D (Group)，可以直接 traverse
+      controls.picker.traverse((obj: any) => {
+        if (obj.name === 'E') {
+          objectsToRemove.push(obj)
+        }
+      })
+    }
+
+    // 2. 统一移除
+    objectsToRemove.forEach((obj) => {
+      if (obj.parent) {
+        obj.parent.remove(obj)
       }
     })
   }
@@ -796,7 +830,7 @@ onDeactivated(() => {
           ref="transformRef"
           :object="gizmoPivot"
           :camera="activeCameraRef"
-          :mode="'translate'"
+          :mode="editorStore.gizmoMode || 'translate'"
           :space="transformSpace"
           @dragging="handleGizmoDragging"
           @mouseDown="handleGizmoMouseDown"

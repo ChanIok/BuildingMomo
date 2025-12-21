@@ -8,6 +8,7 @@ import { useI18n } from '@/composables/useI18n'
 import {
   Hand,
   Move,
+  RotateCw,
   Box,
   Image as ImageIcon,
   Cuboid,
@@ -170,17 +171,30 @@ const viewPresets = computed(() => [
             <Hand class="h-4 w-4" />
           </SidebarToggleItem>
 
-          <!-- Gizmo 开关 -->
+          <!-- 平移 Gizmo -->
           <SidebarToggleItem
-            :model-value="settingsStore.settings.showGizmo"
+            :model-value="editorStore.gizmoMode === 'translate'"
             @update:model-value="
               (v) => {
-                settingsStore.settings.showGizmo = v
+                editorStore.gizmoMode = v ? 'translate' : null
               }
             "
-            :tooltip="t('sidebar.tools.gizmo')"
+            :tooltip="t('sidebar.tools.translate')"
           >
             <Move class="h-4 w-4" />
+          </SidebarToggleItem>
+
+          <!-- 旋转 Gizmo -->
+          <SidebarToggleItem
+            :model-value="editorStore.gizmoMode === 'rotate'"
+            @update:model-value="
+              (v) => {
+                editorStore.gizmoMode = v ? 'rotate' : null
+              }
+            "
+            :tooltip="t('sidebar.tools.rotate')"
+          >
+            <RotateCw class="h-4 w-4" />
           </SidebarToggleItem>
         </div>
       </div>

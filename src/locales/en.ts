@@ -106,7 +106,8 @@ export const enLocale = {
       select: 'Select',
       lasso: 'Lasso',
       hand: 'Hand',
-      toggleGizmo: 'Toggle Gizmo',
+      toggleTranslate: 'Translate Mode',
+      toggleRotate: 'Rotate Mode',
     },
     help: {
       openDocs: 'Documentation',
@@ -237,7 +238,6 @@ export const enLocale = {
       hint: 'Automatically save current state to resume editing later.',
     },
     autoUpdateFurniture: 'Auto-Update Furniture Data',
-    showGizmo: 'Transform Gizmo',
     threeDisplayMode: '3D Display Mode',
     threeSymbolScale: 'Icon/Block Scale',
     reset: 'Reset to Default Settings',
@@ -353,7 +353,8 @@ export const enLocale = {
       box: 'Box Select (V)',
       lasso: 'Lasso Tool (L)',
       hand: 'Hand Tool (H)',
-      gizmo: 'Show Gizmo (G)',
+      translate: 'Translate (G)',
+      rotate: 'Rotate (R)',
     },
     selectionMode: {
       label: 'Selection Mode',

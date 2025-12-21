@@ -29,6 +29,8 @@ export const useEditorStore = defineStore('editor', () => {
   const selectionMode = ref<'box' | 'lasso'>('box')
   // 选择行为：新选区/加选/减选/交叉
   const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect'>('new')
+  // Gizmo 模式：平移/旋转/不显示
+  const gizmoMode = ref<'translate' | 'rotate' | null>('translate')
 
   // 计算属性：当前激活的方案
   const activeScheme = computed(
@@ -295,6 +297,7 @@ export const useEditorStore = defineStore('editor', () => {
     currentTool,
     selectionMode,
     selectionAction,
+    gizmoMode,
 
     // 方案管理
     createScheme,

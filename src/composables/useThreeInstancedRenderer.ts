@@ -642,18 +642,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     updateInstancesColor()
   }
 
-  // 辅助函数：应用位置增量到指定 Mesh
-  function applyPositionDelta(mesh: InstancedMesh, index: number, delta: Vector3) {
-    mesh.getMatrixAt(index, scratchMatrix)
-    scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchScale)
-    scratchPosition.add(delta)
-    scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
-    mesh.setMatrixAt(index, scratchMatrix)
-    mesh.instanceMatrix.needsUpdate = true
-  }
-
-  // 局部更新选中物品的矩阵（用于拖拽时的视觉更新）
-  function updateSelectedInstancesMatrix(selectedIds: Set<string>, deltaPosition: Vector3) {
+  // 局部更新选中物品的世界矩阵（用于拖拽时的视觉更新）
+  function updateSelectedInstancesMatrix(idToWorldMatrixMap: Map<string, Matrix4>) {
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = instancedMesh.value
     const iconMeshTarget = iconInstancedMesh.value
@@ -661,17 +651,33 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
     const reverseMap = idToIndexMap.value
 
-    for (const id of selectedIds) {
+    for (const [id, worldMatrix] of idToWorldMatrixMap.entries()) {
       const index = reverseMap.get(id)
       if (index === undefined) continue
 
-      if (mode === 'box' && meshTarget) {
-        applyPositionDelta(meshTarget, index, deltaPosition)
-      } else if (mode === 'icon' && iconMeshTarget) {
-        applyPositionDelta(iconMeshTarget, index, deltaPosition)
-      } else if (mode === 'simple-box' && simpleBoxMeshTarget) {
-        applyPositionDelta(simpleBoxMeshTarget, index, deltaPosition)
-      }
+      let mesh: InstancedMesh | null = null
+      if (mode === 'box' && meshTarget) mesh = meshTarget
+      else if (mode === 'icon' && iconMeshTarget) mesh = iconMeshTarget
+      else if (mode === 'simple-box' && simpleBoxMeshTarget) mesh = simpleBoxMeshTarget
+
+      if (!mesh) continue
+
+      // Local = Inverse(Parent) * World
+      // Parent is Scale(1, -1, 1). Its inverse is also Scale(1, -1, 1).
+
+      scratchMatrix.copy(worldMatrix)
+
+      // 手动应用 Scale(1, -1, 1) 的效果到 WorldMatrix 上，得到 LocalMatrix
+      // Matrix4 elements are column-major.
+      // Row 1 (Index 1, 5, 9, 13) needs to be negated to apply Scale(1, -1, 1)
+      const el = scratchMatrix.elements
+      el[1] = -el[1]
+      el[5] = -el[5]
+      el[9] = -el[9]
+      el[13] = -el[13]
+
+      mesh.setMatrixAt(index, scratchMatrix)
+      mesh.instanceMatrix.needsUpdate = true
     }
   }
 
@@ -801,6 +807,42 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
+  // 获取指定物品的当前世界矩阵（用于 Gizmo 拖拽开始时获取准确的初始状态，包含 Scale）
+  function getInstanceWorldMatrix(id: string): Matrix4 | null {
+    const reverseMap = idToIndexMap.value
+    const index = reverseMap.get(id)
+    if (index === undefined) return null
+
+    const mode = settingsStore.settings.threeDisplayMode
+    let mesh: InstancedMesh | null = null
+    const meshTarget = instancedMesh.value
+    const iconMeshTarget = iconInstancedMesh.value
+    const simpleBoxMeshTarget = simpleBoxInstancedMesh.value
+
+    if (mode === 'box' && meshTarget) mesh = meshTarget
+    else if (mode === 'icon' && iconMeshTarget) mesh = iconMeshTarget
+    else if (mode === 'simple-box' && simpleBoxMeshTarget) mesh = simpleBoxMeshTarget
+
+    if (!mesh) return null
+
+    // 获取当前实例的 Local Matrix (inside Scale(1, -1, 1) group)
+    mesh.getMatrixAt(index, scratchMatrix)
+
+    // Convert Local to World
+    // World = Parent * Local
+    // Parent is Scale(1, -1, 1)
+
+    // Apply Parent Matrix:
+    // M_world = S * M_local => Row 1 is negated
+    const el = scratchMatrix.elements
+    el[1] = -el[1]
+    el[5] = -el[5]
+    el[9] = -el[9]
+    el[13] = -el[13]
+
+    return scratchMatrix.clone()
+  }
+
   watch(
     [
       () => editorStore.activeScheme?.selectedItemIds.value, // 监听 Set 引用变化（切换方案时）
@@ -880,5 +922,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     updateSelectedInstancesMatrix,
     setHoveredItemId,
     updateIconFacing,
+    getInstanceWorldMatrix,
   }
 }

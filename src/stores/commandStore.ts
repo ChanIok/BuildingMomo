@@ -7,7 +7,6 @@ import { useEditorSelection } from '../composables/editor/useEditorSelection'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from './uiStore'
-import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
@@ -34,7 +33,6 @@ export const useCommandStore = defineStore('command', () => {
   const { deleteSelected } = useEditorManipulation()
 
   const uiStore = useUIStore()
-  const settingsStore = useSettingsStore()
   const { t } = useI18n()
 
   // 视图函数引用（需要从外部设置）
@@ -159,14 +157,25 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
-      id: 'tool.toggleGizmo',
-      label: t('command.tool.toggleGizmo'),
+      id: 'tool.toggleTranslate',
+      label: t('command.tool.toggleTranslate'),
       shortcut: 'G',
       category: 'tool',
       enabled: () => uiStore.viewMode === '3d',
       execute: () => {
-        console.log('[Command] 切换变换轴显示')
-        settingsStore.settings.showGizmo = !settingsStore.settings.showGizmo
+        console.log('[Command] 切换平移模式')
+        editorStore.gizmoMode = editorStore.gizmoMode === 'translate' ? null : 'translate'
+      },
+    },
+    {
+      id: 'tool.toggleRotate',
+      label: t('command.tool.toggleRotate'),
+      shortcut: 'R',
+      category: 'tool',
+      enabled: () => uiStore.viewMode === '3d',
+      execute: () => {
+        console.log('[Command] 切换旋转模式')
+        editorStore.gizmoMode = editorStore.gizmoMode === 'rotate' ? null : 'rotate'
       },
     },
 

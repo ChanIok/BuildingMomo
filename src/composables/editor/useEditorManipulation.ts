@@ -254,7 +254,7 @@ export function useEditorManipulation() {
 
     // 优化：如果只是移动，可以直接修改对象属性，然后 triggerRef，避免 map 创建新数组
     // 对于高性能移动（如拖拽中），这是关键
-    // 但 moveSelectedItems 目前主要用于“完成后的提交”或“步进移动”
+    // 但 moveSelectedItems 目前主要用于"完成后的提交"或"步进移动"
     // 为了撤销/重做系统的简单性（它依赖不可变性或快照），这里如果修改原对象，需要确保 History 存的是拷贝
 
     // 这里我们采用：原地修改 + triggerRef 模式，以获得最佳性能
@@ -275,10 +275,106 @@ export function useEditorManipulation() {
     store.triggerSceneUpdate()
   }
 
+  // 旋转选中物品（三轴旋转，角度单位：弧度）
+  function rotateSelectedItems(
+    deltaRotation: { x: number; y: number; z: number },
+    options: { saveHistory?: boolean } = { saveHistory: true }
+  ) {
+    if (!activeScheme.value) {
+      return
+    }
+
+    if (options.saveHistory) {
+      saveHistory('edit')
+    }
+
+    const scheme = activeScheme.value
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return
+
+    const list = scheme.items.value
+    const selectedItems = list.filter((item) => selectedIds.has(item.internalId))
+
+    // 获取选中物品的中心点（旋转中心）
+    const center = getSelectedItemsCenter()
+    if (!center) return
+
+    // 构建增量旋转四元数（ZYX 顺序）
+    const deltaEuler = new Euler(deltaRotation.x, deltaRotation.y, deltaRotation.z, 'ZYX')
+    const deltaQuat = new Quaternion().setFromEuler(deltaEuler)
+    const deltaMatrix = new Matrix4().makeRotationFromQuaternion(deltaQuat)
+
+    // 更新每个选中物品
+    for (const item of selectedItems) {
+      // 1. 更新物品自身旋转（自转） - 使用四元数避免万向节锁
+      const currentEuler = new Euler(
+        MathUtils.degToRad(item.rotation.x ?? 0),
+        MathUtils.degToRad(item.rotation.y ?? 0),
+        MathUtils.degToRad(item.rotation.z ?? 0),
+        'ZYX'
+      )
+      const currentQuat = new Quaternion().setFromEuler(currentEuler)
+
+      // 复合旋转：newQuat = deltaQuat * currentQuat
+      const newQuat = deltaQuat.clone().multiply(currentQuat)
+      const newEuler = new Euler().setFromQuaternion(newQuat, 'ZYX')
+
+      // 更新数据
+      item.rotation.x = MathUtils.radToDeg(newEuler.x)
+      item.rotation.y = MathUtils.radToDeg(newEuler.y)
+      item.rotation.z = MathUtils.radToDeg(newEuler.z)
+
+      // 2. 如果多选，需要绕中心点旋转位置（公转） - 使用 3D 旋转矩阵
+      if (selectedItems.length > 1) {
+        const relativePos = new Vector3(item.x - center.x, item.y - center.y, item.z - center.z)
+        relativePos.applyMatrix4(deltaMatrix)
+        item.x = center.x + relativePos.x
+        item.y = center.y + relativePos.y
+        item.z = center.z + relativePos.z
+      }
+    }
+
+    // 触发更新
+    store.triggerSceneUpdate()
+  }
+
   return {
     getSelectedItemsCenter,
     deleteSelected,
     updateSelectedItemsTransform,
     moveSelectedItems,
+    rotateSelectedItems,
+    commitBatchedTransform,
+  }
+
+  // 批量提交变换（优化性能，用于 Gizmo 拖拽结束）
+  function commitBatchedTransform(
+    items: {
+      id: string
+      x: number
+      y: number
+      z: number
+      rotation: { x: number; y: number; z: number }
+    }[],
+    options: { saveHistory?: boolean } = { saveHistory: true }
+  ) {
+    if (!activeScheme.value) return
+
+    if (options.saveHistory) {
+      saveHistory('edit')
+    }
+
+    const itemMap = store.itemsMap
+    for (const update of items) {
+      const item = itemMap.get(update.id)
+      if (item) {
+        item.x = update.x
+        item.y = update.y
+        item.z = update.z
+        item.rotation = update.rotation
+      }
+    }
+
+    store.triggerSceneUpdate()
   }
 }

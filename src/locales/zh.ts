@@ -105,7 +105,8 @@ export const zhLocale = {
       select: '选择工具',
       lasso: '套索工具',
       hand: '拖拽工具',
-      toggleGizmo: '切换变换轴显示',
+      toggleTranslate: '平移模式',
+      toggleRotate: '旋转模式',
     },
     help: {
       openDocs: '帮助文档',
@@ -235,7 +236,6 @@ export const zhLocale = {
       hint: '自动保存当前状态，以便下次继续编辑。',
     },
     autoUpdateFurniture: '家具数据自动更新',
-    showGizmo: '变换轴显示',
     threeDisplayMode: '3D显示模式',
     threeSymbolScale: '图标/方块缩放比例',
     reset: '重置为默认设置',
@@ -351,7 +351,8 @@ export const zhLocale = {
       box: '方形选框 (V)',
       lasso: '套索工具 (L)',
       hand: '拖拽工具 (H)',
-      gizmo: '显示变换轴 (G)',
+      translate: '平移 (G)',
+      rotate: '旋转 (R)',
     },
     selectionMode: {
       label: '选择模式',

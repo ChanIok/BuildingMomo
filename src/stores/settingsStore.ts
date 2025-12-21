@@ -17,7 +17,6 @@ export interface AppSettings {
   enableDuplicateDetection: boolean
   enableLimitDetection: boolean
   enableAutoSave: boolean
-  showGizmo: boolean
 
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' // 3D 显示模式：立方体、图标或简化方块
@@ -36,7 +35,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableDuplicateDetection: true,
   enableLimitDetection: true,
   enableAutoSave: true,
-  showGizmo: true,
   threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
   language: 'zh',
