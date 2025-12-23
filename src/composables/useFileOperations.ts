@@ -23,6 +23,11 @@ function extractUidFromFilename(filename: string): string | null {
   return match?.[1] ?? null
 }
 
+// 辅助函数：判断文件名是否符合 BUILD_SAVEDATA 格式
+function isBuildSaveDataFile(name: string): boolean {
+  return /^BUILD_SAVEDATA_\d+\.json$/.test(name)
+}
+
 // 辅助函数：按路径查找子目录
 async function resolvePath(
   startHandle: FileSystemDirectoryHandle,
@@ -149,10 +154,9 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     dirHandle: null,
     dirPath: '',
     lastCheckedTime: 0,
-    lastModifiedTime: 0,
-    fileHandle: null,
-    fileName: '',
-    lastContent: undefined,
+    fileIndex: new Map(),
+    lastImportedFileHandle: null,
+    lastImportedFileName: '',
   })
 
   // 轮询定时器
@@ -405,12 +409,12 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         })
         finalFileName = currentFileName
       } else {
-        // 策略 B: 文件名无效（乱码或时间戳），回退到监控的现有文件
-        if (watchState.value.fileHandle) {
-          handle = watchState.value.fileHandle
-          finalFileName = watchState.value.fileName
+        // 策略 B: 文件名无效（乱码或时间戳），回退到上次导入的文件
+        if (watchState.value.lastImportedFileHandle) {
+          handle = watchState.value.lastImportedFileHandle
+          finalFileName = watchState.value.lastImportedFileName
         } else {
-          // 如果没有监控的文件，尝试查找目录中最新的
+          // 如果没有导入记录，尝试查找目录中最新的
           const latest = await findLatestBuildSaveData(watchState.value.dirHandle)
           if (latest) {
             handle = latest.handle
@@ -439,12 +443,15 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       await writable.write(jsonString)
       await writable.close()
 
-      // 5. 更新监控状态，指向实际写入的文件
+      // 5. 更新监控状态和文件索引
       const updatedFile = await handle.getFile()
-      watchState.value.fileHandle = handle
-      watchState.value.fileName = finalFileName
-      watchState.value.lastModifiedTime = updatedFile.lastModified + 1000 // +1秒缓冲
-      watchState.value.lastContent = jsonString
+      watchState.value.lastImportedFileHandle = handle
+      watchState.value.lastImportedFileName = finalFileName
+      // 更新文件索引
+      watchState.value.fileIndex.set(finalFileName, {
+        lastModified: updatedFile.lastModified + 1000, // +1秒缓冲，避免触发自己的保存
+        lastContent: jsonString,
+      })
 
       console.log(`[FileOps] Successfully saved to game: ${finalFileName}`)
       notification.success(t('fileOps.saveToGame.success'))
@@ -479,60 +486,96 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     return false
   }
 
-  // 检查文件更新
+  // 检查文件更新（目录级扫描）
   async function checkFileUpdate(): Promise<boolean> {
-    if (!watchState.value.isActive || !watchState.value.fileHandle) {
+    if (!watchState.value.isActive || !watchState.value.dirHandle) {
       return false
     }
 
     try {
-      const file = await watchState.value.fileHandle.getFile()
       watchState.value.lastCheckedTime = Date.now()
 
-      // 检查文件是否有更新
-      if (file.lastModified > watchState.value.lastModifiedTime) {
-        console.log(
-          `[FileWatch] File updated: ${file.name}, lastModified: ${new Date(file.lastModified).toLocaleString()}`
-        )
+      // 第一阶段：扫描目录，收集有更新的文件
+      const updates: Array<{ name: string; file: File; handle: FileSystemFileHandle }> = []
 
-        // 更新最后修改时间
-        watchState.value.lastModifiedTime = file.lastModified
+      for await (const entry of (watchState.value.dirHandle as any).values()) {
+        if (entry.kind !== 'file' || !isBuildSaveDataFile(entry.name)) continue
 
-        // 读取文件内容检查 NeedRestore
+        const fileHandle = entry as FileSystemFileHandle
+        const file = await fileHandle.getFile()
+        const cached = watchState.value.fileIndex.get(entry.name)
+
+        // 只比较时间戳（快速操作）
+        if (!cached || file.lastModified > cached.lastModified) {
+          updates.push({ name: entry.name, file, handle: fileHandle })
+        }
+      }
+
+      if (updates.length === 0) {
+        return false
+      }
+
+      // 第二阶段：读取内容，找出真正需要提示的文件
+      let latestFile: {
+        name: string
+        file: File
+        handle: FileSystemFileHandle
+        content: string
+      } | null = null
+      let latestModified = 0
+
+      for (const { name, file, handle } of updates) {
+        const content = await file.text()
+        const cached = watchState.value.fileIndex.get(name)
+
+        // 内容去重
+        if (content === cached?.lastContent) {
+          console.log(`[FileWatch] File touched but content identical: ${name}`)
+          watchState.value.fileIndex.set(name, {
+            lastModified: file.lastModified,
+            lastContent: content,
+          })
+          continue
+        }
+
+        // 检查 NeedRestore
         try {
-          const content = await file.text()
-
-          // 内容比对：如果内容未变，仅更新时间戳，不进行后续处理
-          if (content === watchState.value.lastContent) {
-            console.log('[FileWatch] File touched but content identical, skipping notification')
-            watchState.value.lastModifiedTime = file.lastModified
-            return true
-          }
-
-          // 更新已知内容
-          watchState.value.lastContent = content
-
           const jsonData = JSON.parse(content)
-
-          // 只有 NeedRestore 为 true 时才提示导入
           if (jsonData.NeedRestore === true) {
-            const confirmed = await notification.fileUpdate(file.name, file.lastModified)
-            if (confirmed) {
-              await importFromWatchedFile()
+            // 找出最新的文件
+            if (file.lastModified > latestModified) {
+              latestModified = file.lastModified
+              latestFile = { name, file, handle, content }
             }
-          } else {
-            // NeedRestore 为 false，静默忽略（不打扰用户）
-            console.log(`[FileWatch] File updated but NeedRestore is false, skipping notification`)
           }
         } catch (parseError) {
-          console.error('[FileWatch] Failed to parse JSON, will still notify user:', parseError)
-          // 解析失败时仍然提示用户，让用户决定是否导入
-          const confirmed = await notification.fileUpdate(file.name, file.lastModified)
-          if (confirmed) {
-            await importFromWatchedFile()
+          console.error(`[FileWatch] Failed to parse JSON for ${name}:`, parseError)
+          // 解析失败也视为需要提示
+          if (file.lastModified > latestModified) {
+            latestModified = file.lastModified
+            latestFile = { name, file, handle, content }
           }
         }
 
+        // 更新索引
+        watchState.value.fileIndex.set(name, {
+          lastModified: file.lastModified,
+          lastContent: content,
+        })
+      }
+
+      // 第三阶段：只提示最新的文件
+      if (latestFile) {
+        console.log(
+          `[FileWatch] File updated: ${latestFile.name}, lastModified: ${new Date(latestFile.file.lastModified).toLocaleString()}`
+        )
+        const confirmed = await notification.fileUpdate(
+          latestFile.name,
+          latestFile.file.lastModified
+        )
+        if (confirmed) {
+          await importFromWatchedFile()
+        }
         return true
       }
 
@@ -613,26 +656,36 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         console.log('[FileWatch] No existing file found, will monitor for new files')
       }
 
-      // 4. 设置监控状态
+      // 4. 建立文件索引
+      const fileIndex = new Map<string, { lastModified: number; lastContent: string }>()
+
+      for await (const entry of (buildDataDir as any).values()) {
+        if (entry.kind === 'file' && isBuildSaveDataFile(entry.name)) {
+          const fileHandle = entry as FileSystemFileHandle
+          const file = await fileHandle.getFile()
+          const content = await file.text()
+          fileIndex.set(entry.name, { lastModified: file.lastModified, lastContent: content })
+        }
+      }
+
+      // 5. 设置监控状态
       watchState.value = {
         isActive: true,
         dirHandle: buildDataDir,
         dirPath: buildDataDir.name,
         lastCheckedTime: Date.now(),
-        lastModifiedTime: lastModified,
-        fileHandle: fileHandle,
-        fileName: fileName,
-        lastContent: undefined,
+        fileIndex: fileIndex,
+        lastImportedFileHandle: fileHandle,
+        lastImportedFileName: fileName,
       }
 
-      // 5. 启动轮询
+      // 6. 启动轮询
       startPolling()
 
-      // 6. 如果有现有文件，检查 NeedRestore 再决定是否提示导入
+      // 7. 如果有现有文件，检查 NeedRestore 再决定是否提示导入
       if (result) {
         try {
           const content = await result.file.text()
-          watchState.value.lastContent = content // 初始化内容缓存
 
           const jsonData = JSON.parse(content)
 
@@ -683,10 +736,9 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       dirHandle: null,
       dirPath: '',
       lastCheckedTime: 0,
-      lastModifiedTime: 0,
-      fileHandle: null,
-      fileName: '',
-      lastContent: undefined,
+      fileIndex: new Map(),
+      lastImportedFileHandle: null,
+      lastImportedFileName: '',
     }
     console.log('[FileWatch] Watch mode stopped')
   }
@@ -714,9 +766,6 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       // 读取文件内容
       const content = await file.text()
 
-      // 更新最后一次已知内容
-      watchState.value.lastContent = content
-
       // 使用 editorStore 的导入方法
       const importResult = await editorStore.importJSONAsScheme(
         content,
@@ -727,10 +776,15 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       if (importResult.success) {
         console.log(`[FileWatch] Successfully imported from watched file: ${file.name}`)
 
-        // 更新监控状态
-        watchState.value.fileHandle = handle
-        watchState.value.fileName = file.name
-        watchState.value.lastModifiedTime = file.lastModified
+        // 更新监控状态：记录上次导入的文件句柄
+        watchState.value.lastImportedFileHandle = handle
+        watchState.value.lastImportedFileName = file.name
+
+        // 更新文件索引
+        watchState.value.fileIndex.set(file.name, {
+          lastModified: file.lastModified,
+          lastContent: content,
+        })
 
         notification.success(t('fileOps.import.success'))
         // 预加载图标

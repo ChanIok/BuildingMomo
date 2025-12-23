@@ -102,10 +102,11 @@ export interface FileWatchState {
   dirHandle: FileSystemDirectoryHandle | null // 监控的目录句柄
   dirPath: string // 目录路径（用于显示）
   lastCheckedTime: number // 上次检查的时间戳
-  lastModifiedTime: number // 文件的最后修改时间
-  fileHandle: FileSystemFileHandle | null // 当前监控的文件句柄
-  fileName: string // 文件名
-  lastContent?: string // 上一次的文件内容（用于去重）
+  // 目录内所有文件的索引 Map<文件名, { lastModified, lastContent }>
+  fileIndex: Map<string, { lastModified: number; lastContent: string }>
+  // 记录上次导入的文件句柄，用于 saveToGame 回退
+  lastImportedFileHandle: FileSystemFileHandle | null
+  lastImportedFileName: string
 }
 
 // 精确变换参数

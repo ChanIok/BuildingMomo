@@ -62,10 +62,7 @@ const schemeCount = computed(() => editorStore.schemes.length)
 
 // 修改时间
 const lastModified = computed(() => {
-  // 优先使用 scheme 的 lastModified，其次使用 watchState
-  return (
-    editorStore.activeScheme?.lastModified.value || commandStore.fileOps.watchState.lastModifiedTime
-  )
+  return editorStore.activeScheme?.lastModified.value || 0
 })
 
 const shortTime = computed(() => {

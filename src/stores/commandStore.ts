@@ -112,7 +112,6 @@ export const useCommandStore = defineStore('command', () => {
       category: 'file',
       enabled: () =>
         fileOps.watchState.value.isActive &&
-        fileOps.watchState.value.fileHandle !== null &&
         (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: async () => {
         console.log('[Command] 保存到游戏')
