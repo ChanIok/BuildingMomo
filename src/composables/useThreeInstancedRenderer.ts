@@ -676,7 +676,62 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       el[9] = -el[9]
       el[13] = -el[13]
 
-      mesh.setMatrixAt(index, scratchMatrix)
+      // 针对不同模式对矩阵进行后处理
+      if (mode === 'box') {
+        // Box 模式：完全信任 Gizmo 计算的矩阵（包含物理尺寸和旋转）
+        mesh.setMatrixAt(index, scratchMatrix)
+      } else if (mode === 'simple-box') {
+        // Simple Box 模式：保留位置和旋转，但强制重置缩放为 100 * symbolScale
+        scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchScale)
+
+        const s = 100 * settingsStore.settings.threeSymbolScale
+        scratchScale.set(s, s, s)
+
+        scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
+        mesh.setMatrixAt(index, scratchMatrix)
+      } else if (mode === 'icon') {
+        // Icon 模式：保留位置，但强制重置缩放和旋转（维持 Billboard 朝向）
+
+        // 1. 提取位置
+        scratchPosition.setFromMatrixPosition(scratchMatrix)
+
+        // 2. 重新计算 Billboard 旋转 (逻辑复用自 updateIconFacing)
+        // 注意：这里需要重新生成纯旋转矩阵，不带父级翻转修正，因为最后我们会统一应用
+        const normal = currentIconNormal.value
+        const up = currentIconUp.value
+
+        // 构建目标旋转
+        if (up) {
+          scratchTmpVec3.set(normal[0], normal[1], normal[2])
+          scratchUpVec3.set(up[0], up[1], up[2]).normalize()
+          scratchLookAtTarget.set(-normal[0], -normal[1], -normal[2])
+          // 使用 scratchMatrix 构建旋转
+          scratchMatrix.lookAt(new Vector3(0, 0, 0), scratchLookAtTarget, scratchUpVec3)
+        } else {
+          scratchTmpVec3.set(normal[0], normal[1], normal[2])
+          scratchQuaternion.setFromUnitVectors(scratchDefaultNormal, scratchTmpVec3)
+          scratchMatrix.makeRotationFromQuaternion(scratchQuaternion)
+        }
+
+        // 3. 应用父级翻转修正 (因为我们是在 Local Space 构建)
+        // 上面的 scratchMatrix 是 "Ideal World Rotation"，转到 Local 需要 Flip Row 1
+        const el = scratchMatrix.elements
+        el[1] = -el[1]
+        el[5] = -el[5]
+        el[9] = -el[9]
+        // (位移部分是0，不用管)
+
+        // 4. 应用缩放
+        const scale = settingsStore.settings.threeSymbolScale
+        scratchScale.set(scale, scale, scale)
+        scratchMatrix.scale(scratchScale)
+
+        // 5. 应用位置
+        scratchMatrix.setPosition(scratchPosition)
+
+        mesh.setMatrixAt(index, scratchMatrix)
+      }
+
       mesh.instanceMatrix.needsUpdate = true
     }
   }
@@ -807,42 +862,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
-  // 获取指定物品的当前世界矩阵（用于 Gizmo 拖拽开始时获取准确的初始状态，包含 Scale）
-  function getInstanceWorldMatrix(id: string): Matrix4 | null {
-    const reverseMap = idToIndexMap.value
-    const index = reverseMap.get(id)
-    if (index === undefined) return null
-
-    const mode = settingsStore.settings.threeDisplayMode
-    let mesh: InstancedMesh | null = null
-    const meshTarget = instancedMesh.value
-    const iconMeshTarget = iconInstancedMesh.value
-    const simpleBoxMeshTarget = simpleBoxInstancedMesh.value
-
-    if (mode === 'box' && meshTarget) mesh = meshTarget
-    else if (mode === 'icon' && iconMeshTarget) mesh = iconMeshTarget
-    else if (mode === 'simple-box' && simpleBoxMeshTarget) mesh = simpleBoxMeshTarget
-
-    if (!mesh) return null
-
-    // 获取当前实例的 Local Matrix (inside Scale(1, -1, 1) group)
-    mesh.getMatrixAt(index, scratchMatrix)
-
-    // Convert Local to World
-    // World = Parent * Local
-    // Parent is Scale(1, -1, 1)
-
-    // Apply Parent Matrix:
-    // M_world = S * M_local => Row 1 is negated
-    const el = scratchMatrix.elements
-    el[1] = -el[1]
-    el[5] = -el[5]
-    el[9] = -el[9]
-    el[13] = -el[13]
-
-    return scratchMatrix.clone()
-  }
-
   watch(
     [
       () => editorStore.activeScheme?.selectedItemIds.value, // 监听 Set 引用变化（切换方案时）
@@ -922,6 +941,5 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     updateSelectedInstancesMatrix,
     setHoveredItemId,
     updateIconFacing,
-    getInstanceWorldMatrix,
   }
 }

@@ -2,13 +2,17 @@ import { computed, ref, watchEffect, markRaw, type Ref } from 'vue'
 import { Object3D, Vector3, Euler, Quaternion, Matrix4, MathUtils } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useGameDataStore } from '@/stores/gameDataStore'
+import { coordinates3D } from '@/lib/coordinates'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
+import type { AppItem } from '@/types/editor'
+
+const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 
 export function useThreeTransformGizmo(
   pivotRef: Ref<Object3D | null>,
   updateSelectedInstancesMatrix: (idToWorldMatrixMap: Map<string, Matrix4>) => void,
-  getInstanceWorldMatrix: (id: string) => Matrix4 | null,
   isTransformDragging?: Ref<boolean>,
   orbitControlsRef?: Ref<any | null>
 ) {
@@ -31,6 +35,7 @@ export function useThreeTransformGizmo(
 
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
+  const gameDataStore = useGameDataStore()
   const { saveHistory } = useEditorHistory()
   const { commitBatchedTransform, getSelectedItemsCenter } = useEditorManipulation()
 
@@ -95,14 +100,23 @@ export function useThreeTransformGizmo(
     pivot.updateMatrixWorld(true) // 确保是最新的
     gizmoStartMatrix.copy(pivot.matrixWorld)
 
-    // 2. 记录所有选中物品的初始世界矩阵 (直接从 Renderer 获取真实矩阵，保留缩放)
+    // 2. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
     const map = new Map<string, Matrix4>()
     const scheme = editorStore.activeScheme
     if (scheme) {
       const selectedIds = scheme.selectedItemIds.value
+      // 构建查找表以快速获取 item 对象
+      const itemMap = new Map<string, AppItem>()
+      scheme.items.value.forEach((item) => {
+        if (selectedIds.has(item.internalId)) {
+          itemMap.set(item.internalId, item)
+        }
+      })
+
       for (const id of selectedIds) {
-        const matrix = getInstanceWorldMatrix(id)
-        if (matrix) {
+        const item = itemMap.get(id)
+        if (item) {
+          const matrix = calculateItemWorldMatrix(item)
           map.set(id, matrix)
         }
       }
@@ -223,14 +237,42 @@ export function useThreeTransformGizmo(
     endTransform()
   }
 
-  return {
-    shouldShowGizmo,
-    isTransformDragging: _isTransformDragging,
-    transformSpace,
-    handleGizmoDragging,
-    handleGizmoMouseDown,
-    handleGizmoMouseUp,
-    handleGizmoChange,
+  function calculateItemWorldMatrix(item: AppItem): Matrix4 {
+    const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+    const [sizeX, sizeY, sizeZ] = furnitureSize
+
+    // 1. Position
+    const pos = new Vector3()
+    coordinates3D.setThreeFromGame(pos, { x: item.x, y: item.y, z: item.z })
+
+    // 2. Rotation
+    // Z-Up Rotation: Yaw is around Z, Pitch around Y, Roll around X
+    // 由于场景父级在 Y 轴上做了镜像缩放 ([1, -1, 1])，
+    // 为了让编辑器中的 Roll / Pitch 与游戏中的方向一致，这里对 Roll 和 Pitch 取反
+    const euler = new Euler(
+      (-(item.rotation.x ?? 0) * Math.PI) / 180,
+      (-(item.rotation.y ?? 0) * Math.PI) / 180,
+      ((item.rotation.z ?? 0) * Math.PI) / 180,
+      'ZYX'
+    )
+    const quat = new Quaternion().setFromEuler(euler)
+
+    // 3. Scale
+    const scaleData = item.extra?.Scale
+    const scale = new Vector3(
+      (scaleData?.X ?? 1) * sizeX,
+      (scaleData?.Y ?? 1) * sizeY,
+      (scaleData?.Z ?? 1) * sizeZ
+    )
+
+    // 4. Compose Local Matrix
+    const localMatrix = new Matrix4().compose(pos, quat, scale)
+
+    // 5. Convert to World Matrix (Apply Parent Scale 1, -1, 1)
+    // World = Parent * Local
+    // Parent Matrix is Scale(1, -1, 1)
+    // 我们可以直接克隆 parentInverseMatrix (它是 1, -1, 1) 并乘
+    return parentInverseMatrix.clone().multiply(localMatrix)
   }
 
   return {

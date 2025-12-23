@@ -232,7 +232,6 @@ const {
 
   setHoveredItemId,
   updateIconFacing,
-  getInstanceWorldMatrix,
 } = useThreeInstancedRenderer(isTransformDragging)
 
 // 当前 3D 显示模式（根据设置和视图类型动态决定）
@@ -342,7 +341,6 @@ const {
 } = useThreeTransformGizmo(
   gizmoPivot,
   updateSelectedInstancesMatrix,
-  getInstanceWorldMatrix,
   isTransformDragging,
   orbitControlsRef
 )
