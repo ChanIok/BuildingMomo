@@ -2,6 +2,10 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    
     <!-- 语言路由 (早期重定向) -->
     <script>
       ;(() => {
@@ -38,7 +42,9 @@
         if (stored === 'en' && !inEn) return toEn()
         if (stored === 'zh' && inEn) return toRoot()
 
-        if (!stored && !inEn) {
+        const isBot = /bot|google|baidu|bing|msn|duckduckgo|teoma|slurp|yandex/i.test(navigator.userAgent)
+
+        if (!isBot && !stored && !inEn) {
           const lang = String(navigator.language || '').toLowerCase()
           if (lang && !lang.startsWith('zh')) {
             safeSet('en')
@@ -47,9 +53,6 @@
         }
       })()
     </script>
-
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- SEO 核心标签 -->
     <title>搬砖吧大喵 - 无限暖暖家园方案可视化编辑工具 | BuildingMomo</title>
