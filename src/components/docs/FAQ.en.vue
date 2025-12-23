@@ -27,10 +27,6 @@
       <li>Scheme failing in-game review</li>
       <li>Account restrictions (though unlikely for local file edits)</li>
     </ul>
-    <p class="text-sm text-muted-foreground">
-      <strong>Recommendation:</strong> Back up your original scheme before use, edit data with
-      caution, and avoid using out-of-range coordinates.
-    </p>
 
     <h3>Disclaimer</h3>
     <p><strong>By using this tool, you agree that:</strong></p>

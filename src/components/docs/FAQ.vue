@@ -28,9 +28,6 @@
       <li>家园方案审核不通过</li>
       <li>游戏账号被警告、限制或封禁</li>
     </ul>
-    <p class="text-sm text-muted-foreground">
-      <strong>强烈建议：</strong>在使用前备份原始方案，谨慎编辑数据，避免使用超出合理范围的坐标值。
-    </p>
 
     <h3>免责声明</h3>
     <p><strong>您使用本工具即表示您同意：</strong></p>
