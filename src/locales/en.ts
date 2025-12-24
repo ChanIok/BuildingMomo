@@ -375,6 +375,7 @@ export const enLocale = {
   transform: {
     position: 'Position',
     rotation: 'Rotation (°)',
+    scale: 'Scale',
     absolute: 'Absolute',
     relative: 'Relative',
     workingCoord: '(Working Coord)',

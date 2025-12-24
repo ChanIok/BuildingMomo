@@ -14,14 +14,17 @@ const settingsStore = useSettingsStore()
 const { t } = useI18n()
 const { updateSelectedItemsTransform, getSelectedItemsCenter } = useEditorManipulation()
 
-// 两个独立的开关，默认都开启绝对模式 (false)
+// 三个独立的开关，默认都开启绝对模式 (false)
 const isPositionRelative = ref(false)
 const isRotationRelative = ref(false)
+const isScaleRelative = ref(false)
 
 // 旋转输入的临时状态
 const rotationState = ref({ x: 0, y: 0, z: 0 })
 // 位置相对输入的临时状态
 const positionState = ref({ x: 0, y: 0, z: 0 })
+// 缩放输入的临时状态（相对模式默认为 1，因为是乘法）
+const scaleState = ref({ x: 1, y: 1, z: 1 })
 
 // Tabs 绑定的计算属性
 const positionMode = computed({
@@ -45,12 +48,20 @@ const rotationMode = computed({
   },
 })
 
+const scaleMode = computed({
+  get: () => (isScaleRelative.value ? 'relative' : 'absolute'),
+  set: (val) => {
+    isScaleRelative.value = val === 'relative'
+  },
+})
+
 // 监听选择变化以重置输入
 watch(
   () => editorStore.activeScheme?.selectedItemIds.value,
   () => {
     rotationState.value = { x: 0, y: 0, z: 0 }
     positionState.value = { x: 0, y: 0, z: 0 }
+    scaleState.value = { x: 1, y: 1, z: 1 }
   },
   { deep: true }
 )
@@ -90,6 +101,26 @@ const selectionInfo = computed(() => {
     rotation = rotationState.value
   }
 
+  // 缩放（不受工作坐标系影响）
+  let scale = { x: 1, y: 1, z: 1 }
+  if (selected.length === 1) {
+    const item = selected[0]
+    if (item && item.extra.Scale) {
+      scale = {
+        x: item.extra.Scale.X,
+        y: item.extra.Scale.Y,
+        z: item.extra.Scale.Z,
+      }
+    }
+  } else if (selected.length > 1) {
+    // 多选时计算平均缩放
+    const scales = selected.map((item) => item.extra.Scale || { X: 1, Y: 1, Z: 1 })
+    const avgX = scales.reduce((sum, s) => sum + s.X, 0) / scales.length
+    const avgY = scales.reduce((sum, s) => sum + s.Y, 0) / scales.length
+    const avgZ = scales.reduce((sum, s) => sum + s.Z, 0) / scales.length
+    scale = { x: avgX, y: avgY, z: avgZ }
+  }
+
   // 边界（最小/最大值）
   let bounds = null
   if (selected.length > 1) {
@@ -114,6 +145,7 @@ const selectionInfo = computed(() => {
     count: selected.length,
     center,
     rotation,
+    scale,
     bounds,
   }
 })
@@ -212,6 +244,36 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
         rotation: rotationArgs,
       })
     }
+  }
+}
+
+function updateScale(axis: 'x' | 'y' | 'z', value: number) {
+  if (!selectionInfo.value) return
+
+  if (isScaleRelative.value) {
+    // 相对模式：值为乘数（例如 1.5 表示放大到 1.5 倍）
+    const multiplier = value
+    if (multiplier === 1) return // 乘以 1 无变化
+
+    const scaleArgs: any = {}
+    scaleArgs[axis] = multiplier
+
+    updateSelectedItemsTransform({
+      mode: 'relative',
+      scale: scaleArgs,
+    })
+
+    // 重置输入为1
+    scaleState.value[axis] = 1
+  } else {
+    // 绝对模式：直接设置缩放值
+    const scaleArgs: any = {}
+    scaleArgs[axis] = value
+
+    updateSelectedItemsTransform({
+      mode: 'absolute',
+      scale: scaleArgs,
+    })
   }
 }
 
@@ -465,6 +527,101 @@ const fmt = (n: number) => Math.round(n * 100) / 100
               @change="(e) => updateRotation('z', Number((e.target as HTMLInputElement).value))"
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               :placeholder="rotationMode === 'relative' ? '0' : ''"
+            />
+          </div>
+        </div>
+      </div>
+      <!-- 缩放 -->
+      <div
+        v-if="!settingsStore.settings.enableLimitDetection"
+        class="flex flex-col items-stretch gap-2"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-y-2">
+          <label class="text-xs font-semibold text-sidebar-foreground">{{
+            t('transform.scale')
+          }}</label>
+          <Tabs v-model="scaleMode" class="w-auto">
+            <TabsList class="h-6 p-0.5">
+              <TabsTrigger
+                value="absolute"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                {{ t('transform.absolute') }}
+              </TabsTrigger>
+              <TabsTrigger
+                value="relative"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                {{ t('transform.relative') }}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
+          >
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
+              >X</span
+            >
+            <input
+              type="number"
+              step="0.1"
+              :value="
+                isScaleRelative
+                  ? scaleState.x === 1
+                    ? ''
+                    : scaleState.x
+                  : fmt(selectionInfo.scale.x)
+              "
+              @change="(e) => updateScale('x', Number((e.target as HTMLInputElement).value))"
+              :placeholder="isScaleRelative ? '1' : ''"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
+          >
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
+              >Y</span
+            >
+            <input
+              type="number"
+              step="0.1"
+              :value="
+                isScaleRelative
+                  ? scaleState.y === 1
+                    ? ''
+                    : scaleState.y
+                  : fmt(selectionInfo.scale.y)
+              "
+              @change="(e) => updateScale('y', Number((e.target as HTMLInputElement).value))"
+              :placeholder="isScaleRelative ? '1' : ''"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
+          >
+            <span
+              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
+              >Z</span
+            >
+            <input
+              type="number"
+              step="0.1"
+              :value="
+                isScaleRelative
+                  ? scaleState.z === 1
+                    ? ''
+                    : scaleState.z
+                  : fmt(selectionInfo.scale.z)
+              "
+              @change="(e) => updateScale('z', Number((e.target as HTMLInputElement).value))"
+              :placeholder="isScaleRelative ? '1' : ''"
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
         </div>

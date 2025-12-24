@@ -147,13 +147,13 @@ export function useEditorManipulation() {
     store.triggerSelectionUpdate()
   }
 
-  // 精确变换选中物品（位置和旋转）
+  // 精确变换选中物品（位置、旋转和缩放）
   function updateSelectedItemsTransform(params: TransformParams) {
     if (!activeScheme.value) return
 
     saveHistory('edit')
 
-    const { mode, position, rotation } = params
+    const { mode, position, rotation, scale } = params
     const scheme = activeScheme.value
     const ids = scheme.selectedItemIds.value
     if (ids.size === 0) return
@@ -188,6 +188,26 @@ export function useEditorManipulation() {
         return item
       }
 
+      // 处理缩放（独立于位置和旋转）
+      let newScale = item.extra.Scale || { X: 1, Y: 1, Z: 1 }
+      if (scale) {
+        if (mode === 'absolute') {
+          // 绝对模式：直接设置缩放值
+          newScale = {
+            X: scale.x !== undefined ? Math.max(0.01, scale.x) : newScale.X,
+            Y: scale.y !== undefined ? Math.max(0.01, scale.y) : newScale.Y,
+            Z: scale.z !== undefined ? Math.max(0.01, scale.z) : newScale.Z,
+          }
+        } else {
+          // 相对模式：乘法（例如 1.5 表示放大到 1.5 倍）
+          newScale = {
+            X: Math.max(0.01, newScale.X * (scale.x ?? 1)),
+            Y: Math.max(0.01, newScale.Y * (scale.y ?? 1)),
+            Z: Math.max(0.01, newScale.Z * (scale.z ?? 1)),
+          }
+        }
+      }
+
       // 处理绝对旋转模式 (仅更新旋转，位置不变)
       if (mode === 'absolute' && rotation) {
         const newRotation = {
@@ -214,6 +234,10 @@ export function useEditorManipulation() {
           y: newY,
           z: newZ,
           rotation: newRotation,
+          extra: {
+            ...item.extra,
+            Scale: newScale,
+          },
         }
       }
 
@@ -229,6 +253,10 @@ export function useEditorManipulation() {
           x: result.Roll,
           y: result.Pitch,
           z: result.Yaw,
+        },
+        extra: {
+          ...item.extra,
+          Scale: newScale,
         },
       }
     })

@@ -122,6 +122,11 @@ export interface TransformParams {
     y?: number // 绕Y轴旋转（对应游戏的Pitch）
     z?: number // 绕Z轴旋转（对应游戏的Yaw）
   }
+  scale?: {
+    x?: number // X轴缩放
+    y?: number // Y轴缩放
+    z?: number // Z轴缩放
+  }
 }
 
 // 工作坐标系配置

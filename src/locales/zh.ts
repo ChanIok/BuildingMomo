@@ -373,6 +373,7 @@ export const zhLocale = {
   transform: {
     position: '位置',
     rotation: '旋转 (°)',
+    scale: '缩放',
     absolute: '绝对',
     relative: '相对',
     workingCoord: '(工作坐标系)',
