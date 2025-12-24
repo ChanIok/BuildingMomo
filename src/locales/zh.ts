@@ -229,7 +229,7 @@ export const zhLocale = {
     },
     limitDetection: {
       label: '方案合规性检测',
-      hint: '检测越界物品、过大分组，并限制仅 Z 轴旋转。关闭后可自由编辑，风险自负。',
+      hint: '确保方案符合游戏规范，关闭后可自由编辑，风险自负。',
     },
     autoSave: {
       label: '工作台记忆',

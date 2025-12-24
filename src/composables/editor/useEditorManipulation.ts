@@ -190,6 +190,8 @@ export function useEditorManipulation() {
 
       // 处理缩放（独立于位置和旋转）
       let newScale = item.extra.Scale || { X: 1, Y: 1, Z: 1 }
+      let scalePositionOffset = { x: 0, y: 0, z: 0 } // 缩放导致的位置偏移（多选整体缩放）
+
       if (scale) {
         if (mode === 'absolute') {
           // 绝对模式：直接设置缩放值
@@ -200,10 +202,31 @@ export function useEditorManipulation() {
           }
         } else {
           // 相对模式：乘法（例如 1.5 表示放大到 1.5 倍）
+          const scaleMultiplier = {
+            x: scale.x ?? 1,
+            y: scale.y ?? 1,
+            z: scale.z ?? 1,
+          }
+
           newScale = {
-            X: Math.max(0.01, newScale.X * (scale.x ?? 1)),
-            Y: Math.max(0.01, newScale.Y * (scale.y ?? 1)),
-            Z: Math.max(0.01, newScale.Z * (scale.z ?? 1)),
+            X: Math.max(0.01, newScale.X * scaleMultiplier.x),
+            Y: Math.max(0.01, newScale.Y * scaleMultiplier.y),
+            Z: Math.max(0.01, newScale.Z * scaleMultiplier.z),
+          }
+
+          // 多选时：实现整体缩放，同步调整物品相对于中心的位置
+          // 核心思想：物品相对于选区中心的位置向量也要按相同比例缩放
+          if (ids.size > 1) {
+            const relativeX = item.x - center.x
+            const relativeY = item.y - center.y
+            const relativeZ = item.z - center.z
+
+            // 计算缩放后的新相对位置，减去原相对位置，得到位置偏移
+            scalePositionOffset = {
+              x: relativeX * (scaleMultiplier.x - 1),
+              y: relativeY * (scaleMultiplier.y - 1),
+              z: relativeZ * (scaleMultiplier.z - 1),
+            }
           }
         }
       }
@@ -228,6 +251,11 @@ export function useEditorManipulation() {
           newZ += positionOffset.z
         }
 
+        // 应用缩放导致的位置偏移（整体缩放）
+        newX += scalePositionOffset.x
+        newY += scalePositionOffset.y
+        newZ += scalePositionOffset.z
+
         return {
           ...item,
           x: newX,
@@ -246,9 +274,9 @@ export function useEditorManipulation() {
 
       return {
         ...item,
-        x: result.x,
-        y: result.y,
-        z: result.z,
+        x: result.x + scalePositionOffset.x,
+        y: result.y + scalePositionOffset.y,
+        z: result.z + scalePositionOffset.z,
         rotation: {
           x: result.Roll,
           y: result.Pitch,

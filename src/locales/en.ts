@@ -231,7 +231,7 @@ export const enLocale = {
     },
     limitDetection: {
       label: 'Compliance Checks',
-      hint: 'Detects out-of-bounds items, oversized groups, and restricts rotation to Z-axis only. Disable to edit freely at your own risk.',
+      hint: 'Ensures the scheme follows game standards. Disable for free editing at your own risk.',
     },
     autoSave: {
       label: 'Workspace Memory',
