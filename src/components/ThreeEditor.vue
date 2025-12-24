@@ -395,8 +395,17 @@ watch(
 
           let color
           if (/^(X|XYZX)$/.test(obj.name)) color = axisColors.x
-          else if (/^(Y|XYZY)$/.test(obj.name)) color = axisColors.y
-          else if (/^(Z|XYZZ)$/.test(obj.name)) color = axisColors.z
+          else if (/^(Y|XYZY)$/.test(obj.name)) {
+            color = axisColors.y
+            // 翻转 Y 轴几何体的顶点方向，使其在视觉上指向“下方”以匹配游戏数据坐标系
+            const posAttr = obj.geometry?.attributes?.position
+            if (posAttr) {
+              for (let i = 0; i < posAttr.count; i++) {
+                posAttr.setY(i, -posAttr.getY(i))
+              }
+              posAttr.needsUpdate = true
+            }
+          } else if (/^(Z|XYZZ)$/.test(obj.name)) color = axisColors.z
 
           if (color) {
             obj.material.color.set(color)
