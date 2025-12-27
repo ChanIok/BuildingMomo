@@ -12,6 +12,7 @@ import {
   Box,
   Image as ImageIcon,
   Cuboid,
+  Boxes,
   Camera,
   ChevronsUp,
   ChevronsDown,
@@ -65,7 +66,8 @@ const selectionMode = computed({
 const displayMode = computed({
   get: () => settingsStore.settings.threeDisplayMode,
   set: (val) => {
-    if (val) settingsStore.settings.threeDisplayMode = val as 'box' | 'icon' | 'simple-box'
+    if (val)
+      settingsStore.settings.threeDisplayMode = val as 'box' | 'icon' | 'simple-box' | 'model'
   },
 })
 // 视图预设切换
@@ -107,6 +109,7 @@ const displayModes = computed(() => [
   { id: 'box', label: t('sidebar.displayMode.box'), icon: Cuboid },
   { id: 'simple-box', label: t('sidebar.displayMode.simpleBox'), icon: Box },
   { id: 'icon', label: t('sidebar.displayMode.icon'), icon: ImageIcon },
+  { id: 'model', label: t('sidebar.displayMode.model'), icon: Boxes },
 ])
 
 const viewPresets = computed(() => [

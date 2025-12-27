@@ -366,6 +366,7 @@ export const zhLocale = {
       box: '完整体积',
       simpleBox: '简化方块',
       icon: '图标模式',
+      model: '模型模式',
     },
   },
 

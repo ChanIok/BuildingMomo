@@ -19,7 +19,7 @@ export interface AppSettings {
   enableAutoSave: boolean
 
   // 3D 视图设置
-  threeDisplayMode: 'box' | 'icon' | 'simple-box' // 3D 显示模式：立方体、图标或简化方块
+  threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
 
   // 语言设置

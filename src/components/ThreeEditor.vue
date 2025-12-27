@@ -227,6 +227,7 @@ const {
   instancedMesh,
   iconInstancedMesh,
   simpleBoxInstancedMesh,
+  modelMeshMap,
   indexToIdMap,
   updateSelectedInstancesMatrix,
 
@@ -249,10 +250,18 @@ const shouldShowIconMesh = computed(() => currentDisplayMode.value === 'icon')
 // 是否显示 Simple Box mesh
 const shouldShowSimpleBoxMesh = computed(() => currentDisplayMode.value === 'simple-box')
 
+// 是否显示 Model mesh
+const shouldShowModelMesh = computed(() => currentDisplayMode.value === 'model')
+
 // 当前用于拾取/选择的 InstancedMesh（根据显示模式切换）
 const pickInstancedMesh = computed(() => {
   if (shouldShowIconMesh.value) return iconInstancedMesh.value
   if (shouldShowSimpleBoxMesh.value) return simpleBoxInstancedMesh.value
+  if (shouldShowModelMesh.value) {
+    // Model 模式：返回第一个模型 Mesh（用于基础拾取，后续可能需要遍历所有）
+    const meshes = Array.from(modelMeshMap.value.values())
+    return meshes[0] || instancedMesh.value
+  }
   return instancedMesh.value
 })
 
@@ -827,6 +836,10 @@ onDeactivated(() => {
             v-if="shouldShowSimpleBoxMesh && simpleBoxInstancedMesh"
             :object="simpleBoxInstancedMesh"
           />
+          <!-- Model 模式：渲染所有模型 Mesh -->
+          <template v-if="shouldShowModelMesh">
+            <primitive v-for="[modelName, mesh] in modelMeshMap" :key="modelName" :object="mesh" />
+          </template>
         </TresGroup>
 
         <!-- 辅助元素 - 适配大场景 - 移至世界空间 -->

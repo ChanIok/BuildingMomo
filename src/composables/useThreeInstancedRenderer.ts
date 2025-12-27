@@ -21,6 +21,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeIconManager, releaseThreeIconManager } from './useThreeIconManager'
+import { getThreeModelManager, releaseThreeModelManager } from './useThreeModelManager'
 import { useEditorGroups } from './editor/useEditorGroups'
 
 import { MAX_RENDER_INSTANCES as MAX_INSTANCES } from '@/types/constants'
@@ -189,6 +190,16 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   const iconManager = getThreeIconManager()
 
+  // === Model 模式（新增） ===
+  const modelManager = getThreeModelManager()
+
+  // 模型 InstancedMesh 映射：modelName -> InstancedMesh
+  const modelMeshMap = ref(new Map<string, InstancedMesh>())
+
+  // 模型索引映射：用于拾取和选择
+  const modelIndexToIdMap = ref(new Map<number, string>())
+  const modelIdToIndexMap = ref(new Map<string, number>())
+
   // 确保图标相关资源已初始化
   function ensureIconResources(minCapacity: number = 32) {
     if (iconInstancedMesh.value) return
@@ -334,6 +345,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const scratchDefaultNormal = markRaw(new Vector3(0, 0, 1)) // Default Plane Normal (+Z)
   const scratchUpVec3 = markRaw(new Vector3(0, 1, 0)) // Temp Up (Y)
   const scratchLookAtTarget = markRaw(new Vector3())
+  // GLTF Y-Up -> Scene Z-Up 校正旋转 (X+90deg)
+  const scratchUprightQuaternion = markRaw(
+    new Quaternion().setFromEuler(new Euler(Math.PI / 2, 0, 0))
+  )
 
   function convertColorToHex(colorStr: string | undefined): number {
     if (!colorStr) return 0x94a3b8
@@ -463,19 +478,251 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   }
 
+  // Model 模式的重建逻辑（按模型名分组渲染）
+  async function rebuildModelInstances(items: AppItem[], instanceCount: number) {
+    if (items.length > MAX_INSTANCES) {
+      console.warn(
+        `[ThreeInstancedRenderer] 当前可见物品数量 (${items.length}) 超过上限 ${MAX_INSTANCES}，仅渲染前 ${MAX_INSTANCES} 个`
+      )
+    }
+
+    // 1. 按 modelName 分组（包含回退项）
+    const groups = new Map<string, AppItem[]>()
+    const fallbackKey = '__FALLBACK__' // 特殊键，用于存放没有模型或加载失败的物品
+
+    for (let i = 0; i < instanceCount; i++) {
+      const item = items[i]
+      if (!item) continue
+
+      const modelName = gameDataStore.getModelName(item.gameId)
+      const key = modelName || fallbackKey
+
+      if (!groups.has(key)) {
+        groups.set(key, [])
+      }
+      groups.get(key)!.push(item)
+    }
+
+    console.log(
+      `[ThreeInstancedRenderer] Model groups: ${groups.size - (groups.has(fallbackKey) ? 1 : 0)} models + ${groups.get(fallbackKey)?.length || 0} fallback`
+    )
+
+    // 2. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
+    const activeModelNames = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
+    for (const [modelName] of modelMeshMap.value.entries()) {
+      if (!activeModelNames.has(modelName)) {
+        // 模型不再需要，清理
+        modelManager.disposeMesh(modelName)
+        modelMeshMap.value.delete(modelName)
+      }
+    }
+
+    // 3. 为每个模型创建或更新 InstancedMesh
+    let globalIndex = 0
+    const newIndexToIdMap = new Map<number, string>()
+    const newIdToIndexMap = new Map<string, number>()
+
+    for (const [modelName, itemsOfModel] of groups.entries()) {
+      if (modelName === fallbackKey) {
+        // 回退物品：使用 Box 渲染
+        await renderFallbackItems(itemsOfModel, globalIndex, newIndexToIdMap, newIdToIndexMap)
+        globalIndex += itemsOfModel.length
+        continue
+      }
+
+      // 创建或获取 InstancedMesh
+      const existingMesh = modelMeshMap.value.get(modelName)
+      let mesh: InstancedMesh | null = existingMesh || null
+      if (!mesh) {
+        const newMesh = await modelManager.createInstancedMesh(modelName, itemsOfModel.length)
+
+        if (!newMesh) {
+          // 加载失败，回退到 Box
+          console.warn(
+            `[ThreeInstancedRenderer] Failed to create mesh for ${modelName}, using fallback`
+          )
+          await renderFallbackItems(itemsOfModel, globalIndex, newIndexToIdMap, newIdToIndexMap)
+          globalIndex += itemsOfModel.length
+          continue
+        }
+
+        mesh = markRaw(newMesh)
+        modelMeshMap.value.set(modelName, mesh)
+      }
+
+      // 更新实例数量
+      mesh.count = itemsOfModel.length
+
+      // 设置每个实例的矩阵和颜色
+      for (let i = 0; i < itemsOfModel.length; i++) {
+        const item = itemsOfModel[i]
+        if (!item) continue
+
+        // 位置
+        coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+
+        // 旋转（与 Box 模式相同的修正）
+        const Rotation = item.rotation
+        scratchEuler.set(
+          (-Rotation.x * Math.PI) / 180,
+          (-Rotation.y * Math.PI) / 180,
+          (Rotation.z * Math.PI) / 180,
+          'ZYX'
+        )
+        scratchQuaternion.setFromEuler(scratchEuler)
+
+        // 修正：GLTF 模型是 Y-Up 的，而我们的场景是 Z-Up，需要绕 X 轴旋转 90 度把它“扶正”
+        scratchQuaternion.multiply(scratchUprightQuaternion)
+
+        const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+        const [funcSizeX, funcSizeY, funcSizeZ] = furnitureSize
+
+        // 动态计算缩放：确保模型填满家具定义的包围盒
+        let scaleX = 100
+        let scaleY = 100
+        let scaleZ = 100
+
+        if (mesh.geometry) {
+          if (!mesh.geometry.boundingBox) {
+            mesh.geometry.computeBoundingBox()
+          }
+          const bbox = mesh.geometry.boundingBox
+          if (bbox) {
+            const geoSizeX = bbox.max.x - bbox.min.x
+            const geoSizeY = bbox.max.y - bbox.min.y
+            const geoSizeZ = bbox.max.z - bbox.min.z
+
+            // 映射关系：
+            // Local X (宽度) -> World X (SizeX)
+            // Local Y (高度) -> World Z (SizeZ) (因旋转90度)
+            // Local Z (深度) -> World Y (SizeY) (因旋转90度)
+
+            if (geoSizeX > 0.001) scaleX = funcSizeX / geoSizeX
+            if (geoSizeY > 0.001) scaleY = funcSizeZ / geoSizeY
+            if (geoSizeZ > 0.001) scaleZ = funcSizeY / geoSizeZ
+          }
+        }
+
+        const Scale = item.extra.Scale
+        // 应用基础缩放 * 动态计算的填充满缩放
+        scratchScale.set(
+          (Scale.X || 1) * scaleX,
+          (Scale.Y || 1) * scaleZ, // Local Y scale maps to Furniture Height
+          (Scale.Z || 1) * scaleY // Local Z scale maps to Furniture Depth
+          // 注意：上面的 scaleX/Y/Z 变量是根据映射关系命名好的倍率，直接应用到对应的 Local 轴即可：
+          // scratchScale 是 Local 的缩放 (LX, LY, LZ)
+          // LX 应该缩放 scaleX 倍 (对应 World X)
+          // LY 应该缩放 scaleY 倍 (对应 World Z)
+          // LZ 应该缩放 scaleZ 倍 (对应 World Y)
+        )
+        // 修正变量使用：我上面定义的变量名有点混淆，理清一下：
+        // scaleX: 目标是 World X, 也是 Local X
+        // scaleY: 目标是 World Z, 是 Local Y
+        // scaleZ: 目标是 World Y, 是 Local Z
+        scratchScale.set((Scale.X || 1) * scaleX, (Scale.Y || 1) * scaleY, (Scale.Z || 1) * scaleZ)
+
+        // 组合矩阵
+        scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
+        mesh.setMatrixAt(i, scratchMatrix)
+
+        // 颜色
+
+        // 索引映射
+        newIndexToIdMap.set(globalIndex + i, item.internalId)
+        newIdToIndexMap.set(item.internalId, globalIndex + i)
+      }
+
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+
+      globalIndex += itemsOfModel.length
+    }
+
+    // 更新索引映射
+    modelIndexToIdMap.value = newIndexToIdMap
+    modelIdToIndexMap.value = newIdToIndexMap
+
+    console.log(`[ThreeInstancedRenderer] Model mode rebuild complete: ${globalIndex} instances`)
+  }
+
+  // 渲染回退物品（使用 Box）
+  async function renderFallbackItems(
+    items: AppItem[],
+    startIndex: number,
+    indexToIdMap: Map<number, string>,
+    idToIndexMap: Map<string, number>
+  ) {
+    const meshTarget = instancedMesh.value
+    if (!meshTarget) return
+
+    // 确保 Box mesh 有足够容量
+    const requiredCount = startIndex + items.length
+    if (meshTarget.count < requiredCount) {
+      // 扩展容量（简单起见，直接设置为所需数量）
+      // 注意：这里可能需要更复杂的逻辑来处理超出 MAX_INSTANCES 的情况
+      meshTarget.count = Math.min(requiredCount, MAX_INSTANCES)
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (!item) continue
+
+      const instanceIndex = startIndex + i
+
+      // 位置
+      coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+
+      // 旋转
+      const Rotation = item.rotation
+      scratchEuler.set(
+        (-Rotation.x * Math.PI) / 180,
+        (-Rotation.y * Math.PI) / 180,
+        (Rotation.z * Math.PI) / 180,
+        'ZYX'
+      )
+      scratchQuaternion.setFromEuler(scratchEuler)
+
+      // 缩放（使用家具尺寸）
+      const Scale = item.extra.Scale
+      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+      const [sizeX, sizeY, sizeZ] = furnitureSize
+      scratchScale.set((Scale.X || 1) * sizeX, (Scale.Y || 1) * sizeY, (Scale.Z || 1) * sizeZ)
+
+      // 组合矩阵
+      scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
+      meshTarget.setMatrixAt(instanceIndex, scratchMatrix)
+
+      // 颜色
+      scratchColor.setHex(getItemColor(item, 'box'))
+      meshTarget.setColorAt(instanceIndex, scratchColor)
+
+      // 索引映射
+      indexToIdMap.set(instanceIndex, item.internalId)
+      idToIndexMap.set(item.internalId, instanceIndex)
+    }
+
+    meshTarget.instanceMatrix.needsUpdate = true
+    if (meshTarget.instanceColor) meshTarget.instanceColor.needsUpdate = true
+  }
+
   // 完整重建实例几何和索引映射（用于物品集合变化时）
   async function rebuildInstances() {
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = instancedMesh.value
     const simpleBoxMeshTarget = simpleBoxInstancedMesh.value
 
+    const items = editorStore.activeScheme?.items.value ?? []
+    const instanceCount = Math.min(items.length, MAX_INSTANCES)
+
+    // === Model 模式（新增）===
+    if (mode === 'model') {
+      return await rebuildModelInstances(items, instanceCount)
+    }
+
     // 至少需要当前模式的 mesh 存在
     if (mode === 'box' && !meshTarget) return
     // Icon 模式支持延迟加载，下方会处理
     if (mode === 'simple-box' && !simpleBoxMeshTarget) return
-
-    const items = editorStore.activeScheme?.items.value ?? []
-    const instanceCount = Math.min(items.length, MAX_INSTANCES)
 
     // 延迟初始化 Icon 资源（如果当前是 icon 模式）
     if (mode === 'icon') {
@@ -928,16 +1175,29 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       simpleBoxInstancedMesh.value = null
     }
 
-    // 4. 释放图标管理器引用
+    // 4. 清理模型 Mesh
+    for (const [, mesh] of modelMeshMap.value.entries()) {
+      mesh.geometry = null as any
+      mesh.material = null as any
+    }
+    modelMeshMap.value.clear()
+
+    // 5. 释放图标管理器引用
     releaseThreeIconManager()
+
+    // 6. 释放模型管理器引用
+    releaseThreeModelManager()
   })
 
   return {
     instancedMesh,
     iconInstancedMesh,
     simpleBoxInstancedMesh,
+    modelMeshMap, // 新增：模型 Mesh 映射
     indexToIdMap,
     idToIndexMap,
+    modelIndexToIdMap, // 新增：模型模式的索引映射
+    modelIdToIndexMap, // 新增：模型模式的ID映射
     updateSelectedInstancesMatrix,
     setHoveredItemId,
     updateIconFacing,

@@ -368,6 +368,7 @@ export const enLocale = {
       box: 'Full Volume',
       simpleBox: 'Simple Box',
       icon: 'Icon Mode',
+      model: 'Model Mode',
     },
   },
 
