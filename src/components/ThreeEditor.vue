@@ -795,9 +795,14 @@ onDeactivated(() => {
           @change="handleOrbitChange"
         />
 
-        <!-- 光照: 调整位置为 Z-up -->
-        <TresAmbientLight :intensity="0.6" />
-        <TresDirectionalLight :position="[1000, 1000, 2000]" :intensity="0.8" :cast-shadow="true" />
+        <!-- 光照: 明亮风格 -->
+        <TresAmbientLight :intensity="0.75" />
+        <TresDirectionalLight
+          :position="[1000, 1000, 2000]"
+          :intensity="1.0"
+          :color="0xfff4e6"
+          :cast-shadow="true"
+        />
 
         <!-- 场景内容容器：Y轴翻转以实现左手坐标系视觉（Y轴朝南） -->
         <TresGroup :scale="[1, -1, 1]">

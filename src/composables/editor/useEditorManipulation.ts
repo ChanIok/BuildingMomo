@@ -196,12 +196,12 @@ export function useEditorManipulation() {
         if (mode === 'absolute') {
           // 绝对模式：直接设置缩放值
           newScale = {
-            X: scale.x !== undefined ? Math.max(0.01, scale.x) : newScale.X,
-            Y: scale.y !== undefined ? Math.max(0.01, scale.y) : newScale.Y,
-            Z: scale.z !== undefined ? Math.max(0.01, scale.z) : newScale.Z,
+            X: scale.x !== undefined ? scale.x : newScale.X,
+            Y: scale.y !== undefined ? scale.y : newScale.Y,
+            Z: scale.z !== undefined ? scale.z : newScale.Z,
           }
         } else {
-          // 相对模式：乘法（例如 1.5 表示放大到 1.5 倍）
+          // 相对模式：简单的局部空间缩放（直接乘以倍数）
           const scaleMultiplier = {
             x: scale.x ?? 1,
             y: scale.y ?? 1,
@@ -209,22 +209,21 @@ export function useEditorManipulation() {
           }
 
           newScale = {
-            X: Math.max(0.01, newScale.X * scaleMultiplier.x),
-            Y: Math.max(0.01, newScale.Y * scaleMultiplier.y),
-            Z: Math.max(0.01, newScale.Z * scaleMultiplier.z),
+            X: newScale.X * scaleMultiplier.x,
+            Y: newScale.Y * scaleMultiplier.y,
+            Z: newScale.Z * scaleMultiplier.z,
           }
 
           // 多选时：实现整体缩放，同步调整物品相对于中心的位置
-          // 核心思想：物品相对于选区中心的位置向量也要按相同比例缩放
           if (ids.size > 1) {
             const relativeX = item.x - center.x
             const relativeY = item.y - center.y
             const relativeZ = item.z - center.z
 
-            // 计算缩放后的新相对位置，减去原相对位置，得到位置偏移
+            // 注意：游戏坐标系映射（Scale.X 实际控制南北，Scale.Y 实际控制东西）
             scalePositionOffset = {
-              x: relativeX * (scaleMultiplier.x - 1),
-              y: relativeY * (scaleMultiplier.y - 1),
+              x: relativeX * (scaleMultiplier.y - 1),
+              y: relativeY * (scaleMultiplier.x - 1),
               z: relativeZ * (scaleMultiplier.z - 1),
             }
           }

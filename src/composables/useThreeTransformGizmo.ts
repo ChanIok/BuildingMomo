@@ -258,10 +258,12 @@ export function useThreeTransformGizmo(
     const quat = new Quaternion().setFromEuler(euler)
 
     // 3. Scale
+    // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X=南北→Three.js Y，游戏Y=东西→Three.js X）
+    // 因此：Scale.X 应用到 World Y (即 Local Y)，Scale.Y 应用到 World X (即 Local X)
     const scaleData = item.extra?.Scale
     const scale = new Vector3(
-      (scaleData?.X ?? 1) * sizeX,
-      (scaleData?.Y ?? 1) * sizeY,
+      (scaleData?.Y ?? 1) * sizeX, // Local X 使用 Scale.Y
+      (scaleData?.X ?? 1) * sizeY, // Local Y 使用 Scale.X
       (scaleData?.Z ?? 1) * sizeZ
     )
 

@@ -1,13 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
-import type { FurnitureItem, BuildingMomoFurniture, RawFurnitureEntry } from '../types/furniture'
+import type {
+  FurnitureItem,
+  BuildingMomoFurniture,
+  RawFurnitureEntry,
+  FurnitureDB,
+  FurnitureModelConfig,
+} from '../types/furniture'
 
 // 远程数据源 (Build time fetched)
 const FURNITURE_DATA_URL = import.meta.env.BASE_URL + 'assets/data/building-momo-furniture.json'
 // 可建造区域数据
 const BUILDABLE_AREA_URL = import.meta.env.BASE_URL + 'assets/data/home-buildable-area.json'
-// 模型映射数据
-const MODEL_MAPPING_URL = import.meta.env.BASE_URL + 'assets/data/id_to_model.json'
+// 家具模型数据库（替代 id_to_model.json）
+const FURNITURE_DB_URL = import.meta.env.BASE_URL + 'assets/data/furniture_db.json'
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 
@@ -21,9 +27,9 @@ export const useGameDataStore = defineStore('gameData', () => {
   const buildableAreas = shallowRef<Record<string, number[][]> | null>(null)
   const isBuildableAreaLoaded = ref(false)
 
-  // ========== 状态 (Model Mapping) ==========
-  const modelMapping = ref<Record<string, string>>({})
-  const isModelMappingLoaded = ref(false)
+  // ========== 状态 (Furniture DB) ==========
+  const furnitureDB = ref<Map<number, FurnitureModelConfig>>(new Map())
+  const isFurnitureDBLoaded = ref(false)
 
   // ========== 数据加载 (Furniture) ==========
 
@@ -102,20 +108,28 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
   }
 
-  // 模型映射数据加载
-  async function loadModelMapping() {
-    if (isModelMappingLoaded.value) return
+  // 家具数据库加载
+  async function loadFurnitureDB() {
+    if (isFurnitureDBLoaded.value) return
 
     try {
-      console.log('[GameDataStore] Loading model mapping...')
-      const response = await fetch(MODEL_MAPPING_URL)
-      if (!response.ok) throw new Error('Failed to load model mapping')
-      const data = await response.json()
-      modelMapping.value = data
-      isModelMappingLoaded.value = true
-      console.log('[GameDataStore] Model mapping loaded:', Object.keys(data).length, 'entries')
+      console.log('[GameDataStore] Loading furniture database...')
+      const response = await fetch(FURNITURE_DB_URL)
+      if (!response.ok) throw new Error('Failed to load furniture database')
+      const data: FurnitureDB = await response.json()
+
+      // 构建 Map：原始ID + 1170000000 → 配置
+      const map = new Map<number, FurnitureModelConfig>()
+      for (const config of data.furniture) {
+        const gameId = config.id + 1170000000
+        map.set(gameId, config)
+      }
+
+      furnitureDB.value = map
+      isFurnitureDBLoaded.value = true
+      console.log('[GameDataStore] Furniture database loaded:', map.size, 'entries')
     } catch (error) {
-      console.error('[GameDataStore] Failed to load model mapping:', error)
+      console.error('[GameDataStore] Failed to load furniture database:', error)
     }
   }
 
@@ -123,7 +137,7 @@ export const useGameDataStore = defineStore('gameData', () => {
 
   // 初始化（应用启动时调用）
   async function initialize(): Promise<void> {
-    if (isFurnitureInitialized.value && isBuildableAreaLoaded.value && isModelMappingLoaded.value) {
+    if (isFurnitureInitialized.value && isBuildableAreaLoaded.value && isFurnitureDBLoaded.value) {
       return
     }
 
@@ -133,7 +147,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     await Promise.all([
       !isFurnitureInitialized.value ? updateFurnitureData() : Promise.resolve(),
       !isBuildableAreaLoaded.value ? loadBuildableAreaData() : Promise.resolve(),
-      !isModelMappingLoaded.value ? loadModelMapping() : Promise.resolve(),
+      !isFurnitureDBLoaded.value ? loadFurnitureDB() : Promise.resolve(),
     ])
   }
 
@@ -157,15 +171,15 @@ export const useGameDataStore = defineStore('gameData', () => {
     return ICON_BASE_URL + furniture.icon + '.webp'
   }
 
-  // ========== 公共方法 (Model Mapping) ==========
+  // ========== 公共方法 (Furniture DB) ==========
 
   /**
-   * 根据 ItemID 获取模型名称
+   * 根据 ItemID 获取家具模型配置
    * @param itemId 家具 ItemID
-   * @returns 模型名称，如果不存在返回 null
+   * @returns 模型配置，如果不存在返回 null
    */
-  function getModelName(itemId: number): string | null {
-    return modelMapping.value[itemId.toString()] || null
+  function getFurnitureModelConfig(itemId: number): FurnitureModelConfig | null {
+    return furnitureDB.value.get(itemId) || null
   }
 
   // 清除缓存 (仅重置状态)
@@ -176,8 +190,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     isFurnitureInitialized.value = false
     buildableAreas.value = null
     isBuildableAreaLoaded.value = false
-    modelMapping.value = {}
-    isModelMappingLoaded.value = false
+    furnitureDB.value.clear()
+    isFurnitureDBLoaded.value = false
     console.log('[GameDataStore] State cleared')
   }
 
@@ -191,16 +205,16 @@ export const useGameDataStore = defineStore('gameData', () => {
     buildableAreas,
     isBuildableAreaLoaded,
 
-    // 状态 (Model Mapping)
-    modelMapping,
-    isModelMappingLoaded,
+    // 状态 (Furniture DB)
+    furnitureDB,
+    isFurnitureDBLoaded,
 
     // 方法
     initialize,
     getFurniture,
     getFurnitureSize,
     getIconUrl,
-    getModelName,
+    getFurnitureModelConfig,
     clearCache,
   }
 })

@@ -45,3 +45,32 @@ export interface FurnitureCache {
   lastFetchTime: number
   data: Record<string, FurnitureItem>
 }
+
+// ========== Furniture DB (模型配置) ==========
+
+/** 单个 Mesh 配置 */
+export interface FurnitureMeshConfig {
+  path: string
+  rotation: { x: number; y: number; z: number; w: number }
+  trans: { x: number; y: number; z: number }
+  scale: { x: number; y: number; z: number }
+  mats?: Array<{ name: string }>
+}
+
+/** 家具模型配置 */
+export interface FurnitureModelConfig {
+  id: number
+  name: string
+  cat: string
+  meshes: FurnitureMeshConfig[]
+  root_offset: { x: number; y: number; z: number }
+  scale_range?: [number, number]
+  rotate_axis?: [boolean, boolean]
+  price?: number
+}
+
+/** Furniture DB 数据结构 */
+export interface FurnitureDB {
+  categories: string[]
+  furniture: FurnitureModelConfig[]
+}

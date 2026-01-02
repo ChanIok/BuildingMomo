@@ -193,8 +193,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   // === Model 模式（新增） ===
   const modelManager = getThreeModelManager()
 
-  // 模型 InstancedMesh 映射：modelName -> InstancedMesh
-  const modelMeshMap = ref(new Map<string, InstancedMesh>())
+  // 模型 InstancedMesh 映射：itemId -> InstancedMesh
+  const modelMeshMap = ref(new Map<number, InstancedMesh>())
 
   // 模型索引映射：用于拾取和选择
   const modelIndexToIdMap = ref(new Map<number, string>())
@@ -345,10 +345,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const scratchDefaultNormal = markRaw(new Vector3(0, 0, 1)) // Default Plane Normal (+Z)
   const scratchUpVec3 = markRaw(new Vector3(0, 1, 0)) // Temp Up (Y)
   const scratchLookAtTarget = markRaw(new Vector3())
-  // GLTF Y-Up -> Scene Z-Up 校正旋转 (X+90deg)
-  const scratchUprightQuaternion = markRaw(
-    new Quaternion().setFromEuler(new Euler(Math.PI / 2, 0, 0))
-  )
 
   function convertColorToHex(colorStr: string | undefined): number {
     if (!colorStr) return 0x94a3b8
@@ -478,7 +474,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   }
 
-  // Model 模式的重建逻辑（按模型名分组渲染）
+  // Model 模式的重建逻辑（按 itemId 分组渲染）
   async function rebuildModelInstances(items: AppItem[], instanceCount: number) {
     if (items.length > MAX_INSTANCES) {
       console.warn(
@@ -486,16 +482,16 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       )
     }
 
-    // 1. 按 modelName 分组（包含回退项）
-    const groups = new Map<string, AppItem[]>()
-    const fallbackKey = '__FALLBACK__' // 特殊键，用于存放没有模型或加载失败的物品
+    // 1. 按 itemId 分组（包含回退项）
+    const groups = new Map<number, AppItem[]>()
+    const fallbackKey = -1 // 特殊键，用于存放没有模型或加载失败的物品
 
     for (let i = 0; i < instanceCount; i++) {
       const item = items[i]
       if (!item) continue
 
-      const modelName = gameDataStore.getModelName(item.gameId)
-      const key = modelName || fallbackKey
+      const config = gameDataStore.getFurnitureModelConfig(item.gameId)
+      const key = config ? item.gameId : fallbackKey
 
       if (!groups.has(key)) {
         groups.set(key, [])
@@ -504,26 +500,26 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
 
     console.log(
-      `[ThreeInstancedRenderer] Model groups: ${groups.size - (groups.has(fallbackKey) ? 1 : 0)} models + ${groups.get(fallbackKey)?.length || 0} fallback`
+      `[ThreeInstancedRenderer] Model groups: ${groups.size - (groups.has(fallbackKey) ? 1 : 0)} furniture + ${groups.get(fallbackKey)?.length || 0} fallback`
     )
 
     // 2. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
-    const activeModelNames = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
-    for (const [modelName] of modelMeshMap.value.entries()) {
-      if (!activeModelNames.has(modelName)) {
+    const activeItemIds = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
+    for (const [itemId] of modelMeshMap.value.entries()) {
+      if (!activeItemIds.has(itemId)) {
         // 模型不再需要，清理
-        modelManager.disposeMesh(modelName)
-        modelMeshMap.value.delete(modelName)
+        modelManager.disposeMesh(itemId)
+        modelMeshMap.value.delete(itemId)
       }
     }
 
-    // 3. 为每个模型创建或更新 InstancedMesh
+    // 3. 为每个家具创建或更新 InstancedMesh
     let globalIndex = 0
     const newIndexToIdMap = new Map<number, string>()
     const newIdToIndexMap = new Map<string, number>()
 
-    for (const [modelName, itemsOfModel] of groups.entries()) {
-      if (modelName === fallbackKey) {
+    for (const [itemId, itemsOfModel] of groups.entries()) {
+      if (itemId === fallbackKey) {
         // 回退物品：使用 Box 渲染
         await renderFallbackItems(itemsOfModel, globalIndex, newIndexToIdMap, newIdToIndexMap)
         globalIndex += itemsOfModel.length
@@ -531,15 +527,15 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       }
 
       // 创建或获取 InstancedMesh
-      const existingMesh = modelMeshMap.value.get(modelName)
+      const existingMesh = modelMeshMap.value.get(itemId)
       let mesh: InstancedMesh | null = existingMesh || null
       if (!mesh) {
-        const newMesh = await modelManager.createInstancedMesh(modelName, itemsOfModel.length)
+        const newMesh = await modelManager.createInstancedMesh(itemId, itemsOfModel.length)
 
         if (!newMesh) {
           // 加载失败，回退到 Box
           console.warn(
-            `[ThreeInstancedRenderer] Failed to create mesh for ${modelName}, using fallback`
+            `[ThreeInstancedRenderer] Failed to create mesh for itemId ${itemId}, using fallback`
           )
           await renderFallbackItems(itemsOfModel, globalIndex, newIndexToIdMap, newIdToIndexMap)
           globalIndex += itemsOfModel.length
@@ -547,7 +543,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         }
 
         mesh = markRaw(newMesh)
-        modelMeshMap.value.set(modelName, mesh)
+        modelMeshMap.value.set(itemId, mesh)
       }
 
       // 更新实例数量
@@ -561,7 +557,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         // 位置
         coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
 
-        // 旋转（与 Box 模式相同的修正）
+        // 旋转（与 Box 模式完全相同，模型已在导入时完成坐标系转换）
         const Rotation = item.rotation
         scratchEuler.set(
           (-Rotation.x * Math.PI) / 180,
@@ -571,55 +567,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         )
         scratchQuaternion.setFromEuler(scratchEuler)
 
-        // 修正：GLTF 模型是 Y-Up 的，而我们的场景是 Z-Up，需要绕 X 轴旋转 90 度把它“扶正”
-        scratchQuaternion.multiply(scratchUprightQuaternion)
-
-        const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-        const [funcSizeX, funcSizeY, funcSizeZ] = furnitureSize
-
-        // 动态计算缩放：确保模型填满家具定义的包围盒
-        let scaleX = 100
-        let scaleY = 100
-        let scaleZ = 100
-
-        if (mesh.geometry) {
-          if (!mesh.geometry.boundingBox) {
-            mesh.geometry.computeBoundingBox()
-          }
-          const bbox = mesh.geometry.boundingBox
-          if (bbox) {
-            const geoSizeX = bbox.max.x - bbox.min.x
-            const geoSizeY = bbox.max.y - bbox.min.y
-            const geoSizeZ = bbox.max.z - bbox.min.z
-
-            // 映射关系：
-            // Local X (宽度) -> World X (SizeX)
-            // Local Y (高度) -> World Z (SizeZ) (因旋转90度)
-            // Local Z (深度) -> World Y (SizeY) (因旋转90度)
-
-            if (geoSizeX > 0.001) scaleX = funcSizeX / geoSizeX
-            if (geoSizeY > 0.001) scaleY = funcSizeZ / geoSizeY
-            if (geoSizeZ > 0.001) scaleZ = funcSizeY / geoSizeZ
-          }
-        }
-
+        // 缩放：仅使用用户的 Scale 参数，不再使用 furnitureSize
+        // 模型已包含实际尺寸，直接应用用户缩放即可
         const Scale = item.extra.Scale
-        // 应用基础缩放 * 动态计算的填充满缩放
-        scratchScale.set(
-          (Scale.X || 1) * scaleX,
-          (Scale.Y || 1) * scaleZ, // Local Y scale maps to Furniture Height
-          (Scale.Z || 1) * scaleY // Local Z scale maps to Furniture Depth
-          // 注意：上面的 scaleX/Y/Z 变量是根据映射关系命名好的倍率，直接应用到对应的 Local 轴即可：
-          // scratchScale 是 Local 的缩放 (LX, LY, LZ)
-          // LX 应该缩放 scaleX 倍 (对应 World X)
-          // LY 应该缩放 scaleY 倍 (对应 World Z)
-          // LZ 应该缩放 scaleZ 倍 (对应 World Y)
-        )
-        // 修正变量使用：我上面定义的变量名有点混淆，理清一下：
-        // scaleX: 目标是 World X, 也是 Local X
-        // scaleY: 目标是 World Z, 是 Local Y
-        // scaleZ: 目标是 World Y, 是 Local Z
-        scratchScale.set((Scale.X || 1) * scaleX, (Scale.Y || 1) * scaleY, (Scale.Z || 1) * scaleZ)
+        // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X→Three.js Y，游戏Y→Three.js X）
+        scratchScale.set(Scale.Y || 1, Scale.X || 1, Scale.Z || 1)
 
         // 组合矩阵
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
@@ -686,7 +638,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       const Scale = item.extra.Scale
       const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
       const [sizeX, sizeY, sizeZ] = furnitureSize
-      scratchScale.set((Scale.X || 1) * sizeX, (Scale.Y || 1) * sizeY, (Scale.Z || 1) * sizeZ)
+      // 注意：游戏坐标系中 X/Y 与 Three.js 交换
+      scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
 
       // 组合矩阵
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
@@ -802,7 +755,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
         const [sizeX, sizeY, sizeZ] = furnitureSize
         // Z-up: sizeX=Length, sizeY=Width, sizeZ=Height
-        scratchScale.set((Scale.X || 1) * sizeX, (Scale.Y || 1) * sizeY, (Scale.Z || 1) * sizeZ)
+        // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X=南北→Three.js Y，游戏Y=东西→Three.js X）
+        scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
 
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
         meshTarget.setMatrixAt(index, scratchMatrix)

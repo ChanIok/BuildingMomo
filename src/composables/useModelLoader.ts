@@ -35,7 +35,7 @@ export function useModelLoader() {
 
   /**
    * 加载单个 GLB 模型
-   * @param modelName 模型名称（不含扩展名）
+   * @param modelName 模型名称
    * @returns Promise<Object3D | null> 成功返回模型根节点，失败返回 null
    */
   function loadModel(modelName: string): Promise<Object3D | null> {
@@ -52,7 +52,9 @@ export function useModelLoader() {
 
     // 3. 开始加载
     const promise = new Promise<Object3D | null>((resolve) => {
-      const modelUrl = `${MODEL_BASE_URL}${modelName}.glb`
+      // 智能处理扩展名：如果已包含 .glb，则不重复添加
+      const fileName = modelName.endsWith('.glb') ? modelName : `${modelName}.glb`
+      const modelUrl = `${MODEL_BASE_URL}${fileName}`
 
       loader.load(
         modelUrl,
