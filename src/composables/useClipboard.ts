@@ -16,7 +16,6 @@ function generateUUID(): string {
 export function useClipboard() {
   const store = useEditorStore()
   const { activeScheme, clipboardList: clipboard } = storeToRefs(store)
-  const { getNextInstanceId } = store
 
   const { saveHistory } = useEditorHistory()
 
@@ -61,35 +60,30 @@ export function useClipboard() {
     const newIds: string[] = []
     const newItems: AppItem[] = []
 
-    // 1. 批量操作优化：一次性构建当前已使用的 InstanceID 集合
-    const currentItems = activeScheme.value.items.value
-    const usedInstanceIds = new Set(currentItems.map((item) => item.instanceId))
+    // 1. 使用方案级别的 maxInstanceId（严格自增，永不回退）
+    let currentMaxInstanceId = activeScheme.value.maxInstanceId.value
 
-    // 2. 收集剪贴板物品的所有组ID，为每个组分配新的 GroupID
+    // 2. 收集剪贴板物品的所有组ID，为每个组分配新的 GroupID（严格自增策略）
     const groupIdMap = new Map<number, number>() // 旧GroupID -> 新GroupID
-    const existingGroupIds = new Set(store.groupsMap.keys())
+
+    // 使用方案级别的 maxGroupId（严格自增，永不回退）
+    let currentMaxGroupId = activeScheme.value.maxGroupId.value
 
     clipboardItems.forEach((item) => {
       const oldGroupId = item.groupId
       if (oldGroupId > 0 && !groupIdMap.has(oldGroupId)) {
-        // 寻找下一个可用的 GroupID
-        let newGid = 1
-        while (existingGroupIds.has(newGid)) {
-          newGid++
-        }
-        // 占用这个ID
-        existingGroupIds.add(newGid)
-        groupIdMap.set(oldGroupId, newGid)
+        // 使用 Max + 1 策略分配新的 GroupID
+        currentMaxGroupId++
+        groupIdMap.set(oldGroupId, currentMaxGroupId)
       }
     })
 
     clipboardItems.forEach((item) => {
       const newId = generateUUID()
 
-      // 3. 使用带缓存上下文的方法获取 InstanceID
-      const newInstanceId = getNextInstanceId(usedInstanceIds)
-      // 立即标记为已使用，供下一次迭代判断
-      usedInstanceIds.add(newInstanceId)
+      // 3. 直接递增 InstanceID（严格自增策略，永不回退）
+      currentMaxInstanceId++
+      const newInstanceId = currentMaxInstanceId
 
       newIds.push(newId)
 
@@ -113,6 +107,10 @@ export function useClipboard() {
     })
 
     activeScheme.value.items.value.push(...newItems)
+
+    // 更新方案级别的最大ID（持久化历史最大值）
+    activeScheme.value.maxInstanceId.value = currentMaxInstanceId
+    activeScheme.value.maxGroupId.value = currentMaxGroupId
 
     // 选中新粘贴的物品
     activeScheme.value.selectedItemIds.value.clear()

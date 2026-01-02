@@ -236,17 +236,29 @@ export function useWorkspaceWorker() {
   })
 
   const hydrate = (snapshot: WorkspaceSnapshot) => {
-    const restoredSchemes: HomeScheme[] = snapshot.editor.schemes.map((s) => ({
-      id: s.id,
-      name: ref(s.name),
-      filePath: ref(s.filePath),
-      lastModified: ref(s.lastModified),
-      items: shallowRef(s.items),
-      selectedItemIds: shallowRef(s.selectedItemIds),
-      currentViewConfig: ref(s.currentViewConfig),
-      viewState: ref(s.viewState),
-      history: shallowRef(undefined),
-    }))
+    const restoredSchemes: HomeScheme[] = snapshot.editor.schemes.map((s) => {
+      // 计算最大的 InstanceID 和 GroupID
+      let maxInstId = 999
+      let maxGrpId = 0
+      for (const item of s.items) {
+        if (item.instanceId > maxInstId) maxInstId = item.instanceId
+        if (item.groupId > maxGrpId) maxGrpId = item.groupId
+      }
+
+      return {
+        id: s.id,
+        name: ref(s.name),
+        filePath: ref(s.filePath),
+        lastModified: ref(s.lastModified),
+        items: shallowRef(s.items),
+        selectedItemIds: shallowRef(s.selectedItemIds),
+        maxInstanceId: ref(maxInstId),
+        maxGroupId: ref(maxGrpId),
+        currentViewConfig: ref(s.currentViewConfig),
+        viewState: ref(s.viewState),
+        history: shallowRef(undefined),
+      }
+    })
 
     editorStore.schemes = restoredSchemes
     editorStore.activeSchemeId = snapshot.editor.activeSchemeId

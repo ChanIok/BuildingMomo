@@ -89,21 +89,6 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
-  // 获取下一个唯一的 InstanceID（填补空缺策略，支持批量操作优化）
-  // existingIds: 可选的已存在ID集合，用于批量操作时避免重复构建 Set
-  function getNextInstanceId(existingIds?: Set<number>): number {
-    const list = activeScheme.value?.items.value ?? []
-
-    // 如果没有传入 existingIds，则构建当前所有已使用的 ID 集合
-    const usedIds = existingIds ?? new Set(list.map((item) => item.instanceId))
-
-    let id = 10000
-    while (usedIds.has(id)) {
-      id++
-    }
-    return id
-  }
-
   // ========== 方案管理 ==========
 
   // 方案管理：创建新方案
@@ -115,6 +100,8 @@ export const useEditorStore = defineStore('editor', () => {
       lastModified: ref(undefined),
       items: shallowRef([]),
       selectedItemIds: shallowRef(new Set()),
+      maxInstanceId: ref(999), // 初始值，首个物品将从 1000 开始
+      maxGroupId: ref(0), // 初始值，首个组将从 1 开始
       currentViewConfig: ref(undefined),
       viewState: ref(undefined),
       history: shallowRef(undefined),
@@ -174,6 +161,14 @@ export const useEditorStore = defineStore('editor', () => {
         }
       })
 
+      // 计算导入数据的最大 InstanceID 和 GroupID
+      let maxInstId = 999
+      let maxGrpId = 0
+      for (const item of newItems) {
+        if (item.instanceId > maxInstId) maxInstId = item.instanceId
+        if (item.groupId > maxGrpId) maxGrpId = item.groupId
+      }
+
       // 从文件名提取方案名称
       const schemeName = t('scheme.defaultName', { n: schemes.value.length + 1 })
 
@@ -184,6 +179,8 @@ export const useEditorStore = defineStore('editor', () => {
         filePath: ref(fileName),
         items: shallowRef(newItems),
         selectedItemIds: shallowRef(new Set()),
+        maxInstanceId: ref(maxInstId), // 记录导入的最大 InstanceID
+        maxGroupId: ref(maxGrpId), // 记录导入的最大 GroupID
         lastModified: ref(fileLastModified),
         currentViewConfig: ref(undefined),
         viewState: ref(undefined),
@@ -309,9 +306,6 @@ export const useEditorStore = defineStore('editor', () => {
     saveCurrentViewConfig,
     getSavedViewConfig,
     clearData,
-
-    // 编辑操作
-    getNextInstanceId,
 
     // 手动触发更新 (Crucial for ShallowRef pattern)
     sceneVersion,
