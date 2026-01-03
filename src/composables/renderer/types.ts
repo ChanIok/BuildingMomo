@@ -1,4 +1,4 @@
-import type { InstancedMesh, Matrix4 } from 'three'
+import type { InstancedMesh, Matrix4, Raycaster } from 'three'
 import type { Ref } from 'vue'
 
 /**
@@ -13,6 +13,28 @@ export interface RenderModeResult {
   updateMatrix?: (idToWorldMatrixMap: Map<string, Matrix4>) => void
   /** 清理资源 */
   dispose: () => void
+}
+
+/**
+ * 统一的拾取配置（对外暴露）
+ */
+export interface PickingConfig {
+  /**
+   * 执行射线检测的函数
+   * @param raycaster - Three.js Raycaster 实例
+   * @returns 拾取结果（最近的交点）或 null
+   */
+  performRaycast: (raycaster: Raycaster) => {
+    instanceId: number
+    internalId: string
+    distance: number
+  } | null
+
+  /**
+   * 当前模式的索引映射（只读）
+   * index -> internalId
+   */
+  readonly indexToIdMap: Ref<ReadonlyMap<number, string>>
 }
 
 /**

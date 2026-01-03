@@ -1,4 +1,4 @@
-import { ref, markRaw } from 'vue'
+import { ref, markRaw, computed } from 'vue'
 import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 'three'
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
@@ -37,6 +37,9 @@ export function useModelMode() {
   const modelIndexToIdMap = ref(new Map<number, string>())
   const modelIdToIndexMap = ref(new Map<string, number>())
 
+  // 局部索引映射：用于射线检测（Mesh -> 局部索引 -> internalId）
+  const meshToLocalIndexMap = ref(new Map<InstancedMesh, Map<number, string>>())
+
   // 回退渲染用的 Box mesh（专门用于 Model 模式的回退）
   let fallbackGeometry: BoxGeometry | null = null
   let fallbackMesh: InstancedMesh | null = null
@@ -64,22 +67,24 @@ export function useModelMode() {
     items: AppItem[],
     startIndex: number,
     indexToIdMap: Map<number, string>,
-    idToIndexMap: Map<string, number>
+    idToIndexMap: Map<string, number>,
+    localIndexMap: Map<number, string>
   ) {
     ensureFallbackResources()
     if (!fallbackMesh) return
 
-    // 确保 Box mesh 有足够容量
-    const requiredCount = startIndex + items.length
-    if (fallbackMesh.count < requiredCount) {
-      fallbackMesh.count = Math.min(requiredCount, MAX_INSTANCES)
+    // fallbackMesh 使用局部索引（0, 1, 2...），而不是全局索引
+    // 确保有足够容量
+    if (fallbackMesh.count < items.length) {
+      fallbackMesh.count = Math.min(items.length, MAX_INSTANCES)
     }
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
       if (!item) continue
 
-      const instanceIndex = startIndex + i
+      // fallbackMesh 使用局部索引 i，全局索引用于全局映射
+      const globalIndex = startIndex + i
 
       // 位置
       coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
@@ -101,17 +106,20 @@ export function useModelMode() {
       // 注意：游戏坐标系中 X/Y 与 Three.js 交换
       scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
 
-      // 组合矩阵
+      // 组合矩阵（使用局部索引 i）
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
-      fallbackMesh.setMatrixAt(instanceIndex, scratchMatrix)
+      fallbackMesh.setMatrixAt(i, scratchMatrix)
 
-      // 颜色占位
+      // 颜色占位（使用局部索引 i）
       scratchColor.setHex(0x94a3b8)
-      fallbackMesh.setColorAt(instanceIndex, scratchColor)
+      fallbackMesh.setColorAt(i, scratchColor)
 
-      // 索引映射
-      indexToIdMap.set(instanceIndex, item.internalId)
-      idToIndexMap.set(item.internalId, instanceIndex)
+      // 全局索引映射（用于颜色/矩阵更新）
+      indexToIdMap.set(globalIndex, item.internalId)
+      idToIndexMap.set(item.internalId, globalIndex)
+
+      // 局部索引映射（用于射线检测）
+      localIndexMap.set(i, item.internalId)
     }
 
     fallbackMesh.instanceMatrix.needsUpdate = true
@@ -162,16 +170,31 @@ export function useModelMode() {
       }
     }
 
+    // 重置 fallbackMesh（每次重建时都重新开始）
+    ensureFallbackResources()
+    if (fallbackMesh) {
+      fallbackMesh.count = 0
+    }
+
     // 3. 为每个家具创建或更新 InstancedMesh
     let globalIndex = 0
     const newIndexToIdMap = new Map<number, string>()
     const newIdToIndexMap = new Map<string, number>()
+    const newMeshToLocalIndexMap = new Map<InstancedMesh, Map<number, string>>()
+
+    // 辅助函数：处理回退物品
+    function handleFallbackItems(items: AppItem[]) {
+      if (!fallbackMesh) return
+      const localIndexMap = new Map<number, string>()
+      renderFallbackItems(items, globalIndex, newIndexToIdMap, newIdToIndexMap, localIndexMap)
+      newMeshToLocalIndexMap.set(fallbackMesh, localIndexMap)
+      globalIndex += items.length
+    }
 
     for (const [itemId, itemsOfModel] of groups.entries()) {
       if (itemId === fallbackKey) {
         // 回退物品：使用 Box 渲染
-        renderFallbackItems(itemsOfModel, globalIndex, newIndexToIdMap, newIdToIndexMap)
-        globalIndex += itemsOfModel.length
+        handleFallbackItems(itemsOfModel)
         continue
       }
 
@@ -184,8 +207,7 @@ export function useModelMode() {
         if (!newMesh) {
           // 加载失败，回退到 Box
           console.warn(`[ModelMode] Failed to create mesh for itemId ${itemId}, using fallback`)
-          renderFallbackItems(itemsOfModel, globalIndex, newIndexToIdMap, newIdToIndexMap)
-          globalIndex += itemsOfModel.length
+          handleFallbackItems(itemsOfModel)
           continue
         }
 
@@ -195,6 +217,9 @@ export function useModelMode() {
 
       // 更新实例数量
       mesh.count = itemsOfModel.length
+
+      // 为当前 mesh 创建局部索引映射
+      const localIndexMap = new Map<number, string>()
 
       // 设置每个实例的矩阵和颜色
       for (let i = 0; i < itemsOfModel.length; i++) {
@@ -228,10 +253,16 @@ export function useModelMode() {
         scratchColor.setHex(0x94a3b8)
         mesh.setColorAt(i, scratchColor)
 
-        // 索引映射
+        // 全局索引映射（用于颜色/矩阵更新）
         newIndexToIdMap.set(globalIndex + i, item.internalId)
         newIdToIndexMap.set(item.internalId, globalIndex + i)
+
+        // 局部索引映射（用于射线检测）
+        localIndexMap.set(i, item.internalId)
       }
+
+      // 将当前 mesh 的局部索引映射存储起来
+      newMeshToLocalIndexMap.set(mesh, localIndexMap)
 
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
@@ -242,6 +273,7 @@ export function useModelMode() {
     // 更新索引映射
     modelIndexToIdMap.value = newIndexToIdMap
     modelIdToIndexMap.value = newIdToIndexMap
+    meshToLocalIndexMap.value = newMeshToLocalIndexMap
 
     console.log(`[ModelMode] Model mode rebuild complete: ${globalIndex} instances`)
   }
@@ -273,8 +305,13 @@ export function useModelMode() {
 
   return {
     meshMap: modelMeshMap,
+    // 全局索引映射（用于颜色/矩阵更新）
     indexToIdMap: modelIndexToIdMap,
     idToIndexMap: modelIdToIndexMap,
+    // 局部索引映射（用于射线检测）
+    meshToLocalIndexMap: meshToLocalIndexMap,
+    // 回退 mesh 引用（用于射线检测）
+    fallbackMesh: computed(() => fallbackMesh),
     rebuild,
     dispose,
   }

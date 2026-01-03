@@ -1,10 +1,11 @@
 import { ref, markRaw, type Ref } from 'vue'
-import { Raycaster, Vector2, Vector3, type Camera, type InstancedMesh } from 'three'
+import { Raycaster, Vector2, Vector3, type Camera } from 'three'
 import { coordinates3D } from '@/lib/coordinates'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorSelection } from './editor/useEditorSelection'
 import { useEditorSelectionAction } from './useEditorSelectionAction'
+import type { PickingConfig } from './renderer/types'
 
 interface SelectionRect {
   x: number
@@ -14,8 +15,7 @@ interface SelectionRect {
 }
 
 interface SelectionSources {
-  instancedMesh: Ref<InstancedMesh | null>
-  indexToIdMap: Ref<Map<number, string>>
+  pickingConfig: Ref<PickingConfig>
 }
 
 export function useThreeSelection(
@@ -159,19 +159,11 @@ export function useThreeSelection(
 
     raycaster.setFromCamera(pointerNdc, camera)
 
-    let internalId: string | null = null
+    // ✨ 使用统一的拾取接口
+    const config = selectionSources.pickingConfig.value
+    const hit = config.performRaycast(raycaster)
 
-    const instancedMesh = selectionSources.instancedMesh.value
-    const idMap = selectionSources.indexToIdMap.value
-    if (!instancedMesh || !idMap) return
-
-    const intersects = raycaster.intersectObject(instancedMesh, false)
-
-    const hit = intersects[0]
-
-    if (hit && hit.instanceId !== undefined) {
-      internalId = idMap.get(hit.instanceId) ?? null
-    }
+    const internalId = hit?.internalId ?? null
 
     if (internalId) {
       const action = effectiveAction.value
@@ -221,7 +213,8 @@ export function useThreeSelection(
     const selRight = rect.x + rect.width
     const selBottom = rect.y + rect.height
 
-    const idMap = selectionSources.indexToIdMap.value
+    // ✨ 使用统一的索引映射
+    const idMap = selectionSources.pickingConfig.value.indexToIdMap.value
     if (!idMap) return
 
     const itemById = editorStore.itemsMap
@@ -286,7 +279,8 @@ export function useThreeSelection(
 
     const containerRect = uiStore.editorContainerRect
 
-    const idMap = selectionSources.indexToIdMap.value
+    // ✨ 使用统一的索引映射
+    const idMap = selectionSources.pickingConfig.value.indexToIdMap.value
     if (!idMap) return
 
     const itemById = editorStore.itemsMap

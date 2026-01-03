@@ -222,15 +222,14 @@ const activeCameraRef = computed(() => {
   return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
 })
 
-// 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 updateSelectedInstancesRotation 函数
+// 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 pickingConfig
 const {
   instancedMesh,
   iconInstancedMesh,
   simpleBoxInstancedMesh,
   modelMeshMap,
-  indexToIdMap,
   updateSelectedInstancesMatrix,
-
+  pickingConfig,
   setHoveredItemId,
   updateIconFacing,
 } = useThreeInstancedRenderer(isTransformDragging)
@@ -253,17 +252,27 @@ const shouldShowSimpleBoxMesh = computed(() => currentDisplayMode.value === 'sim
 // 是否显示 Model mesh
 const shouldShowModelMesh = computed(() => currentDisplayMode.value === 'model')
 
-// 当前用于拾取/选择的 InstancedMesh（根据显示模式切换）
-const pickInstancedMesh = computed(() => {
-  if (shouldShowIconMesh.value) return iconInstancedMesh.value
-  if (shouldShowSimpleBoxMesh.value) return simpleBoxInstancedMesh.value
-  if (shouldShowModelMesh.value) {
-    // Model 模式：返回第一个模型 Mesh（用于基础拾取，后续可能需要遍历所有）
-    const meshes = Array.from(modelMeshMap.value.values())
-    return meshes[0] || instancedMesh.value
-  }
-  return instancedMesh.value
-})
+// 然后初始化 gizmo，传入 updateSelectedInstancesMatrix 和 updateSelectedInstancesRotation
+const {
+  shouldShowGizmo,
+  handleGizmoDragging,
+  handleGizmoMouseDown,
+  handleGizmoMouseUp,
+  handleGizmoChange,
+  transformSpace,
+} = useThreeTransformGizmo(
+  gizmoPivot,
+  updateSelectedInstancesMatrix,
+  isTransformDragging,
+  orbitControlsRef
+)
+
+// 现代配色方案
+const axisColors = {
+  x: 0xef4444, // red-500
+  y: 0x84cc16, // lime-500
+  z: 0x3b82f6, // blue-500
+}
 
 // 创建节流函数，用于透视视图下的图标朝向更新（避免过于频繁的更新）
 const updateIconFacingThrottled = useThrottleFn(
@@ -338,28 +347,6 @@ watch(
   },
   { immediate: true }
 )
-
-// 然后初始化 gizmo，传入 updateSelectedInstancesMatrix 和 updateSelectedInstancesRotation
-const {
-  shouldShowGizmo,
-  handleGizmoDragging,
-  handleGizmoMouseDown,
-  handleGizmoMouseUp,
-  handleGizmoChange,
-  transformSpace,
-} = useThreeTransformGizmo(
-  gizmoPivot,
-  updateSelectedInstancesMatrix,
-  isTransformDragging,
-  orbitControlsRef
-)
-
-// 现代配色方案
-const axisColors = {
-  x: 0xef4444, // red-500
-  y: 0x84cc16, // lime-500
-  z: 0x3b82f6, // blue-500
-}
 
 // 自定义 TransformControls (Gizmo) 颜色，并隐藏E轴（视野平面旋转圈），同时处理旋转轴限制
 watch(
@@ -456,15 +443,7 @@ watch(axesRef, (v) => {
 })
 
 const { selectionRect, lassoPoints, handlePointerDown, handlePointerMove, handlePointerUp } =
-  useThreeSelection(
-    activeCameraRef,
-    {
-      instancedMesh: pickInstancedMesh,
-      indexToIdMap,
-    },
-    threeContainerRef,
-    isTransformDragging
-  )
+  useThreeSelection(activeCameraRef, { pickingConfig }, threeContainerRef, isTransformDragging)
 
 // 3D Tooltip 系统（与 2D 复用同一开关）
 const {
@@ -475,10 +454,7 @@ const {
 } = useThreeTooltip(
   activeCameraRef,
   threeContainerRef,
-  {
-    instancedMesh: pickInstancedMesh,
-    indexToIdMap,
-  },
+  { pickingConfig },
   toRef(settingsStore.settings, 'showFurnitureTooltip'),
   isTransformDragging,
   setHoveredItemId

@@ -1,5 +1,5 @@
-import { ref, watch, onUnmounted, type Ref } from 'vue'
-import type { Matrix4 } from 'three'
+import { ref, watch, onUnmounted, computed, type Ref } from 'vue'
+import type { Matrix4, Raycaster, InstancedMesh } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -9,6 +9,7 @@ import { useSimpleBoxMode } from './modes/useSimpleBoxMode'
 import { useModelMode } from './modes/useModelMode'
 import { useInstanceColor } from './shared/useInstanceColor'
 import { useInstanceMatrix } from './shared/useInstanceMatrix'
+import type { PickingConfig } from './types'
 
 /**
  * Three.js 实例化渲染器
@@ -163,6 +164,91 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     iconMode.updateFacing(normal, up)
   }
 
+  /**
+   * 获取当前模式的拾取配置（统一拾取接口）
+   */
+  const pickingConfig = computed<PickingConfig>(() => {
+    const mode = settingsStore.settings.threeDisplayMode
+
+    return {
+      performRaycast: (raycaster: Raycaster) => {
+        if (mode === 'model') {
+          // Model 模式：遍历所有 mesh，返回最近的交点
+          let closestHit: { instanceId: number; internalId: string; distance: number } | null = null
+
+          // 辅助函数：检测单个 mesh 的射线交点
+          function testMesh(mesh: InstancedMesh) {
+            if (!mesh || mesh.count === 0) return
+
+            const intersects = raycaster.intersectObject(mesh, false)
+            const hit = intersects[0]
+
+            if (hit && hit.instanceId !== undefined) {
+              // ✨ 关键改动：使用局部索引映射
+              // hit.instanceId 是 mesh 内的局部索引（0, 1, 2...）
+              const localIndexMap = modelMode.meshToLocalIndexMap.value.get(mesh)
+              if (!localIndexMap) return
+
+              const internalId = localIndexMap.get(hit.instanceId)
+
+              if (internalId && (!closestHit || hit.distance < closestHit.distance)) {
+                closestHit = {
+                  instanceId: hit.instanceId,
+                  internalId,
+                  distance: hit.distance,
+                }
+              }
+            }
+          }
+
+          // 遍历所有模型 mesh
+          for (const [, mesh] of modelMode.meshMap.value.entries()) {
+            testMesh(mesh)
+          }
+
+          // 处理回退 mesh（如果有）
+          const fallbackMesh = modelMode.fallbackMesh.value
+          if (fallbackMesh) {
+            testMesh(fallbackMesh)
+          }
+
+          return closestHit
+        } else {
+          // Box/Icon/SimpleBox 模式：单 mesh 检测
+          let targetMesh: InstancedMesh | null = null
+
+          if (mode === 'icon') targetMesh = iconMode.mesh.value
+          else if (mode === 'simple-box') targetMesh = simpleBoxMode.mesh.value
+          else targetMesh = boxMode.mesh.value
+
+          if (!targetMesh || targetMesh.count === 0) return null
+
+          const intersects = raycaster.intersectObject(targetMesh, false)
+          const hit = intersects[0]
+
+          if (hit && hit.instanceId !== undefined) {
+            const internalId = indexToIdMap.value.get(hit.instanceId)
+            if (internalId) {
+              return {
+                instanceId: hit.instanceId,
+                internalId,
+                distance: hit.distance,
+              }
+            }
+          }
+
+          return null
+        }
+      },
+
+      // 动态返回当前模式的索引映射
+      indexToIdMap: computed(() => {
+        const currentMode = settingsStore.settings.threeDisplayMode
+        return currentMode === 'model' ? modelMode.indexToIdMap.value : indexToIdMap.value
+      }),
+    }
+  })
+
   // Watchers
   watch(
     [
@@ -265,5 +351,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     updateSelectedInstancesMatrix,
     setHoveredItemId,
     updateIconFacing,
+    pickingConfig, // ✨ 新增：统一拾取配置
   }
 }

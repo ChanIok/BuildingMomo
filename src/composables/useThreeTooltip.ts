@@ -1,9 +1,10 @@
 import { ref, markRaw, type Ref } from 'vue'
-import { Raycaster, Vector2, type Camera, type InstancedMesh } from 'three'
+import { Raycaster, Vector2, type Camera } from 'three'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from './useI18n'
+import type { PickingConfig } from './renderer/types'
 
 export interface ThreeTooltipData {
   name: string
@@ -14,8 +15,7 @@ export interface ThreeTooltipData {
 }
 
 interface ThreeTooltipSources {
-  instancedMesh: Ref<InstancedMesh | null>
-  indexToIdMap: Ref<Map<number, string>>
+  pickingConfig: Ref<PickingConfig>
 }
 
 export function useThreeTooltip(
@@ -93,31 +93,17 @@ export function useThreeTooltip(
 
     raycaster.setFromCamera(pointerNdc, camera)
 
-    const instancedMesh = sources.instancedMesh.value
-    const idMap = sources.indexToIdMap.value
+    // ✨ 使用统一的拾取接口
+    const config = sources.pickingConfig.value
+    const hit = config.performRaycast(raycaster)
 
-    if (!instancedMesh || !idMap) {
-      hideTooltip()
-      return
-    }
-
-    const intersects = raycaster.intersectObject(instancedMesh, false)
-
-    const hit = intersects[0]
-
-    let internalId: string | null = null
-
-    if (hit && hit.instanceId !== undefined) {
-      internalId = idMap.get(hit.instanceId) ?? null
-    }
-
-    if (!internalId) {
+    if (!hit) {
       hideTooltip()
       return
     }
 
     // 性能优化：使用 Map O(1) 查找替代数组 find O(N)
-    const item = editorStore.itemsMap.get(internalId)
+    const item = editorStore.itemsMap.get(hit.internalId)
 
     if (!item) {
       hideTooltip()
@@ -147,7 +133,7 @@ export function useThreeTooltip(
     tooltipVisible.value = true
 
     if (setHoveredItemId) {
-      setHoveredItemId(internalId)
+      setHoveredItemId(hit.internalId)
     }
   }
 
