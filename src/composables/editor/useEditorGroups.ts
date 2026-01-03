@@ -9,20 +9,6 @@ export function useEditorGroups() {
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
   const { saveHistory } = useEditorHistory()
 
-  // 获取下一个唯一的 GroupID（填补空缺策略）
-  function getNextGroupId(): number {
-    if (!activeScheme.value) return 1
-
-    const usedGroupIds = groupsMap.value
-    let id = 1
-    // 从1开始寻找未被使用的ID
-    // 组的数量通常较少，此循环开销极低
-    while (usedGroupIds.has(id)) {
-      id++
-    }
-    return id
-  }
-
   // 获取指定组的所有物品（使用 groupsMap 和 itemsMap 优化性能）
   function getGroupItems(groupId: number): AppItem[] {
     if (!activeScheme.value || groupId <= 0) return []
@@ -62,7 +48,7 @@ export function useEditorGroups() {
     // 保存历史（编辑操作）
     saveHistory('edit')
 
-    const newGroupId = getNextGroupId()
+    const newGroupId = activeScheme.value.maxGroupId.value + 1
 
     // 原地更新所有选中物品的 GroupID
     // 因为是 ShallowRef 且 items 已经是 Plain Object，我们可以直接修改并 triggerRef
@@ -79,6 +65,8 @@ export function useEditorGroups() {
     }
 
     if (changed) {
+      // 更新方案级别的最大 GroupID（持久化历史最大值）
+      activeScheme.value.maxGroupId.value = newGroupId
       store.triggerSceneUpdate()
     }
 

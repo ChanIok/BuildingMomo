@@ -88,6 +88,10 @@ export interface HomeScheme {
   // 选择集 (使用 ShallowRef)
   selectedItemIds: ShallowRef<Set<string>>
 
+  // ID 分配器（Ref，记录历史最大值，永不回退）
+  maxInstanceId: Ref<number>
+  maxGroupId: Ref<number>
+
   // 视图配置 (Ref)
   currentViewConfig: Ref<{ scale: number; x: number; y: number } | undefined>
   viewState: Ref<ThreeViewState | undefined>
