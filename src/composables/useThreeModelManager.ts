@@ -70,7 +70,7 @@ async function processGeometryForItem(
   config: any,
   modelLoader: ReturnType<typeof getModelLoader>,
   useCache: boolean = false
-): Promise<{ geometry: BufferGeometry; material: Material } | undefined> {
+): Promise<{ geometry: BufferGeometry; material: Material | Material[] } | undefined> {
   // 加载所有 mesh 文件
   const allGeometries: BufferGeometry[] = []
   const materials: Material[] = []
@@ -103,7 +103,12 @@ async function processGeometryForItem(
 
         // 2. 应用配置中的 transform
         // 构建变换矩阵：Scale → Rotation → Translation
-        tempScale.set(meshConfig.scale.x, meshConfig.scale.y, meshConfig.scale.z)
+        // scale 坐标系转换：Y-Up → Z-Up（交换 Y 和 Z 分量，与 rotation/trans 保持一致）
+        tempScale.set(
+          meshConfig.scale.x, // X 保持
+          meshConfig.scale.z, // Y ← Z
+          meshConfig.scale.y // Z ← Y
+        )
         // 四元数坐标系转换：Y-Up → Z-Up（交换 Y 和 Z 分量）
         tempQuat.set(
           meshConfig.rotation.x,
@@ -123,10 +128,8 @@ async function processGeometryForItem(
 
         allGeometries.push(geom)
 
-        // 收集材质（只收集第一个）
-        if (materials.length === 0) {
-          materials.push(mesh.material as Material)
-        }
+        // 收集所有材质（每个 mesh 都可能有不同的材质）
+        materials.push(mesh.material as Material)
       }
     })
   }
@@ -141,12 +144,12 @@ async function processGeometryForItem(
     normalizeGeometryAttributes(allGeometries)
   }
 
-  // 合并所有几何体
+  // 合并所有几何体（启用材质分组以保留多材质信息）
   let geometry: BufferGeometry
   if (allGeometries.length === 1) {
     geometry = allGeometries[0]!
   } else {
-    const merged = mergeGeometries(allGeometries, false)
+    const merged = mergeGeometries(allGeometries, true)
     if (!merged) {
       console.warn(`[ModelManager] Failed to merge geometries for itemId: ${itemId}`)
       return undefined
@@ -162,19 +165,22 @@ async function processGeometryForItem(
   geometry.scale(100, 100, 100)
 
   // 优化材质：保留原始纹理，轻微增亮
-  let material: Material
+  let material: Material | Material[]
   if (materials.length > 0) {
-    const originalMat = materials[0]!
-    if ((originalMat as any).isMeshStandardMaterial) {
-      const mat = originalMat as MeshStandardMaterial
-      mat.roughness = Math.min(mat.roughness, 0.6)
-      mat.metalness = Math.min(mat.metalness, 0.2)
-      if (!mat.emissive || mat.emissive.getHex() === 0) {
-        mat.emissive = new Color(0x222222)
+    // 对每个材质进行优化
+    for (const mat of materials) {
+      if ((mat as any).isMeshStandardMaterial) {
+        const stdMat = mat as MeshStandardMaterial
+        stdMat.roughness = Math.min(stdMat.roughness, 0.6)
+        stdMat.metalness = Math.min(stdMat.metalness, 0.2)
+        if (!stdMat.emissive || stdMat.emissive.getHex() === 0) {
+          stdMat.emissive = new Color(0x222222)
+        }
+        stdMat.emissiveIntensity = Math.max(stdMat.emissiveIntensity, 0.15)
       }
-      mat.emissiveIntensity = Math.max(mat.emissiveIntensity, 0.15)
     }
-    material = originalMat
+    // 返回材质数组（如果只有一个材质，也保持数组形式以支持材质分组）
+    material = materials.length > 1 ? materials : materials[0]!
   } else {
     material = new MeshStandardMaterial({
       color: 0xffffff,
@@ -219,7 +225,10 @@ export function useThreeModelManager() {
   const meshMap = new Map<number, InstancedMesh>()
 
   // itemId -> 几何体和材质的缓存（用于创建 InstancedMesh）
-  const geometryCache = new Map<number, { geometry: BufferGeometry; material: Material }>()
+  const geometryCache = new Map<
+    number,
+    { geometry: BufferGeometry; material: Material | Material[] }
+  >()
 
   /**
    * 为指定家具创建 InstancedMesh
