@@ -9,6 +9,7 @@ import { useSimpleBoxMode } from './modes/useSimpleBoxMode'
 import { useModelMode } from './modes/useModelMode'
 import { useInstanceColor } from './shared/useInstanceColor'
 import { useInstanceMatrix } from './shared/useInstanceMatrix'
+import { useModelOutline } from './shared/useModelOutline'
 import type { PickingConfig } from './types'
 
 /**
@@ -35,6 +36,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // 初始化矩阵更新器
   const matrixUpdater = useInstanceMatrix()
+
+  // 初始化 Model 模式描边管理器
+  const modelOutline = useModelOutline()
 
   // 全局索引映射（用于 box/icon/simple-box 模式）
   const indexToIdMap = ref(new Map<number, string>())
@@ -63,6 +67,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       for (const [, mesh] of modelMode.meshMap.value.entries()) {
         mesh.count = 0
       }
+      // 隐藏所有描边 mesh
+      for (const mesh of modelOutline.outlineMeshes.value) {
+        mesh.count = 0
+      }
     }
 
     // 执行对应模式的重建
@@ -78,6 +86,28 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         break
       case 'model':
         await modelMode.rebuild()
+
+        // 初始化描边 mesh（为每个模型类型创建对应的描边 mesh）
+        for (const [itemId, mesh] of modelMode.meshMap.value.entries()) {
+          modelOutline.initOutlineMesh(itemId, mesh, 10000) // MAX_RENDER_INSTANCES
+        }
+
+        // 为 fallbackMesh 创建描边 mesh
+        const fallbackMesh = modelMode.fallbackMesh.value
+        if (fallbackMesh && fallbackMesh.count > 0) {
+          modelOutline.initOutlineMesh(-1, fallbackMesh, 10000)
+        }
+
+        // 更新描边状态
+        const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+        modelOutline.updateOutlines(
+          selectedItemIds,
+          colorManager.hoveredItemId.value,
+          modelMode.meshMap.value,
+          modelMode.internalIdToMeshInfo.value,
+          fallbackMesh
+        )
+
         // Model 模式使用独立的索引映射，直接返回不更新全局映射
         colorManager.updateInstancesColor(
           mode,
@@ -133,6 +163,18 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       iconMode.currentIconNormal.value,
       iconMode.currentIconUp.value
     )
+
+    // Model 模式：同步更新描边
+    if (mode === 'model') {
+      const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+      modelOutline.updateOutlines(
+        selectedItemIds,
+        colorManager.hoveredItemId.value,
+        modelMode.meshMap.value,
+        modelMode.internalIdToMeshInfo.value,
+        modelMode.fallbackMesh.value
+      )
+    }
   }
 
   /**
@@ -147,14 +189,30 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     // Model 模式使用独立的索引映射
     const currentIdToIndexMap = mode === 'model' ? modelMode.idToIndexMap.value : idToIndexMap.value
 
-    colorManager.setHoveredItemId(
-      id,
-      mode,
-      meshTarget,
-      iconMeshTarget,
-      simpleBoxMeshTarget,
-      currentIdToIndexMap
-    )
+    if (mode === 'model') {
+      // Model 模式：更新 colorManager 的内部状态（用于抑制逻辑）
+      colorManager.hoveredItemId.value = id
+
+      // 更新描边
+      const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+      modelOutline.updateOutlines(
+        selectedItemIds,
+        id,
+        modelMode.meshMap.value,
+        modelMode.internalIdToMeshInfo.value,
+        modelMode.fallbackMesh.value
+      )
+    } else {
+      // 原有逻辑（Box/Icon/SimpleBox 模式）
+      colorManager.setHoveredItemId(
+        id,
+        mode,
+        meshTarget,
+        iconMeshTarget,
+        simpleBoxMeshTarget,
+        currentIdToIndexMap
+      )
+    }
   }
 
   /**
@@ -313,6 +371,17 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       const currentIndexToIdMap =
         mode === 'model' ? modelMode.indexToIdMap.value : indexToIdMap.value
 
+      if (mode === 'model') {
+        // Model 模式：更新描边
+        modelOutline.updateOutlines(
+          selectedItemIds,
+          colorManager.hoveredItemId.value,
+          modelMode.meshMap.value,
+          modelMode.internalIdToMeshInfo.value,
+          modelMode.fallbackMesh.value
+        )
+      }
+
       colorManager.updateInstancesColor(
         mode,
         meshTarget,
@@ -330,6 +399,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     iconMode.dispose()
     simpleBoxMode.dispose()
     modelMode.dispose()
+    modelOutline.dispose()
   })
 
   // 返回统一接口
@@ -338,6 +408,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     iconInstancedMesh: iconMode.mesh,
     simpleBoxInstancedMesh: simpleBoxMode.mesh,
     modelMeshMap: modelMode.meshMap,
+    modelOutlineMeshes: modelOutline.outlineMeshes,
     indexToIdMap,
     idToIndexMap,
     /**

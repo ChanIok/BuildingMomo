@@ -228,6 +228,7 @@ const {
   iconInstancedMesh,
   simpleBoxInstancedMesh,
   modelMeshMap,
+  modelOutlineMeshes,
   updateSelectedInstancesMatrix,
   pickingConfig,
   setHoveredItemId,
@@ -820,6 +821,13 @@ onDeactivated(() => {
           <!-- Model 模式：渲染所有模型 Mesh -->
           <template v-if="shouldShowModelMesh">
             <primitive v-for="[modelName, mesh] in modelMeshMap" :key="modelName" :object="mesh" />
+
+            <!-- 描边 mesh -->
+            <primitive
+              v-for="(outlineMesh, index) in modelOutlineMeshes"
+              :key="`outline-${index}`"
+              :object="outlineMesh"
+            />
           </template>
         </TresGroup>
 

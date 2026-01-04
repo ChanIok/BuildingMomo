@@ -40,6 +40,9 @@ export function useModelMode() {
   // 局部索引映射：用于射线检测（Mesh -> 局部索引 -> internalId）
   const meshToLocalIndexMap = ref(new Map<InstancedMesh, Map<number, string>>())
 
+  // 反向索引映射：用于描边高亮（internalId -> { itemId, localIndex }）
+  const internalIdToMeshInfo = ref(new Map<string, { itemId: number; localIndex: number }>())
+
   // 回退渲染用的 Box mesh（专门用于 Model 模式的回退）
   let fallbackGeometry: BoxGeometry | null = null
   let fallbackMesh: InstancedMesh | null = null
@@ -181,6 +184,7 @@ export function useModelMode() {
     const newIndexToIdMap = new Map<number, string>()
     const newIdToIndexMap = new Map<string, number>()
     const newMeshToLocalIndexMap = new Map<InstancedMesh, Map<number, string>>()
+    const newInternalIdToMeshInfo = new Map<string, { itemId: number; localIndex: number }>()
 
     // 辅助函数：处理回退物品
     function handleFallbackItems(items: AppItem[]) {
@@ -188,6 +192,14 @@ export function useModelMode() {
       const localIndexMap = new Map<number, string>()
       renderFallbackItems(items, globalIndex, newIndexToIdMap, newIdToIndexMap, localIndexMap)
       newMeshToLocalIndexMap.set(fallbackMesh, localIndexMap)
+
+      // 更新反向索引（fallback 使用 itemId = -1）
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (!item) continue
+        newInternalIdToMeshInfo.set(item.internalId, { itemId: -1, localIndex: i })
+      }
+
       globalIndex += items.length
     }
 
@@ -259,6 +271,9 @@ export function useModelMode() {
 
         // 局部索引映射（用于射线检测）
         localIndexMap.set(i, item.internalId)
+
+        // 反向索引映射（用于描边高亮）
+        newInternalIdToMeshInfo.set(item.internalId, { itemId, localIndex: i })
       }
 
       // 将当前 mesh 的局部索引映射存储起来
@@ -274,6 +289,7 @@ export function useModelMode() {
     modelIndexToIdMap.value = newIndexToIdMap
     modelIdToIndexMap.value = newIdToIndexMap
     meshToLocalIndexMap.value = newMeshToLocalIndexMap
+    internalIdToMeshInfo.value = newInternalIdToMeshInfo
 
     console.log(`[ModelMode] Model mode rebuild complete: ${globalIndex} instances`)
   }
@@ -310,6 +326,8 @@ export function useModelMode() {
     idToIndexMap: modelIdToIndexMap,
     // 局部索引映射（用于射线检测）
     meshToLocalIndexMap: meshToLocalIndexMap,
+    // 反向索引映射（用于描边高亮）
+    internalIdToMeshInfo: internalIdToMeshInfo,
     // 回退 mesh 引用（用于射线检测）
     fallbackMesh: computed(() => fallbackMesh),
     rebuild,
