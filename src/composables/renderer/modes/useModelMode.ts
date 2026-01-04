@@ -113,8 +113,8 @@ export function useModelMode() {
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
       fallbackMesh.setMatrixAt(i, scratchMatrix)
 
-      // 颜色占位（使用局部索引 i）
-      scratchColor.setHex(0x94a3b8)
+      // 颜色设置为白色（不影响贴图原色，因为白色 × 任何颜色 = 原颜色）
+      scratchColor.setHex(0xffffff)
       fallbackMesh.setColorAt(i, scratchColor)
 
       // 全局索引映射（用于颜色/矩阵更新）
@@ -261,8 +261,8 @@ export function useModelMode() {
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
         mesh.setMatrixAt(i, scratchMatrix)
 
-        // 颜色占位
-        scratchColor.setHex(0x94a3b8)
+        // 颜色设置为白色（不影响贴图原色，Model 模式使用描边系统表示状态）
+        scratchColor.setHex(0xffffff)
         mesh.setColorAt(i, scratchColor)
 
         // 全局索引映射（用于颜色/矩阵更新）

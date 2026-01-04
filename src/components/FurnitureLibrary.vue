@@ -56,6 +56,11 @@ function handleAddItem(itemId: number) {
 function close() {
   isVisible.value = false
 }
+
+// 清除搜索
+function clearSearch() {
+  searchQuery.value = ''
+}
 </script>
 
 <template>
@@ -79,9 +84,18 @@ function close() {
         <Input
           v-model="searchQuery"
           :placeholder="t('furnitureLibrary.searchPlaceholder')"
-          class="pl-8"
+          class="pr-8 pl-8"
           autofocus
         />
+        <Button
+          v-if="searchQuery.trim()"
+          variant="ghost"
+          size="icon"
+          class="absolute top-1/2 right-1 h-6 w-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          @click="clearSearch"
+        >
+          <X class="h-3.5 w-3.5" />
+        </Button>
       </div>
     </div>
 

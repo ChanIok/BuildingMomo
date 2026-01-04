@@ -78,6 +78,8 @@ export function useEditorItemAdd() {
       extra: {
         Scale: { X: 1, Y: 1, Z: 1 },
         AttachID: 0,
+        TempInfo: {},
+        ColorMap: { '0': 0 },
       },
     }
 
