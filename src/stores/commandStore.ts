@@ -45,6 +45,9 @@ export const useCommandStore = defineStore('command', () => {
   // 工作坐标系对话框状态
   const showCoordinateDialog = ref(false)
 
+  // 背包面板显示状态
+  const showFurnitureLibrary = ref(false)
+
   // 剪贴板和文件操作
   const fileOps = useFileOperations(editorStore)
 
@@ -175,6 +178,17 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 切换旋转模式')
         editorStore.gizmoMode = editorStore.gizmoMode === 'rotate' ? null : 'rotate'
+      },
+    },
+    {
+      id: 'tool.toggleFurnitureLibrary',
+      label: t('command.tool.toggleFurnitureLibrary'),
+      shortcut: 'B',
+      category: 'tool',
+      enabled: () => editorStore.activeScheme !== null,
+      execute: () => {
+        console.log('[Command] 切换家具背包')
+        showFurnitureLibrary.value = !showFurnitureLibrary.value
       },
     },
 
@@ -508,5 +522,6 @@ export const useCommandStore = defineStore('command', () => {
     setZoomFunctions,
     setViewPresetFunction,
     showCoordinateDialog,
+    showFurnitureLibrary,
   }
 })

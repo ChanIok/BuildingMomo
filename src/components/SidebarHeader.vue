@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   SquareMousePointer,
   Lasso,
+  Package,
 } from 'lucide-vue-next'
 import { useEditorSelectionAction } from '@/composables/useEditorSelectionAction'
 import IconSelectionNew from '@/components/icons/IconSelectionNew.vue'
@@ -37,6 +38,14 @@ const uiStore = useUIStore()
 const { t } = useI18n()
 
 const { activeAction } = useEditorSelectionAction()
+
+// 背包面板状态（从 commandStore 获取）
+const showFurnitureLibrary = computed({
+  get: () => commandStore.showFurnitureLibrary,
+  set: (val) => {
+    commandStore.showFurnitureLibrary = val
+  },
+})
 
 // 工具切换
 const currentTool = computed({
@@ -198,6 +207,22 @@ const viewPresets = computed(() => [
             :tooltip="t('sidebar.tools.rotate')"
           >
             <RotateCw class="h-4 w-4" />
+          </SidebarToggleItem>
+
+          <!-- 分隔线 -->
+          <div class="mx-1 h-4 w-px bg-sidebar-border"></div>
+
+          <!-- 背包面板 -->
+          <SidebarToggleItem
+            :model-value="showFurnitureLibrary"
+            @update:model-value="
+              (v) => {
+                showFurnitureLibrary = v
+              }
+            "
+            :tooltip="t('sidebar.tools.addFurniture')"
+          >
+            <Package class="h-4 w-4" />
           </SidebarToggleItem>
         </div>
       </div>

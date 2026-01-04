@@ -15,6 +15,7 @@ import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useI18n } from '@/composables/useI18n'
+import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import {
   useThrottleFn,
   useMagicKeys,
@@ -22,6 +23,7 @@ import {
   useResizeObserver,
   usePreferredDark,
 } from '@vueuse/core'
+import { Raycaster, Vector2, Vector3 } from 'three'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
 import {
@@ -137,6 +139,9 @@ onMounted(() => {
       -1, // 微下移避免与网格 Z-fighting (Z-up)
     ]
   })
+
+  // 注册位置获取函数（确保在首次挂载时也注册）
+  getAddPositionFn.value = getAddPosition
 })
 
 // 创建共享的 isTransformDragging ref
@@ -634,16 +639,88 @@ function switchToView(preset: ViewPreset) {
   switchToViewPreset(preset)
 }
 
-// 当 3D 视图激活时，注册视图函数
+// 添加物品位置获取函数（屏幕中心射线检测）
+const { getAddPositionFn } = useEditorItemAdd()
+
+function getAddPosition(): [number, number, number] | null {
+  const cameraComponent = activeCameraRef.value
+  if (!cameraComponent) {
+    // 兜底：使用视野中心，Z=0
+    return [cameraLookAt.value[0], cameraLookAt.value[1], 0]
+  }
+
+  // 正确获取底层 Three.js 相机实例（TresJS 组件通过 .value 或 .instance 暴露）
+  const camera = cameraComponent.value || cameraComponent.instance || cameraComponent
+  if (!camera) {
+    return [cameraLookAt.value[0], cameraLookAt.value[1], 0]
+  }
+
+  const raycaster = markRaw(new Raycaster())
+  const ndc = markRaw(new Vector2(0, 0)) // 屏幕中心 NDC 坐标
+  raycaster.setFromCamera(ndc, camera)
+
+  // 根据当前显示模式检测不同的 mesh
+  const mode = currentDisplayMode.value
+
+  if (mode === 'model') {
+    // Model 模式：检测所有 mesh，返回最近的交点
+    let closestHit: { point: { x: number; y: number; z: number }; distance: number } | null = null
+
+    for (const [, mesh] of modelMeshMap.value.entries()) {
+      if (!mesh || mesh.count === 0) continue
+      const intersects = raycaster.intersectObject(mesh, false)
+      const hit = intersects[0]
+      if (hit && (!closestHit || hit.distance < closestHit.distance)) {
+        closestHit = {
+          point: hit.point,
+          distance: hit.distance,
+        }
+      }
+    }
+
+    if (closestHit) {
+      // Three.js 坐标系 → 游戏坐标系（Y 取反）
+      return [closestHit.point.x, -closestHit.point.y, closestHit.point.z]
+    }
+  } else {
+    // Box/Icon/SimpleBox 模式：检测单个 mesh
+    let targetMesh = null
+    if (mode === 'icon') targetMesh = iconInstancedMesh.value
+    else if (mode === 'simple-box') targetMesh = simpleBoxInstancedMesh.value
+    else targetMesh = instancedMesh.value
+
+    if (targetMesh && targetMesh.count > 0) {
+      const intersects = raycaster.intersectObject(targetMesh, false)
+      const hit = intersects[0]
+      if (hit) {
+        // Three.js 坐标系 → 游戏坐标系（Y 取反）
+        return [hit.point.x, -hit.point.y, hit.point.z]
+      }
+    }
+  }
+
+  // 没有命中任何物体：使用射线方向上固定距离的位置（支持空中摆放）
+  const fixedDistance = 5000 // 固定距离：5000 单位
+  const fallbackPoint = markRaw(new Vector3())
+  fallbackPoint.copy(raycaster.ray.origin)
+  fallbackPoint.addScaledVector(raycaster.ray.direction, fixedDistance)
+
+  // Three.js 坐标系 → 游戏坐标系（Y 取反）
+  return [fallbackPoint.x, -fallbackPoint.y, fallbackPoint.z]
+}
+
+// 当 3D 视图激活时，注册视图函数和位置获取函数
 onActivated(() => {
   commandStore.setZoomFunctions(fitCameraToScene, focusOnSelection)
   commandStore.setViewPresetFunction(switchToView)
+  getAddPositionFn.value = getAddPosition
 })
 
 // 当 3D 视图停用时，清除函数
 onDeactivated(() => {
   commandStore.setZoomFunctions(null, null)
   commandStore.setViewPresetFunction(null)
+  getAddPositionFn.value = null
 })
 </script>
 

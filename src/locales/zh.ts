@@ -107,6 +107,7 @@ export const zhLocale = {
       hand: '拖拽工具',
       toggleTranslate: '平移模式',
       toggleRotate: '旋转模式',
+      toggleFurnitureLibrary: '家具背包',
     },
     help: {
       openDocs: '帮助文档',
@@ -353,6 +354,7 @@ export const zhLocale = {
       hand: '拖拽工具 (H)',
       translate: '平移 (G)',
       rotate: '旋转 (R)',
+      addFurniture: '家具背包 (B)',
     },
     selectionMode: {
       label: '选择模式',
@@ -383,5 +385,13 @@ export const zhLocale = {
     correctionTip: 'Z轴旋转显示已校正<br />实际旋转 = 显示值 + {angle}°',
     range: '范围 (Min ~ Max)',
     rangeTip: '当前范围基于工作坐标系<br />旋转角度: {angle}°',
+  },
+
+  // 家具背包
+  furnitureLibrary: {
+    title: '家具背包',
+    searchPlaceholder: '搜索家具...',
+    noResults: '未找到匹配的家具',
+    stats: '共 {total} 个，显示 {showing} 个',
   },
 }

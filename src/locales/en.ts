@@ -108,6 +108,7 @@ export const enLocale = {
       hand: 'Hand',
       toggleTranslate: 'Translate Mode',
       toggleRotate: 'Rotate Mode',
+      toggleFurnitureLibrary: 'Furniture Library',
     },
     help: {
       openDocs: 'Documentation',
@@ -355,6 +356,7 @@ export const enLocale = {
       hand: 'Hand Tool (H)',
       translate: 'Translate (G)',
       rotate: 'Rotate (R)',
+      addFurniture: 'Furniture Library (B)',
     },
     selectionMode: {
       label: 'Selection Mode',
@@ -385,5 +387,13 @@ export const enLocale = {
     correctionTip: 'Z-Rotation is corrected<br />Actual = Display + {angle}°',
     range: 'Range (Min ~ Max)',
     rangeTip: 'Range based on working coordinate system<br />Rotation: {angle}°',
+  },
+
+  // Furniture Library
+  furnitureLibrary: {
+    title: 'Furniture Library',
+    searchPlaceholder: 'Search furniture...',
+    noResults: 'No matching furniture found',
+    stats: '{showing} of {total} items',
   },
 }
