@@ -109,6 +109,7 @@ export interface CameraControllerResult {
   handleNavPointerUp: (evt: PointerEvent) => void
   setPoseFromLookAt: (position: Vec3, target: Vec3) => void
   lookAtTarget: (target: Vec3) => void
+  toggleCameraMode: () => void
   switchToOrbitMode: () => Vec3 | null
   setViewPreset: (preset: ViewPreset, target: Vec3, distance: number, newZoom?: number) => void
   switchToViewPreset: (preset: ViewPreset) => void
@@ -282,6 +283,7 @@ export function useThreeCamera(
   const shift = keys.shift!
   const ctrl = keys.ctrl!
   const meta = keys.meta!
+  const tab = keys.tab!
   // ============================================================
   // 📐 Geometry Helpers
   // ============================================================
@@ -346,6 +348,33 @@ export function useThreeCamera(
     return !!(w.value || a.value || s.value || d.value || q.value || space.value)
   }
 
+  // 通用移动向量计算函数
+  function calculateMovementDelta(
+    forward: Vec3,
+    right: Vec3,
+    up: Vec3,
+    deltaSeconds: number,
+    speedMultiplier: number
+  ): Vec3 | null {
+    let move: Vec3 = [0, 0, 0]
+    const push = (dir: Vec3, sign: number) => {
+      move = [move[0] + dir[0] * sign, move[1] + dir[1] * sign, move[2] + dir[2] * sign]
+    }
+
+    if (w.value) push(forward, 1)
+    if (s.value) push(forward, -1)
+    if (a.value) push(right, -1)
+    if (d.value) push(right, 1)
+    if (space.value) push(up, 1)
+    if (q.value) push(up, -1)
+
+    const moveNorm = normalize(move)
+    if (moveNorm[0] === 0 && moveNorm[1] === 0 && moveNorm[2] === 0) return null
+
+    const distance = baseSpeed * deltaSeconds * speedMultiplier
+    return scaleVec3(moveNorm, distance)
+  }
+
   // 计算当前是否应该响应导航键
   const isNavKeyPressed = computed(() => {
     if (mode.value.kind !== 'flight' || !isViewFocused.value || deps.isTransformDragging?.value) {
@@ -364,26 +393,17 @@ export function useThreeCamera(
     const right = getRightVector(state.value.yaw)
     const up: Vec3 = [0, 0, 1] // Z-up
 
-    let move: Vec3 = [0, 0, 0]
-
-    const push = (dir: Vec3, sign: number) => {
-      move = [move[0] + dir[0] * sign, move[1] + dir[1] * sign, move[2] + dir[2] * sign]
-    }
-
-    if (w.value) push(forward, 1)
-    if (s.value) push(forward, -1)
-    if (a.value) push(right, -1)
-    if (d.value) push(right, 1)
-    if (space.value) push(up, 1)
-    if (q.value) push(up, -1)
-
-    const moveNorm = normalize(move)
-    if (moveNorm[0] === 0 && moveNorm[1] === 0 && moveNorm[2] === 0) return
-
     // 应用速度
     const speedMultiplier = shift.value ? shiftSpeedMultiplier : 1
-    const distance = baseSpeed * deltaSeconds * speedMultiplier
-    const newPos = addScaled(state.value.position, moveNorm, distance)
+    const deltaVec = calculateMovementDelta(forward, right, up, deltaSeconds, speedMultiplier)
+
+    if (!deltaVec) return
+
+    const newPos: Vec3 = [
+      state.value.position[0] + deltaVec[0],
+      state.value.position[1] + deltaVec[1],
+      state.value.position[2] + deltaVec[2],
+    ]
 
     // 高度限制 (Z axis)
     if (newPos[2] < minHeight) {
@@ -403,6 +423,14 @@ export function useThreeCamera(
     mode.value = { kind: 'flight' }
   }
 
+  function toggleCameraMode() {
+    if (mode.value.kind === 'orbit') {
+      switchToFlightMode()
+    } else {
+      switchToOrbitMode()
+    }
+  }
+
   function switchToOrbitMode(): Vec3 | null {
     if (mode.value.kind === 'orbit') return null
 
@@ -410,10 +438,18 @@ export function useThreeCamera(
     const forward = getForwardVector(state.value.yaw, state.value.pitch)
     const newTarget = addScaled(state.value.position, forward, 2000)
 
+    // 同步更新 state.value.target
+    state.value.target = [...newTarget]
+
     mode.value = {
       kind: 'orbit',
       projection: 'perspective',
       target: newTarget,
+    }
+
+    // 通知外部更新 OrbitControls 的 target
+    if (deps.onOrbitTargetUpdate) {
+      deps.onOrbitTargetUpdate(newTarget)
     }
 
     return newTarget
@@ -712,7 +748,7 @@ export function useThreeCamera(
         updateFlightMode(delta / 1000)
       }
 
-      // 3. Orbit 模式下检测 WASD → 切换到 flight
+      // 3. Orbit 模式下检测 WASD → 平移 (Pan)
       if (
         mode.value.kind === 'orbit' &&
         mode.value.projection === 'perspective' &&
@@ -720,7 +756,51 @@ export function useThreeCamera(
         isViewFocused.value &&
         !deps.isTransformDragging?.value
       ) {
-        switchToFlightMode()
+        // 计算平移向量
+        // Orbit 下 WASD 类似于 "RTS 地图移动" 或 Blender Shift+Middle Pan
+        // 这里采用平面移动逻辑：W/S 前后，A/D 左右，Q/Space 上下
+
+        // 1. 获取水平方向的 Forward 和 Right (忽略 pitch，只看 yaw)
+        // 这样 W 总是沿着相机的“水平视线”向前
+        const forward: Vec3 = [Math.sin(state.value.yaw), Math.cos(state.value.yaw), 0]
+        const right: Vec3 = [Math.cos(state.value.yaw), -Math.sin(state.value.yaw), 0]
+        const up: Vec3 = [0, 0, 1]
+
+        const speedMultiplier = shift.value ? shiftSpeedMultiplier : 1
+        const deltaVec = calculateMovementDelta(forward, right, up, delta / 1000, speedMultiplier)
+
+        if (deltaVec) {
+          // 同时更新 position 和 target，保持相对视角不变，实现“平移”
+          const newPos: Vec3 = [
+            state.value.position[0] + deltaVec[0],
+            state.value.position[1] + deltaVec[1],
+            state.value.position[2] + deltaVec[2],
+          ]
+
+          // 高度限制 (Z axis)
+          if (newPos[2] < minHeight) {
+            // 如果被限制了，只调整 Z 分量
+            const zDiff = minHeight - newPos[2]
+            newPos[2] = minHeight
+            // deltaVec 的 Z 分量也需要相应调整，以保证 target 同步
+            deltaVec[2] += zDiff
+          }
+
+          state.value.position = newPos
+          state.value.target = [
+            state.value.target[0] + deltaVec[0],
+            state.value.target[1] + deltaVec[1],
+            state.value.target[2] + deltaVec[2],
+          ]
+
+          // 更新 mode 中的 target 引用
+          mode.value.target = [...state.value.target]
+
+          // 通知外部更新 orbit target
+          if (deps.onOrbitTargetUpdate) {
+            deps.onOrbitTargetUpdate(mode.value.target)
+          }
+        }
       }
     },
     { immediate: false }
@@ -796,7 +876,44 @@ export function useThreeCamera(
 
     const maxDim = Math.max(bounds.width, bounds.height, bounds.depth)
 
-    // 确保切换到 Orbit 模式
+    // 特殊处理 Flight 模式：仅瞬移，不切换模式
+    if (mode.value.kind === 'flight') {
+      // 计算理想距离 (复用透视视图计算)
+      const k = Math.tan((FOV * Math.PI) / 360)
+      let dist = maxDim / 2 / k
+      dist = Math.max(dist, 1376) * 1.2
+
+      // 保持当前相机相对于物体的方向
+      // 计算从物体指向相机的向量
+      const currentPos = state.value.position
+      let dx = currentPos[0] - target[0]
+      let dy = currentPos[1] - target[1]
+      let dz = currentPos[2] - target[2]
+      let len = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+      // 如果距离太近，使用默认方向 (南向北俯视)
+      if (len < 1) {
+        dx = 0.6
+        dy = -0.6
+        dz = 0.8
+        len = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      }
+
+      const dirX = dx / len
+      const dirY = dy / len
+      const dirZ = dz / len
+
+      const newPos: Vec3 = [
+        target[0] + dirX * dist,
+        target[1] + dirY * dist,
+        target[2] + dirZ * dist,
+      ]
+
+      setPoseFromLookAt(newPos, target)
+      return
+    }
+
+    // 否则：切换到 Orbit 模式
     switchToOrbitMode()
     // 更新内部 target 状态
     mode.value = { ...mode.value, target: [...target] } as any
@@ -898,6 +1015,7 @@ export function useThreeCamera(
       state.value.zoom = zoom
     },
     lookAtTarget,
+    toggleCameraMode,
     switchToOrbitMode,
     setViewPreset,
     switchToViewPreset,

@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, markRaw, watch, onActivated, onDeactivated, onMounted, toRef } from 'vue'
+import {
+  ref,
+  computed,
+  markRaw,
+  watch,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  toRef,
+  onUnmounted,
+} from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls, Grid } from '@tresjs/cientos'
 import { Object3D, MOUSE, TextureLoader, SRGBColorSpace, Color } from 'three'
@@ -169,6 +179,7 @@ const {
   handleNavPointerUp,
   setPoseFromLookAt,
   setZoom,
+  toggleCameraMode,
   switchToViewPreset,
   fitCameraToScene,
   focusOnSelection,
@@ -300,6 +311,22 @@ function handleTresReady(context: any) {
   // 可以在这里做一些初始化工作
   console.log('[ThreeEditor] TresCanvas ready')
 }
+
+// 监听键盘 Tab 键切换模式
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Tab') {
+    e.preventDefault()
+    toggleCameraMode()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 
 // 渲染循环回调（每帧调用）
 function handleLoop(context: any) {
