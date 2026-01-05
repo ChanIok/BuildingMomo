@@ -46,7 +46,6 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
 
     for (const attr of attrs) {
       if (!commonAttributes.has(attr)) {
-        console.log(`[ModelManager] 删除几何体 ${i} 的不一致属性: ${attr}`)
         geom.deleteAttribute(attr)
       }
     }

@@ -23,7 +23,7 @@ import {
   useResizeObserver,
   usePreferredDark,
 } from '@vueuse/core'
-import { Raycaster, Vector2, Vector3 } from 'three'
+import { Raycaster, Vector2, Vector3, type WebGLRenderer, type Camera } from 'three'
 import { Slider } from '@/components/ui/slider'
 import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
 import {
@@ -233,11 +233,13 @@ const {
   iconInstancedMesh,
   simpleBoxInstancedMesh,
   modelMeshMap,
-  modelOutlineMeshes,
   updateSelectedInstancesMatrix,
   pickingConfig,
   setHoveredItemId,
   updateIconFacing,
+  renderSelectionOutlineMaskPass,
+  renderSelectionOutlineOverlay,
+  syncOutlineSceneTransform,
 } = useThreeInstancedRenderer(isTransformDragging)
 
 // 当前 3D 显示模式（根据设置和视图类型动态决定）
@@ -287,6 +289,45 @@ const updateIconFacingThrottled = useThrottleFn(
   },
   150
 ) // 每150ms最多更新一次
+
+// 同步 maskScene 的 Y 轴翻转（因为主场景用了 scale=[1,-1,1]）
+onMounted(() => {
+  syncOutlineSceneTransform(-1)
+})
+
+// 从 TresCanvas ready 事件初始化
+function handleTresReady(context: any) {
+  // 可以在这里做一些初始化工作
+  console.log('[ThreeEditor] TresCanvas ready')
+}
+
+// 渲染循环回调（每帧调用）
+function handleLoop(context: any) {
+  if (currentDisplayMode.value !== 'model') return
+
+  // TresJS loop context: renderer.instance 已经是 WebGLRenderer 实例
+  const renderer = context.renderer?.instance as WebGLRenderer | undefined
+  const camera = activeCameraRef.value
+
+  if (!renderer || !camera) return
+
+  const size = renderer.getSize(new Vector2())
+
+  // 1. 在 TresJS 渲染主场景之前，先渲染 mask pass
+  const hasMask = renderSelectionOutlineMaskPass(renderer, camera as Camera, size.x, size.y)
+
+  // 2. 让 TresJS 正常渲染主场景（自动发生）
+
+  // 3. 在 TresJS 渲染完成后，叠加 overlay
+  // 使用 requestAnimationFrame 确保在当前帧的渲染完成后执行
+  if (hasMask) {
+    // 注意：这里依然在同一帧内，但会在 TresJS 的渲染之后执行
+    // 因为 @loop 在 TresJS 渲染之前被调用
+    queueMicrotask(() => {
+      renderSelectionOutlineOverlay(renderer)
+    })
+  }
+}
 
 // 在视图或模式变化时，更新 Icon 面朝方向（仅图标模式）
 watch(
@@ -804,7 +845,7 @@ onDeactivated(() => {
       @contextmenu="handleContextMenu"
       @wheel="handleContainerWheel"
     >
-      <TresCanvas :clear-color="canvasClearColor">
+      <TresCanvas :clear-color="canvasClearColor" @ready="handleTresReady" @loop="handleLoop">
         <!-- 透视相机 - perspective 视图 -->
         <TresPerspectiveCamera
           v-if="!isOrthographic"
@@ -898,13 +939,6 @@ onDeactivated(() => {
           <!-- Model 模式：渲染所有模型 Mesh -->
           <template v-if="shouldShowModelMesh">
             <primitive v-for="[modelName, mesh] in modelMeshMap" :key="modelName" :object="mesh" />
-
-            <!-- 描边 mesh -->
-            <primitive
-              v-for="(outlineMesh, index) in modelOutlineMeshes"
-              :key="`outline-${index}`"
-              :object="outlineMesh"
-            />
           </template>
         </TresGroup>
 

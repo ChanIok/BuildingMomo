@@ -9,7 +9,7 @@ import { useSimpleBoxMode } from './modes/useSimpleBoxMode'
 import { useModelMode } from './modes/useModelMode'
 import { useInstanceColor } from './shared/useInstanceColor'
 import { useInstanceMatrix } from './shared/useInstanceMatrix'
-import { useModelOutline } from './shared/useModelOutline'
+import { useSelectionOutline } from './shared/useSelectionOutline'
 import type { PickingConfig } from './types'
 
 /**
@@ -37,8 +37,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   // 初始化矩阵更新器
   const matrixUpdater = useInstanceMatrix()
 
-  // 初始化 Model 模式描边管理器
-  const modelOutline = useModelOutline()
+  // 初始化 Model 模式描边管理器（屏幕空间）
+  const selectionOutline = useSelectionOutline()
 
   // 全局索引映射（用于 box/icon/simple-box 模式）
   const indexToIdMap = ref(new Map<number, string>())
@@ -67,10 +67,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       for (const [, mesh] of modelMode.meshMap.value.entries()) {
         mesh.count = 0
       }
-      // 隐藏所有描边 mesh
-      for (const mesh of modelOutline.outlineMeshes.value) {
-        mesh.count = 0
-      }
     }
 
     // 执行对应模式的重建
@@ -85,22 +81,30 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         await simpleBoxMode.rebuild()
         break
       case 'model':
+        console.log('[ThreeInstancedRenderer] Starting model mode rebuild')
         await modelMode.rebuild()
 
-        // 初始化描边 mesh（为每个模型类型创建对应的描边 mesh）
+        console.log('[ThreeInstancedRenderer] Initializing mask meshes for model mode')
+        // 初始化 mask mesh（为每个模型类型创建对应的 mask mesh）
         for (const [itemId, mesh] of modelMode.meshMap.value.entries()) {
-          modelOutline.initOutlineMesh(itemId, mesh, 10000) // MAX_RENDER_INSTANCES
+          console.log(
+            `[ThreeInstancedRenderer] Creating mask mesh for itemId=${itemId}, mesh.count=${mesh.count}`
+          )
+          selectionOutline.initMaskMesh(itemId, mesh, 10000) // MAX_RENDER_INSTANCES
         }
 
-        // 为 fallbackMesh 创建描边 mesh
+        // 为 fallbackMesh 创建 mask mesh
         const fallbackMesh = modelMode.fallbackMesh.value
         if (fallbackMesh && fallbackMesh.count > 0) {
-          modelOutline.initOutlineMesh(-1, fallbackMesh, 10000)
+          console.log(
+            `[ThreeInstancedRenderer] Creating mask mesh for fallbackMesh, count=${fallbackMesh.count}`
+          )
+          selectionOutline.initMaskMesh(-1, fallbackMesh, 10000)
         }
 
-        // 更新描边状态
+        // 更新 mask 状态
         const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
-        modelOutline.updateOutlines(
+        selectionOutline.updateMasks(
           selectedItemIds,
           colorManager.hoveredItemId.value,
           modelMode.meshMap.value,
@@ -164,10 +168,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       iconMode.currentIconUp.value
     )
 
-    // Model 模式：同步更新描边
+    // Model 模式：同步更新 mask
     if (mode === 'model') {
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
-      modelOutline.updateOutlines(
+      selectionOutline.updateMasks(
         selectedItemIds,
         colorManager.hoveredItemId.value,
         modelMode.meshMap.value,
@@ -193,9 +197,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       // Model 模式：更新 colorManager 的内部状态（用于抑制逻辑）
       colorManager.hoveredItemId.value = id
 
-      // 更新描边
+      // 更新 mask
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
-      modelOutline.updateOutlines(
+      selectionOutline.updateMasks(
         selectedItemIds,
         id,
         modelMode.meshMap.value,
@@ -344,6 +348,14 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       }
 
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+      const mode1 = settingsStore.settings.threeDisplayMode
+
+      console.log('[ThreeInstancedRenderer] Selection changed:', {
+        mode1,
+        selectedCount: selectedItemIds.size,
+        selectedIds: Array.from(selectedItemIds).slice(0, 5), // 只显示前5个
+        selectionVersion: editorStore.selectionVersion,
+      })
 
       // 1. 处理刚刚被选中的情况：抑制 Hover，使其显示选中色
       if (
@@ -372,8 +384,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         mode === 'model' ? modelMode.indexToIdMap.value : indexToIdMap.value
 
       if (mode === 'model') {
-        // Model 模式：更新描边
-        modelOutline.updateOutlines(
+        // Model 模式：更新 mask
+        selectionOutline.updateMasks(
           selectedItemIds,
           colorManager.hoveredItemId.value,
           modelMode.meshMap.value,
@@ -399,7 +411,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     iconMode.dispose()
     simpleBoxMode.dispose()
     modelMode.dispose()
-    modelOutline.dispose()
+    selectionOutline.dispose()
   })
 
   // 返回统一接口
@@ -408,7 +420,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     iconInstancedMesh: iconMode.mesh,
     simpleBoxInstancedMesh: simpleBoxMode.mesh,
     modelMeshMap: modelMode.meshMap,
-    modelOutlineMeshes: modelOutline.outlineMeshes,
     indexToIdMap,
     idToIndexMap,
     /**
@@ -423,5 +434,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     setHoveredItemId,
     updateIconFacing,
     pickingConfig, // ✨ 新增：统一拾取配置
+    renderSelectionOutlineMaskPass: selectionOutline.renderMaskPass,
+    renderSelectionOutlineOverlay: selectionOutline.renderOverlay,
+    syncOutlineSceneTransform: selectionOutline.syncSceneTransform,
   }
 }
