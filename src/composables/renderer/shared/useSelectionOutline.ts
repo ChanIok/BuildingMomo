@@ -199,7 +199,6 @@ export function useSelectionOutline() {
     function addMaskInstance(internalId: string, isSelected: boolean) {
       const meshInfo = internalIdToMeshInfo.get(internalId)
       if (!meshInfo) {
-        console.warn(`[SelectionOutline] No meshInfo found for internalId=${internalId}`)
         return
       }
 

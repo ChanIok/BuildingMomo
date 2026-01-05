@@ -3,6 +3,8 @@ import type { Matrix4, Raycaster, InstancedMesh } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useThrottleFn } from '@vueuse/core'
+import type { ViewPreset } from '../useThreeCamera'
 import { useBoxMode } from './modes/useBoxMode'
 import { useIconMode } from './modes/useIconMode'
 import { useSimpleBoxMode } from './modes/useSimpleBoxMode'
@@ -227,6 +229,94 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   }
 
   /**
+   * 设置图标朝向自动管理
+   *
+   * 根据相机位置和视图预设自动更新图标朝向
+   * - 正交视图：固定朝向（基于视图预设）
+   * - 透视视图：图标朝向相机（billboard 效果）
+   */
+  function setupIconFacing(
+    cameraPosition: Ref<[number, number, number]>,
+    cameraLookAt: Ref<[number, number, number]>,
+    cameraUp: Ref<[number, number, number]>,
+    currentViewPreset: Ref<ViewPreset | null>
+  ) {
+    // 创建节流函数，用于透视视图下的图标朝向更新（避免过于频繁的更新）
+    const updateIconFacingThrottled = useThrottleFn(
+      (normal: [number, number, number], up?: [number, number, number]) => {
+        updateIconFacing(normal, up)
+      },
+      150
+    ) // 每150ms最多更新一次
+
+    // 在视图或模式变化时，更新 Icon 面朝方向（仅图标模式）
+    watch(
+      [
+        () => settingsStore.settings.threeDisplayMode,
+        () => currentViewPreset.value,
+        () => cameraPosition.value, // 监听相机位置，用于透视视图下的实时跟随
+        () => cameraLookAt.value, // 监听相机目标，用于计算朝向
+      ],
+      ([mode, preset, camPos, camTarget]) => {
+        if (mode !== 'icon') {
+          return
+        }
+
+        let normal: [number, number, number] = [0, 0, 1]
+
+        // 如果是正交视图预设，使用固定朝向
+        if (preset && preset !== 'perspective') {
+          let up: [number, number, number] = [0, 0, 1]
+
+          switch (preset) {
+            case 'top':
+              normal = [0, 0, 1] // 顶视图看 XY 平面
+              up = [0, 1, 0] // Y轴朝上
+              break
+            case 'bottom':
+              normal = [0, 0, -1]
+              up = [0, -1, 0] // 翻转 180 度
+              break
+            case 'front':
+              normal = [0, -1, 0]
+              up = [0, 0, 1] // Z轴朝上
+              break
+            case 'back':
+              normal = [0, 1, 0]
+              up = [0, 0, 1] // Z轴朝上
+              break
+            case 'right':
+              normal = [1, 0, 0]
+              up = [0, 0, 1] // Z轴朝上
+              break
+            case 'left':
+              normal = [-1, 0, 0]
+              up = [0, 0, 1] // Z轴朝上
+              break
+          }
+          // 正交视图：立即更新，无需节流（切换频率低）
+          updateIconFacing(normal, up)
+        } else {
+          // 透视视图：计算从目标点指向相机的方向，使图标法线朝向相机（图标面向相机）
+          const dirX = camPos[0] - camTarget[0]
+          const dirY = camPos[1] - camTarget[1]
+          const dirZ = camPos[2] - camTarget[2]
+
+          // 归一化向量
+          const len = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ)
+          if (len > 0.0001) {
+            normal = [dirX / len, dirY / len, dirZ / len]
+          }
+
+          // 透视视图：使用节流更新，并传入 cameraUp 向量防止图标绕法线旋转
+          updateIconFacingThrottled(normal, cameraUp.value)
+        }
+      },
+      { immediate: true }
+    )
+  }
+
+  /**
    * 获取当前模式的拾取配置（统一拾取接口）
    */
   const pickingConfig = computed<PickingConfig>(() => {
@@ -425,6 +515,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     updateSelectedInstancesMatrix,
     setHoveredItemId,
     updateIconFacing,
+    setupIconFacing,
     pickingConfig, // ✨ 新增：统一拾取配置
     renderSelectionOutlineMaskPass: selectionOutline.renderMaskPass,
     renderSelectionOutlineOverlay: selectionOutline.renderOverlay,

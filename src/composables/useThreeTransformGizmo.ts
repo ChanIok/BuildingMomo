@@ -1,14 +1,22 @@
-import { computed, ref, watchEffect, markRaw, type Ref } from 'vue'
-import { Object3D, Vector3, Euler, Quaternion, Matrix4, MathUtils } from 'three'
+import { computed, ref, watchEffect, markRaw, watch, type Ref } from 'vue'
+import { Object3D, Vector3, Euler, Quaternion, Matrix4, MathUtils, Color } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { coordinates3D } from '@/lib/coordinates'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import type { AppItem } from '@/types/editor'
 
 const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+
+// 现代配色方案
+const AXIS_COLORS = {
+  x: 0xef4444, // red-500
+  y: 0x84cc16, // lime-500
+  z: 0x3b82f6, // blue-500
+}
 
 export function useThreeTransformGizmo(
   pivotRef: Ref<Object3D | null>,
@@ -289,6 +297,118 @@ export function useThreeTransformGizmo(
     return parentInverseMatrix.clone().multiply(localMatrix)
   }
 
+  /**
+   * 设置 Gizmo 外观自定义
+   *
+   * 包括：
+   * - 轴颜色自定义
+   * - 隐藏 E 轴（视野平面旋转圈）
+   * - 处理旋转轴限制（限制检测开启时隐藏 X/Y 轴）
+   * - Y 轴几何体翻转（适配游戏坐标系）
+   */
+  function setupGizmoAppearance(transformRef: Ref<any | null>, axesRef?: Ref<any | null>) {
+    const settingsStore = useSettingsStore()
+
+    // 自定义 TransformControls (Gizmo) 颜色，并隐藏 E 轴，同时处理旋转轴限制
+    watch(
+      [
+        transformRef,
+        () => editorStore.gizmoMode,
+        () => settingsStore.settings.enableLimitDetection,
+      ],
+      ([v]) => {
+        const controls = v?.instance || v?.value
+        if (!controls) return
+
+        // 限制处理：如果开启限制检测且处于旋转模式，则隐藏 X/Y 轴
+        const isRotate = editorStore.gizmoMode === 'rotate'
+        const isLimitEnabled = settingsStore.settings.enableLimitDetection
+
+        if (isRotate && isLimitEnabled) {
+          controls.showX = false
+          controls.showY = false
+        } else {
+          controls.showX = true
+          controls.showY = true
+        }
+
+        const updateGizmo = () => {
+          // 1. 颜色设置 & 收集需要移除的 'E' 和 'XYZE' 轴对象
+          const objectsToRemove: any[] = []
+
+          // 遍历 helper/gizmo 结构
+          const mainGizmo = controls.gizmo || controls.children?.[0]
+          if (mainGizmo) {
+            mainGizmo.traverse((obj: any) => {
+              // 标记需要移除的辅助轴
+              if (obj.name === 'E' || obj.name === 'XYZE') {
+                objectsToRemove.push(obj)
+                return
+              }
+
+              // 设置轴颜色
+              if (!obj.material || !obj.name) return
+
+              let color
+              if (/^(X|XYZX)$/.test(obj.name)) color = AXIS_COLORS.x
+              else if (/^(Y|XYZY)$/.test(obj.name)) {
+                color = AXIS_COLORS.y
+                // 翻转 Y 轴几何体的顶点方向，使其在视觉上指向"下方"以匹配游戏数据坐标系
+                const posAttr = obj.geometry?.attributes?.position
+                if (posAttr) {
+                  for (let i = 0; i < posAttr.count; i++) {
+                    posAttr.setY(i, -posAttr.getY(i))
+                  }
+                  posAttr.needsUpdate = true
+                }
+              } else if (/^(Z|XYZZ)$/.test(obj.name)) color = AXIS_COLORS.z
+
+              if (color) {
+                obj.material.color.set(color)
+                // 关键：覆盖 tempColor 防止颜色被重置
+                obj.material.tempColor = obj.material.tempColor || new Color()
+                obj.material.tempColor.set(color)
+              }
+            })
+          }
+
+          // 遍历 picker 结构 (用于点击检测的隐藏物体)
+          if (controls.picker) {
+            controls.picker.traverse((obj: any) => {
+              if (obj.name === 'E' || obj.name === 'XYZE') {
+                objectsToRemove.push(obj)
+              }
+            })
+          }
+
+          // 2. 统一移除
+          objectsToRemove.forEach((obj) => {
+            if (obj.parent) {
+              obj.parent.remove(obj)
+            }
+          })
+        }
+
+        updateGizmo()
+      }
+    )
+
+    // 自定义 AxesHelper (坐标轴) 颜色
+    if (axesRef) {
+      watch(axesRef, (v) => {
+        const axes = v?.instance || v?.value || v
+        // AxesHelper.setColors available since r133
+        if (axes && typeof axes.setColors === 'function') {
+          axes.setColors(
+            new Color(AXIS_COLORS.x),
+            new Color(AXIS_COLORS.y),
+            new Color(AXIS_COLORS.z)
+          )
+        }
+      })
+    }
+  }
+
   return {
     shouldShowGizmo,
     isTransformDragging: _isTransformDragging,
@@ -297,5 +417,6 @@ export function useThreeTransformGizmo(
     handleGizmoMouseDown,
     handleGizmoMouseUp,
     handleGizmoChange,
+    setupGizmoAppearance,
   }
 }
