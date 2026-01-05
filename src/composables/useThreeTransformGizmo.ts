@@ -238,9 +238,6 @@ export function useThreeTransformGizmo(
   }
 
   function calculateItemWorldMatrix(item: AppItem): Matrix4 {
-    const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-    const [sizeX, sizeY, sizeZ] = furnitureSize
-
     // 1. Position
     const pos = new Vector3()
     coordinates3D.setThreeFromGame(pos, { x: item.x, y: item.y, z: item.z })
@@ -261,11 +258,26 @@ export function useThreeTransformGizmo(
     // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X=南北→Three.js Y，游戏Y=东西→Three.js X）
     // 因此：Scale.X 应用到 World Y (即 Local Y)，Scale.Y 应用到 World X (即 Local X)
     const scaleData = item.extra?.Scale
-    const scale = new Vector3(
-      (scaleData?.Y ?? 1) * sizeX, // Local X 使用 Scale.Y
-      (scaleData?.X ?? 1) * sizeY, // Local Y 使用 Scale.X
-      (scaleData?.Z ?? 1) * sizeZ
-    )
+
+    // 检查该物品是否有 3D 模型配置
+    // 如果有模型，则模型本身已包含实际尺寸，只需应用用户的 Scale 参数
+    // 如果没有模型（回退到 Box），则需要乘以 furnitureSize
+    const hasModelConfig = !!gameDataStore.getFurnitureModelConfig(item.gameId)
+
+    let scale: Vector3
+    if (hasModelConfig) {
+      // Model 模式：只使用用户的 Scale 参数（模型已包含实际尺寸）
+      scale = new Vector3(scaleData?.Y ?? 1, scaleData?.X ?? 1, scaleData?.Z ?? 1)
+    } else {
+      // Box 模式：Scale * furnitureSize
+      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+      const [sizeX, sizeY, sizeZ] = furnitureSize
+      scale = new Vector3(
+        (scaleData?.Y ?? 1) * sizeX, // Local X 使用 Scale.Y
+        (scaleData?.X ?? 1) * sizeY, // Local Y 使用 Scale.X
+        (scaleData?.Z ?? 1) * sizeZ
+      )
+    }
 
     // 4. Compose Local Matrix
     const localMatrix = new Matrix4().compose(pos, quat, scale)

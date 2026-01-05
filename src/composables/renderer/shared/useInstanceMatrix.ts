@@ -31,18 +31,44 @@ export function useInstanceMatrix() {
     simpleBoxMeshTarget: InstancedMesh | null,
     idToIndexMap: Map<string, number>,
     currentIconNormal: [number, number, number],
-    currentIconUp: [number, number, number] | null
+    currentIconUp: [number, number, number] | null,
+    // Model 模式额外参数
+    modelMeshMap?: Map<number, InstancedMesh>,
+    internalIdToMeshInfo?: Map<string, { itemId: number; localIndex: number }>,
+    fallbackMesh?: InstancedMesh | null
   ) {
     for (const [id, worldMatrix] of idToWorldMatrixMap.entries()) {
-      const index = idToIndexMap.get(id)
-      if (index === undefined) continue
-
       let mesh: InstancedMesh | null = null
-      if (mode === 'box' && meshTarget) mesh = meshTarget
-      else if (mode === 'icon' && iconMeshTarget) mesh = iconMeshTarget
-      else if (mode === 'simple-box' && simpleBoxMeshTarget) mesh = simpleBoxMeshTarget
+      let localIndex: number | undefined = undefined
 
-      if (!mesh) continue
+      if (mode === 'model') {
+        // Model 模式：使用 internalIdToMeshInfo 获取对应的 mesh 和局部索引
+        const meshInfo = internalIdToMeshInfo?.get(id)
+        if (!meshInfo) continue
+
+        const { itemId, localIndex: idx } = meshInfo
+        localIndex = idx
+
+        // 根据 itemId 获取对应的 mesh（-1 表示 fallback）
+        if (itemId === -1) {
+          mesh = fallbackMesh || null
+        } else {
+          mesh = modelMeshMap?.get(itemId) || null
+        }
+
+        if (!mesh) continue
+      } else {
+        // Box/Icon/SimpleBox 模式：使用全局索引
+        const index = idToIndexMap.get(id)
+        if (index === undefined) continue
+        localIndex = index
+
+        if (mode === 'box' && meshTarget) mesh = meshTarget
+        else if (mode === 'icon' && iconMeshTarget) mesh = iconMeshTarget
+        else if (mode === 'simple-box' && simpleBoxMeshTarget) mesh = simpleBoxMeshTarget
+
+        if (!mesh) continue
+      }
 
       // Local = Inverse(Parent) * World
       // Parent is Scale(1, -1, 1). Its inverse is also Scale(1, -1, 1).
@@ -59,9 +85,9 @@ export function useInstanceMatrix() {
       el[13] = -el[13]
 
       // 针对不同模式对矩阵进行后处理
-      if (mode === 'box') {
-        // Box 模式：完全信任 Gizmo 计算的矩阵（包含物理尺寸和旋转）
-        mesh.setMatrixAt(index, scratchMatrix)
+      if (mode === 'box' || mode === 'model') {
+        // Box/Model 模式：完全信任 Gizmo 计算的矩阵（包含物理尺寸和旋转）
+        mesh.setMatrixAt(localIndex, scratchMatrix)
       } else if (mode === 'simple-box') {
         // Simple Box 模式：保留位置和旋转，但强制重置缩放为 100 * symbolScale
         scratchMatrix.decompose(scratchPosition, scratchQuaternion, scratchScale)
@@ -70,7 +96,7 @@ export function useInstanceMatrix() {
         scratchScale.set(s, s, s)
 
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
-        mesh.setMatrixAt(index, scratchMatrix)
+        mesh.setMatrixAt(localIndex, scratchMatrix)
       } else if (mode === 'icon') {
         // Icon 模式：保留位置，但强制重置缩放和旋转（维持 Billboard 朝向）
 
@@ -111,7 +137,7 @@ export function useInstanceMatrix() {
         // 5. 应用位置
         scratchMatrix.setPosition(scratchPosition)
 
-        mesh.setMatrixAt(index, scratchMatrix)
+        mesh.setMatrixAt(localIndex, scratchMatrix)
       }
 
       mesh.instanceMatrix.needsUpdate = true

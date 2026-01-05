@@ -161,7 +161,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       simpleBoxMeshTarget,
       currentIdToIndexMap,
       iconMode.currentIconNormal.value,
-      iconMode.currentIconUp.value
+      iconMode.currentIconUp.value,
+      // Model 模式额外参数
+      modelMode.meshMap.value,
+      modelMode.internalIdToMeshInfo.value,
+      modelMode.fallbackMesh.value
     )
 
     // Model 模式：同步更新 mask
