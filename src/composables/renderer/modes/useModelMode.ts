@@ -282,7 +282,25 @@ export function useModelMode() {
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
 
+      // 构建 BVH 加速结构（仅对新创建的 mesh）
+      if (!existingMesh && mesh.geometry) {
+        mesh.geometry.computeBoundsTree({
+          setBoundingBox: true,
+        })
+        console.log(`[ModelMode] BVH built for itemId ${itemId}, instances: ${itemsOfModel.length}`)
+      }
+
       globalIndex += itemsOfModel.length
+    }
+
+    // 为 fallbackMesh 构建 BVH（如果有新的回退物品）
+    if (fallbackMesh && fallbackMesh.count > 0 && fallbackMesh.geometry) {
+      if (!fallbackMesh.geometry.boundsTree) {
+        fallbackMesh.geometry.computeBoundsTree({
+          setBoundingBox: true,
+        })
+        console.log(`[ModelMode] BVH built for fallbackMesh, instances: ${fallbackMesh.count}`)
+      }
     }
 
     // 更新索引映射
@@ -300,6 +318,9 @@ export function useModelMode() {
   function dispose() {
     // 清理模型 Mesh
     for (const [, mesh] of modelMeshMap.value.entries()) {
+      if (mesh.geometry?.boundsTree) {
+        mesh.geometry.disposeBoundsTree()
+      }
       mesh.geometry = null as any
       mesh.material = null as any
     }
@@ -307,11 +328,17 @@ export function useModelMode() {
 
     // 清理回退 Mesh
     if (fallbackMesh) {
+      if (fallbackMesh.geometry?.boundsTree) {
+        fallbackMesh.geometry.disposeBoundsTree()
+      }
       fallbackMesh.geometry = null as any
       fallbackMesh.material = null as any
       fallbackMesh = null
     }
     if (fallbackGeometry) {
+      if (fallbackGeometry.boundsTree) {
+        fallbackGeometry.disposeBoundsTree()
+      }
       fallbackGeometry.dispose()
       fallbackGeometry = null
     }

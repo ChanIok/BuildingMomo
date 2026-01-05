@@ -32,6 +32,11 @@ export function useBoxMode() {
   // 修正：将几何体原点从中心移动到底部 (Z: -0.5~0.5 -> 0~1)
   baseGeometry.translate(0, 0, 0.5)
 
+  // 构建 BVH 加速结构
+  baseGeometry.computeBoundsTree({
+    setBoundingBox: true,
+  })
+
   const material = createBoxMaterial(0.9)
 
   // 创建 InstancedMesh
@@ -96,6 +101,9 @@ export function useBoxMode() {
    * 清理资源
    */
   function dispose() {
+    if (baseGeometry.boundsTree) {
+      baseGeometry.disposeBoundsTree()
+    }
     baseGeometry.dispose()
     material.dispose()
     if (instancedMesh.value) {

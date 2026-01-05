@@ -13,6 +13,7 @@ import { useInstanceColor } from './shared/useInstanceColor'
 import { useInstanceMatrix } from './shared/useInstanceMatrix'
 import { useSelectionOutline } from './shared/useSelectionOutline'
 import type { PickingConfig } from './types'
+import { initBVH } from './bvh'
 
 /**
  * Three.js 实例化渲染器
@@ -22,10 +23,19 @@ import type { PickingConfig } from './types'
  *
  * @param isTransformDragging - 可选，指示是否正在拖拽 Transform Gizmo
  */
+// 全局 BVH 初始化标志（确保只初始化一次）
+let bvhInitialized = false
+
 export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
+
+  // 初始化 BVH 加速（仅执行一次）
+  if (!bvhInitialized) {
+    initBVH()
+    bvhInitialized = true
+  }
 
   // 初始化各模式 composables
   const boxMode = useBoxMode()

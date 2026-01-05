@@ -3,6 +3,7 @@ import { Raycaster, Vector2, type Camera } from 'three'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useI18n } from './useI18n'
 import type { PickingConfig } from './renderer/types'
 
@@ -31,6 +32,7 @@ export function useThreeTooltip(
   const { t, locale } = useI18n()
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
+  const settingsStore = useSettingsStore()
   const uiStore = useUIStore()
 
   const tooltipVisible = ref(false)
@@ -38,7 +40,8 @@ export function useThreeTooltip(
 
   // 射线检测的时间戳，用于手动节流
   let lastRaycastTime = 0
-  const RAYCAST_INTERVAL = 50 // ms
+  const RAYCAST_INTERVAL_DEFAULT = 50 // ms - 默认模式
+  const RAYCAST_INTERVAL_MODEL = 100 // ms - 模型模式（更复杂的射线检测）
 
   function hideTooltip() {
     if (tooltipVisible.value || tooltipData.value) {
@@ -82,8 +85,13 @@ export function useThreeTooltip(
     }
 
     // 2. 节流检测：限制昂贵的 Raycaster 调用频率
+    // 模型模式使用更保守的节流（100ms），其他模式使用 50ms
+    const interval =
+      settingsStore.settings.threeDisplayMode === 'model'
+        ? RAYCAST_INTERVAL_MODEL
+        : RAYCAST_INTERVAL_DEFAULT
     const now = Date.now()
-    if (now - lastRaycastTime < RAYCAST_INTERVAL) {
+    if (now - lastRaycastTime < interval) {
       return
     }
     lastRaycastTime = now

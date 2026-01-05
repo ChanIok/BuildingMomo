@@ -142,6 +142,28 @@ export function useInstanceMatrix() {
 
       mesh.instanceMatrix.needsUpdate = true
     }
+
+    // 更新完成后，重新适配 BVH（比完全重建快）
+    // 根据模式选择要更新的 mesh
+    const meshesToRefit: InstancedMesh[] = []
+    if (mode === 'box' && meshTarget) meshesToRefit.push(meshTarget)
+    else if (mode === 'icon' && iconMeshTarget) meshesToRefit.push(iconMeshTarget)
+    else if (mode === 'simple-box' && simpleBoxMeshTarget) meshesToRefit.push(simpleBoxMeshTarget)
+    else if (mode === 'model') {
+      // Model 模式：需要重新适配所有被修改的 mesh
+      if (modelMeshMap) {
+        for (const mesh of modelMeshMap.values()) {
+          meshesToRefit.push(mesh)
+        }
+      }
+      if (fallbackMesh) meshesToRefit.push(fallbackMesh)
+    }
+
+    for (const mesh of meshesToRefit) {
+      if (mesh.geometry?.boundsTree) {
+        mesh.geometry.boundsTree.refit()
+      }
+    }
   }
 
   return {

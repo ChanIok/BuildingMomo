@@ -71,6 +71,10 @@ export function useIconMode() {
       planeGeometry = new PlaneGeometry(100, 100)
       // 为每个实例添加纹理索引属性（1个float: 纹理层索引）
       planeGeometry.setAttribute('textureIndex', new InstancedBufferAttribute(textureIndices, 1))
+      // 构建 BVH 加速结构
+      planeGeometry.computeBoundsTree({
+        setBoundingBox: true,
+      })
     }
 
     // 3. 初始化材质
@@ -353,6 +357,9 @@ export function useIconMode() {
     }
     if (iconMaterial?.uniforms.uDefaultColor) {
       iconMaterial.uniforms.uDefaultColor.value = null
+    }
+    if (planeGeometry?.boundsTree) {
+      planeGeometry.disposeBoundsTree()
     }
     planeGeometry?.dispose()
     iconMaterial?.dispose()
