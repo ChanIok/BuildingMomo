@@ -12,6 +12,17 @@ import { useRafFn, useMagicKeys } from '@vueuse/core'
 import { calculateBounds } from '@/lib/geometry'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
+import {
+  computeViewPose,
+  computeZoomConversion,
+  getForwardVector,
+  getRightVector,
+  calculateYawPitchFromDirection,
+  scaleVec3,
+  addScaled,
+  normalize,
+  clamp,
+} from '@/lib/cameraUtils'
 
 // ============================================================
 // 📦 Types & Constants
@@ -21,48 +32,8 @@ type Vec3 = [number, number, number]
 
 export type ViewPreset = 'perspective' | 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'
 
-// 视图预设配置
-interface ViewPresetConfig {
-  direction: Vec3 // 相机相对于目标的方向（单位向量）
-  up: Vec3 // 相机的上方向
-}
-
-// Z-Up 坐标系下的视图预设
-export const VIEW_PRESETS: Record<ViewPreset, ViewPresetConfig> = {
-  perspective: {
-    direction: [0.6, -0.6, 0.8], // X, Y, Z (东南上方，看向西北)
-    up: [0, 0, 1],
-  },
-  top: {
-    direction: [0, 0, 1], // 顶视图：从 +Z 看向 -Z
-    up: [0, 1, 0], // 上方向为 +Y
-  },
-  bottom: {
-    direction: [0, 0, -1],
-    up: [0, -1, 0],
-  },
-  front: {
-    direction: [0, -1, 0], // 前视图：从 -Y 看向 +Y
-    up: [0, 0, 1],
-  },
-  back: {
-    direction: [0, 1, 0], // 后视图：从 +Y 看向 -Y
-    up: [0, 0, 1],
-  },
-  right: {
-    direction: [1, 0, 0], // 右视图：从 +X 看向 -X
-    up: [0, 0, 1],
-  },
-  left: {
-    direction: [-1, 0, 0], // 左视图：从 -X 看向 +X
-    up: [0, 0, 1],
-  },
-}
-
-// 相机模式：使用判别联合确保类型安全
-type CameraMode =
-  | { kind: 'orbit'; projection: 'perspective' | 'orthographic'; target: Vec3 }
-  | { kind: 'flight' }
+// 相机控制模式（简化）
+type ControlMode = 'orbit' | 'flight'
 
 // 相机状态：单一真实来源
 interface CameraState {
@@ -70,7 +41,6 @@ interface CameraState {
   target: Vec3 // lookAt 点
   yaw: number // 弧度
   pitch: number // 弧度
-  viewPreset: ViewPreset | null
   up: Vec3 // 相机的上方向
   zoom: number // 缩放级别 (主要用于正交相机)
 }
@@ -99,8 +69,7 @@ export interface CameraControllerResult {
   cameraZoom: Ref<number>
   isViewFocused: Ref<boolean>
   isNavKeyPressed: Ref<boolean>
-  controlMode: Ref<'orbit' | 'flight'>
-  // currentViewPreset: Ref<ViewPreset | null> // 已移至 UI Store
+  controlMode: Ref<ControlMode>
   isOrthographic: Ref<boolean>
   sceneCenter: Ref<Vec3>
   cameraDistance: Ref<number>
@@ -111,7 +80,6 @@ export interface CameraControllerResult {
   lookAtTarget: (target: Vec3) => void
   toggleCameraMode: () => void
   switchToOrbitMode: () => Vec3 | null
-  setViewPreset: (preset: ViewPreset, target: Vec3, distance: number, newZoom?: number) => void
   switchToViewPreset: (preset: ViewPreset) => void
   setZoom: (zoom: number) => void
   fitCameraToScene: () => void
@@ -122,28 +90,6 @@ export interface CameraControllerResult {
     preset: ViewPreset | null
     zoom?: number
   }) => void
-}
-
-// ============================================================
-// 🔧 Utility Functions
-// ============================================================
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
-}
-
-function normalize(v: Vec3): Vec3 {
-  const len = Math.hypot(v[0], v[1], v[2])
-  if (len === 0) return [0, 0, 0]
-  return [v[0] / len, v[1] / len, v[2] / len]
-}
-
-function scaleVec3(v: Vec3, scale: number): Vec3 {
-  return [v[0] * scale, v[1] * scale, v[2] * scale]
-}
-
-function addScaled(a: Vec3, b: Vec3, scale: number): Vec3 {
-  return [a[0] + b[0] * scale, a[1] + b[1] * scale, a[2] + b[2] * scale]
 }
 
 // ============================================================
@@ -175,20 +121,19 @@ export function useThreeCamera(
     target: [0, 0, 0],
     yaw: 0,
     pitch: 0,
-    viewPreset: 'perspective', // 仅用于初始化，后续由 UI Store 管理逻辑
     up: [0, 0, 1], // Z-up default
     zoom: 1,
   })
 
-  const mode = ref<CameraMode>({
-    kind: 'orbit',
-    projection: 'perspective',
-    target: [0, 0, 0],
-  })
+  const controlMode = ref<ControlMode>('orbit')
 
   const isViewFocused = ref(false)
   const isMiddleButtonDown = ref(false)
   let isActive = false
+
+  // === 派生状态 (Computed) ===
+  const currentViewPreset = computed(() => uiStore.currentViewPreset)
+  const isOrthographic = computed(() => currentViewPreset.value !== 'perspective')
 
   // === 场景中心与距离计算 ===
   const sceneCenter = computed<Vec3>(() => {
@@ -249,7 +194,9 @@ export function useThreeCamera(
         restoreSnapshot(scheme.viewState.value)
       } else {
         // 无状态（如新导入），默认使用顶视图并聚焦到物品中心
-        setViewPreset('top', sceneCenter.value, cameraDistance.value, 1)
+        switchToViewPreset('top')
+        state.value.target = [...sceneCenter.value]
+        state.value.zoom = 1
       }
     },
     { immediate: true }
@@ -271,7 +218,7 @@ export function useThreeCamera(
     { deep: true }
   )
 
-  // === 键盘输入 ===
+  // === 监听按键状态 ===
   const keys = useMagicKeys()
   // 这些键在运行时总是存在，这里通过非空断言消除 TS 的 undefined 警告
   const w = keys.w!
@@ -283,55 +230,33 @@ export function useThreeCamera(
   const shift = keys.shift!
   const ctrl = keys.ctrl!
   const meta = keys.meta!
-  const tab = keys.tab!
-  // ============================================================
-  // 📐 Geometry Helpers
-  // ============================================================
+  // const tab = keys.tab! // 未使用
 
-  // Z-Up Geometry:
-  // Up: +Z
-  // Forward (Yaw=0, Pitch=0): +Y (assuming standard math convention)
-  // Math:
-  // x = cos(pitch) * sin(yaw)
-  // y = cos(pitch) * cos(yaw)
-  // z = sin(pitch)
-
-  function getForwardVector(yaw: number, pitch: number): Vec3 {
-    const cosPitch = Math.cos(pitch)
-    // Z-Up: z is up (sin pitch), xy plane is horizontal
-    // Standard math: 0 yaw = +Y? or +X?
-    // Let's assume: Yaw 0 = +Y (North), Yaw 90 = +X (East)
-    return [Math.sin(yaw) * cosPitch, Math.cos(yaw) * cosPitch, Math.sin(pitch)]
-  }
-
-  function getRightVector(yaw: number): Vec3 {
-    // right = forward × up (where up = [0,0,1])
-    // Forward: [sin, cos, 0] (ignoring pitch for simple right vec)
-    // Up: [0, 0, 1]
-    // Cross:
-    // x = fy*uz - fz*uy = cos*1 - 0 = cos
-    // y = fz*ux - fx*uz = 0 - sin*1 = -sin
-    // z = fx*uy - fy*ux = 0
-    // Result: [cos(yaw), -sin(yaw), 0]
-    const fy = Math.cos(yaw)
-    const fx = Math.sin(yaw)
-    // Note: standard gaming controls often define right as relative to camera view
-    return normalize([fy, -fx, 0])
-  }
-
-  function calculateYawPitchFromDirection(dir: Vec3): { yaw: number; pitch: number } {
-    const dirNorm = normalize(dir)
-    // Z-up:
-    // Pitch is asin(z)
-    // Yaw is atan2(x, y) (0 at +Y)
-    const pitch = clamp(Math.asin(dirNorm[2]), pitchMinRad, pitchMaxRad)
-    const yaw = Math.atan2(dirNorm[0], dirNorm[1])
-    return { yaw, pitch }
-  }
+  // === 自动同步 target 到外部 (OrbitControls) ===
+  watch(
+    () => state.value.target,
+    (newTarget) => {
+      if (controlMode.value === 'orbit' && deps.onOrbitTargetUpdate) {
+        deps.onOrbitTargetUpdate(newTarget)
+      }
+    },
+    { deep: true }
+  )
 
   function updateLookAtFromYawPitch() {
     const forward = getForwardVector(state.value.yaw, state.value.pitch)
     state.value.target = addScaled(state.value.position, forward, 2000)
+  }
+
+  function updateYawPitchFromDirection() {
+    const dir: Vec3 = [
+      state.value.target[0] - state.value.position[0],
+      state.value.target[1] - state.value.position[1],
+      state.value.target[2] - state.value.position[2],
+    ]
+    const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad, pitchMaxRad)
+    state.value.yaw = yaw
+    state.value.pitch = pitch
   }
 
   // ============================================================
@@ -377,7 +302,7 @@ export function useThreeCamera(
 
   // 计算当前是否应该响应导航键
   const isNavKeyPressed = computed(() => {
-    if (mode.value.kind !== 'flight' || !isViewFocused.value || deps.isTransformDragging?.value) {
+    if (controlMode.value !== 'flight' || !isViewFocused.value || deps.isTransformDragging?.value) {
       return false
     }
     return hasNavKeys()
@@ -419,12 +344,12 @@ export function useThreeCamera(
   // ============================================================
 
   function switchToFlightMode() {
-    if (mode.value.kind === 'flight') return
-    mode.value = { kind: 'flight' }
+    if (controlMode.value === 'flight') return
+    controlMode.value = 'flight'
   }
 
   function toggleCameraMode() {
-    if (mode.value.kind === 'orbit') {
+    if (controlMode.value === 'orbit') {
       switchToFlightMode()
     } else {
       switchToOrbitMode()
@@ -432,25 +357,16 @@ export function useThreeCamera(
   }
 
   function switchToOrbitMode(): Vec3 | null {
-    if (mode.value.kind === 'orbit') return null
+    if (controlMode.value === 'orbit') return null
 
     // 计算前方焦点作为新 target
     const forward = getForwardVector(state.value.yaw, state.value.pitch)
     const newTarget = addScaled(state.value.position, forward, 2000)
 
-    // 同步更新 state.value.target
+    // 更新 state.target，watch 会自动同步到 OrbitControls
     state.value.target = [...newTarget]
 
-    mode.value = {
-      kind: 'orbit',
-      projection: 'perspective',
-      target: newTarget,
-    }
-
-    // 通知外部更新 OrbitControls 的 target
-    if (deps.onOrbitTargetUpdate) {
-      deps.onOrbitTargetUpdate(newTarget)
-    }
+    controlMode.value = 'orbit'
 
     return newTarget
   }
@@ -464,14 +380,14 @@ export function useThreeCamera(
     isViewFocused.value = true
 
     // 中键在 flight 模式下控制视角
-    if (evt.button === 1 && mode.value.kind === 'flight') {
+    if (evt.button === 1 && controlMode.value === 'flight') {
       isMiddleButtonDown.value = true
       evt.preventDefault()
     }
   }
 
   function handleNavPointerMove(evt: PointerEvent) {
-    if (!isMiddleButtonDown.value || mode.value.kind !== 'flight') return
+    if (!isMiddleButtonDown.value || controlMode.value !== 'flight') return
     if (deps.isTransformDragging?.value) return
 
     // 更新 yaw/pitch（透视视角下始终视为透视预设的连续变体）
@@ -500,7 +416,7 @@ export function useThreeCamera(
     state.value.target = [...target]
 
     const dir: Vec3 = [target[0] - position[0], target[1] - position[1], target[2] - position[2]]
-    const { yaw, pitch } = calculateYawPitchFromDirection(dir)
+    const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad, pitchMaxRad)
     state.value.yaw = yaw
     state.value.pitch = pitch
   }
@@ -509,205 +425,89 @@ export function useThreeCamera(
     setPoseFromLookAt(state.value.position, target)
   }
 
-  function setViewPreset(preset: ViewPreset, target: Vec3, distance: number, newZoom?: number) {
-    const config = VIEW_PRESETS[preset]
-    let direction = normalize(config.direction)
-    let up = [...config.up] as Vec3
-
-    // 如果启用了工作坐标系，对方向进行旋转
-    // 只有非透视视图（正交视图）需要遵循工作坐标系旋转
-    // Front/Back/Left/Right 应该相对于工作坐标系
-    // Top/Bottom 应该旋转相机的 Up 向量
-    if (
-      uiStore.workingCoordinateSystem.enabled &&
-      uiStore.workingCoordinateSystem.rotationAngle !== 0 &&
-      preset !== 'perspective'
-    ) {
-      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-      const cos = Math.cos(angleRad)
-      const sin = Math.sin(angleRad)
-
-      // 旋转逻辑:
-      // 对于 Top/Bottom: 视线方向(Z轴)不变，但 Up 向量需要旋转
-      if (preset === 'top' || preset === 'bottom') {
-        // 原始 Up 通常是 [0, 1, 0] (+Y)
-        // 旋转后 Up 应该是 [ -sin, cos, 0 ] (假设逆时针旋转)
-        // X' = x*cos - y*sin
-        // Y' = x*sin + y*cos
-        up = [up[0] * cos - up[1] * sin, up[0] * sin + up[1] * cos, up[2]]
-      } else {
-        // 对于 Front/Back/Left/Right: 视线方向在 XY 平面上，需要旋转方向
-        // Z 分量不变
-        direction = [
-          direction[0] * cos - direction[1] * sin,
-          direction[0] * sin + direction[1] * cos,
-          direction[2],
-        ]
-      }
-    }
-
-    const newPosition = addScaled(target, direction, distance)
-    const { yaw, pitch } = calculateYawPitchFromDirection(scaleVec3(direction, -1))
-
-    // 直接设置状态，无动画
-    state.value = {
-      position: newPosition,
-      target: [...target],
-      yaw,
-      pitch,
-      viewPreset: preset,
-      up: up,
-      zoom: newZoom ?? (preset === 'perspective' ? 1 : state.value.zoom),
-    }
-
-    // 同步到 UI Store
-    uiStore.setCurrentViewPreset(preset)
-
-    // 直接切换模式
-    mode.value = {
-      kind: 'orbit',
-      projection: preset === 'perspective' ? 'perspective' : 'orthographic',
-      target: [...target],
-    }
-
-    // 通知外部更新 orbit target
-    if (deps.onOrbitTargetUpdate) {
-      deps.onOrbitTargetUpdate(mode.value.target)
-    }
-  }
-
+  /**
+   * 切换视图预设（唯一公开 API）
+   * 自动处理透视↔正交的 zoom/distance 转换
+   */
   function switchToViewPreset(preset: ViewPreset) {
-    // 计算当前相机到目标的实际物理距离
+    const fromPreset = currentViewPreset.value
+
+    // 1. 计算当前相机到目标的实际物理距离
     const dx = state.value.position[0] - state.value.target[0]
     const dy = state.value.position[1] - state.value.target[1]
     const dz = state.value.position[2] - state.value.target[2]
-    const currentDist = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    const currentDistance = Math.sqrt(dx * dx + dy * dy + dz * dz)
 
-    const isCurrentlyPerspective =
-      uiStore.currentViewPreset === 'perspective' ||
-      (mode.value.kind === 'orbit' && mode.value.projection === 'perspective')
-    const isSwitchingToPerspective = preset === 'perspective'
+    // 2. 计算 zoom/distance 转换
+    const { newDistance, newZoom } = computeZoomConversion(
+      fromPreset,
+      preset,
+      state.value.zoom,
+      currentDistance,
+      cameraDistance.value
+    )
 
-    // 基础距离参考（用于全景时的距离）
-    const baseDistance = cameraDistance.value
-    // 视锥体基准大小 (参考 ThreeEditor.vue 中的 orthoFrustum 计算：size = distance * 0.93)
-    const frustumSize = baseDistance * 0.93
+    // 3. 计算新姿态（含 WCS 旋转）
+    const { position, up, yaw, pitch } = computeViewPose(
+      preset,
+      state.value.target,
+      newDistance,
+      uiStore.workingCoordinateSystem,
+      { min: pitchMinRad, max: pitchMaxRad }
+    )
 
-    let newDistance = currentDist
-    let newZoom = 1
+    // 4. 更新状态（单次赋值）
+    state.value.position = position
+    state.value.up = up
+    state.value.yaw = yaw
+    state.value.pitch = pitch
+    state.value.zoom = newZoom
 
-    if (isCurrentlyPerspective && !isSwitchingToPerspective) {
-      // 1. 透视 -> 正交
-      // 通过 Zoom 模拟远近，保持物理距离不变
-      const tanHalfFov = Math.tan(((FOV / 2) * Math.PI) / 180)
-      // 限制最小距离防止除零或过大
-      const safeDist = Math.max(currentDist, 100)
+    // 5. 更新 UI Store（唯一写入点）
+    uiStore.setCurrentViewPreset(preset)
 
-      // 计算公式：zoom = frustumSize / (2 * dist * tan(fov/2))
-      newZoom = frustumSize / (2 * safeDist * tanHalfFov)
+    // 6. 更新控制模式
+    controlMode.value = 'orbit'
 
-      // 限制 Zoom 范围，防止过度放大/缩小
-      newZoom = clamp(newZoom, 0.1, 20)
-
-      // 正交视图下，相机拉远避免穿模
-      newDistance = baseDistance
-    } else if (!isCurrentlyPerspective && isSwitchingToPerspective) {
-      // 2. 正交 -> 透视
-      // 将 Zoom 转换回物理距离
-      const currentZoom = state.value.zoom
-      const tanHalfFov = Math.tan(((FOV / 2) * Math.PI) / 180)
-
-      // 计算等效距离：dist = frustumSize / (2 * zoom * tan(fov/2))
-      newDistance = frustumSize / (2 * currentZoom * tanHalfFov)
-
-      // 限制距离范围
-      newDistance = clamp(newDistance, 100, baseDistance * 2)
-
-      // 透视模式 Zoom 重置为 1
-      newZoom = 1
-    } else if (!isCurrentlyPerspective && !isSwitchingToPerspective) {
-      // 3. 正交 -> 正交
-      // 保持当前的 Zoom 和物理距离
-      newZoom = state.value.zoom
-      newDistance = currentDist < baseDistance ? baseDistance : currentDist
-    } else {
-      // 4. 透视 -> 透视 (兜底处理)
-      newDistance = currentDist
-      newZoom = 1
-    }
-
-    // 切换视图时，使用新的距离和 Zoom
-    setViewPreset(preset, state.value.target, newDistance, newZoom)
+    // target 的同步由 watch 自动处理
   }
 
+  /**
+   * 恢复相机状态快照（从存储的 viewState 恢复）
+   */
   function restoreSnapshot(snapshot: {
     position: Vec3
     target: Vec3
     preset: ViewPreset | null
     zoom?: number
   }) {
+    const preset = snapshot.preset ?? 'perspective'
+
+    // 1. 先设置视图预设（计算 up 向量等）
+    const { up } = computeViewPose(
+      preset,
+      snapshot.target,
+      1, // distance 不重要，因为我们会覆盖 position
+      uiStore.workingCoordinateSystem,
+      { min: pitchMinRad, max: pitchMaxRad }
+    )
+
+    // 2. 覆盖具体位置（保留快照中的精确位置）
     state.value.position = [...snapshot.position]
     state.value.target = [...snapshot.target]
-    state.value.viewPreset = snapshot.preset
+    state.value.up = up
     state.value.zoom = snapshot.zoom ?? 1
 
-    // 同步到 UI Store
-    if (snapshot.preset) {
-      uiStore.setCurrentViewPreset(snapshot.preset)
-    } else {
-      uiStore.setCurrentViewPreset('perspective')
-    }
+    // 3. 重算 yaw/pitch（使用实际的 position 和 target）
+    updateYawPitchFromDirection()
 
-    const dir: Vec3 = [
-      snapshot.target[0] - snapshot.position[0],
-      snapshot.target[1] - snapshot.position[1],
-      snapshot.target[2] - snapshot.position[2],
-    ]
-    const { yaw, pitch } = calculateYawPitchFromDirection(dir)
-    state.value.yaw = yaw
-    state.value.pitch = pitch
+    // 4. 更新 UI Store
+    uiStore.setCurrentViewPreset(preset)
 
-    // 恢复 up 向量
-    if (snapshot.preset && VIEW_PRESETS[snapshot.preset]) {
-      // 同样需要考虑工作坐标系的旋转
-      let up = [...VIEW_PRESETS[snapshot.preset].up] as Vec3
+    // 5. 恢复控制模式
+    controlMode.value = 'orbit'
 
-      if (
-        uiStore.workingCoordinateSystem.enabled &&
-        uiStore.workingCoordinateSystem.rotationAngle !== 0 &&
-        snapshot.preset !== 'perspective' &&
-        (snapshot.preset === 'top' || snapshot.preset === 'bottom')
-      ) {
-        const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-        const cos = Math.cos(angleRad)
-        const sin = Math.sin(angleRad)
-        up = [up[0] * cos - up[1] * sin, up[0] * sin + up[1] * cos, up[2]]
-      }
-
-      state.value.up = up
-    } else {
-      state.value.up = [0, 0, 1] // Z-up default
-    }
-
-    // 恢复模式
-    if (snapshot.preset && snapshot.preset !== 'perspective') {
-      mode.value = {
-        kind: 'orbit',
-        projection: 'orthographic',
-        target: [...snapshot.target],
-      }
-    } else {
-      mode.value = {
-        kind: 'orbit',
-        projection: 'perspective',
-        target: [...snapshot.target],
-      }
-    }
-
-    // 通知外部更新 orbit target
-    if (deps.onOrbitTargetUpdate) {
-      deps.onOrbitTargetUpdate(mode.value.target)
-    }
+    // target 同步由 watch 自动处理
   }
 
   // ============================================================
@@ -718,40 +518,15 @@ export function useThreeCamera(
     ({ delta }) => {
       if (!isActive) return
 
-      // 1. 在正交预设视图下，强制同步 up 向量保持坐标对齐
-      const currentPreset = uiStore.currentViewPreset
-      if (
-        mode.value.kind === 'orbit' &&
-        mode.value.projection === 'orthographic' &&
-        currentPreset &&
-        currentPreset !== 'perspective'
-      ) {
-        const config = VIEW_PRESETS[currentPreset]
-        let up = [...config.up] as Vec3
-
-        if (
-          uiStore.workingCoordinateSystem.enabled &&
-          uiStore.workingCoordinateSystem.rotationAngle !== 0 &&
-          (currentPreset === 'top' || currentPreset === 'bottom')
-        ) {
-          const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-          const cos = Math.cos(angleRad)
-          const sin = Math.sin(angleRad)
-          up = [up[0] * cos - up[1] * sin, up[0] * sin + up[1] * cos, up[2]]
-        }
-
-        state.value.up = up
-      }
-
-      // 2. Flight 模式下更新移动
-      if (mode.value.kind === 'flight') {
+      // 1. Flight 模式下更新移动
+      if (controlMode.value === 'flight') {
         updateFlightMode(delta / 1000)
       }
 
-      // 3. Orbit 模式下检测 WASD → 平移 (Pan)
+      // 2. Orbit 模式下检测 WASD → 平移 (Pan)
       if (
-        mode.value.kind === 'orbit' &&
-        mode.value.projection === 'perspective' &&
+        controlMode.value === 'orbit' &&
+        !isOrthographic.value &&
         hasNavKeys() &&
         isViewFocused.value &&
         !deps.isTransformDragging?.value
@@ -793,13 +568,7 @@ export function useThreeCamera(
             state.value.target[2] + deltaVec[2],
           ]
 
-          // 更新 mode 中的 target 引用
-          mode.value.target = [...state.value.target]
-
-          // 通知外部更新 orbit target
-          if (deps.onOrbitTargetUpdate) {
-            deps.onOrbitTargetUpdate(mode.value.target)
-          }
+          // target 的同步由 watch 自动处理
         }
       }
     },
@@ -843,19 +612,16 @@ export function useThreeCamera(
   // 🔍 Focus & Fit Logic
   // ============================================================
 
-  // const currentViewPreset = computed(() => { ... }) // 移除了内部 computed
-
-  const isOrthographic = computed(
-    () => mode.value.kind === 'orbit' && mode.value.projection === 'orthographic'
-  )
-
   function fitCameraToScene() {
     // 更新基准距离以适配当前场景
     updateCameraDistance()
     // 使用当前视图预设重置；若没有预设则按透视视图处理
-    const preset = uiStore.currentViewPreset ?? 'perspective'
+    const preset = currentViewPreset.value
     // 强制使用全局场景中心和全景距离，并重置缩放为 1
-    setViewPreset(preset, sceneCenter.value, cameraDistance.value, 1)
+    switchToViewPreset(preset)
+    // 覆盖 target 为场景中心
+    state.value.target = [...sceneCenter.value]
+    state.value.zoom = 1
   }
 
   function focusOnSelection() {
@@ -877,7 +643,7 @@ export function useThreeCamera(
     const maxDim = Math.max(bounds.width, bounds.height, bounds.depth)
 
     // 特殊处理 Flight 模式：仅瞬移，不切换模式
-    if (mode.value.kind === 'flight') {
+    if (controlMode.value === 'flight') {
       // 计算理想距离 (复用透视视图计算)
       const k = Math.tan((FOV * Math.PI) / 360)
       let dist = maxDim / 2 / k
@@ -915,11 +681,7 @@ export function useThreeCamera(
 
     // 否则：切换到 Orbit 模式
     switchToOrbitMode()
-    // 更新内部 target 状态
-    mode.value = { ...mode.value, target: [...target] } as any
-    if (deps.onOrbitTargetUpdate) {
-      deps.onOrbitTargetUpdate(target)
-    }
+    // 更新内部 target 状态，watch 会自动同步到 OrbitControls
 
     if (isOrthographic.value) {
       // === 正交视图处理 ===
@@ -998,8 +760,7 @@ export function useThreeCamera(
     cameraZoom: computed(() => state.value.zoom),
     isViewFocused,
     isNavKeyPressed,
-    controlMode: computed(() => (mode.value.kind === 'flight' ? 'flight' : 'orbit')),
-    // currentViewPreset, // 移除导出
+    controlMode,
     isOrthographic,
     sceneCenter,
     cameraDistance,
@@ -1017,7 +778,6 @@ export function useThreeCamera(
     lookAtTarget,
     toggleCameraMode,
     switchToOrbitMode,
-    setViewPreset,
     switchToViewPreset,
     restoreSnapshot,
     fitCameraToScene,

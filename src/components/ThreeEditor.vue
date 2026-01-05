@@ -32,6 +32,7 @@ import {
   useElementSize,
   useResizeObserver,
   usePreferredDark,
+  watchOnce,
 } from '@vueuse/core'
 import { Raycaster, Vector2, Vector3, type WebGLRenderer, type Camera } from 'three'
 import { Slider } from '@/components/ui/slider'
@@ -162,6 +163,19 @@ const currentViewPreset = computed(() => uiStore.currentViewPreset)
 
 // Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
 const orbitTarget = ref<[number, number, number]>([0, 0, 0])
+
+// 监听 OrbitControls 挂载，确保初始化时 target 同步
+watchOnce(orbitControlsRef, (ref) => {
+  if (!ref) return
+
+  // 等待下一帧，确保 OrbitControls 完全初始化
+  requestAnimationFrame(() => {
+    orbitTarget.value = [...cameraLookAt.value]
+    const controls = ref.instance || ref.value
+    controls?.target.set(...orbitTarget.value)
+    controls?.update()
+  })
+})
 
 // 相机导航（WASD/Q/Space）
 const {
@@ -307,7 +321,7 @@ onMounted(() => {
 })
 
 // 从 TresCanvas ready 事件初始化
-function handleTresReady(context: any) {
+function handleTresReady() {
   // 可以在这里做一些初始化工作
   console.log('[ThreeEditor] TresCanvas ready')
 }
@@ -635,7 +649,6 @@ function handleOrbitChange() {
   if (!activeCameraRef.value) return
 
   // 尝试获取 OrbitControls 的内部实例
-  // Cientos v4+ 通过 .instance 暴露底层 Three.js 实例
   const controls = orbitControlsRef.value?.instance || orbitControlsRef.value?.value
   if (!controls) return
 
@@ -647,10 +660,6 @@ function handleOrbitChange() {
   if (!currentTarget) return
 
   const targetArray: [number, number, number] = [currentTarget.x, currentTarget.y, currentTarget.z]
-
-  // 同步更新本地的 orbitTarget，确保下次切换视图时读取到的是正确位置
-  // 注意：这里更新 ref 会触发 OrbitControls 的 props 更新，但因为值相同，通常不会造成问题
-  orbitTarget.value = targetArray
 
   // 记录当前的 Zoom
   if (cam.zoom !== undefined) {
