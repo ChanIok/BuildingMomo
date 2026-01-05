@@ -176,10 +176,6 @@ export function useSelectionOutline() {
     maskMeshMap.value.set(itemId, raw)
     maskScene.add(raw)
 
-    console.log(
-      `[SelectionOutline] initMaskMesh created for itemId=${itemId}, total maskMeshes=${maskMeshMap.value.size}`
-    )
-
     return raw
   }
 
@@ -193,15 +189,6 @@ export function useSelectionOutline() {
     internalIdToMeshInfo: Map<string, { itemId: number; localIndex: number }>,
     fallbackMesh: InstancedMesh | null
   ) {
-    console.log('[SelectionOutline] updateMasks called:', {
-      selectedIds: Array.from(selectedIds),
-      hoveredId,
-      meshMapSize: meshMap.size,
-      internalIdToMeshInfoSize: internalIdToMeshInfo.size,
-      maskMeshMapSize: maskMeshMap.value.size,
-      fallbackMeshExists: !!fallbackMesh,
-    })
-
     // 重置所有 mask mesh 的 count
     for (const maskMesh of maskMeshMap.value.values()) {
       maskMesh.count = 0
@@ -235,10 +222,6 @@ export function useSelectionOutline() {
         return
       }
 
-      console.log(
-        `[SelectionOutline] Adding mask instance: internalId=${internalId}, itemId=${itemId}, localIndex=${localIndex}, isSelected=${isSelected}`
-      )
-
       // 拷贝原始矩阵（不放大）
       originalMesh.getMatrixAt(localIndex, scratchMatrix)
 
@@ -270,15 +253,12 @@ export function useSelectionOutline() {
       maskMesh.count = count
 
       if (count > 0) {
-        console.log(`[SelectionOutline] Updated maskMesh itemId=${itemId}, count=${count}`)
         maskMesh.instanceMatrix.needsUpdate = true
         if (maskMesh.instanceColor) {
           maskMesh.instanceColor.needsUpdate = true
         }
       }
     }
-
-    console.log('[SelectionOutline] updateMasks complete')
   }
 
   /**

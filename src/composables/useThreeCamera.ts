@@ -12,6 +12,7 @@ import { useRafFn, useMagicKeys } from '@vueuse/core'
 import { calculateBounds } from '@/lib/geometry'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useGameDataStore } from '@/stores/gameDataStore'
 import {
   computeViewPose,
   computeZoomConversion,
@@ -103,6 +104,7 @@ export function useThreeCamera(
   // === 引入 Store ===
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
+  const gameDataStore = useGameDataStore()
   const baseSpeed = options.baseSpeed ?? 1000
   const shiftSpeedMultiplier = options.shiftSpeedMultiplier ?? 4
   const mouseSensitivity = options.mouseSensitivity ?? 0.002
@@ -135,6 +137,11 @@ export function useThreeCamera(
   const currentViewPreset = computed(() => uiStore.currentViewPreset)
   const isOrthographic = computed(() => currentViewPreset.value !== 'perspective')
 
+  // 尺寸获取函数：用于更精确的包围盒计算
+  function getItemSizeForBounds(gameId: number): [number, number, number] | null {
+    return gameDataStore.getFurnitureSize(gameId)
+  }
+
   // === 场景中心与距离计算 ===
   const sceneCenter = computed<Vec3>(() => {
     const items = editorStore.activeScheme?.items.value ?? []
@@ -142,7 +149,7 @@ export function useThreeCamera(
       return deps.defaultCenter?.value ?? [0, 0, 0]
     }
 
-    const bounds = calculateBounds(items)
+    const bounds = calculateBounds(items, getItemSizeForBounds)
 
     // 安全检查：bounds 可能为 null
     if (!bounds) {
@@ -166,7 +173,7 @@ export function useThreeCamera(
       return
     }
 
-    const bounds = calculateBounds(items)
+    const bounds = calculateBounds(items, getItemSizeForBounds)
     if (!bounds) {
       cameraDistance.value = 3000
       return
@@ -613,15 +620,38 @@ export function useThreeCamera(
   // ============================================================
 
   function fitCameraToScene() {
-    // 更新基准距离以适配当前场景
+    // 1. 更新基准距离以适配当前场景
     updateCameraDistance()
-    // 使用当前视图预设重置；若没有预设则按透视视图处理
+
+    // 2. 确定目标参数（不依赖当前状态，确保重置行为一致）
     const preset = currentViewPreset.value
-    // 强制使用全局场景中心和全景距离，并重置缩放为 1
-    switchToViewPreset(preset)
-    // 覆盖 target 为场景中心
-    state.value.target = [...sceneCenter.value]
-    state.value.zoom = 1
+    const targetCenter = sceneCenter.value
+    const distance = cameraDistance.value
+    const zoom = 1
+
+    // 3. 直接使用 computeViewPose 计算相机姿态（纯函数，不依赖当前状态）
+    //    绕过 switchToViewPreset 的 computeZoomConversion 复杂转换逻辑
+    const { position, up, yaw, pitch } = computeViewPose(
+      preset,
+      targetCenter,
+      distance,
+      uiStore.workingCoordinateSystem,
+      { min: pitchMinRad, max: pitchMaxRad }
+    )
+
+    // 4. 直接更新状态（确保完全重置到目标位置）
+    state.value.position = position
+    state.value.target = [...targetCenter]
+    state.value.up = up
+    state.value.yaw = yaw
+    state.value.pitch = pitch
+    state.value.zoom = zoom
+
+    // 5. 同步 UI Store
+    uiStore.setCurrentViewPreset(preset)
+
+    // 6. 确保控制模式正确
+    controlMode.value = 'orbit'
   }
 
   function focusOnSelection() {
@@ -634,7 +664,8 @@ export function useThreeCamera(
     const selectedItems = scheme.items.value.filter((item) => selectedIds.has(item.internalId))
     if (selectedItems.length === 0) return
 
-    const bounds = calculateBounds(selectedItems)
+    // 使用尺寸信息计算更精确的包围盒
+    const bounds = calculateBounds(selectedItems, getItemSizeForBounds)
     if (!bounds) return
 
     // Z-up: Y 取反适配 Three.js 坐标系

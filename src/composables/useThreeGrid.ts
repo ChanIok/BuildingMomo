@@ -45,9 +45,9 @@ export function useThreeGrid(basePosition: Ref<[number, number, number]>) {
     const preset = uiStore.currentViewPreset
 
     // 底视图特殊处理，避免Z-fighting
-    let zOffset = 0
+    let zOffset = -0.5
     if (preset === 'bottom') {
-      zOffset = -2
+      zOffset = -1.5
     }
 
     // Y轴取反，匹配背景图坐标系

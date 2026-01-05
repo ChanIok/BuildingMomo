@@ -50,10 +50,6 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
       }
     }
   }
-
-  console.log(
-    `[ModelManager] 标准化完成，保留的共同属性: ${Array.from(commonAttributes).join(', ')}`
-  )
 }
 
 /**

@@ -84,12 +84,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         console.log('[ThreeInstancedRenderer] Starting model mode rebuild')
         await modelMode.rebuild()
 
-        console.log('[ThreeInstancedRenderer] Initializing mask meshes for model mode')
         // 初始化 mask mesh（为每个模型类型创建对应的 mask mesh）
         for (const [itemId, mesh] of modelMode.meshMap.value.entries()) {
-          console.log(
-            `[ThreeInstancedRenderer] Creating mask mesh for itemId=${itemId}, mesh.count=${mesh.count}`
-          )
           selectionOutline.initMaskMesh(itemId, mesh, 10000) // MAX_RENDER_INSTANCES
         }
 
@@ -348,14 +344,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       }
 
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
-      const mode1 = settingsStore.settings.threeDisplayMode
-
-      console.log('[ThreeInstancedRenderer] Selection changed:', {
-        mode1,
-        selectedCount: selectedItemIds.size,
-        selectedIds: Array.from(selectedItemIds).slice(0, 5), // 只显示前5个
-        selectionVersion: editorStore.selectionVersion,
-      })
 
       // 1. 处理刚刚被选中的情况：抑制 Hover，使其显示选中色
       if (
