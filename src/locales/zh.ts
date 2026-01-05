@@ -217,11 +217,11 @@ export const zhLocale = {
     },
     furnitureTooltip: {
       label: '家具名称提示',
-      hint: '鼠标悬停在物品上时显示名称和图标',
+      hint: '悬停时显示名称和图标',
     },
     background: {
       label: '家园背景图',
-      hint: '在画布上显示参考背景图',
+      hint: '显示背景参考图',
     },
     editAssist: '编辑辅助',
     duplicateDetection: {
@@ -339,6 +339,7 @@ export const zhLocale = {
   sidebar: {
     structure: '结构',
     transform: '变换',
+    editorSettings: '编辑器',
     noSelection: '请选择物品查看详情或进行操作',
     selectionList: '选中列表',
     groupSingle: '组 #{id}',
@@ -369,6 +370,20 @@ export const zhLocale = {
       simpleBox: '简化方块',
       icon: '图标模式',
       model: '模型模式',
+    },
+    camera: {
+      label: '相机设置',
+      fov: '视场角',
+      baseSpeed: '移动速度',
+      shiftMultiplier: '移动加速倍率',
+      mouseSensitivity: '鼠标灵敏度',
+      zoomSpeed: '滚轮缩放速度',
+    },
+    display: {
+      label: '显示设置',
+    },
+    editAssist: {
+      label: '编辑辅助',
     },
   },
 

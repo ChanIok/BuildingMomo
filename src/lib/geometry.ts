@@ -39,18 +39,20 @@ export function calculateBounds(
 
     if (size) {
       // 使用尺寸计算包围盒（静态尺寸，不考虑旋转）
+      // 注意：item.x/y 代表中心点，item.z 代表底部坐标（与渲染器一致）
       const halfX = size[0] / 2
       const halfY = size[1] / 2
-      const halfZ = size[2] / 2
 
       minX = Math.min(minX, item.x - halfX)
       maxX = Math.max(maxX, item.x + halfX)
       minY = Math.min(minY, item.y - halfY)
       maxY = Math.max(maxY, item.y + halfY)
-      minZ = Math.min(minZ, item.z - halfZ)
-      maxZ = Math.max(maxZ, item.z + halfZ)
+      // Z轴：item.z 是底部，size[2] 是高度
+      minZ = Math.min(minZ, item.z)
+      maxZ = Math.max(maxZ, item.z + size[2])
     } else {
-      // 回退到仅使用中心点
+      // 回退到仅使用物品位置点
+      // 注意：X/Y 是中心点，Z 是底部坐标
       if (item.x < minX) minX = item.x
       if (item.x > maxX) maxX = item.x
       if (item.y < minY) minY = item.y

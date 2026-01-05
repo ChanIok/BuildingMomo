@@ -184,8 +184,6 @@ export function computeViewPose(
 // 🔄 Zoom Conversion (Perspective ↔ Orthographic)
 // ============================================================
 
-const FOV = 50 // 透视相机默认 FOV
-
 /**
  * 计算透视↔正交视图切换时的 zoom 和 distance 转换
  * @param fromPreset 当前视图预设
@@ -193,6 +191,7 @@ const FOV = 50 // 透视相机默认 FOV
  * @param currentZoom 当前 zoom
  * @param currentDistance 当前相机到目标的距离
  * @param baseDistance 场景基准距离（用于正交视图）
+ * @param fov 透视相机视场角（度）
  * @returns 新的距离和 zoom
  */
 export function computeZoomConversion(
@@ -200,7 +199,8 @@ export function computeZoomConversion(
   toPreset: ViewPreset,
   currentZoom: number,
   currentDistance: number,
-  baseDistance: number
+  baseDistance: number,
+  fov: number = 50
 ): { newDistance: number; newZoom: number } {
   const isFromPerspective = fromPreset === 'perspective'
   const isToPerspective = toPreset === 'perspective'
@@ -210,7 +210,7 @@ export function computeZoomConversion(
 
   if (isFromPerspective && !isToPerspective) {
     // 1. 透视 -> 正交
-    const tanHalfFov = Math.tan(((FOV / 2) * Math.PI) / 180)
+    const tanHalfFov = Math.tan(((fov / 2) * Math.PI) / 180)
     const safeDist = Math.max(currentDistance, 100)
 
     // zoom = frustumSize / (2 * dist * tan(fov/2))
@@ -222,7 +222,7 @@ export function computeZoomConversion(
     }
   } else if (!isFromPerspective && isToPerspective) {
     // 2. 正交 -> 透视
-    const tanHalfFov = Math.tan(((FOV / 2) * Math.PI) / 180)
+    const tanHalfFov = Math.tan(((fov / 2) * Math.PI) / 180)
 
     // dist = frustumSize / (2 * zoom * tan(fov/2))
     const newDistance = clamp(frustumSize / (2 * currentZoom * tanHalfFov), 100, baseDistance * 2)

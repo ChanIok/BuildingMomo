@@ -92,52 +92,8 @@ function handleLanguageChange(newLocale: Locale) {
             </SelectContent>
           </Select>
         </div>
-        <!-- 家具Tooltip开关 -->
-        <div class="flex items-center justify-between">
-          <div class="space-y-0.5">
-            <Label>{{ t('settings.furnitureTooltip.label') }}</Label>
-            <p class="text-xs text-muted-foreground">{{ t('settings.furnitureTooltip.hint') }}</p>
-          </div>
-          <Switch v-model="settingsStore.settings.showFurnitureTooltip" />
-        </div>
 
-        <!-- 背景图开关 -->
-        <div class="flex items-center justify-between">
-          <div class="space-y-0.5">
-            <Label>{{ t('settings.background.label') }}</Label>
-            <p class="text-xs text-muted-foreground">{{ t('settings.background.hint') }}</p>
-          </div>
-          <Switch v-model="settingsStore.settings.showBackground" />
-        </div>
-
-        <!-- 分割线 -->
-        <div class="border-t pt-4">
-          <h3 class="mb-3 text-sm font-medium">{{ t('settings.editAssist') }}</h3>
-        </div>
-
-        <!-- 重复物品检测开关 -->
-        <div class="flex items-center justify-between">
-          <div class="space-y-0.5">
-            <Label>{{ t('settings.duplicateDetection.label') }}</Label>
-            <p class="text-xs text-muted-foreground">
-              {{ t('settings.duplicateDetection.hint') }}
-            </p>
-          </div>
-          <Switch v-model="settingsStore.settings.enableDuplicateDetection" />
-        </div>
-
-        <!-- 限制检测开关 -->
-        <div class="flex items-center justify-between">
-          <div class="space-y-0.5">
-            <Label>{{ t('settings.limitDetection.label') }}</Label>
-            <p class="text-xs text-muted-foreground">
-              {{ t('settings.limitDetection.hint') }}
-            </p>
-          </div>
-          <Switch v-model="settingsStore.settings.enableLimitDetection" />
-        </div>
-
-        <!-- 自动保存开关 -->
+        <!-- 工作台记忆开关 -->
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
             <Label>{{ t('settings.autoSave.label') }}</Label>
@@ -147,9 +103,6 @@ function handleLanguageChange(newLocale: Locale) {
           </div>
           <Switch v-model="settingsStore.settings.enableAutoSave" />
         </div>
-
-        <!-- 3D 视图设置分组 -->
-        <!-- 3D 视图显示模式选择已移至侧边栏顶部工具栏 -->
       </div>
     </DialogContent>
   </Dialog>

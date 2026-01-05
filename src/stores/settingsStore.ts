@@ -22,6 +22,13 @@ export interface AppSettings {
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
 
+  // 相机设置
+  cameraFov: number // 透视相机视场角 (30-90)
+  cameraBaseSpeed: number // WASD 移动基础速度
+  cameraShiftMultiplier: number // Shift 加速倍率
+  cameraMouseSensitivity: number // 鼠标视角灵敏度
+  cameraZoomSpeed: number // 鼠标滚轮缩放速度
+
   // 语言设置
   language: Locale
 }
@@ -37,6 +44,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableAutoSave: true,
   threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
+  cameraFov: 50,
+  cameraBaseSpeed: 1500,
+  cameraShiftMultiplier: 4,
+  cameraMouseSensitivity: 0.002,
+  cameraZoomSpeed: 2.5,
   language: 'zh',
 }
 

@@ -1,5 +1,6 @@
 // @ts-ignore - GLTFLoader 类型声明可能不完整
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader'
 import type { Object3D } from 'three'
 
 // GLTF 类型定义
@@ -23,6 +24,11 @@ interface GLTF {
  */
 export function useModelLoader() {
   const loader = new GLTFLoader()
+
+  // 配置 Draco 解码器（用于加载压缩的 GLB 模型）
+  const dracoLoader = new DRACOLoader()
+  dracoLoader.setDecoderPath(import.meta.env.BASE_URL + 'draco/')
+  loader.setDRACOLoader(dracoLoader)
 
   // 模型基础路径
   const MODEL_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-model/'

@@ -6,12 +6,13 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
 import SidebarTransform from './SidebarTransform.vue'
+import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
-import { Layers, Settings2 } from 'lucide-vue-next'
+import { Layers, Settings2, SlidersHorizontal } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const { t } = useI18n()
-const currentView = ref<'structure' | 'transform'>('structure')
+const currentView = ref<'structure' | 'transform' | 'editorSettings'>('structure')
 </script>
 
 <template>
@@ -49,12 +50,27 @@ const currentView = ref<'structure' | 'transform'>('structure')
             >
               <Settings2 class="h-4 w-4" />
             </SidebarToggleItem>
+
+            <SidebarToggleItem
+              :model-value="currentView === 'editorSettings'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) currentView = 'editorSettings'
+                }
+              "
+              :tooltip="t('sidebar.editorSettings')"
+            >
+              <SlidersHorizontal class="h-4 w-4" />
+            </SidebarToggleItem>
           </div>
         </div>
 
         <!-- 全局提示信息 -->
         <div
-          v-if="(editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0"
+          v-if="
+            currentView !== 'editorSettings' &&
+            (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0
+          "
           class="pt-10 text-center text-xs text-muted-foreground"
         >
           {{ t('sidebar.noSelection') }}
@@ -72,6 +88,11 @@ const currentView = ref<'structure' | 'transform'>('structure')
 
             <ScrollBar orientation="vertical" class="!w-1.5" />
           </ScrollArea>
+        </div>
+
+        <div v-else-if="currentView === 'editorSettings'" class="mt-0 min-h-0 flex-1">
+          <!-- 编辑器设置面板 -->
+          <SidebarEditorSettings class="h-full" />
         </div>
       </div>
     </div>

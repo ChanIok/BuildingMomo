@@ -30,3 +30,6 @@ WARP.md
 public/assets/data/
 public/assets/furniture-icon/
 public/assets/furniture-model/
+
+# Auto-copied decoder files
+public/draco/

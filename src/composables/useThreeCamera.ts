@@ -7,12 +7,14 @@ import {
   onDeactivated,
   watch,
   type Ref,
+  toValue,
 } from 'vue'
 import { useRafFn, useMagicKeys } from '@vueuse/core'
 import { calculateBounds } from '@/lib/geometry'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import {
   computeViewPose,
   computeZoomConversion,
@@ -46,13 +48,13 @@ interface CameraState {
   zoom: number // 缩放级别 (主要用于正交相机)
 }
 
-// 配置选项
+// 配置选项（支持响应式）
 export interface CameraControllerOptions {
-  baseSpeed?: number
-  shiftSpeedMultiplier?: number
-  mouseSensitivity?: number
-  pitchLimits?: { min: number; max: number }
-  minHeight?: number
+  baseSpeed?: number | Ref<number>
+  shiftSpeedMultiplier?: number | Ref<number>
+  mouseSensitivity?: number | Ref<number>
+  pitchLimits?: { min: number; max: number } | Ref<{ min: number; max: number }>
+  minHeight?: number | Ref<number>
 }
 
 // 依赖项
@@ -98,25 +100,31 @@ export interface CameraControllerResult {
 // ============================================================
 
 export function useThreeCamera(
-  options: CameraControllerOptions = {},
+  options: CameraControllerOptions | Ref<CameraControllerOptions> = {},
   deps: CameraControllerDeps = {}
 ): CameraControllerResult {
   // === 引入 Store ===
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
   const gameDataStore = useGameDataStore()
-  const baseSpeed = options.baseSpeed ?? 1000
-  const shiftSpeedMultiplier = options.shiftSpeedMultiplier ?? 4
-  const mouseSensitivity = options.mouseSensitivity ?? 0.002
-  const pitchMinRad = ((options.pitchLimits?.min ?? -90) * Math.PI) / 180
-  const pitchMaxRad = ((options.pitchLimits?.max ?? 90) * Math.PI) / 180
-  const minHeight = options.minHeight ?? -10000
+  const settingsStore = useSettingsStore()
+
+  // 支持响应式 options
+  const optionsValue = computed(() => toValue(options))
+  const baseSpeed = computed(() => toValue(optionsValue.value.baseSpeed) ?? 1000)
+  const shiftSpeedMultiplier = computed(() => toValue(optionsValue.value.shiftSpeedMultiplier) ?? 4)
+  const mouseSensitivity = computed(() => toValue(optionsValue.value.mouseSensitivity) ?? 0.002)
+  const pitchLimits = computed(
+    () => toValue(optionsValue.value.pitchLimits) ?? { min: -90, max: 90 }
+  )
+  const pitchMinRad = computed(() => (pitchLimits.value.min * Math.PI) / 180)
+  const pitchMaxRad = computed(() => (pitchLimits.value.max * Math.PI) / 180)
+  const minHeight = computed(() => toValue(optionsValue.value.minHeight) ?? -10000)
+  const FOV = computed(() => settingsStore.settings.cameraFov)
 
   // ============================================================
   // 🎯 State Management
   // ============================================================
-
-  const FOV = 50 // 透视相机默认 FOV
 
   const state = ref<CameraState>({
     position: [0, 3000, 3000], // Z-up: height in Z
@@ -261,7 +269,7 @@ export function useThreeCamera(
       state.value.target[1] - state.value.position[1],
       state.value.target[2] - state.value.position[2],
     ]
-    const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad, pitchMaxRad)
+    const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad.value, pitchMaxRad.value)
     state.value.yaw = yaw
     state.value.pitch = pitch
   }
@@ -303,7 +311,7 @@ export function useThreeCamera(
     const moveNorm = normalize(move)
     if (moveNorm[0] === 0 && moveNorm[1] === 0 && moveNorm[2] === 0) return null
 
-    const distance = baseSpeed * deltaSeconds * speedMultiplier
+    const distance = baseSpeed.value * deltaSeconds * speedMultiplier
     return scaleVec3(moveNorm, distance)
   }
 
@@ -326,7 +334,7 @@ export function useThreeCamera(
     const up: Vec3 = [0, 0, 1] // Z-up
 
     // 应用速度
-    const speedMultiplier = shift.value ? shiftSpeedMultiplier : 1
+    const speedMultiplier = shift.value ? shiftSpeedMultiplier.value : 1
     const deltaVec = calculateMovementDelta(forward, right, up, deltaSeconds, speedMultiplier)
 
     if (!deltaVec) return
@@ -338,8 +346,8 @@ export function useThreeCamera(
     ]
 
     // 高度限制 (Z axis)
-    if (newPos[2] < minHeight) {
-      newPos[2] = minHeight
+    if (newPos[2] < minHeight.value) {
+      newPos[2] = minHeight.value
     }
 
     state.value.position = newPos
@@ -398,11 +406,11 @@ export function useThreeCamera(
     if (deps.isTransformDragging?.value) return
 
     // 更新 yaw/pitch（透视视角下始终视为透视预设的连续变体）
-    state.value.yaw += evt.movementX * mouseSensitivity
+    state.value.yaw += evt.movementX * mouseSensitivity.value
     state.value.pitch = clamp(
-      state.value.pitch - evt.movementY * mouseSensitivity,
-      pitchMinRad,
-      pitchMaxRad
+      state.value.pitch - evt.movementY * mouseSensitivity.value,
+      pitchMinRad.value,
+      pitchMaxRad.value
     )
 
     updateLookAtFromYawPitch()
@@ -423,7 +431,7 @@ export function useThreeCamera(
     state.value.target = [...target]
 
     const dir: Vec3 = [target[0] - position[0], target[1] - position[1], target[2] - position[2]]
-    const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad, pitchMaxRad)
+    const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad.value, pitchMaxRad.value)
     state.value.yaw = yaw
     state.value.pitch = pitch
   }
@@ -451,7 +459,8 @@ export function useThreeCamera(
       preset,
       state.value.zoom,
       currentDistance,
-      cameraDistance.value
+      cameraDistance.value,
+      FOV.value
     )
 
     // 3. 计算新姿态（含 WCS 旋转）
@@ -460,7 +469,7 @@ export function useThreeCamera(
       state.value.target,
       newDistance,
       uiStore.workingCoordinateSystem,
-      { min: pitchMinRad, max: pitchMaxRad }
+      { min: pitchMinRad.value, max: pitchMaxRad.value }
     )
 
     // 4. 更新状态（单次赋值）
@@ -496,7 +505,7 @@ export function useThreeCamera(
       snapshot.target,
       1, // distance 不重要，因为我们会覆盖 position
       uiStore.workingCoordinateSystem,
-      { min: pitchMinRad, max: pitchMaxRad }
+      { min: pitchMinRad.value, max: pitchMaxRad.value }
     )
 
     // 2. 覆盖具体位置（保留快照中的精确位置）
@@ -548,7 +557,7 @@ export function useThreeCamera(
         const right: Vec3 = [Math.cos(state.value.yaw), -Math.sin(state.value.yaw), 0]
         const up: Vec3 = [0, 0, 1]
 
-        const speedMultiplier = shift.value ? shiftSpeedMultiplier : 1
+        const speedMultiplier = shift.value ? shiftSpeedMultiplier.value : 1
         const deltaVec = calculateMovementDelta(forward, right, up, delta / 1000, speedMultiplier)
 
         if (deltaVec) {
@@ -560,10 +569,10 @@ export function useThreeCamera(
           ]
 
           // 高度限制 (Z axis)
-          if (newPos[2] < minHeight) {
+          if (newPos[2] < minHeight.value) {
             // 如果被限制了，只调整 Z 分量
-            const zDiff = minHeight - newPos[2]
-            newPos[2] = minHeight
+            const zDiff = minHeight.value - newPos[2]
+            newPos[2] = minHeight.value
             // deltaVec 的 Z 分量也需要相应调整，以保证 target 同步
             deltaVec[2] += zDiff
           }
@@ -636,7 +645,7 @@ export function useThreeCamera(
       targetCenter,
       distance,
       uiStore.workingCoordinateSystem,
-      { min: pitchMinRad, max: pitchMaxRad }
+      { min: pitchMinRad.value, max: pitchMaxRad.value }
     )
 
     // 4. 直接更新状态（确保完全重置到目标位置）
@@ -676,9 +685,9 @@ export function useThreeCamera(
     // 特殊处理 Flight 模式：仅瞬移，不切换模式
     if (controlMode.value === 'flight') {
       // 计算理想距离 (复用透视视图计算)
-      const k = Math.tan((FOV * Math.PI) / 360)
+      const k = Math.tan((FOV.value * Math.PI) / 360)
       let dist = maxDim / 2 / k
-      dist = Math.max(dist, 1376) * 1.2
+      dist = Math.max(dist, 260.85) * 1.2
 
       // 保持当前相机相对于物体的方向
       // 计算从物体指向相机的向量
@@ -709,10 +718,6 @@ export function useThreeCamera(
       setPoseFromLookAt(newPos, target)
       return
     }
-
-    // 否则：切换到 Orbit 模式
-    switchToOrbitMode()
-    // 更新内部 target 状态，watch 会自动同步到 OrbitControls
 
     if (isOrthographic.value) {
       // === 正交视图处理 ===
@@ -762,11 +767,10 @@ export function useThreeCamera(
       const backZ = len > 0 ? -dz / len : 1
 
       // 计算合适距离
-      // FOV 默认 50
-      const k = Math.tan((FOV * Math.PI) / 360) // tan(fov/2)
+      const k = Math.tan((FOV.value * Math.PI) / 360) // tan(fov/2)
       // distance = (objectSize / 2) / tan(fov/2)
       let dist = maxDim / 2 / k
-      dist = Math.max(dist, 1376) * 1.2
+      dist = Math.max(dist, 260.85) * 1.2
 
       const newPos: Vec3 = [
         target[0] + backX * dist,

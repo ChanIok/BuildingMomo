@@ -219,20 +219,20 @@ export const enLocale = {
     },
     furnitureTooltip: {
       label: 'Furniture Tooltips',
-      hint: 'Show name and icon when hovering over items',
+      hint: 'Show name and icon on hover',
     },
     background: {
       label: 'Background Image',
-      hint: 'Show reference background image on canvas',
+      hint: 'Show reference background',
     },
     editAssist: 'Editor Assistance',
     duplicateDetection: {
       label: 'Duplicate Detection',
-      hint: 'Detects items with identical position, rotation, and scale.',
+      hint: 'Detect fully overlapping items',
     },
     limitDetection: {
       label: 'Compliance Checks',
-      hint: 'Ensures the scheme follows game standards. Disable for free editing at your own risk.',
+      hint: 'Ensure scheme follows game standards',
     },
     autoSave: {
       label: 'Workspace Memory',
@@ -341,6 +341,7 @@ export const enLocale = {
   sidebar: {
     structure: 'Structure',
     transform: 'Transform',
+    editorSettings: 'Editor',
     noSelection: 'Select items to view details or edit',
     selectionList: 'Selection',
     groupSingle: 'Group #{id}',
@@ -371,6 +372,20 @@ export const enLocale = {
       simpleBox: 'Simple Box',
       icon: 'Icon Mode',
       model: 'Model Mode',
+    },
+    camera: {
+      label: 'Camera Settings',
+      fov: 'FOV',
+      baseSpeed: 'Move Speed',
+      shiftMultiplier: 'Move Speed Multiplier',
+      mouseSensitivity: 'Mouse Sensitivity',
+      zoomSpeed: 'Wheel Zoom Speed',
+    },
+    display: {
+      label: 'Display Settings',
+    },
+    editAssist: {
+      label: 'Editor Assistance',
     },
   },
 

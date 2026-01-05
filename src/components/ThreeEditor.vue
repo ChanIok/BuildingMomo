@@ -8,6 +8,7 @@ import {
   onMounted,
   toRef,
   onUnmounted,
+  watch,
 } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls, Grid } from '@tresjs/cientos'
@@ -144,6 +145,14 @@ watchOnce(orbitControlsRef, (ref) => {
 })
 
 // 相机导航（WASD/Q/Space）
+const cameraOptions = computed(() => ({
+  baseSpeed: settingsStore.settings.cameraBaseSpeed,
+  shiftSpeedMultiplier: settingsStore.settings.cameraShiftMultiplier,
+  mouseSensitivity: settingsStore.settings.cameraMouseSensitivity,
+  pitchLimits: { min: -90, max: 90 },
+  minHeight: -10000,
+}))
+
 const {
   cameraPosition,
   cameraLookAt,
@@ -163,23 +172,14 @@ const {
   switchToViewPreset,
   fitCameraToScene,
   focusOnSelection,
-} = useThreeCamera(
-  {
-    baseSpeed: 1500,
-    shiftSpeedMultiplier: 4,
-    mouseSensitivity: 0.002,
-    pitchLimits: { min: -90, max: 90 },
-    minHeight: -10000,
+} = useThreeCamera(cameraOptions, {
+  isTransformDragging,
+  // 从 flight 切回 orbit 时，更新 OrbitControls 的 target
+  onOrbitTargetUpdate: (target) => {
+    orbitTarget.value = target
   },
-  {
-    isTransformDragging,
-    // 从 flight 切回 orbit 时，更新 OrbitControls 的 target
-    onOrbitTargetUpdate: (target) => {
-      orbitTarget.value = target
-    },
-    defaultCenter: mapCenter,
-  }
-)
+  defaultCenter: mapCenter,
+})
 
 // 计算 OrbitControls 的鼠标按钮映射
 const orbitMouseButtons = computed(() => {
@@ -217,6 +217,20 @@ const orbitMouseButtons = computed(() => {
 const activeCameraRef = computed(() => {
   return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
 })
+
+// 监听 FOV 变化并更新相机
+watch(
+  () => settingsStore.settings.cameraFov,
+  (newFov) => {
+    if (cameraRef.value && !isOrthographic.value) {
+      const camera = cameraRef.value.instance || cameraRef.value.value
+      if (camera && 'fov' in camera) {
+        camera.fov = newFov
+        camera.updateProjectionMatrix()
+      }
+    }
+  }
+)
 
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 pickingConfig
 const {
@@ -578,7 +592,7 @@ onDeactivated(() => {
           :look-at="cameraLookAt"
           :up="cameraUp"
           :zoom="cameraZoom"
-          :fov="50"
+          :fov="settingsStore.settings.cameraFov"
           :near="100"
           :far="100000"
         />
@@ -609,7 +623,7 @@ onDeactivated(() => {
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
           :enable-zoom="!isCtrlPressed"
-          :zoomSpeed="2.5"
+          :zoomSpeed="settingsStore.settings.cameraZoomSpeed"
           :mouseButtons="orbitMouseButtons"
           @change="handleOrbitChange"
         />
