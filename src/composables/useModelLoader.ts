@@ -1,6 +1,6 @@
 // @ts-ignore - GLTFLoader 类型声明可能不完整
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import type { Object3D } from 'three'
 
 // GLTF 类型定义

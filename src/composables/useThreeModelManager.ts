@@ -11,14 +11,17 @@ import {
   Matrix4,
   Quaternion,
 } from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { getModelLoader } from './useModelLoader'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 
 /**
  * 标准化几何体属性，确保所有几何体具有兼容的属性集
- * 策略：如果某个属性不是所有几何体都有，则从所有几何体中删除该属性
+ * 改进策略：
+ * - 对关键属性（position, normal, uv）求交集，缺失则删除
+ * - 对顶点色属性（color, color_1 等）求并集，缺失则补充默认白色
+ * - 对其他非关键属性求交集，缺失则删除
  *
  * @param geometries 要标准化的几何体数组
  */
@@ -39,14 +42,62 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
     }
   }
 
-  // 3. 删除不是所有几何体都有的属性
+  // 3. 找出所有顶点色属性（需要补充而非删除）
+  const colorAttributes = new Set<string>()
+  for (const attrSet of attributeSets) {
+    for (const attr of attrSet) {
+      if (attr === 'color' || attr.startsWith('color_')) {
+        colorAttributes.add(attr)
+      }
+    }
+  }
+
+  // 4. 处理每个几何体的属性
   for (let i = 0; i < geometries.length; i++) {
     const geom = geometries[i]!
     const attrs = Object.keys(geom.attributes)
 
+    // 4.1 删除不是所有几何体都有的非颜色属性
     for (const attr of attrs) {
-      if (!commonAttributes.has(attr)) {
+      if (!commonAttributes.has(attr) && !colorAttributes.has(attr)) {
         geom.deleteAttribute(attr)
+      }
+    }
+
+    // 4.2 为缺失的顶点色属性补充默认白色
+    for (const colorAttr of colorAttributes) {
+      if (!geom.attributes[colorAttr]) {
+        const vertexCount = geom.attributes.position?.count
+
+        // 如果几何体没有 position 属性，跳过
+        if (!vertexCount) continue
+
+        // 找到已有该属性的几何体，复制其类型和尺寸
+        let referenceAttr = null
+        for (const refGeom of geometries) {
+          if (refGeom.attributes[colorAttr]) {
+            referenceAttr = refGeom.attributes[colorAttr]
+            break
+          }
+        }
+
+        if (referenceAttr) {
+          // 匹配引用属性的类型、尺寸和 normalized 标志
+          const itemSize = referenceAttr.itemSize
+          const normalized = referenceAttr.normalized
+          const ArrayType = referenceAttr.array.constructor as any
+          const colorArray = new ArrayType(vertexCount * itemSize)
+
+          // 填充白色（根据数据类型使用不同的值）
+          const whiteValue = ArrayType === Float32Array ? 1.0 : 255
+          for (let j = 0; j < colorArray.length; j++) {
+            colorArray[j] = whiteValue
+          }
+
+          const BufferAttrType = referenceAttr.constructor as any
+          const newAttr = new BufferAttrType(colorArray, itemSize, normalized)
+          geom.setAttribute(colorAttr, newAttr)
+        }
       }
     }
   }
@@ -88,6 +139,7 @@ async function processGeometryForItem(
     }
 
     // 提取此 mesh 的所有几何体
+    let meshIndex = 0
     model.traverse((child) => {
       if ((child as any).isMesh) {
         const mesh = child as Mesh
@@ -189,6 +241,11 @@ async function processGeometryForItem(
   // 4. 坐标系转换：GLTF (右手系 Y-Up) → 场景 (左手系 Z-Up)
   // 步骤 1：镜像 X 轴（右手系 → 左手系）
   geometry.scale(-1, 1, 1)
+
+  // ✨ 关键修复：重新计算法线向量
+  // scale(-1,1,1) 会翻转法线方向，导致光照计算错误（模型显示为黑色）
+  // 必须在镜像后重新计算法线，确保它们指向外部
+  geometry.computeVertexNormals()
 
   // 步骤 2：旋转到 Z-Up
   geometry.rotateY(Math.PI / 2)
