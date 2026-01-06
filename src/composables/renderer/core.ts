@@ -14,6 +14,7 @@ import { useInstanceMatrix } from './shared/useInstanceMatrix'
 import { useSelectionOutline } from './shared/useSelectionOutline'
 import type { PickingConfig } from './types'
 import { initBVH } from './bvh'
+import { MAX_RENDER_INSTANCES } from '@/types/constants'
 
 /**
  * Three.js 实例化渲染器
@@ -93,21 +94,17 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         await simpleBoxMode.rebuild()
         break
       case 'model':
-        console.log('[ThreeInstancedRenderer] Starting model mode rebuild')
         await modelMode.rebuild()
 
         // 初始化 mask mesh（为每个模型类型创建对应的 mask mesh）
         for (const [itemId, mesh] of modelMode.meshMap.value.entries()) {
-          selectionOutline.initMaskMesh(itemId, mesh, 10000) // MAX_RENDER_INSTANCES
+          selectionOutline.initMaskMesh(itemId, mesh, MAX_RENDER_INSTANCES)
         }
 
         // 为 fallbackMesh 创建 mask mesh
         const fallbackMesh = modelMode.fallbackMesh.value
         if (fallbackMesh && fallbackMesh.count > 0) {
-          console.log(
-            `[ThreeInstancedRenderer] Creating mask mesh for fallbackMesh, count=${fallbackMesh.count}`
-          )
-          selectionOutline.initMaskMesh(-1, fallbackMesh, 10000)
+          selectionOutline.initMaskMesh(-1, fallbackMesh, MAX_RENDER_INSTANCES)
         }
 
         // 更新 mask 状态
@@ -134,7 +131,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     // 非 Model 模式：构建全局索引映射
     const items = editorStore.activeScheme?.items.value ?? []
     const map = new Map<number, string>()
-    const instanceCount = Math.min(items.length, 10000) // MAX_INSTANCES
+    const instanceCount = Math.min(items.length, MAX_RENDER_INSTANCES)
 
     for (let index = 0; index < instanceCount; index++) {
       const item = items[index]
@@ -150,7 +147,14 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     idToIndexMap.value = reverseMap
 
     // 更新颜色
-    colorManager.updateInstancesColor(mode, meshTarget, iconMeshTarget, simpleBoxMeshTarget, map)
+    // 重新获取 mesh 引用，因为 rebuild 可能重新创建了 mesh（例如首次进入 Icon 模式时）
+    colorManager.updateInstancesColor(
+      mode,
+      boxMode.mesh.value,
+      iconMode.mesh.value,
+      simpleBoxMode.mesh.value,
+      map
+    )
   }
 
   /**

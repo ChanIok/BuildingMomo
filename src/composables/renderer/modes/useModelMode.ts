@@ -287,7 +287,6 @@ export function useModelMode() {
         mesh.geometry.computeBoundsTree({
           setBoundingBox: true,
         })
-        console.log(`[ModelMode] BVH built for itemId ${itemId}, instances: ${itemsOfModel.length}`)
       }
 
       globalIndex += itemsOfModel.length
@@ -299,7 +298,6 @@ export function useModelMode() {
         fallbackMesh.geometry.computeBoundsTree({
           setBoundingBox: true,
         })
-        console.log(`[ModelMode] BVH built for fallbackMesh, instances: ${fallbackMesh.count}`)
       }
     }
 
@@ -308,8 +306,6 @@ export function useModelMode() {
     modelIdToIndexMap.value = newIdToIndexMap
     meshToLocalIndexMap.value = newMeshToLocalIndexMap
     internalIdToMeshInfo.value = newInternalIdToMeshInfo
-
-    console.log(`[ModelMode] Model mode rebuild complete: ${globalIndex} instances`)
   }
 
   /**

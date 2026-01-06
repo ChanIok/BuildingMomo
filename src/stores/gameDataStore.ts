@@ -74,7 +74,6 @@ export const useGameDataStore = defineStore('gameData', () => {
   // 更新家具数据
   async function updateFurnitureData(): Promise<void> {
     try {
-      console.log('[GameDataStore] Fetching furniture data...')
       const remoteData = await fetchFurnitureData()
 
       console.log('[GameDataStore] Fetched', Object.keys(remoteData).length, 'items')
@@ -83,8 +82,6 @@ export const useGameDataStore = defineStore('gameData', () => {
       furnitureData.value = remoteData
       lastFetchTime.value = Date.now()
       isFurnitureInitialized.value = true
-
-      console.log('[GameDataStore] Furniture data updated')
     } catch (error) {
       console.error('[GameDataStore] Update failed:', error)
       throw error
@@ -96,7 +93,6 @@ export const useGameDataStore = defineStore('gameData', () => {
     if (isBuildableAreaLoaded.value) return
 
     try {
-      console.log('[GameDataStore] Loading buildable area data...')
       const response = await fetch(BUILDABLE_AREA_URL)
       if (!response.ok) throw new Error('Failed to load buildable area data')
       const data = await response.json()
@@ -113,7 +109,6 @@ export const useGameDataStore = defineStore('gameData', () => {
     if (isFurnitureDBLoaded.value) return
 
     try {
-      console.log('[GameDataStore] Loading furniture database...')
       const response = await fetch(FURNITURE_DB_URL)
       if (!response.ok) throw new Error('Failed to load furniture database')
       const data: FurnitureDB = await response.json()
@@ -140,8 +135,6 @@ export const useGameDataStore = defineStore('gameData', () => {
     if (isFurnitureInitialized.value && isBuildableAreaLoaded.value && isFurnitureDBLoaded.value) {
       return
     }
-
-    console.log('[GameDataStore] Initializing...')
 
     // 并行加载
     await Promise.all([

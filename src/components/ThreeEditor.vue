@@ -614,12 +614,13 @@ onDeactivated(() => {
         />
 
         <!-- 轨道控制器：透视视图下使用中键旋转，正交视图下使用中键平移 -->
+        <!-- 使用 v-if 而非 :enabled，确保 flight 模式下完全移除控制器，避免事件竞态 -->
         <OrbitControls
+          v-if="controlMode === 'orbit'"
           ref="orbitControlsRef"
           :target="orbitTarget"
-          :enableDamping="controlMode === 'orbit'"
+          :enableDamping="true"
           :dampingFactor="0.3"
-          :enabled="controlMode === 'orbit'"
           :enableRotate="!isOrthographic"
           :enablePan="isOrthographic"
           :enable-zoom="!isCtrlPressed"

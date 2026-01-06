@@ -446,7 +446,6 @@ export function useThreeModelManager() {
     if (mesh) {
       // 注意：不销毁几何体和材质（它们在 geometryCache 中被复用）
       meshMap.delete(itemId)
-      console.log(`[ModelManager] Disposed InstancedMesh for itemId ${itemId}`)
     }
   }
 
