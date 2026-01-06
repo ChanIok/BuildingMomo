@@ -92,14 +92,14 @@ export const useSettingsStore = defineStore('settings', () => {
   ): Promise<boolean> {
     isVerifying.value = true
 
-    // 开发环境的 secure 模式：跳过 API 验证
-    if (import.meta.env.VITE_DEV_SECURE === 'true') {
+    // 开发环境 + Secure 模式：跳过 API 验证
+    if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
       isAuthenticated.value = true
       if (persistPassword) {
         localStorage.setItem(PASSWORD_STORAGE_KEY, password)
       }
       isVerifying.value = false
-      console.log('[SettingsStore] Dev secure mode: password verification skipped')
+      console.log('[SettingsStore] Dev mode: API verification skipped')
       return true
     }
 
@@ -109,6 +109,7 @@ export const useSettingsStore = defineStore('settings', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
+        credentials: 'include', // 允许发送和接收 Cookie
       })
 
       const data = await response.json()
