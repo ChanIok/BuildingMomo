@@ -30,6 +30,13 @@ WARP.md
 public/assets/data/
 public/assets/furniture-icon/
 public/assets/furniture-model/
-
 # Auto-copied decoder files
 public/draco/
+functions/
+scripts/clean-seo-for-secure.js
+
+# Cloudflare
+.wrangler/
+
+# env
+.env.secure

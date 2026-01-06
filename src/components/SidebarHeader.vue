@@ -73,10 +73,31 @@ const selectionMode = computed({
 
 // 显示模式切换
 const displayMode = computed({
-  get: () => settingsStore.settings.threeDisplayMode,
+  get: () => {
+    const currentMode = settingsStore.settings.threeDisplayMode
+    // 如果当前是 model 模式但未验证，自动降级到 simple-box
+    if (
+      currentMode === 'model' &&
+      import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' &&
+      !settingsStore.isAuthenticated
+    ) {
+      return 'simple-box'
+    }
+    return currentMode
+  },
   set: (val) => {
-    if (val)
-      settingsStore.settings.threeDisplayMode = val as 'box' | 'icon' | 'simple-box' | 'model'
+    if (val) {
+      // 如果尝试切换到 model 但未验证，自动降级
+      if (
+        val === 'model' &&
+        import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' &&
+        !settingsStore.isAuthenticated
+      ) {
+        settingsStore.settings.threeDisplayMode = 'simple-box'
+      } else {
+        settingsStore.settings.threeDisplayMode = val as 'box' | 'icon' | 'simple-box' | 'model'
+      }
+    }
   },
 })
 // 视图预设切换
@@ -114,12 +135,18 @@ const selectionActions = computed(() => [
   },
 ])
 
-const displayModes = computed(() => [
-  { id: 'box', label: t('sidebar.displayMode.box'), icon: Cuboid },
-  { id: 'simple-box', label: t('sidebar.displayMode.simpleBox'), icon: Box },
-  { id: 'icon', label: t('sidebar.displayMode.icon'), icon: ImageIcon },
-  { id: 'model', label: t('sidebar.displayMode.model'), icon: Boxes },
-])
+const displayModes = computed(() => {
+  const modes = [
+    { id: 'box', label: t('sidebar.displayMode.box'), icon: Cuboid },
+    { id: 'simple-box', label: t('sidebar.displayMode.simpleBox'), icon: Box },
+    { id: 'icon', label: t('sidebar.displayMode.icon'), icon: ImageIcon },
+  ]
+  if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated) {
+    modes.push({ id: 'model', label: t('sidebar.displayMode.model'), icon: Boxes })
+  }
+
+  return modes
+})
 
 const viewPresets = computed(() => [
   { id: 'top', label: t('command.view.setViewTop'), icon: ChevronsUp },

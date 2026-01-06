@@ -58,6 +58,10 @@ const isAppReady = ref(false)
 
 // 初始化
 onMounted(async () => {
+  if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
+    settingsStore.initializeAuth()
+  }
+
   // 快速检查：是否存在未保存的会话标记 (Local Storage 同步读取)
   const hasUnsavedSession = localStorage.getItem('has_unsaved_session') === 'true'
   const shouldRestore = settingsStore.settings.enableAutoSave && hasUnsavedSession

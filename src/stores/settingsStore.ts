@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
+import { ref } from 'vue'
 
 import type { Locale } from '../composables/useI18n'
 
@@ -55,6 +56,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 }
 
 const STORAGE_KEY = 'buildingmomo_settings'
+const PASSWORD_STORAGE_KEY = 'momo_lab_password'
 
 export const useSettingsStore = defineStore('settings', () => {
   // 使用 VueUse 的 useLocalStorage，自动持久化
@@ -62,14 +64,74 @@ export const useSettingsStore = defineStore('settings', () => {
     mergeDefaults: true, // 自动合并默认值
   })
 
+  // 认证状态
+  const isAuthenticated = ref<boolean>(false)
+  const isVerifying = ref<boolean>(false)
+
   // 重置为默认设置
   function resetSettings(): void {
     settings.value = { ...DEFAULT_SETTINGS }
     console.log('[SettingsStore] Settings reset to default')
   }
 
+  /**
+   * 验证密码
+   * @param password 访问密码
+   * @param persistPassword 是否持久化到本地设备（默认 true）
+   * @returns 验证是否成功
+   */
+  async function verifyPassword(
+    password: string,
+    persistPassword: boolean = true
+  ): Promise<boolean> {
+    isVerifying.value = true
+
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        isAuthenticated.value = true
+        if (persistPassword) {
+          localStorage.setItem(PASSWORD_STORAGE_KEY, password)
+        }
+        return true
+      }
+
+      // 验证失败：如果是静默验证，清理旧密码
+      if (!persistPassword) {
+        localStorage.removeItem(PASSWORD_STORAGE_KEY)
+      }
+      return false
+    } catch {
+      return false
+    } finally {
+      isVerifying.value = false
+    }
+  }
+
+  /**
+   * 应用启动时的初始化验证
+   */
+  async function initializeAuth(): Promise<void> {
+    const savedPassword = localStorage.getItem(PASSWORD_STORAGE_KEY)
+    if (savedPassword) {
+      await verifyPassword(savedPassword, false)
+    }
+  }
+
   return {
     settings,
     resetSettings,
+    // 认证相关
+    isAuthenticated,
+    isVerifying,
+    verifyPassword,
+    initializeAuth,
   }
 })

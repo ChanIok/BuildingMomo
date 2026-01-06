@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:secure": "vite --mode secure",
     "build": "vue-tsc -b && vite build && node scripts/build-i18n.js",
+    "build:secure": "vue-tsc -b && vite build --mode secure && node scripts/build-i18n.js && node scripts/clean-seo-for-secure.js",
     "preview": "vite preview",
-    "deploy": "npm run build && git add dist -f && git commit -m 'deploy' && git subtree push --prefix dist origin gh-pages",
     "fetch-data": "node scripts/fetch-data.js",
-    "setup:draco": "node scripts/copy-draco.js",
     "prebuild": "npm run fetch-data",
-    "prepare": "husky"
+    "prebuild:secure": "npm run fetch-data",
+    "prepare": "husky",
+    "deploy:cloudflare": "npm run build:secure && wrangler pages deploy dist --project-name buildingmomo-lab"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
@@ -46,7 +48,8 @@
     "typescript": "~5.9.3",
     "vite": "npm:rolldown-vite@7.1.14",
     "vite-plugin-pwa": "^1.2.0",
-    "vue-tsc": "^3.1.0"
+    "vue-tsc": "^3.1.0",
+    "wrangler": "^4.54.0"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.1.14"
