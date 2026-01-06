@@ -139,7 +139,6 @@ async function processGeometryForItem(
     }
 
     // 提取此 mesh 的所有几何体
-    let meshIndex = 0
     model.traverse((child) => {
       if ((child as any).isMesh) {
         const mesh = child as Mesh
@@ -295,11 +294,19 @@ export function useThreeModelManager() {
     // 检查是否已存在
     if (meshMap.has(itemId)) {
       const existingMesh = meshMap.get(itemId)!
-      // 如果实例数量足够，直接返回
-      if (existingMesh.count >= instanceCount) {
+
+      // 检查当前容量（instanceMatrix.count 是实际分配的 Buffer 大小）
+      const currentCapacity = existingMesh.instanceMatrix.count
+
+      // 如果容量足够，直接返回复用
+      if (currentCapacity >= instanceCount) {
         return existingMesh
       }
-      // 否则需要重建（实例数量不能动态扩展）
+
+      // 容量不足，需要扩容（销毁旧的，下面会创建新的）
+      console.log(
+        `[ModelManager] 容量不足 itemId=${itemId}: 需 ${instanceCount}, 当前 ${currentCapacity} -> 重建`
+      )
       disposeMesh(itemId)
     }
 
@@ -325,11 +332,30 @@ export function useThreeModelManager() {
       geometryCache.set(itemId, geometryData)
     }
 
+    // 计算分配容量（Headroom 策略：预留空间以减少频繁重建）
+    // 策略：实际需求 + 缓冲，且至少分配 32 个，或者按 1.5 倍增长
+    // 同时不超过最大限制
+    const minCapacity = 32
+    const growthFactor = 1.5
+    const headRoom = 16
+
+    let allocatedCapacity = Math.max(
+      instanceCount + headRoom,
+      Math.floor(instanceCount * growthFactor),
+      minCapacity
+    )
+    allocatedCapacity = Math.min(allocatedCapacity, MAX_RENDER_INSTANCES)
+
+    // 如果请求量本身就很大，直接给够
+    if (instanceCount > allocatedCapacity) {
+      allocatedCapacity = instanceCount
+    }
+
     // 创建 InstancedMesh
     const instancedMesh = new InstancedMesh(
       geometryData.geometry,
       geometryData.material,
-      Math.min(instanceCount, MAX_RENDER_INSTANCES)
+      allocatedCapacity
     )
 
     // 关闭视锥体剔除（与现有代码保持一致）

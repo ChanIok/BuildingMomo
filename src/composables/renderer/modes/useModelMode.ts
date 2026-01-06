@@ -211,20 +211,20 @@ export function useModelMode() {
       }
 
       // 创建或获取 InstancedMesh
+      // 即使本地已存在，也必须调用 createInstancedMesh 以确保容量足够（Manager 内部会检查并决定是否复用）
       const existingMesh = modelMeshMap.value.get(itemId)
-      let mesh: InstancedMesh | null = existingMesh || null
+      const mesh = await modelManager.createInstancedMesh(itemId, itemsOfModel.length)
+
       if (!mesh) {
-        const newMesh = await modelManager.createInstancedMesh(itemId, itemsOfModel.length)
+        // 加载失败，回退到 Box
+        console.warn(`[ModelMode] Failed to create mesh for itemId ${itemId}, using fallback`)
+        handleFallbackItems(itemsOfModel)
+        continue
+      }
 
-        if (!newMesh) {
-          // 加载失败，回退到 Box
-          console.warn(`[ModelMode] Failed to create mesh for itemId ${itemId}, using fallback`)
-          handleFallbackItems(itemsOfModel)
-          continue
-        }
-
-        mesh = markRaw(newMesh)
-        modelMeshMap.value.set(itemId, mesh)
+      // 更新引用（createInstancedMesh 可能会返回新的实例）
+      if (existingMesh !== mesh) {
+        modelMeshMap.value.set(itemId, markRaw(mesh))
       }
 
       // 更新实例数量
