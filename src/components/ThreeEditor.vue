@@ -238,6 +238,7 @@ const {
   iconInstancedMesh,
   simpleBoxInstancedMesh,
   modelMeshMap,
+  modelFallbackMesh,
   updateSelectedInstancesMatrix,
   pickingConfig,
   setHoveredItemId,
@@ -681,6 +682,8 @@ onDeactivated(() => {
           <!-- Model 模式：渲染所有模型 Mesh -->
           <template v-if="shouldShowModelMesh">
             <primitive v-for="[modelName, mesh] in modelMeshMap" :key="modelName" :object="mesh" />
+            <!-- 渲染回退 Mesh（用于缺少模型数据的物品，count=0 时 GPU 不渲染） -->
+            <primitive v-if="modelFallbackMesh" :object="modelFallbackMesh" />
           </template>
         </TresGroup>
 

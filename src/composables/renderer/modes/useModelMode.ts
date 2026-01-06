@@ -77,10 +77,8 @@ export function useModelMode() {
     if (!fallbackMesh) return
 
     // fallbackMesh 使用局部索引（0, 1, 2...），而不是全局索引
-    // 确保有足够容量
-    if (fallbackMesh.count < items.length) {
-      fallbackMesh.count = Math.min(items.length, MAX_INSTANCES)
-    }
+    // 设置当前需要渲染的实例数量
+    fallbackMesh.count = Math.min(items.length, MAX_INSTANCES)
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
@@ -151,7 +149,9 @@ export function useModelMode() {
       if (!item) continue
 
       const config = gameDataStore.getFurnitureModelConfig(item.gameId)
-      const key = config ? item.gameId : fallbackKey
+      // 检查 config 是否存在且有有效的 meshes
+      const hasValidConfig = config && config.meshes && config.meshes.length > 0
+      const key = hasValidConfig ? item.gameId : fallbackKey
 
       if (!groups.has(key)) {
         groups.set(key, [])
@@ -173,11 +173,8 @@ export function useModelMode() {
       }
     }
 
-    // 重置 fallbackMesh（每次重建时都重新开始）
+    // 确保 fallbackMesh 资源已初始化（但不重置 count，由后续逻辑决定）
     ensureFallbackResources()
-    if (fallbackMesh) {
-      fallbackMesh.count = 0
-    }
 
     // 3. 为每个家具创建或更新 InstancedMesh
     let globalIndex = 0
@@ -211,7 +208,6 @@ export function useModelMode() {
       }
 
       // 创建或获取 InstancedMesh
-      // 即使本地已存在，也必须调用 createInstancedMesh 以确保容量足够（Manager 内部会检查并决定是否复用）
       const existingMesh = modelMeshMap.value.get(itemId)
       const mesh = await modelManager.createInstancedMesh(itemId, itemsOfModel.length)
 
@@ -290,6 +286,11 @@ export function useModelMode() {
       }
 
       globalIndex += itemsOfModel.length
+    }
+
+    // 如果没有回退物品，显式重置 fallbackMesh
+    if (!groups.has(fallbackKey) && fallbackMesh) {
+      fallbackMesh.count = 0
     }
 
     // 为 fallbackMesh 构建 BVH（如果有新的回退物品）

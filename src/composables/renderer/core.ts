@@ -516,6 +516,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     iconInstancedMesh: iconMode.mesh,
     simpleBoxInstancedMesh: simpleBoxMode.mesh,
     modelMeshMap: modelMode.meshMap,
+    modelFallbackMesh: modelMode.fallbackMesh,
     indexToIdMap,
     idToIndexMap,
     /**
