@@ -272,13 +272,14 @@ export const zhLocale = {
     viewMode: {
       orthographic: '正交视图',
       perspective: '透视视图',
-      flight: '漫游模式',
+      flight: '飞行模式',
       orbit: '轨道模式',
     },
     controls: {
       ortho: '左键选择 · 中键/空格平移 · 滚轮缩放',
-      orbit: '左键选择 · 中键环绕 · 滚轮缩放 · F 聚焦选中 · WASD 漫游',
+      orbit: '左键选择 · 中键环绕 · 滚轮缩放 · F 聚焦选中',
       flight: 'WASD 平移 · Space/Q 升降 · 按住中键转向 · F 聚焦选中',
+      tabSwitch: 'Tab 切换',
     },
     sizeControl: {
       box: '方块大小',

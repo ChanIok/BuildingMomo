@@ -244,13 +244,17 @@ const showCameraDebug = computed({
     >
       <div>
         <div class="font-medium">
-          {{
-            viewInfo.isOrthographic
-              ? t('editor.viewMode.orthographic')
-              : viewInfo.controlMode === 'flight'
+          <template v-if="viewInfo.isOrthographic">
+            {{ t('editor.viewMode.orthographic') }}
+          </template>
+          <template v-else>
+            {{
+              viewInfo.controlMode === 'flight'
                 ? t('editor.viewMode.flight')
-                : t('editor.viewMode.perspective')
-          }}
+                : t('editor.viewMode.orbit')
+            }}
+            <span class="ml-1 text-[10px] opacity-60">· {{ t('editor.controls.tabSwitch') }}</span>
+          </template>
         </div>
         <div class="mt-1 text-[10px] text-muted-foreground">
           <template v-if="viewInfo.isOrthographic"> {{ t('editor.controls.ortho') }} </template>

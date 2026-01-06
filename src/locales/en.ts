@@ -279,8 +279,9 @@ export const enLocale = {
     },
     controls: {
       ortho: 'Left Select · Mid/Space Pan · Wheel Zoom',
-      orbit: 'Left Select · Mid Orbit · Wheel Zoom · F Focus · WASD Fly',
+      orbit: 'Left Select · Mid Orbit · Wheel Zoom · F Focus',
       flight: 'WASD Move · Space/Q Up/Down · Hold Mid Look · F Focus',
+      tabSwitch: 'Tab Switch',
     },
     sizeControl: {
       box: 'Box Size',

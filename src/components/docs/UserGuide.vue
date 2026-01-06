@@ -29,25 +29,26 @@
     <h2>视图与相机</h2>
 
     <h3 class="mt-4 mb-2 text-base font-medium">1. 透视视图 (Perspective)</h3>
-    <p>模拟人眼视觉，支持两种操作模式：</p>
+    <p>模拟人眼视觉，支持两种相机控制模式，按 <code>Tab</code> 键切换：</p>
     <ul>
       <li>
-        <strong>轨道模式 (默认)</strong>：
+        <strong>轨道模式 (默认)</strong>：以目标为中心观察
         <ul>
-          <li><strong>旋转</strong>：按住 <code>鼠标中键</code> 拖动</li>
+          <li><strong>环绕</strong>：按住 <code>鼠标中键</code> 拖动</li>
           <li><strong>缩放</strong>：鼠标滚轮</li>
+          <li><strong>聚焦</strong>：选中物品后按 <code>F</code></li>
         </ul>
       </li>
       <li>
-        <strong>漫游模式 (Flight)</strong>：按 <code>W/A/S/D</code> 自动进入，类似游戏操作。
+        <strong>飞行模式</strong>：第一人称自由飞行
         <ul>
           <li>
-            <strong>移动</strong>：<code>W/A/S/D</code> (前后左右) |
-            <strong>升降</strong>：<code>Q</code>(降) <code>Space</code>(升) |
+            <strong>平移</strong>：<code>W/A/S/D</code> (前后左右) |
+            <strong>升降</strong>：<code>Space</code>(升) / <code>Q</code>(降) |
             <strong>加速</strong>：按住 <code>Shift</code>
           </li>
-          <li><strong>视角</strong>：按住 <code>鼠标中键</code> 拖动看四周</li>
-          <li><strong>退出</strong>：按 <code>F</code> 聚焦选中物品即可回到轨道模式</li>
+          <li><strong>转向</strong>：按住 <code>鼠标中键</code> 拖动</li>
+          <li><strong>聚焦</strong>：选中物品后按 <code>F</code></li>
         </ul>
       </li>
     </ul>
