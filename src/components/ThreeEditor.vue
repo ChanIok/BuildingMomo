@@ -290,11 +290,14 @@ function handleTresReady() {
   console.log('[ThreeEditor] TresCanvas ready')
 }
 
-// 监听键盘 Tab 键切换模式
+// 监听键盘 Tab 键切换模式（仅在透视模式下）
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Tab') {
     e.preventDefault()
-    toggleCameraMode()
+    // 只在透视模式下允许切换 orbit/flight
+    if (!isOrthographic.value) {
+      toggleCameraMode()
+    }
   }
 }
 

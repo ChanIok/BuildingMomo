@@ -247,6 +247,21 @@ export function useThreeCamera(
   const meta = keys.meta!
   // const tab = keys.tab! // 未使用
 
+  // === 监听视图预设变化，自动切换控制模式 ===
+  watch(
+    currentViewPreset,
+    (preset) => {
+      if (preset === 'perspective') {
+        // 切换到透视视图：恢复用户偏好
+        controlMode.value = settingsStore.settings.perspectiveControlMode
+      } else {
+        // 切换到正交视图：强制使用 orbit
+        controlMode.value = 'orbit'
+      }
+    },
+    { immediate: true }
+  )
+
   // === 自动同步 target 到外部 (OrbitControls) ===
   watch(
     () => state.value.target,
@@ -358,16 +373,18 @@ export function useThreeCamera(
   // 🔄 Mode Transitions
   // ============================================================
 
-  function switchToFlightMode() {
-    if (controlMode.value === 'flight') return
-    controlMode.value = 'flight'
-  }
-
   function toggleCameraMode() {
+    // 只在透视模式下允许切换
+    if (isOrthographic.value) return
+
     if (controlMode.value === 'orbit') {
-      switchToFlightMode()
+      controlMode.value = 'flight'
+      // 保存到全局设置
+      settingsStore.settings.perspectiveControlMode = 'flight'
     } else {
       switchToOrbitMode()
+      // 保存到全局设置
+      settingsStore.settings.perspectiveControlMode = 'orbit'
     }
   }
 
@@ -481,11 +498,6 @@ export function useThreeCamera(
 
     // 5. 更新 UI Store（唯一写入点）
     uiStore.setCurrentViewPreset(preset)
-
-    // 6. 更新控制模式
-    controlMode.value = 'orbit'
-
-    // target 的同步由 watch 自动处理
   }
 
   /**
@@ -520,9 +532,7 @@ export function useThreeCamera(
     // 4. 更新 UI Store
     uiStore.setCurrentViewPreset(preset)
 
-    // 5. 恢复控制模式
-    controlMode.value = 'orbit'
-
+    // 5. 控制模式由 watch(currentViewPreset) 自动处理
     // target 同步由 watch 自动处理
   }
 

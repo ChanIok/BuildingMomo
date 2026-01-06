@@ -28,6 +28,7 @@ export interface AppSettings {
   cameraShiftMultiplier: number // Shift 加速倍率
   cameraMouseSensitivity: number // 鼠标视角灵敏度
   cameraZoomSpeed: number // 鼠标滚轮缩放速度
+  perspectiveControlMode: 'orbit' | 'flight' // 透视视图下的控制模式偏好
 
   // 语言设置
   language: Locale
@@ -49,6 +50,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cameraShiftMultiplier: 4,
   cameraMouseSensitivity: 0.002,
   cameraZoomSpeed: 2.5,
+  perspectiveControlMode: 'orbit',
   language: 'zh',
 }
 
