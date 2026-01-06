@@ -209,9 +209,10 @@ export function useThreeCamera(
         restoreSnapshot(scheme.viewState.value)
       } else {
         // 无状态（如新导入），默认使用顶视图并聚焦到物品中心
-        switchToViewPreset('top')
+        // 先设置正确的 target，再切换视图（确保 position 基于正确的 target 计算）
         state.value.target = [...sceneCenter.value]
         state.value.zoom = 1
+        switchToViewPreset('top')
       }
     },
     { immediate: true }
