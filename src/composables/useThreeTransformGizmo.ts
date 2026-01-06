@@ -354,12 +354,16 @@ export function useThreeTransformGizmo(
               else if (/^(Y|XYZY)$/.test(obj.name)) {
                 color = AXIS_COLORS.y
                 // 翻转 Y 轴几何体的顶点方向，使其在视觉上指向"下方"以匹配游戏数据坐标系
-                const posAttr = obj.geometry?.attributes?.position
-                if (posAttr) {
-                  for (let i = 0; i < posAttr.count; i++) {
-                    posAttr.setY(i, -posAttr.getY(i))
+                // 检查标记：防止重复翻转
+                if (!obj.userData.hasFlippedY) {
+                  const posAttr = obj.geometry?.attributes?.position
+                  if (posAttr) {
+                    for (let i = 0; i < posAttr.count; i++) {
+                      posAttr.setY(i, -posAttr.getY(i))
+                    }
+                    posAttr.needsUpdate = true
+                    obj.userData.hasFlippedY = true
                   }
-                  posAttr.needsUpdate = true
                 }
               } else if (/^(Z|XYZZ)$/.test(obj.name)) color = AXIS_COLORS.z
 

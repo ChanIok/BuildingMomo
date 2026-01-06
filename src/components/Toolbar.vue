@@ -407,10 +407,6 @@ onMounted(() => {
         <MenubarContent :sideOffset="10">
           <!-- 主视图命令（缩放、重置视图、聚焦、2D/3D、工作坐标系等） -->
           <template v-for="cmd in mainViewCommands" :key="cmd.id">
-            <!-- 在“重置视图”、“工作坐标系”之前添加分隔线 -->
-            <MenubarSeparator
-              v-if="cmd.id === 'view.fitToView' || cmd.id === 'view.coordinateSystem'"
-            />
             <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
               {{ cmd.label }}
               <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>

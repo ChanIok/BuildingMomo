@@ -82,8 +82,8 @@ const fmt = (n: number, decimals: number = 0) => {
               :model-value="[fovValue]"
               @update:model-value="handleFovChange"
               :min="30"
-              :max="90"
-              :step="1"
+              :max="120"
+              :step="5"
               variant="thin"
               class="w-full"
             />
@@ -102,9 +102,9 @@ const fmt = (n: number, decimals: number = 0) => {
             <Slider
               :model-value="[settingsStore.settings.cameraBaseSpeed]"
               @update:model-value="updateCameraBaseSpeed"
-              :min="100"
-              :max="5000"
-              :step="100"
+              :min="50"
+              :max="2000"
+              :step="50"
               variant="thin"
               class="w-full"
             />

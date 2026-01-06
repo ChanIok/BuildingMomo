@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
   cameraFov: 50,
-  cameraBaseSpeed: 1500,
+  cameraBaseSpeed: 1000,
   cameraShiftMultiplier: 4,
   cameraMouseSensitivity: 0.002,
   cameraZoomSpeed: 2.5,

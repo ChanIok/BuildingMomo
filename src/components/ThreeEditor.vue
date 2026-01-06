@@ -516,7 +516,7 @@ function getAddPosition(): [number, number, number] | null {
       if (!mesh || mesh.count === 0) continue
       const intersects = raycaster.intersectObject(mesh, false)
       const hit = intersects[0]
-      if (hit && (!closestHit || hit.distance < closestHit.distance)) {
+      if (hit && hit.distance <= 3000 && (!closestHit || hit.distance < closestHit.distance)) {
         closestHit = {
           point: hit.point,
           distance: hit.distance,
@@ -538,7 +538,7 @@ function getAddPosition(): [number, number, number] | null {
     if (targetMesh && targetMesh.count > 0) {
       const intersects = raycaster.intersectObject(targetMesh, false)
       const hit = intersects[0]
-      if (hit) {
+      if (hit && hit.distance <= 3000) {
         // Three.js 坐标系 → 游戏坐标系（Y 取反）
         return [hit.point.x, -hit.point.y, hit.point.z]
       }
@@ -546,7 +546,7 @@ function getAddPosition(): [number, number, number] | null {
   }
 
   // 没有命中任何物体：使用射线方向上固定距离的位置（支持空中摆放）
-  const fixedDistance = 5000 // 固定距离：5000 单位
+  const fixedDistance = 1000 // 固定距离
   const fallbackPoint = markRaw(new Vector3())
   fallbackPoint.copy(raycaster.ray.origin)
   fallbackPoint.addScaledVector(raycaster.ray.direction, fixedDistance)
