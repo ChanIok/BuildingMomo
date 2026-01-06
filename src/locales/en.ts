@@ -389,6 +389,14 @@ export const enLocale = {
     editAssist: {
       label: 'Editor Assistance',
     },
+    snap: {
+      label: 'Grid Snapping',
+      translationStep: 'Position Snap',
+      translationStepHint: 'Snap to multiples of this value when dragging',
+      rotationStep: 'Rotation Snap',
+      rotationStepHint: 'Snap to multiples of this angle when rotating',
+      disabled: 'Off',
+    },
   },
 
   // Transform Panel

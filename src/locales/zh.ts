@@ -387,6 +387,14 @@ export const zhLocale = {
     editAssist: {
       label: '编辑辅助',
     },
+    snap: {
+      label: '网格吸附',
+      translationStep: '位置吸附',
+      translationStepHint: '拖拽物体时将吸附到此值的倍数坐标',
+      rotationStep: '角度吸附',
+      rotationStepHint: '拖拽旋转时将吸附到此值的倍数角度',
+      disabled: '关闭',
+    },
   },
 
   // 变换面板

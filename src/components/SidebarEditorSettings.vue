@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useThrottleFn } from '@vueuse/core'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useI18n } from '../composables/useI18n'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
+import { Input } from '@/components/ui/input'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 
 const settingsStore = useSettingsStore()
@@ -50,6 +51,85 @@ function updateCameraZoomSpeed(value: number[] | undefined) {
   if (!value) return
   settingsStore.settings.cameraZoomSpeed = value[0]!
 }
+
+// 步进预设档位
+const TRANSLATION_SNAP_PRESETS = [0, 1, 5, 10, 50, 100, 500, 1000]
+const ROTATION_SNAP_PRESETS = [0, 1, 5, 15, 30, 45, 90] // 角度
+
+// 工具函数：从值找到最近的预设索引
+function findClosestPresetIndex(value: number, presets: number[]): number {
+  if (value <= 0 || presets.length === 0) return 0
+  let closestIndex = 0
+  let minDiff = Math.abs((presets[0] ?? 0) - value)
+
+  for (let i = 1; i < presets.length; i++) {
+    const diff = Math.abs((presets[i] ?? 0) - value)
+    if (diff < minDiff) {
+      minDiff = diff
+      closestIndex = i
+    }
+  }
+  return closestIndex
+}
+
+// 计算属性：平移步进的滑块索引
+const translationSnapIndex = computed(() => {
+  return findClosestPresetIndex(settingsStore.settings.translationSnap, TRANSLATION_SNAP_PRESETS)
+})
+
+// 计算属性：旋转步进的滑块索引
+const rotationSnapIndex = computed(() => {
+  const degrees =
+    settingsStore.settings.rotationSnap > 0
+      ? Math.round((settingsStore.settings.rotationSnap * 180) / Math.PI)
+      : 0
+  return findClosestPresetIndex(degrees, ROTATION_SNAP_PRESETS)
+})
+
+// 步进设置的更新函数
+function updateTranslationSnap(value: number[] | undefined) {
+  if (!value) return
+  const index = Math.round(value[0]!)
+  settingsStore.settings.translationSnap = TRANSLATION_SNAP_PRESETS[index] || 0
+}
+
+function updateRotationSnap(value: number[] | undefined) {
+  if (!value) return
+  const index = Math.round(value[0]!)
+  const degrees = ROTATION_SNAP_PRESETS[index] || 0
+  // 角度转弧度
+  settingsStore.settings.rotationSnap = degrees > 0 ? (degrees * Math.PI) / 180 : 0
+}
+
+// Input 框的输入验证和更新
+function handleTranslationSnapInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  let value = parseInt(input.value)
+
+  // 验证范围
+  if (isNaN(value) || value < 0) value = 0
+  if (value > 10000) value = 10000
+
+  settingsStore.settings.translationSnap = value
+}
+
+function handleRotationSnapInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  let degrees = parseInt(input.value)
+
+  // 验证范围
+  if (isNaN(degrees) || degrees < 0) degrees = 0
+  if (degrees > 180) degrees = 180
+
+  // 角度转弧度
+  settingsStore.settings.rotationSnap = degrees > 0 ? (degrees * Math.PI) / 180 : 0
+}
+
+// 计算属性：旋转步进的角度值（用于 Input 显示）
+const rotationSnapDegrees = computed(() => {
+  const radians = settingsStore.settings.rotationSnap
+  return radians > 0 ? Math.round((radians * 180) / Math.PI) : 0
+})
 
 // 格式化函数
 const fmt = (n: number, decimals: number = 0) => {
@@ -171,6 +251,92 @@ const fmt = (n: number, decimals: number = 0) => {
               variant="thin"
               class="w-full"
             />
+          </div>
+        </div>
+
+        <!-- 分隔线 -->
+        <div class="border-t border-sidebar-border"></div>
+
+        <!-- 步进设置 -->
+        <div class="flex flex-col gap-4">
+          <h3 class="text-xs font-semibold text-sidebar-foreground">
+            {{ t('sidebar.snap.label') }}
+          </h3>
+
+          <!-- 平移步进滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.snap.translationStep') }}
+              </Label>
+              <Input
+                v-if="settingsStore.settings.translationSnap > 0"
+                :model-value="settingsStore.settings.translationSnap"
+                @blur="handleTranslationSnapInput"
+                type="number"
+                min="0"
+                max="10000"
+                size="xs"
+                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+              />
+              <span
+                v-else
+                class="flex h-6 shrink-0 items-center text-xs font-medium text-sidebar-foreground"
+              >
+                {{ t('sidebar.snap.disabled') }}
+              </span>
+            </div>
+            <Slider
+              :model-value="[translationSnapIndex]"
+              @update:model-value="updateTranslationSnap"
+              :min="0"
+              :max="7"
+              :step="1"
+              variant="thin"
+              class="w-full"
+            />
+            <p class="text-[10px] text-muted-foreground">
+              {{ t('sidebar.snap.translationStepHint') }}
+            </p>
+          </div>
+
+          <!-- 旋转步进滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.snap.rotationStep') }}
+              </Label>
+              <div v-if="settingsStore.settings.rotationSnap > 0" class="flex items-center gap-1">
+                <Input
+                  :model-value="rotationSnapDegrees"
+                  @blur="handleRotationSnapInput"
+                  type="number"
+                  min="0"
+                  max="180"
+                  size="xs"
+                  class="w-12 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+                />
+                <span class="text-xs text-muted-foreground">°</span>
+              </div>
+              <span
+                v-else
+                class="flex h-6 shrink-0 items-center text-xs font-medium text-sidebar-foreground"
+              >
+                {{ t('sidebar.snap.disabled') }}
+              </span>
+            </div>
+            <Slider
+              :model-value="[rotationSnapIndex]"
+              @update:model-value="updateRotationSnap"
+              :min="0"
+              :max="6"
+              :step="1"
+              variant="thin"
+              class="w-full"
+            />
+            <p class="text-[10px] text-muted-foreground">
+              {{ t('sidebar.snap.rotationStepHint') }}
+            </p>
           </div>
         </div>
 
