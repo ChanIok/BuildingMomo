@@ -79,6 +79,7 @@ export const zhLocale = {
       redo: '重做',
       cut: '剪切',
       copy: '复制',
+      duplicate: '复制并粘贴',
       paste: '粘贴',
       delete: '删除',
       selectAll: '全选',

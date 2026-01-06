@@ -1,15 +1,15 @@
 import { computed, ref, watchEffect, markRaw, watch, type Ref } from 'vue'
-import { Object3D, Vector3, Euler, Quaternion, Matrix4, MathUtils, Color } from 'three'
+import { useMagicKeys } from '@vueuse/core'
+import { Object3D, Vector3, Euler, Matrix4, Color } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useClipboard } from '@/composables/useClipboard'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { coordinates3D } from '@/lib/coordinates'
+import { matrixTransform } from '@/lib/matrixTransform'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import type { AppItem } from '@/types/editor'
-
-const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 
 // 现代配色方案
 const AXIS_COLORS = {
@@ -21,11 +21,10 @@ const AXIS_COLORS = {
 export function useThreeTransformGizmo(
   pivotRef: Ref<Object3D | null>,
   updateSelectedInstancesMatrix: (idToWorldMatrixMap: Map<string, Matrix4>) => void,
-  isTransformDragging?: Ref<boolean>,
+  isTransformDragging: Ref<boolean>, // 必需：用于多个 composable 之间的状态共享
   orbitControlsRef?: Ref<any | null>
 ) {
-  // 使用共享的 ref 或创建内部 ref（向后兼容）
-  const _isTransformDragging = isTransformDragging || ref(false)
+  // 直接使用传入的 ref（多个 composable 之间共享状态）
 
   // 矩阵变换状态
   const gizmoStartMatrix = markRaw(new Matrix4())
@@ -33,19 +32,24 @@ export function useThreeTransformGizmo(
   const itemStartWorldMatrices = ref(new Map<string, Matrix4>())
   const hasStartedTransform = ref(false)
 
-  // 临时变量
+  // Alt+拖拽复制状态
+  const altDragCopyPending = ref(false)
+  const altDragCopyExecuted = ref(false)
+  const gizmoStartScreenPosition = ref({ x: 0, y: 0 })
 
+  // 临时变量
   const scratchDeltaMatrix = markRaw(new Matrix4())
   const scratchInverseStartMatrix = markRaw(new Matrix4())
-
-  // 父级变换矩阵：Scale(1, -1, 1). 它的逆矩阵也是它自己
-  const parentInverseMatrix = markRaw(new Matrix4().makeScale(1, -1, 1))
 
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
   const gameDataStore = useGameDataStore()
   const { saveHistory } = useEditorHistory()
   const { commitBatchedTransform, getSelectedItemsCenter } = useEditorManipulation()
+  const { pasteItems } = useClipboard()
+
+  // 键盘状态
+  const { Alt } = useMagicKeys()
 
   const shouldShowGizmo = computed(
     () =>
@@ -60,7 +64,7 @@ export function useThreeTransformGizmo(
 
   // 跟随选中物品中心更新 gizmo 位置（非拖拽时）
   watchEffect(() => {
-    if (_isTransformDragging.value) {
+    if (isTransformDragging.value) {
       return
     }
 
@@ -97,59 +101,58 @@ export function useThreeTransformGizmo(
     }
   }
 
-  function startTransform() {
+  function startTransform(mouseX?: number, mouseY?: number) {
     const pivot = pivotRef.value
     if (!pivot) return
 
-    _isTransformDragging.value = true
+    isTransformDragging.value = true
     hasStartedTransform.value = false
 
-    // 1. 记录 Gizmo 初始世界矩阵
+    // 1. 检测Alt键状态，设置复制待定标志（但不立即执行复制）
+    const scheme = editorStore.activeScheme
+    if (Alt && Alt.value && scheme && scheme.selectedItemIds.value.size > 0) {
+      altDragCopyPending.value = true
+      altDragCopyExecuted.value = false
+      // 记录初始鼠标位置（用于计算移动距离）
+      if (mouseX !== undefined && mouseY !== undefined) {
+        gizmoStartScreenPosition.value = { x: mouseX, y: mouseY }
+      }
+    } else {
+      altDragCopyPending.value = false
+      altDragCopyExecuted.value = false
+    }
+
+    // 2. 记录 Gizmo 初始世界矩阵
     pivot.updateMatrixWorld(true) // 确保是最新的
     gizmoStartMatrix.copy(pivot.matrixWorld)
 
     // 2. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
-    const map = new Map<string, Matrix4>()
-    const scheme = editorStore.activeScheme
     if (scheme) {
-      const selectedIds = scheme.selectedItemIds.value
-      // 构建查找表以快速获取 item 对象
-      const itemMap = new Map<string, AppItem>()
-      scheme.items.value.forEach((item) => {
-        if (selectedIds.has(item.internalId)) {
-          itemMap.set(item.internalId, item)
-        }
-      })
-
-      for (const id of selectedIds) {
-        const item = itemMap.get(id)
-        if (item) {
-          const matrix = calculateItemWorldMatrix(item)
-          map.set(id, matrix)
-        }
-      }
+      itemStartWorldMatrices.value = buildItemWorldMatricesMap(scheme, scheme.selectedItemIds.value)
     }
-    itemStartWorldMatrices.value = map
 
     setOrbitControlsEnabled(false)
   }
 
   function endTransform() {
-    _isTransformDragging.value = false
+    isTransformDragging.value = false
     itemStartWorldMatrices.value = new Map() // clear
     hasStartedTransform.value = false
+    altDragCopyPending.value = false
+    altDragCopyExecuted.value = false
     setOrbitControlsEnabled(true)
   }
 
   function handleGizmoDragging(isDragging: boolean) {
-    if (isDragging) {
-      startTransform()
-    } else {
+    if (!isDragging) {
+      // 只在拖拽结束时调用 endTransform
       endTransform()
     }
+    // 拖拽开始时不调用 startTransform，因为 mouseDown 已经调用了
   }
 
   function handleGizmoMouseDown() {
+    // mouseDown 时初始化变换（记录初始状态）
     startTransform()
   }
 
@@ -180,8 +183,65 @@ export function useThreeTransformGizmo(
     return newWorldMatrices
   }
 
-  function handleGizmoChange() {
-    if (!_isTransformDragging.value) return
+  async function handleGizmoChange() {
+    if (!isTransformDragging.value) return
+
+    const pivot = pivotRef.value
+    if (!pivot) return
+
+    // Alt+拖拽复制：检查是否需要执行延迟复制
+    if (altDragCopyPending.value && !altDragCopyExecuted.value) {
+      // 计算Gizmo移动距离（世界空间）
+      pivot.updateMatrixWorld(true)
+      const currentPos = new Vector3().setFromMatrixPosition(pivot.matrixWorld)
+      const startPos = new Vector3().setFromMatrixPosition(gizmoStartMatrix)
+      const distance = currentPos.distanceTo(startPos)
+
+      // 阈值：使用世界空间距离 10 单位
+      if (distance > 10) {
+        // 执行复制
+        const scheme = editorStore.activeScheme
+        if (scheme && scheme.selectedItemIds.value.size > 0) {
+          const selectedIds = scheme.selectedItemIds.value
+          const selectedItems = scheme.items.value
+            .filter((item) => selectedIds.has(item.internalId))
+            .map((item) => ({ ...item }))
+
+          if (selectedItems.length > 0) {
+            // 临时关闭拖拽标志，允许渲染器rebuild新物品
+            isTransformDragging.value = false
+
+            // 原地粘贴
+            pasteItems(selectedItems, 0, 0)
+
+            // 标记已执行
+            altDragCopyExecuted.value = true
+
+            // 等待下一帧，确保渲染器完成rebuild
+            // 这样新创建的物品才会有对应的实例
+            await new Promise((resolve) => requestAnimationFrame(resolve))
+
+            // 恢复拖拽标志
+            isTransformDragging.value = true
+
+            // 重新记录新选中物品的初始矩阵（因为现在选中的是副本）
+            itemStartWorldMatrices.value = buildItemWorldMatricesMap(
+              scheme,
+              scheme.selectedItemIds.value
+            )
+
+            // 注意：不更新 gizmoStartMatrix！
+            // 保持原始的起始位置，这样后续的增量计算才是正确的
+            // Delta = Current - Start (原始位置)
+          }
+        }
+        // 复制完成后，继续执行后续的矩阵更新逻辑（不return）
+      } else {
+        // 距离 <= 50：还未触发复制，直接返回，不更新任何矩阵
+        // 这样原物品保持静止，直到超过阈值
+        return
+      }
+    }
 
     const newWorldMatrices = calculateCurrentTransforms()
     if (!newWorldMatrices) return
@@ -209,31 +269,9 @@ export function useThreeTransformGizmo(
       const updates: any[] = []
 
       for (const [id, worldMatrix] of newWorldMatrices.entries()) {
-        // 逆向计算回 Local Space
-        // Local = ParentInverse * World
-        const localMatrix = parentInverseMatrix.clone().multiply(worldMatrix)
-
-        const pos = new Vector3()
-        const quat = new Quaternion()
-        const scale = new Vector3()
-        localMatrix.decompose(pos, quat, scale)
-
-        const euler = new Euler().setFromQuaternion(quat, 'ZYX')
-
-        // 还原到数据格式
-        // UseThreeInstancedRenderer: scratchEuler.set(-Rx, -Ry, Rz)
-        // So: Data.x = -Visual.x, Data.y = -Visual.y, Data.z = Visual.z
-        updates.push({
-          id,
-          x: pos.x,
-          y: pos.y,
-          z: pos.z,
-          rotation: {
-            x: -MathUtils.radToDeg(euler.x),
-            y: -MathUtils.radToDeg(euler.y),
-            z: MathUtils.radToDeg(euler.z),
-          },
-        })
+        // 使用统一的工具类从世界矩阵还原到游戏数据
+        const itemData = matrixTransform.extractItemDataFromWorldMatrix(worldMatrix)
+        updates.push({ id, ...itemData })
       }
 
       // 批量提交
@@ -245,56 +283,32 @@ export function useThreeTransformGizmo(
     endTransform()
   }
 
-  function calculateItemWorldMatrix(item: AppItem): Matrix4 {
-    // 1. Position
-    const pos = new Vector3()
-    coordinates3D.setThreeFromGame(pos, { x: item.x, y: item.y, z: item.z })
+  /**
+   * 构建选中物品的世界矩阵映射表（辅助函数）
+   */
+  function buildItemWorldMatricesMap(scheme: any, selectedIds: Set<string>): Map<string, Matrix4> {
+    const map = new Map<string, Matrix4>()
+    const itemMap = new Map<string, AppItem>()
 
-    // 2. Rotation
-    // Z-Up Rotation: Yaw is around Z, Pitch around Y, Roll around X
-    // 由于场景父级在 Y 轴上做了镜像缩放 ([1, -1, 1])，
-    // 为了让编辑器中的 Roll / Pitch 与游戏中的方向一致，这里对 Roll 和 Pitch 取反
-    const euler = new Euler(
-      (-(item.rotation.x ?? 0) * Math.PI) / 180,
-      (-(item.rotation.y ?? 0) * Math.PI) / 180,
-      ((item.rotation.z ?? 0) * Math.PI) / 180,
-      'ZYX'
-    )
-    const quat = new Quaternion().setFromEuler(euler)
+    // 构建查找表以快速获取 item 对象
+    scheme.items.value.forEach((item: AppItem) => {
+      if (selectedIds.has(item.internalId)) {
+        itemMap.set(item.internalId, item)
+      }
+    })
 
-    // 3. Scale
-    // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X=南北→Three.js Y，游戏Y=东西→Three.js X）
-    // 因此：Scale.X 应用到 World Y (即 Local Y)，Scale.Y 应用到 World X (即 Local X)
-    const scaleData = item.extra?.Scale
-
-    // 检查该物品是否有 3D 模型配置
-    // 如果有模型，则模型本身已包含实际尺寸，只需应用用户的 Scale 参数
-    // 如果没有模型（回退到 Box），则需要乘以 furnitureSize
-    const hasModelConfig = !!gameDataStore.getFurnitureModelConfig(item.gameId)
-
-    let scale: Vector3
-    if (hasModelConfig) {
-      // Model 模式：只使用用户的 Scale 参数（模型已包含实际尺寸）
-      scale = new Vector3(scaleData?.Y ?? 1, scaleData?.X ?? 1, scaleData?.Z ?? 1)
-    } else {
-      // Box 模式：Scale * furnitureSize
-      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-      const [sizeX, sizeY, sizeZ] = furnitureSize
-      scale = new Vector3(
-        (scaleData?.Y ?? 1) * sizeX, // Local X 使用 Scale.Y
-        (scaleData?.X ?? 1) * sizeY, // Local Y 使用 Scale.X
-        (scaleData?.Z ?? 1) * sizeZ
-      )
+    // 计算每个选中物品的世界矩阵
+    for (const id of selectedIds) {
+      const item = itemMap.get(id)
+      if (item) {
+        // 检查是否有模型配置
+        const hasModelConfig = !!gameDataStore.getFurnitureModelConfig(item.gameId)
+        const matrix = matrixTransform.buildWorldMatrixFromItem(item, hasModelConfig)
+        map.set(id, matrix)
+      }
     }
 
-    // 4. Compose Local Matrix
-    const localMatrix = new Matrix4().compose(pos, quat, scale)
-
-    // 5. Convert to World Matrix (Apply Parent Scale 1, -1, 1)
-    // World = Parent * Local
-    // Parent Matrix is Scale(1, -1, 1)
-    // 我们可以直接克隆 parentInverseMatrix (它是 1, -1, 1) 并乘
-    return parentInverseMatrix.clone().multiply(localMatrix)
+    return map
   }
 
   /**
@@ -415,7 +429,7 @@ export function useThreeTransformGizmo(
 
   return {
     shouldShowGizmo,
-    isTransformDragging: _isTransformDragging,
+    isTransformDragging,
     transformSpace,
     handleGizmoDragging,
     handleGizmoMouseDown,

@@ -19,6 +19,9 @@ export interface Position3D {
  * 游戏坐标 (x, y, z) = Three.js 世界坐标 (x, y, z)
  * - 现已将 Three.js 全局设置为 Z-up 坐标系，与游戏坐标完全一致
  * - 无需再进行轴交换
+ *
+ * 注意：由于坐标系已统一，大部分转换都是恒等变换
+ * 保留这些方法主要是为了代码可读性和未来可能的坐标系调整
  */
 export const coordinates3D = {
   /**
@@ -26,13 +29,6 @@ export const coordinates3D = {
    */
   gameToThree(gamePos: Position3D): Vector3 {
     return new Vector3(gamePos.x, gamePos.y, gamePos.z)
-  },
-
-  /**
-   * 游戏坐标转 Three.js 世界坐标（原地修改 Vector3）
-   */
-  gameToThreeMut(gamePos: Position3D, target: Vector3): Vector3 {
-    return target.set(gamePos.x, gamePos.y, gamePos.z)
   },
 
   /**
@@ -47,29 +43,7 @@ export const coordinates3D = {
   },
 
   /**
-   * 游戏坐标增量转 Three.js 世界坐标增量
-   */
-  gameDeltaToThreeDelta(gameDelta: Position3D): Position3D {
-    return {
-      x: gameDelta.x,
-      y: gameDelta.y,
-      z: gameDelta.z,
-    }
-  },
-
-  /**
-   * Three.js 世界坐标增量转游戏坐标增量
-   */
-  threeDeltaToGameDelta(threeDelta: Position3D): Position3D {
-    return {
-      x: threeDelta.x,
-      y: threeDelta.y,
-      z: threeDelta.z,
-    }
-  },
-
-  /**
-   * 设置 Three.js Vector3 为游戏坐标值
+   * 设置 Three.js Vector3 为游戏坐标值（原地修改）
    */
   setThreeFromGame(target: Vector3, gamePos: Position3D): Vector3 {
     return target.set(gamePos.x, gamePos.y, gamePos.z)

@@ -238,6 +238,29 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'edit.duplicate',
+      label: t('command.edit.duplicate') || '复制并粘贴',
+      shortcut: 'E',
+      category: 'edit',
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      execute: () => {
+        console.log('[Command] 复制并粘贴 (E)')
+        // 获取当前选中的物品
+        const scheme = editorStore.activeScheme
+        if (!scheme || scheme.selectedItemIds.value.size === 0) return
+
+        const selectedIds = scheme.selectedItemIds.value
+        const selectedItems = scheme.items.value
+          .filter((item) => selectedIds.has(item.internalId))
+          .map((item) => ({ ...item }))
+
+        // 原地粘贴（offset 0, 0），不影响剪贴板
+        if (selectedItems.length > 0) {
+          pasteItems(selectedItems, 0, 0)
+        }
+      },
+    },
+    {
       id: 'edit.paste',
       label: t('command.edit.paste'),
       shortcut: 'Ctrl+V',

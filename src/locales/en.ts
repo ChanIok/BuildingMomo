@@ -80,6 +80,7 @@ export const enLocale = {
       redo: 'Redo',
       cut: 'Cut',
       copy: 'Copy',
+      duplicate: 'Duplicate',
       paste: 'Paste',
       delete: 'Delete',
       selectAll: 'Select All',
