@@ -418,20 +418,30 @@ export function useThreeModelManager() {
     // 并行加载所有 mesh 文件
     await modelLoader.preloadModels(meshPaths)
 
-    // 提取几何体和材质并缓存
-    for (const itemId of unloadedIds) {
+    // 并行提取几何体和材质并缓存
+    const geometryPromises = unloadedIds.map(async (itemId) => {
       const config = gameDataStore.getFurnitureModelConfig(itemId)
       if (!config || !config.meshes || config.meshes.length === 0) {
-        continue
+        return null
       }
 
       // 使用共享函数处理几何体（从缓存加载）
       const geometryData = await processGeometryForItem(itemId, config, modelLoader, true)
       if (!geometryData) {
-        continue
+        return null
       }
 
-      geometryCache.set(itemId, geometryData)
+      return { itemId, geometryData }
+    })
+
+    const results = await Promise.allSettled(geometryPromises)
+
+    // 将成功处理的几何体加入缓存
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        const { itemId, geometryData } = result.value
+        geometryCache.set(itemId, geometryData)
+      }
     }
 
     console.log(`[ModelManager] Preload complete`)

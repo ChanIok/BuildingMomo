@@ -163,7 +163,15 @@ export function useModelMode() {
       `[ModelMode] Model groups: ${groups.size - (groups.has(fallbackKey) ? 1 : 0)} furniture + ${groups.get(fallbackKey)?.length || 0} fallback`
     )
 
-    // 2. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
+    // 2. 预加载所有模型（并发加载，提升性能）
+    const modelItemIds = Array.from(groups.keys()).filter((k) => k !== fallbackKey)
+    if (modelItemIds.length > 0) {
+      await modelManager.preloadModels(modelItemIds).catch((err) => {
+        console.warn('[ModelMode] 模型预加载失败:', err)
+      })
+    }
+
+    // 3. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
     const activeItemIds = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
     for (const [itemId] of modelMeshMap.value.entries()) {
       if (!activeItemIds.has(itemId)) {
@@ -176,7 +184,7 @@ export function useModelMode() {
     // 确保 fallbackMesh 资源已初始化（但不重置 count，由后续逻辑决定）
     ensureFallbackResources()
 
-    // 3. 为每个家具创建或更新 InstancedMesh
+    // 4. 为每个家具创建或更新 InstancedMesh
     let globalIndex = 0
     const newIndexToIdMap = new Map<number, string>()
     const newIdToIndexMap = new Map<string, number>()

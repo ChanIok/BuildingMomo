@@ -8,6 +8,7 @@ import { storeToRefs } from 'pinia'
 import { useValidationStore } from '../stores/validationStore'
 import { useGameDataStore } from '../stores/gameDataStore'
 import { getIconLoader } from './useIconLoader'
+import { getThreeModelManager } from './useThreeModelManager'
 import { useI18n } from './useI18n'
 import backgroundUrl from '@/assets/home.webp'
 
@@ -133,12 +134,21 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     img.src = url
   }
 
-  // 辅助函数：预加载当前方案的图标
-  function preloadActiveSchemeIcons() {
+  // 辅助函数：预加载当前方案的资源（图标和模型）
+  function preloadActiveSchemeResources() {
     if (editorStore.activeScheme) {
       // items 是 ShallowRef，需要访问 .value
       const uniqueIds = [...new Set(editorStore.activeScheme.items.value.map((i) => i.gameId))]
+
+      // 预加载图标（无论当前什么模式）
       getIconLoader().preloadIcons(uniqueIds)
+
+      // 预加载模型（后台并发加载，错误不阻塞）
+      getThreeModelManager()
+        .preloadModels(uniqueIds)
+        .catch((err) => {
+          console.warn('[FileOps] 模型预加载失败:', err)
+        })
     }
   }
 
@@ -293,8 +303,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
           if (result.success) {
             console.log(`[FileOps] Successfully imported scheme: ${file.name}`)
             notification.success(t('fileOps.import.success'))
-            // 预加载图标
-            preloadActiveSchemeIcons()
+            // 预加载图标和模型
+            preloadActiveSchemeResources()
           } else {
             notification.error(
               t('fileOps.import.failed', { reason: result.error || 'Unknown error' })
@@ -787,8 +797,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         })
 
         notification.success(t('fileOps.import.success'))
-        // 预加载图标
-        preloadActiveSchemeIcons()
+        // 预加载图标和模型
+        preloadActiveSchemeResources()
       } else {
         notification.error(
           t('fileOps.import.failed', { reason: importResult.error || 'Unknown error' })
