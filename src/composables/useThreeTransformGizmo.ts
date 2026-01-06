@@ -44,6 +44,7 @@ export function useThreeTransformGizmo(
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
   const gameDataStore = useGameDataStore()
+  const settingsStore = useSettingsStore()
   const { saveHistory } = useEditorHistory()
   const { commitBatchedTransform, getSelectedItemsCenter } = useEditorManipulation()
   const { pasteItems } = useClipboard()
@@ -301,9 +302,12 @@ export function useThreeTransformGizmo(
     for (const id of selectedIds) {
       const item = itemMap.get(id)
       if (item) {
-        // 检查是否有模型配置
-        const hasModelConfig = !!gameDataStore.getFurnitureModelConfig(item.gameId)
-        const matrix = matrixTransform.buildWorldMatrixFromItem(item, hasModelConfig)
+        // Model 模式且有模型配置时，使用纯 scale 值（模型已含尺寸）
+        // 其他模式（box/icon/simple-box）使用 scale * furnitureSize
+        const currentMode = settingsStore.settings.threeDisplayMode
+        const useModelScale =
+          currentMode === 'model' && !!gameDataStore.getFurnitureModelConfig(item.gameId)
+        const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
         map.set(id, matrix)
       }
     }

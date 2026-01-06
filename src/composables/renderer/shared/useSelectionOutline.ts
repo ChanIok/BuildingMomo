@@ -211,7 +211,9 @@ export function useSelectionOutline() {
         originalMesh = meshMap.get(itemId) || null
       }
       if (!originalMesh) {
-        console.warn(`[SelectionOutline] No originalMesh found for itemId=${itemId}`)
+        if (itemId !== -1) {
+          console.warn(`[SelectionOutline] No originalMesh found for itemId=${itemId}`)
+        }
         return
       }
 
