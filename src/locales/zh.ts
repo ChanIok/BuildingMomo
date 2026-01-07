@@ -93,6 +93,7 @@ export const zhLocale = {
       fitToView: '重置视图',
       focusSelection: '聚焦选中物品',
       coordinateSystem: '工作坐标系',
+      toggleCameraMode: '切换相机模式',
       setViewPerspective: '透视视图 (1)',
       setViewTop: '顶视图 (2)',
       setViewBottom: '底视图',

@@ -42,6 +42,9 @@ export const useCommandStore = defineStore('command', () => {
   // 视图切换函数引用（3D视图专用）
   const setViewPresetFn = ref<((preset: ViewPreset) => void) | null>(null)
 
+  // 相机模式切换函数引用（3D视图专用，透视模式下 orbit/flight 切换）
+  const toggleCameraModeFn = ref<(() => void) | null>(null)
+
   // 工作坐标系对话框状态
   const showCoordinateDialog = ref(false)
 
@@ -396,6 +399,17 @@ export const useCommandStore = defineStore('command', () => {
         showCoordinateDialog.value = true
       },
     },
+    {
+      id: 'view.toggleCameraMode',
+      label: t('command.view.toggleCameraMode'),
+      shortcut: 'Tab',
+      category: 'view',
+      enabled: () => toggleCameraModeFn.value !== null,
+      execute: () => {
+        console.log('[Command] 切换相机模式 (Orbit/Flight)')
+        toggleCameraModeFn.value?.()
+      },
+    },
 
     // ===== 3D视图预设 =====
     {
@@ -534,6 +548,11 @@ export const useCommandStore = defineStore('command', () => {
     setViewPresetFn.value = fn
   }
 
+  // 设置相机模式切换函数（由 ThreeEditor 调用）
+  function setToggleCameraModeFunction(fn: (() => void) | null) {
+    toggleCameraModeFn.value = fn
+  }
+
   return {
     commands,
     commandMap,
@@ -544,6 +563,7 @@ export const useCommandStore = defineStore('command', () => {
     isCommandEnabled,
     setZoomFunctions,
     setViewPresetFunction,
+    setToggleCameraModeFunction,
     showCoordinateDialog,
     showFurnitureLibrary,
   }

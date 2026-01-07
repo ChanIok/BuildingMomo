@@ -94,6 +94,7 @@ export const enLocale = {
       fitToView: 'Frame All',
       focusSelection: 'Frame Selection',
       coordinateSystem: 'Coordinate System',
+      toggleCameraMode: 'Toggle Camera Mode',
       setViewPerspective: 'Perspective (1)',
       setViewTop: 'Top (2)',
       setViewBottom: 'Bottom',

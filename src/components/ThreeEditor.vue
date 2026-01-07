@@ -1,15 +1,5 @@
 <script setup lang="ts">
-import {
-  ref,
-  computed,
-  markRaw,
-  onActivated,
-  onDeactivated,
-  onMounted,
-  toRef,
-  onUnmounted,
-  watch,
-} from 'vue'
+import { ref, computed, markRaw, onActivated, onDeactivated, onMounted, toRef, watch } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls, Grid } from '@tresjs/cientos'
 import {
@@ -291,24 +281,13 @@ function handleTresReady() {
   console.log('[ThreeEditor] TresCanvas ready')
 }
 
-// 监听键盘 Tab 键切换模式（仅在透视模式下）
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Tab') {
-    e.preventDefault()
-    // 只在透视模式下允许切换 orbit/flight
-    if (!isOrthographic.value) {
-      toggleCameraMode()
-    }
+// 相机模式切换包装函数（仅在透视模式下生效）
+function handleToggleCameraMode() {
+  // 只在透视模式下允许切换 orbit/flight
+  if (!isOrthographic.value) {
+    toggleCameraMode()
   }
 }
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
-})
 
 // 渲染循环回调（每帧调用）
 function handleLoop(context: any) {
@@ -563,6 +542,7 @@ function getAddPosition(): [number, number, number] | null {
 onActivated(() => {
   commandStore.setZoomFunctions(fitCameraToScene, focusOnSelection)
   commandStore.setViewPresetFunction(switchToView)
+  commandStore.setToggleCameraModeFunction(handleToggleCameraMode)
   getAddPositionFn.value = getAddPosition
 })
 
@@ -570,6 +550,7 @@ onActivated(() => {
 onDeactivated(() => {
   commandStore.setZoomFunctions(null, null)
   commandStore.setViewPresetFunction(null)
+  commandStore.setToggleCameraModeFunction(null)
   getAddPositionFn.value = null
 })
 </script>

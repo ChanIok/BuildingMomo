@@ -53,9 +53,24 @@ const VIEW_PRESET_IDS = [
   'view.setViewLeft',
 ]
 
-// 主视图命令（不包括视图预设）
-const mainViewCommands = computed(() =>
-  viewCommands.value.filter((cmd) => !VIEW_PRESET_IDS.includes(cmd.id))
+// 分组命令 ID
+const NAVIGATION_CMD_IDS = ['view.focusSelection', 'view.fitToView']
+const CAMERA_MODE_CMD_ID = 'view.toggleCameraMode'
+const COORDINATE_CMD_ID = 'view.coordinateSystem'
+
+// 导航组命令（聚焦、重置视图）
+const navigationCommands = computed(() =>
+  viewCommands.value.filter((cmd) => NAVIGATION_CMD_IDS.includes(cmd.id))
+)
+
+// 相机模式命令
+const cameraModeCommand = computed(() =>
+  viewCommands.value.find((cmd) => cmd.id === CAMERA_MODE_CMD_ID)
+)
+
+// 坐标系命令
+const coordinateCommand = computed(() =>
+  viewCommands.value.find((cmd) => cmd.id === COORDINATE_CMD_ID)
 )
 
 // 视图预设命令，保持在 commandStore 中定义的顺序
@@ -405,15 +420,45 @@ onMounted(() => {
       <MenubarMenu>
         <MenubarTrigger class="text-sm font-medium">{{ t('menu.view') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
-          <!-- 主视图命令（缩放、重置视图、聚焦、2D/3D、工作坐标系等） -->
-          <template v-for="cmd in mainViewCommands" :key="cmd.id">
+          <!-- 组 1: 导航组命令（聚焦、重置视图） -->
+          <template v-for="cmd in navigationCommands" :key="cmd.id">
             <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
               {{ cmd.label }}
               <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>
             </MenubarItem>
           </template>
 
-          <!-- 主视图命令与视图预设之间的分隔线 -->
+          <!-- 组 1 与组 2 的分隔线 -->
+          <MenubarSeparator />
+
+          <!-- 组 2: 相机控制组令（切换相机模式） -->
+          <MenubarItem
+            v-if="cameraModeCommand"
+            :disabled="!isEnabled(cameraModeCommand.id)"
+            @click="handleCommand(cameraModeCommand.id)"
+          >
+            {{ cameraModeCommand.label }}
+            <MenubarShortcut v-if="cameraModeCommand.shortcut">{{
+              cameraModeCommand.shortcut
+            }}</MenubarShortcut>
+          </MenubarItem>
+
+          <!-- 组 2 与组 3 的分隔线 -->
+          <MenubarSeparator />
+
+          <!-- 组 3: 系统设置组令（坐标系） -->
+          <MenubarItem
+            v-if="coordinateCommand"
+            :disabled="!isEnabled(coordinateCommand.id)"
+            @click="handleCommand(coordinateCommand.id)"
+          >
+            {{ coordinateCommand.label }}
+            <MenubarShortcut v-if="coordinateCommand.shortcut">{{
+              coordinateCommand.shortcut
+            }}</MenubarShortcut>
+          </MenubarItem>
+
+          <!-- 组 3 与报警之间的分隔线 -->
           <MenubarSeparator />
 
           <!-- 视图预设子菜单：透视视图 + 正交六视图 -->
@@ -421,7 +466,7 @@ onMounted(() => {
             <MenubarSubTrigger>{{ t('command.view.viewPreset') }}</MenubarSubTrigger>
             <MenubarSubContent>
               <template v-for="cmd in viewPresetCommands" :key="cmd.id">
-                <!-- 在“顶视图”之前添加分隔线，将透视视图与正交视图分组 -->
+                <!-- 在"顶视图"之前添加分隔线，将透视视图与正交视图分组 -->
                 <MenubarSeparator v-if="cmd.id === 'view.setViewTop'" />
                 <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
                   {{ cmd.label }}
