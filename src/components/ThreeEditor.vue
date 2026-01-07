@@ -222,6 +222,15 @@ watch(
   }
 )
 
+// 根据 FOV 动态计算 near 距离（解决大 FOV 下的近平面裁切问题）
+const cameraNear = computed(() => {
+  const fov = settingsStore.settings.cameraFov
+  if (fov <= 50) return 100
+  if (fov >= 70) return 50
+  // 50 < fov < 70: 线性插值 100 → 50
+  return 100 - ((fov - 50) / 20) * 50
+})
+
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 pickingConfig
 const {
   instancedMesh,
@@ -578,7 +587,7 @@ onDeactivated(() => {
           :up="cameraUp"
           :zoom="cameraZoom"
           :fov="settingsStore.settings.cameraFov"
-          :near="100"
+          :near="cameraNear"
           :far="100000"
         />
 
