@@ -30,6 +30,7 @@ export interface AppSettings {
   cameraMouseSensitivity: number // 鼠标视角灵敏度
   cameraZoomSpeed: number // 鼠标滚轮缩放速度
   perspectiveControlMode: 'orbit' | 'flight' // 透视视图下的控制模式偏好
+  cameraLockHorizontalMovement: boolean // 锁定水平移动（WASD仅在水平面移动）
 
   // 变换步进设置
   translationSnap: number // 平移步进值（0 表示禁用）
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cameraMouseSensitivity: 0.002,
   cameraZoomSpeed: 2.5,
   perspectiveControlMode: 'orbit',
+  cameraLockHorizontalMovement: false,
   translationSnap: 0,
   rotationSnap: 0,
   language: 'zh',

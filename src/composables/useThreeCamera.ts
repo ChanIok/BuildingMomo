@@ -304,6 +304,29 @@ export function useThreeCamera(
     return !!(w.value || a.value || s.value || d.value || q.value || space.value)
   }
 
+  /**
+   * 获取移动向量（根据锁定水平移动设置）
+   * @param useLockHorizontal 是否锁定在水平面上移动
+   * @returns 前进、右移、上下三个方向向量
+   */
+  function getMovementVectors(useLockHorizontal: boolean) {
+    if (useLockHorizontal) {
+      // 锁定水平移动 - 忽略俯仰角，WASD 仅在水平面移动
+      return {
+        forward: [Math.sin(state.value.yaw), Math.cos(state.value.yaw), 0] as Vec3,
+        right: [Math.cos(state.value.yaw), -Math.sin(state.value.yaw), 0] as Vec3,
+        up: [0, 0, 1] as Vec3,
+      }
+    } else {
+      // 跟随视角移动 - 包含俯仰角，WASD 跟随相机朝向
+      return {
+        forward: getForwardVector(state.value.yaw, state.value.pitch),
+        right: getRightVector(state.value.yaw),
+        up: [0, 0, 1] as Vec3,
+      }
+    }
+  }
+
   // 通用移动向量计算函数
   function calculateMovementDelta(
     forward: Vec3,
@@ -345,9 +368,10 @@ export function useThreeCamera(
       return
     }
 
-    const forward = getForwardVector(state.value.yaw, state.value.pitch)
-    const right = getRightVector(state.value.yaw)
-    const up: Vec3 = [0, 0, 1] // Z-up
+    // 根据设置获取移动向量
+    const { forward, right, up } = getMovementVectors(
+      settingsStore.settings.cameraLockHorizontalMovement
+    )
 
     // 应用速度
     const speedMultiplier = shift.value ? shiftSpeedMultiplier.value : 1
@@ -564,9 +588,9 @@ export function useThreeCamera(
 
         // 1. 获取水平方向的 Forward 和 Right (忽略 pitch，只看 yaw)
         // 这样 W 总是沿着相机的“水平视线”向前
-        const forward: Vec3 = [Math.sin(state.value.yaw), Math.cos(state.value.yaw), 0]
-        const right: Vec3 = [Math.cos(state.value.yaw), -Math.sin(state.value.yaw), 0]
-        const up: Vec3 = [0, 0, 1]
+        const { forward, right, up } = getMovementVectors(
+          settingsStore.settings.cameraLockHorizontalMovement
+        )
 
         const speedMultiplier = shift.value ? shiftSpeedMultiplier.value : 1
         const deltaVec = calculateMovementDelta(forward, right, up, delta / 1000, speedMultiplier)

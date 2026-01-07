@@ -380,6 +380,8 @@ export const zhLocale = {
       shiftMultiplier: '移动加速倍率',
       mouseSensitivity: '鼠标灵敏度',
       zoomSpeed: '滚轮缩放速度',
+      lockHorizontalMovement: '锁定水平移动',
+      lockHorizontalMovementHint: '移动时保持水平，不受俯仰影响',
     },
     display: {
       label: '显示设置',

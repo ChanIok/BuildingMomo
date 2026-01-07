@@ -382,6 +382,8 @@ export const enLocale = {
       shiftMultiplier: 'Move Speed Multiplier',
       mouseSensitivity: 'Mouse Sensitivity',
       zoomSpeed: 'Wheel Zoom Speed',
+      lockHorizontalMovement: 'Lock Horizontal Movement',
+      lockHorizontalMovementHint: 'Keep movement horizontal, ignore pitch',
     },
     display: {
       label: 'Display Settings',

@@ -252,6 +252,17 @@ const fmt = (n: number, decimals: number = 0) => {
               class="w-full"
             />
           </div>
+
+          <!-- 锁定水平移动开关 -->
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label class="text-xs">{{ t('sidebar.camera.lockHorizontalMovement') }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.camera.lockHorizontalMovementHint') }}
+              </p>
+            </div>
+            <Switch v-model="settingsStore.settings.cameraLockHorizontalMovement" />
+          </div>
         </div>
 
         <!-- 分隔线 -->
