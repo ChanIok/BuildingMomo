@@ -172,7 +172,9 @@ export const useGameDataStore = defineStore('gameData', () => {
    * @returns 模型配置，如果不存在返回 null
    */
   function getFurnitureModelConfig(itemId: number): FurnitureModelConfig | null {
-    return furnitureDB.value.get(itemId) || null
+    const config = furnitureDB.value.get(itemId) || null
+
+    return config
   }
 
   // 清除缓存 (仅重置状态)

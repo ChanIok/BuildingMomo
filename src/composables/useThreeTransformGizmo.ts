@@ -303,10 +303,14 @@ export function useThreeTransformGizmo(
       const item = itemMap.get(id)
       if (item) {
         // Model 模式且有模型配置时，使用纯 scale 值（模型已含尺寸）
-        // 其他模式（box/icon/simple-box）使用 scale * furnitureSize
+        // 其他模式（box/icon/simple-box）或 fallback 物品使用 scale * furnitureSize
         const currentMode = settingsStore.settings.threeDisplayMode
-        const useModelScale =
-          currentMode === 'model' && !!gameDataStore.getFurnitureModelConfig(item.gameId)
+        const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+
+        // Model 模式下,只有当 modelConfig 存在且 meshes 数组非空时,才使用纯 scale 值
+        // 否则(包括 fallback 物品)需要乘以 furnitureSize
+        const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+        const useModelScale = !!(currentMode === 'model' && hasValidModel)
         const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
         map.set(id, matrix)
       }

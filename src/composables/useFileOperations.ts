@@ -143,12 +143,14 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       // 预加载图标（无论当前什么模式）
       getIconLoader().preloadIcons(uniqueIds)
 
-      // 预加载模型（后台并发加载，错误不阻塞）
-      getThreeModelManager()
-        .preloadModels(uniqueIds)
-        .catch((err) => {
-          console.warn('[FileOps] 模型预加载失败:', err)
-        })
+      // 预加载模型（仅在私有部署模式下，后台并发加载，错误不阻塞）
+      if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated) {
+        getThreeModelManager()
+          .preloadModels(uniqueIds)
+          .catch((err) => {
+            console.warn('[FileOps] 模型预加载失败:', err)
+          })
+      }
     }
   }
 

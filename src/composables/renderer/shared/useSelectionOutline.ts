@@ -14,6 +14,7 @@ import {
   DynamicDrawUsage,
   Sphere,
   Vector3,
+  Matrix4,
   type WebGLRenderer,
   type Camera,
 } from 'three'
@@ -181,13 +182,17 @@ export function useSelectionOutline() {
 
   /**
    * 更新 mask 状态
+   *
+   * @param matrixOverrides - 可选的矩阵覆盖映射（internalId -> 局部矩阵）
+   *                          用于拖拽时直接使用计算好的矩阵，避免读取未同步的缓冲区
    */
   function updateMasks(
     selectedIds: Set<string>,
     hoveredId: string | null,
     meshMap: Map<number, InstancedMesh>,
     internalIdToMeshInfo: Map<string, { itemId: number; localIndex: number }>,
-    fallbackMesh: InstancedMesh | null
+    fallbackMesh: InstancedMesh | null,
+    matrixOverrides?: Map<string, Matrix4> // 🔧 新增：拖拽时的矩阵覆盖
   ) {
     // 重置所有 mask mesh 的 count
     for (const maskMesh of maskMeshMap.value.values()) {
@@ -223,8 +228,13 @@ export function useSelectionOutline() {
         return
       }
 
-      // 拷贝原始矩阵（不放大）
-      originalMesh.getMatrixAt(localIndex, scratchMatrix)
+      // 🔧 优先使用覆盖矩阵（拖拽时），否则从原始 mesh 读取
+      if (matrixOverrides && matrixOverrides.has(internalId)) {
+        scratchMatrix.copy(matrixOverrides.get(internalId)!)
+      } else {
+        // 拷贝原始矩阵（不放大）
+        originalMesh.getMatrixAt(localIndex, scratchMatrix)
+      }
 
       const maskIndex = maskIndexMap.get(itemId) || 0
 

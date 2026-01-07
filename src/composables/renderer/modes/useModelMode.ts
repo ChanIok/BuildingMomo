@@ -1,4 +1,4 @@
-import { ref, markRaw, computed } from 'vue'
+import { ref, markRaw, shallowRef } from 'vue'
 import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 'three'
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
@@ -44,23 +44,26 @@ export function useModelMode() {
   const internalIdToMeshInfo = ref(new Map<string, { itemId: number; localIndex: number }>())
 
   // 回退渲染用的 Box mesh（专门用于 Model 模式的回退）
-  let fallbackGeometry: BoxGeometry | null = null
-  let fallbackMesh: InstancedMesh | null = null
+  // 🔧 修复：markRaw + shallowRef 组合，保持响应式同时避免深度代理
+  const fallbackGeometry = shallowRef<BoxGeometry | null>(null)
+  const fallbackMesh = shallowRef<InstancedMesh | null>(null)
 
   /**
    * 确保回退渲染资源已初始化
    */
   function ensureFallbackResources() {
-    if (fallbackMesh) return
+    if (fallbackMesh.value) return
 
-    fallbackGeometry = new BoxGeometry(1, 1, 1)
-    fallbackGeometry.translate(0, 0, 0.5)
+    fallbackGeometry.value = new BoxGeometry(1, 1, 1)
+    fallbackGeometry.value.translate(0, 0, 0.5)
     const fallbackMaterial = createBoxMaterial(0.9)
-    fallbackMesh = new InstancedMesh(fallbackGeometry, fallbackMaterial, MAX_INSTANCES)
-    fallbackMesh.frustumCulled = false
-    fallbackMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
-    fallbackMesh.instanceMatrix.setUsage(DynamicDrawUsage)
-    fallbackMesh.count = 0
+    fallbackMesh.value = markRaw(
+      new InstancedMesh(fallbackGeometry.value, fallbackMaterial, MAX_INSTANCES)
+    )
+    fallbackMesh.value.frustumCulled = false
+    fallbackMesh.value.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
+    fallbackMesh.value.instanceMatrix.setUsage(DynamicDrawUsage)
+    fallbackMesh.value.count = 0
   }
 
   /**
@@ -74,11 +77,14 @@ export function useModelMode() {
     localIndexMap: Map<number, string>
   ) {
     ensureFallbackResources()
-    if (!fallbackMesh) return
+    if (!fallbackMesh.value) {
+      console.error('[ModelMode] ❌ fallbackMesh 初始化失败！')
+      return
+    }
 
     // fallbackMesh 使用局部索引（0, 1, 2...），而不是全局索引
     // 设置当前需要渲染的实例数量
-    fallbackMesh.count = Math.min(items.length, MAX_INSTANCES)
+    fallbackMesh.value.count = Math.min(items.length, MAX_INSTANCES)
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i]
@@ -109,11 +115,11 @@ export function useModelMode() {
 
       // 组合矩阵（使用局部索引 i）
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
-      fallbackMesh.setMatrixAt(i, scratchMatrix)
+      fallbackMesh.value.setMatrixAt(i, scratchMatrix)
 
       // 颜色设置为白色（不影响贴图原色，因为白色 × 任何颜色 = 原颜色）
       scratchColor.setHex(0xffffff)
-      fallbackMesh.setColorAt(i, scratchColor)
+      fallbackMesh.value.setColorAt(i, scratchColor)
 
       // 全局索引映射（用于颜色/矩阵更新）
       indexToIdMap.set(globalIndex, item.internalId)
@@ -123,8 +129,8 @@ export function useModelMode() {
       localIndexMap.set(i, item.internalId)
     }
 
-    fallbackMesh.instanceMatrix.needsUpdate = true
-    if (fallbackMesh.instanceColor) fallbackMesh.instanceColor.needsUpdate = true
+    fallbackMesh.value.instanceMatrix.needsUpdate = true
+    if (fallbackMesh.value.instanceColor) fallbackMesh.value.instanceColor.needsUpdate = true
   }
 
   /**
@@ -159,10 +165,6 @@ export function useModelMode() {
       groups.get(key)!.push(item)
     }
 
-    console.log(
-      `[ModelMode] Model groups: ${groups.size - (groups.has(fallbackKey) ? 1 : 0)} furniture + ${groups.get(fallbackKey)?.length || 0} fallback`
-    )
-
     // 2. 预加载所有模型（并发加载，提升性能）
     const modelItemIds = Array.from(groups.keys()).filter((k) => k !== fallbackKey)
     if (modelItemIds.length > 0) {
@@ -193,10 +195,10 @@ export function useModelMode() {
 
     // 辅助函数：处理回退物品
     function handleFallbackItems(items: AppItem[]) {
-      if (!fallbackMesh) return
+      if (!fallbackMesh.value) return
       const localIndexMap = new Map<number, string>()
       renderFallbackItems(items, globalIndex, newIndexToIdMap, newIdToIndexMap, localIndexMap)
-      newMeshToLocalIndexMap.set(fallbackMesh, localIndexMap)
+      newMeshToLocalIndexMap.set(fallbackMesh.value, localIndexMap)
 
       // 更新反向索引（fallback 使用 itemId = -1）
       for (let i = 0; i < items.length; i++) {
@@ -297,14 +299,14 @@ export function useModelMode() {
     }
 
     // 如果没有回退物品，显式重置 fallbackMesh
-    if (!groups.has(fallbackKey) && fallbackMesh) {
-      fallbackMesh.count = 0
+    if (!groups.has(fallbackKey) && fallbackMesh.value) {
+      fallbackMesh.value.count = 0
     }
 
     // 为 fallbackMesh 构建 BVH（如果有新的回退物品）
-    if (fallbackMesh && fallbackMesh.count > 0 && fallbackMesh.geometry) {
-      if (!fallbackMesh.geometry.boundsTree) {
-        fallbackMesh.geometry.computeBoundsTree({
+    if (fallbackMesh.value && fallbackMesh.value.count > 0 && fallbackMesh.value.geometry) {
+      if (!fallbackMesh.value.geometry.boundsTree) {
+        fallbackMesh.value.geometry.computeBoundsTree({
           setBoundingBox: true,
         })
       }
@@ -332,20 +334,20 @@ export function useModelMode() {
     modelMeshMap.value.clear()
 
     // 清理回退 Mesh
-    if (fallbackMesh) {
-      if (fallbackMesh.geometry?.boundsTree) {
-        fallbackMesh.geometry.disposeBoundsTree()
+    if (fallbackMesh.value) {
+      if (fallbackMesh.value.geometry?.boundsTree) {
+        fallbackMesh.value.geometry.disposeBoundsTree()
       }
-      fallbackMesh.geometry = null as any
-      fallbackMesh.material = null as any
-      fallbackMesh = null
+      fallbackMesh.value.geometry = null as any
+      fallbackMesh.value.material = null as any
+      fallbackMesh.value = null
     }
-    if (fallbackGeometry) {
-      if (fallbackGeometry.boundsTree) {
-        fallbackGeometry.disposeBoundsTree()
+    if (fallbackGeometry.value) {
+      if (fallbackGeometry.value.boundsTree) {
+        fallbackGeometry.value.disposeBoundsTree()
       }
-      fallbackGeometry.dispose()
-      fallbackGeometry = null
+      fallbackGeometry.value.dispose()
+      fallbackGeometry.value = null
     }
 
     releaseThreeModelManager()
@@ -361,7 +363,7 @@ export function useModelMode() {
     // 反向索引映射（用于描边高亮）
     internalIdToMeshInfo: internalIdToMeshInfo,
     // 回退 mesh 引用（用于射线检测）
-    fallbackMesh: computed(() => fallbackMesh),
+    fallbackMesh: fallbackMesh,
     rebuild,
     dispose,
   }
