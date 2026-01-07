@@ -309,6 +309,18 @@ export const enLocale = {
     },
   },
 
+  // Loading Progress
+  loading: {
+    icon: 'Loading Icons',
+    model: 'Loading Models',
+    complete: 'Complete',
+    failed: 'failed',
+    phase: {
+      network: 'Downloading...',
+      processing: 'Preparing render...',
+    },
+  },
+
   // Status Bar
   status: {
     unnamed: 'Unnamed',

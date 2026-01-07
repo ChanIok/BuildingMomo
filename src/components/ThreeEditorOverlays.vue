@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/composables/useI18n'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
+import LoadingProgress from './LoadingProgress.vue'
 
 const { t } = useI18n()
 
@@ -111,6 +112,9 @@ const showCameraDebug = computed({
 </script>
 
 <template>
+  <!-- 加载进度显示（右上角） -->
+  <LoadingProgress class="absolute top-4 right-4" />
+
   <!-- 右键菜单 -->
   <DropdownMenu v-model:open="contextMenuOpen" :modal="false">
     <!-- 虚拟触发器：不可见但存在于 DOM 中，动态定位到鼠标位置 -->

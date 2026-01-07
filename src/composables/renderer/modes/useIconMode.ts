@@ -14,8 +14,9 @@ import {
 } from 'three'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorStore } from '@/stores/editorStore'
+import { useLoadingStore } from '@/stores/loadingStore'
 import { coordinates3D } from '@/lib/coordinates'
-import { getThreeIconManager, releaseThreeIconManager } from '@/composables/useThreeIconManager'
+import { getThreeIconManager, disposeThreeIconManager } from '@/composables/useThreeIconManager'
 import {
   scratchMatrix,
   scratchPosition,
@@ -37,6 +38,7 @@ import { MAX_RENDER_INSTANCES as MAX_INSTANCES } from '@/types/constants'
 export function useIconMode() {
   const settingsStore = useSettingsStore()
   const editorStore = useEditorStore()
+  const loadingStore = useLoadingStore()
   const iconManager = getThreeIconManager()
 
   // 资源延迟初始化
@@ -195,8 +197,8 @@ export function useIconMode() {
     const instanceCount = Math.min(items.length, MAX_INSTANCES)
 
     // 计算唯一图标数量并初始化资源
-    const uniqueItemIds = new Set(items.slice(0, instanceCount).map((item) => item.gameId))
-    const initialCapacity = Math.max(32, uniqueItemIds.size + 16)
+    const uniqueItemIdsSet = new Set(items.slice(0, instanceCount).map((item) => item.gameId))
+    const initialCapacity = Math.max(32, uniqueItemIdsSet.size + 16)
     ensureIconResources(initialCapacity)
 
     const currentIconMeshTarget = iconInstancedMesh.value
@@ -206,9 +208,30 @@ export function useIconMode() {
 
     // 预加载纹理
     const itemIds = items.slice(0, instanceCount).map((item) => item.gameId)
-    await iconManager.preloadIcons(itemIds).catch((err) => {
-      console.warn('[IconMode] 图标预加载失败:', err)
-    })
+    const uniqueItemIds = Array.from(new Set(itemIds))
+
+    // 先过滤出未加载的图标，避免进度条数量不匹配
+    const unloadedIds = iconManager.getUnloadedIcons(uniqueItemIds)
+
+    if (unloadedIds.length > 0) {
+      // 开始加载，报告总数（使用simple模式）
+      loadingStore.startLoading('icon', unloadedIds.length, 'simple')
+
+      await iconManager
+        .preloadIcons(itemIds, (current, total, failed) => {
+          // 如果 total === 0，说明全部缓存命中，取消加载提示
+          if (total === 0) {
+            loadingStore.cancelLoading()
+          } else {
+            loadingStore.updateProgress(current, failed)
+          }
+        })
+        .catch((err) => {
+          console.warn('[IconMode] 图标预加载失败:', err)
+          loadingStore.cancelLoading()
+        })
+    }
+    // 如果全部已缓存，无需显示加载提示
 
     // 更新 uniform
     const material = currentIconMeshTarget.material as ShaderMaterial
@@ -371,7 +394,7 @@ export function useIconMode() {
     if (iconInstancedMesh.value) {
       iconInstancedMesh.value = null
     }
-    releaseThreeIconManager()
+    disposeThreeIconManager()
   }
 
   return {

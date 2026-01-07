@@ -3,8 +3,9 @@ import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 't
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useLoadingStore } from '@/stores/loadingStore'
 import { coordinates3D } from '@/lib/coordinates'
-import { getThreeModelManager, releaseThreeModelManager } from '@/composables/useThreeModelManager'
+import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -28,6 +29,7 @@ const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 export function useModelMode() {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
+  const loadingStore = useLoadingStore()
   const modelManager = getThreeModelManager()
 
   // 模型 InstancedMesh 映射：itemId -> InstancedMesh
@@ -168,9 +170,27 @@ export function useModelMode() {
     // 2. 预加载所有模型（并发加载，提升性能）
     const modelItemIds = Array.from(groups.keys()).filter((k) => k !== fallbackKey)
     if (modelItemIds.length > 0) {
-      await modelManager.preloadModels(modelItemIds).catch((err) => {
-        console.warn('[ModelMode] 模型预加载失败:', err)
-      })
+      // 先过滤出未加载的模型，避免进度条数量不匹配
+      const unloadedIds = modelManager.getUnloadedModels(modelItemIds)
+
+      if (unloadedIds.length > 0) {
+        loadingStore.startLoading('model', unloadedIds.length, 'simple')
+
+        await modelManager
+          .preloadModels(modelItemIds, (current, total, failed) => {
+            // 如果 total === 0，说明全部缓存命中，取消加载提示
+            if (total === 0) {
+              loadingStore.cancelLoading()
+            } else {
+              loadingStore.updateProgress(current, failed)
+            }
+          })
+          .catch((err) => {
+            console.warn('[ModelMode] 模型预加载失败:', err)
+            loadingStore.cancelLoading()
+          })
+      }
+      // 如果全部已缓存，无需显示加载提示
     }
 
     // 3. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
@@ -350,7 +370,7 @@ export function useModelMode() {
       fallbackGeometry.value = null
     }
 
-    releaseThreeModelManager()
+    disposeThreeModelManager()
   }
 
   return {

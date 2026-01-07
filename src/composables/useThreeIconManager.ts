@@ -303,17 +303,33 @@ export function useThreeIconManager() {
   }
 
   /**
+   * 获取未加载的图标列表
+   * @param itemIds 家具 ItemID 列表
+   * @returns 未加载的家具 ItemID 列表
+   */
+  function getUnloadedIcons(itemIds: number[]): number[] {
+    const uniqueIds = Array.from(new Set(itemIds)) // 去重
+    return uniqueIds.filter((id) => !textureIndexMap.has(id))
+  }
+
+  /**
    * 批量预加载图标到纹理数组
    * @param itemIds 家具 ItemID 列表
+   * @param onProgress 进度回调：(current, total, failed) => void
    */
-  async function preloadIcons(itemIds: number[]): Promise<void> {
+  async function preloadIcons(
+    itemIds: number[],
+    onProgress?: (current: number, total: number, failed: number) => void
+  ): Promise<void> {
     const uniqueIds = Array.from(new Set(itemIds)) // 去重
 
     // 过滤出未加载的图标
     const unloadedIds = uniqueIds.filter((id) => !textureIndexMap.has(id))
 
     if (unloadedIds.length === 0) {
-      return // 所有图标已加载
+      // 所有图标已加载，立即报告完成（避免进度条卡死）
+      onProgress?.(0, 0, 0) // 传递 (0, 0, 0) 表示无需加载
+      return
     }
 
     // 确保有足够容量（一次性扩容，避免多次扩容）
@@ -321,11 +337,28 @@ export function useThreeIconManager() {
     if (!ensureCapacity(requiredCapacity)) {
       console.warn(`[IconManager] 容量不足，部分图标可能无法加载`)
     }
+    let completed = 0
+    let failed = 0
 
-    const promises = unloadedIds.map((id) => addIconToArray(id))
-    const results = await Promise.allSettled(promises)
+    const promises = unloadedIds.map(async (id) => {
+      try {
+        const success = await addIconToArray(id)
+        if (!success) {
+          failed++
+        }
+        completed++
+        onProgress?.(completed, unloadedIds.length, failed)
+      } catch (error) {
+        console.error(`[IconManager] Error loading icon ${id}:`, error)
+        failed++
+        completed++
+        onProgress?.(completed, unloadedIds.length, failed)
+      }
+    })
 
-    const successCount = results.filter((r) => r.status === 'fulfilled' && r.value).length
+    await Promise.all(promises)
+
+    const successCount = completed - failed
     console.log(`[IconManager] 预加载完成: ${successCount}/${unloadedIds.length} 个图标`)
   }
 
@@ -390,6 +423,7 @@ export function useThreeIconManager() {
   return {
     initTextureArray,
     addIconToArray,
+    getUnloadedIcons,
     preloadIcons,
     getTextureIndex,
     getTextureArray,
@@ -399,40 +433,28 @@ export function useThreeIconManager() {
   }
 }
 
-// 创建单例实例（带引用计数）
+// 创建单例实例
 let managerInstance: ReturnType<typeof useThreeIconManager> | null = null
-let refCount = 0
 
 /**
- * 获取图标管理器单例（增加引用计数）
- * 每次调用都会增加引用计数，使用完毕后必须调用 releaseThreeIconManager() 释放
+ * 获取图标管理器单例
+ * 如果实例不存在则创建，否则返回现有实例
  */
 export function getThreeIconManager(): ReturnType<typeof useThreeIconManager> {
   if (!managerInstance) {
     managerInstance = useThreeIconManager()
     console.log('[IconManager] 创建新实例')
   }
-  refCount++
-  console.log(`[IconManager] 引用计数: ${refCount}`)
   return managerInstance
 }
 
 /**
- * 释放图标管理器单例的引用（减少引用计数）
- * 当引用计数归零时，自动清理资源
+ * 清理图标管理器单例
+ * 释放所有资源并重置实例
  */
-export function releaseThreeIconManager(): void {
-  if (refCount <= 0) {
-    console.warn('[IconManager] 引用计数已为0，无需释放')
-    return
-  }
-
-  refCount--
-  console.log(`[IconManager] 引用计数: ${refCount}`)
-
-  // 当引用计数归零时，清理实例
-  if (refCount === 0 && managerInstance) {
-    console.log('[IconManager] 引用计数归零，清理资源')
+export function disposeThreeIconManager(): void {
+  if (managerInstance) {
+    console.log('[IconManager] 清理资源')
     managerInstance.dispose()
     managerInstance = null
   }

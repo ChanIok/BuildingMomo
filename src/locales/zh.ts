@@ -307,6 +307,18 @@ export const zhLocale = {
     },
   },
 
+  // 加载进度
+  loading: {
+    icon: '正在加载图标',
+    model: '正在加载模型',
+    complete: '加载完成',
+    failed: '个失败',
+    phase: {
+      network: '正在下载...',
+      processing: '正在准备渲染...',
+    },
+  },
+
   // 状态栏
   status: {
     unnamed: '未命名',

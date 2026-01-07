@@ -10,9 +10,11 @@ import {
   Color,
   Matrix4,
   Quaternion,
+  type Object3D,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { getModelLoader } from './useModelLoader'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 
@@ -111,11 +113,43 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
  * @param useCache 是否使用缓存（true=getModel, false=loadModel）
  * @returns {geometry, material} 或 undefined
  */
+/**
+ * 加载单个 GLB 模型文件
+ * @param meshPath 模型路径（例如："chair_01.glb"）
+ * @returns Promise<Object3D | null>
+ */
+async function loadGLBModel(
+  gltfLoader: GLTFLoader,
+  MODEL_BASE_URL: string,
+  meshPath: string
+): Promise<Object3D | null> {
+  try {
+    // 智能处理扩展名
+    const fileName = meshPath.endsWith('.glb') ? meshPath : `${meshPath}.glb`
+    const modelUrl = `${MODEL_BASE_URL}${fileName}`
+
+    // 使用 loadAsync（Promise风格）
+    const gltf = await gltfLoader.loadAsync(modelUrl)
+    return gltf.scene
+  } catch (error) {
+    console.warn(`[ModelManager] Failed to load GLB: ${meshPath}`, error)
+    return null
+  }
+}
+
+/**
+ * 处理家具几何体：加载、变换、合并、优化
+ * @param itemId 家具 ID
+ * @param config 家具模型配置
+ * @param gltfLoader GLTF加载器实例
+ * @param MODEL_BASE_URL 模型基础路径
+ * @returns {geometry, material} 或 undefined
+ */
 async function processGeometryForItem(
   itemId: number,
   config: any,
-  modelLoader: ReturnType<typeof getModelLoader>,
-  useCache: boolean = false
+  gltfLoader: GLTFLoader,
+  MODEL_BASE_URL: string
 ): Promise<{ geometry: BufferGeometry; material: Material | Material[] } | undefined> {
   // 加载所有 mesh 文件
   const allGeometries: BufferGeometry[] = []
@@ -126,15 +160,11 @@ async function processGeometryForItem(
   const tempTrans = new Vector3()
 
   for (const meshConfig of config.meshes) {
-    // 根据 useCache 参数选择加载方式
-    const model = useCache
-      ? modelLoader.getModel(meshConfig.path)
-      : await modelLoader.loadModel(meshConfig.path)
+    // 直接加载GLB模型
+    const model = await loadGLBModel(gltfLoader, MODEL_BASE_URL, meshConfig.path)
 
     if (!model) {
-      console.warn(
-        `[ModelManager] Failed to ${useCache ? 'get cached' : 'load'} mesh: ${meshConfig.path}`
-      )
+      console.warn(`[ModelManager] Failed to load mesh: ${meshConfig.path}`)
       continue
     }
 
@@ -269,8 +299,16 @@ async function processGeometryForItem(
  * - 单例模式管理
  */
 export function useThreeModelManager() {
-  const modelLoader = getModelLoader()
   const gameDataStore = useGameDataStore()
+
+  // 创建 GLTF Loader
+  const gltfLoader = new GLTFLoader()
+  const dracoLoader = new DRACOLoader()
+  dracoLoader.setDecoderPath(import.meta.env.BASE_URL + 'draco/')
+  gltfLoader.setDRACOLoader(dracoLoader)
+
+  // 模型基础路径
+  const MODEL_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-model/'
 
   // itemId -> InstancedMesh 的映射
   const meshMap = new Map<number, InstancedMesh>()
@@ -322,7 +360,7 @@ export function useThreeModelManager() {
       }
 
       // 使用共享函数处理几何体
-      const result = await processGeometryForItem(itemId, config, modelLoader, false)
+      const result = await processGeometryForItem(itemId, config, gltfLoader, MODEL_BASE_URL)
       if (!result) {
         return null
       }
@@ -389,62 +427,79 @@ export function useThreeModelManager() {
   }
 
   /**
-   * 批量预加载家具模型
+   * 获取未加载的模型列表
    * @param itemIds 家具 ItemID 列表
+   * @returns 未加载的家具 ItemID 列表
    */
-  async function preloadModels(itemIds: number[]): Promise<void> {
+  function getUnloadedModels(itemIds: number[]): number[] {
+    const uniqueIds = Array.from(new Set(itemIds)) // 去重
+    return uniqueIds.filter((id) => !geometryCache.has(id))
+  }
+
+  /**
+   * 批量预加载家具模型（完全并发）
+   * @param itemIds 家具 ItemID 列表
+   * @param onProgress 进度回调：(current, total, failed) => void
+   */
+  async function preloadModels(
+    itemIds: number[],
+    onProgress?: (current: number, total: number, failed: number) => void
+  ): Promise<void> {
     const uniqueIds = Array.from(new Set(itemIds)) // 去重
 
     // 过滤出未加载的家具
     const unloadedIds = uniqueIds.filter((id) => !geometryCache.has(id))
 
     if (unloadedIds.length === 0) {
-      return // 所有模型已加载
+      // 所有模型已加载，立即报告完成（避免进度条卡死）
+      onProgress?.(0, 0, 0) // 传递 (0, 0, 0) 表示无需加载
+      return
     }
 
     console.log(`[ModelManager] Preloading ${unloadedIds.length} furniture models...`)
 
-    // 收集所有需要加载的 mesh 文件路径
-    const meshPaths: string[] = []
-    for (const itemId of unloadedIds) {
-      const config = gameDataStore.getFurnitureModelConfig(itemId)
-      if (config && config.meshes) {
-        for (const mesh of config.meshes) {
-          meshPaths.push(mesh.path)
+    let completed = 0
+    let failed = 0
+
+    // 🔥 完全并发：所有任务立即开始
+    const promises = unloadedIds.map(async (itemId) => {
+      try {
+        const config = gameDataStore.getFurnitureModelConfig(itemId)
+        if (!config || !config.meshes || config.meshes.length === 0) {
+          console.warn(`[ModelManager] No config for itemId: ${itemId}`)
+          failed++
+          completed++
+          onProgress?.(completed, unloadedIds.length, failed)
+          return
         }
+
+        // 下载并处理模型
+        const geometryData = await processGeometryForItem(
+          itemId,
+          config,
+          gltfLoader,
+          MODEL_BASE_URL
+        )
+
+        if (!geometryData) {
+          failed++
+        } else {
+          geometryCache.set(itemId, geometryData)
+        }
+
+        // ✅ 原子更新：JavaScript 单线程，completed++ 天然原子
+        completed++
+        onProgress?.(completed, unloadedIds.length, failed)
+      } catch (error) {
+        console.error(`[ModelManager] Error processing itemId ${itemId}:`, error)
+        failed++
+        completed++
+        onProgress?.(completed, unloadedIds.length, failed)
       }
-    }
-
-    // 并行加载所有 mesh 文件
-    await modelLoader.preloadModels(meshPaths)
-
-    // 并行提取几何体和材质并缓存
-    const geometryPromises = unloadedIds.map(async (itemId) => {
-      const config = gameDataStore.getFurnitureModelConfig(itemId)
-      if (!config || !config.meshes || config.meshes.length === 0) {
-        return null
-      }
-
-      // 使用共享函数处理几何体（从缓存加载）
-      const geometryData = await processGeometryForItem(itemId, config, modelLoader, true)
-      if (!geometryData) {
-        return null
-      }
-
-      return { itemId, geometryData }
     })
 
-    const results = await Promise.allSettled(geometryPromises)
-
-    // 将成功处理的几何体加入缓存
-    for (const result of results) {
-      if (result.status === 'fulfilled' && result.value) {
-        const { itemId, geometryData } = result.value
-        geometryCache.set(itemId, geometryData)
-      }
-    }
-
-    console.log(`[ModelManager] Preload complete`)
+    await Promise.all(promises)
+    console.log(`[ModelManager] Complete: ${completed - failed}/${unloadedIds.length} models`)
   }
 
   /**
@@ -479,9 +534,6 @@ export function useThreeModelManager() {
     }
     geometryCache.clear()
 
-    // 清理加载器缓存
-    modelLoader.clearCache()
-
     console.log('[ModelManager] Resources disposed')
   }
 
@@ -492,7 +544,6 @@ export function useThreeModelManager() {
     return {
       activeMeshes: meshMap.size,
       cachedGeometries: geometryCache.size,
-      loaderStats: modelLoader.getCacheStats(),
     }
   }
 
@@ -500,6 +551,7 @@ export function useThreeModelManager() {
     createInstancedMesh,
     getMesh,
     getAllMeshes,
+    getUnloadedModels,
     preloadModels,
     disposeMesh,
     dispose,
@@ -507,40 +559,28 @@ export function useThreeModelManager() {
   }
 }
 
-// 创建单例实例（带引用计数）
+// 创建单例实例
 let managerInstance: ReturnType<typeof useThreeModelManager> | null = null
-let refCount = 0
 
 /**
- * 获取模型管理器单例（增加引用计数）
- * 每次调用都会增加引用计数，使用完毕后必须调用 releaseThreeModelManager() 释放
+ * 获取模型管理器单例
+ * 如果实例不存在则创建，否则返回现有实例
  */
 export function getThreeModelManager(): ReturnType<typeof useThreeModelManager> {
   if (!managerInstance) {
     managerInstance = useThreeModelManager()
     console.log('[ModelManager] 创建新实例')
   }
-  refCount++
-  console.log(`[ModelManager] 引用计数: ${refCount}`)
   return managerInstance
 }
 
 /**
- * 释放模型管理器单例的引用（减少引用计数）
- * 当引用计数归零时，自动清理资源
+ * 清理模型管理器单例
+ * 释放所有资源并重置实例
  */
-export function releaseThreeModelManager(): void {
-  if (refCount <= 0) {
-    console.warn('[ModelManager] 引用计数已为0，无需释放')
-    return
-  }
-
-  refCount--
-  console.log(`[ModelManager] 引用计数: ${refCount}`)
-
-  // 当引用计数归零时，清理实例
-  if (refCount === 0 && managerInstance) {
-    console.log('[ModelManager] 引用计数归零，清理资源')
+export function disposeThreeModelManager(): void {
+  if (managerInstance) {
+    console.log('[ModelManager] 清理资源')
     managerInstance.dispose()
     managerInstance = null
   }
