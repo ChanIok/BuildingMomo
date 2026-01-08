@@ -32,6 +32,9 @@ export function useModelMode() {
   const loadingStore = useLoadingStore()
   const modelManager = getThreeModelManager()
 
+  // 追踪上一次的 scheme 引用，用于检测方案切换
+  let lastSchemeRef: any = null
+
   // 模型 InstancedMesh 映射：itemId -> InstancedMesh
   const modelMeshMap = ref(new Map<number, InstancedMesh>())
 
@@ -73,7 +76,7 @@ export function useModelMode() {
    */
   function renderFallbackItems(
     items: AppItem[],
-    startIndex: number,
+    globalStartIndex: number,
     indexToIdMap: Map<number, string>,
     idToIndexMap: Map<string, number>,
     localIndexMap: Map<number, string>
@@ -86,14 +89,15 @@ export function useModelMode() {
 
     // fallbackMesh 使用局部索引（0, 1, 2...），而不是全局索引
     // 设置当前需要渲染的实例数量
-    fallbackMesh.value.count = Math.min(items.length, MAX_INSTANCES)
+    const count = Math.min(items.length, MAX_INSTANCES)
+    fallbackMesh.value.count = count
 
-    for (let i = 0; i < items.length; i++) {
+    for (let i = 0; i < count; i++) {
       const item = items[i]
       if (!item) continue
 
       // fallbackMesh 使用局部索引 i，全局索引用于全局映射
-      const globalIndex = startIndex + i
+      const globalIndex = globalStartIndex + i
 
       // 位置
       coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
@@ -139,13 +143,30 @@ export function useModelMode() {
    * 重建所有模型实例
    */
   async function rebuild() {
-    const items = editorStore.activeScheme?.items.value ?? []
+    // ✅ 检查点 1：捕获当前 scheme 引用，用于后续验证
+    const currentScheme = editorStore.activeScheme
+    const items = currentScheme?.items.value ?? []
     const instanceCount = Math.min(items.length, MAX_INSTANCES)
 
     if (items.length > MAX_INSTANCES) {
       console.warn(
         `[ModelMode] 当前可见物品数量 (${items.length}) 超过上限 ${MAX_INSTANCES}，仅渲染前 ${MAX_INSTANCES} 个`
       )
+    }
+
+    // 检测是否是方案切换（引用变化）
+    const isSchemeSwitch = currentScheme !== lastSchemeRef
+    lastSchemeRef = currentScheme
+
+    // 0. 🔥 仅在方案切换时立即清理旧场景（避免内容更新时闪烁，但避免方案切换时残留）
+    if (isSchemeSwitch) {
+      // 将所有现有的 mesh 计数设为 0，使其立即从场景中消失
+      for (const mesh of modelMeshMap.value.values()) {
+        mesh.count = 0
+      }
+      if (fallbackMesh.value) {
+        fallbackMesh.value.count = 0
+      }
     }
 
     // 1. 按 itemId 分组（包含回退项）
@@ -189,6 +210,13 @@ export function useModelMode() {
             console.warn('[ModelMode] 模型预加载失败:', err)
             loadingStore.cancelLoading()
           })
+
+        // ✅ 检查点 2：异步加载完成后，检查 scheme 是否仍然有效
+        if (editorStore.activeScheme !== currentScheme) {
+          console.log('[ModelMode] 检测到方案切换，中断旧的 rebuild')
+          loadingStore.cancelLoading()
+          return // 立即中断，避免渲染错误的方案物品
+        }
       }
       // 如果全部已缓存，无需显示加载提示
     }
@@ -213,38 +241,24 @@ export function useModelMode() {
     const newMeshToLocalIndexMap = new Map<InstancedMesh, Map<number, string>>()
     const newInternalIdToMeshInfo = new Map<string, { itemId: number; localIndex: number }>()
 
-    // 辅助函数：处理回退物品
-    function handleFallbackItems(items: AppItem[]) {
-      if (!fallbackMesh.value) return
-      const localIndexMap = new Map<number, string>()
-      renderFallbackItems(items, globalIndex, newIndexToIdMap, newIdToIndexMap, localIndexMap)
-      newMeshToLocalIndexMap.set(fallbackMesh.value, localIndexMap)
-
-      // 更新反向索引（fallback 使用 itemId = -1）
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (!item) continue
-        newInternalIdToMeshInfo.set(item.internalId, { itemId: -1, localIndex: i })
-      }
-
-      globalIndex += items.length
+    // 收集所有需要回退的 items
+    let allFallbackItems: AppItem[] = []
+    if (groups.has(fallbackKey)) {
+      allFallbackItems.push(...groups.get(fallbackKey)!)
     }
 
+    // 遍历处理正常模型组
     for (const [itemId, itemsOfModel] of groups.entries()) {
-      if (itemId === fallbackKey) {
-        // 回退物品：使用 Box 渲染
-        handleFallbackItems(itemsOfModel)
-        continue
-      }
+      if (itemId === fallbackKey) continue
 
       // 创建或获取 InstancedMesh
       const existingMesh = modelMeshMap.value.get(itemId)
       const mesh = await modelManager.createInstancedMesh(itemId, itemsOfModel.length)
 
       if (!mesh) {
-        // 加载失败，回退到 Box
+        // 加载失败，加入回退列表
         console.warn(`[ModelMode] Failed to create mesh for itemId ${itemId}, using fallback`)
-        handleFallbackItems(itemsOfModel)
+        allFallbackItems.push(...itemsOfModel)
         continue
       }
 
@@ -318,8 +332,28 @@ export function useModelMode() {
       globalIndex += itemsOfModel.length
     }
 
-    // 如果没有回退物品，显式重置 fallbackMesh
-    if (!groups.has(fallbackKey) && fallbackMesh.value) {
+    // 5. 集中处理所有回退物品
+    if (allFallbackItems.length > 0) {
+      if (fallbackMesh.value) {
+        const localIndexMap = new Map<number, string>()
+        renderFallbackItems(
+          allFallbackItems,
+          globalIndex,
+          newIndexToIdMap,
+          newIdToIndexMap,
+          localIndexMap
+        )
+        newMeshToLocalIndexMap.set(fallbackMesh.value, localIndexMap)
+
+        // 更新反向索引（fallback 使用 itemId = -1）
+        for (let i = 0; i < allFallbackItems.length; i++) {
+          const item = allFallbackItems[i]
+          if (!item) continue
+          newInternalIdToMeshInfo.set(item.internalId, { itemId: -1, localIndex: i })
+        }
+      }
+    } else if (fallbackMesh.value) {
+      // 显式重置 fallbackMesh count
       fallbackMesh.value.count = 0
     }
 
@@ -330,6 +364,12 @@ export function useModelMode() {
           setBoundingBox: true,
         })
       }
+    }
+
+    // ✅ 检查点 3：渲染完成前最终检查（双保险）
+    if (editorStore.activeScheme !== currentScheme) {
+      console.log('[ModelMode] 渲染前检测到方案切换，跳过索引映射更新')
+      return
     }
 
     // 更新索引映射
