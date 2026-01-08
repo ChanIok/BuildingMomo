@@ -1,6 +1,16 @@
 import { computed, ref, watchEffect, markRaw, watch, type Ref } from 'vue'
 import { useMagicKeys } from '@vueuse/core'
-import { Object3D, Vector3, Euler, Matrix4, Color } from 'three'
+import {
+  Object3D,
+  Vector3,
+  Euler,
+  Matrix4,
+  Color,
+  Plane,
+  Raycaster,
+  Vector2,
+  type Camera,
+} from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useClipboard } from '@/composables/useClipboard'
@@ -22,7 +32,9 @@ export function useThreeTransformGizmo(
   pivotRef: Ref<Object3D | null>,
   updateSelectedInstancesMatrix: (idToWorldMatrixMap: Map<string, Matrix4>) => void,
   isTransformDragging: Ref<boolean>, // 必需：用于多个 composable 之间的状态共享
-  orbitControlsRef?: Ref<any | null>
+  orbitControlsRef?: Ref<any | null>,
+  activeCameraRef?: Ref<any | null>,
+  transformRef?: Ref<any | null>
 ) {
   // 直接使用传入的 ref（多个 composable 之间共享状态）
 
@@ -36,6 +48,14 @@ export function useThreeTransformGizmo(
   const altDragCopyPending = ref(false)
   const altDragCopyExecuted = ref(false)
   const gizmoStartScreenPosition = ref({ x: 0, y: 0 })
+
+  // 旋转模式状态：基于角度的旋转计算
+  const isRotateMode = ref(false)
+  const rotateAxis = ref<'X' | 'Y' | 'Z' | null>(null)
+  const startMouseAngle = ref(0)
+  const startGizmoRotation = markRaw(new Euler())
+  const lastAppliedAngle = ref(0) // 已应用到 gizmoPivot 的累积角度
+  const hasInitializedRotation = ref(false) // 是否已初始化旋转起始角度
 
   // 临时变量
   const scratchDeltaMatrix = markRaw(new Matrix4())
@@ -51,6 +71,77 @@ export function useThreeTransformGizmo(
 
   // 键盘状态
   const { Alt } = useMagicKeys()
+
+  /**
+   * 计算鼠标在旋转平面上的角度
+   * @param gizmoWorldPos Gizmo 中心的世界坐标
+   * @param mouseEvent 鼠标事件，用于获取屏幕坐标
+   * @param camera 当前相机
+   * @param axis 旋转轴
+   * @param containerRect 容器的布局信息
+   * @returns 角度（弧度），失败返回 null
+   */
+  function calculateRotationAngle(
+    gizmoWorldPos: Vector3,
+    mouseClientX: number,
+    mouseClientY: number,
+    camera: Camera,
+    axis: 'X' | 'Y' | 'Z',
+    containerRect: { left: number; top: number; width: number; height: number }
+  ): number | null {
+    // 1. 将鼠标屏幕坐标转为 NDC
+    const mouseNDC = new Vector2(
+      ((mouseClientX - containerRect.left) / containerRect.width) * 2 - 1,
+      -((mouseClientY - containerRect.top) / containerRect.height) * 2 + 1
+    )
+
+    // 2. 构造旋转平面（过 gizmo 中心，法线为旋转轴）
+    let planeNormal: Vector3
+    if (axis === 'X') {
+      planeNormal = new Vector3(1, 0, 0)
+    } else if (axis === 'Y') {
+      planeNormal = new Vector3(0, 1, 0)
+    } else {
+      // Z
+      planeNormal = new Vector3(0, 0, 1)
+    }
+
+    // 如果启用了工作坐标系，需要旋转平面法线
+    if (uiStore.workingCoordinateSystem.enabled && pivotRef.value) {
+      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+      planeNormal.applyAxisAngle(new Vector3(0, 0, 1), -angleRad)
+    }
+
+    const plane = new Plane().setFromNormalAndCoplanarPoint(planeNormal, gizmoWorldPos)
+
+    // 3. 从鼠标发射射线，与平面求交
+    const raycaster = new Raycaster()
+    raycaster.setFromCamera(mouseNDC, camera)
+    const intersection = new Vector3()
+    const hit = raycaster.ray.intersectPlane(plane, intersection)
+
+    if (!hit) {
+      return null // 射线与平面平行，无交点
+    }
+
+    // 4. 计算交点相对于 gizmo 中心的角度
+    const localPos = intersection.clone().sub(gizmoWorldPos)
+
+    // 根据轴选择正确的两个分量计算 atan2
+    let angle: number
+    if (axis === 'X') {
+      // 绕 X 轴旋转，Y-Z 平面
+      angle = Math.atan2(localPos.z, localPos.y)
+    } else if (axis === 'Y') {
+      // 绕 Y 轴旋转，Z-X 平面
+      angle = Math.atan2(localPos.x, localPos.z)
+    } else {
+      // 绕 Z 轴旋转，X-Y 平面
+      angle = Math.atan2(localPos.y, localPos.x)
+    }
+
+    return angle
+  }
 
   const shouldShowGizmo = computed(
     () =>
@@ -127,7 +218,25 @@ export function useThreeTransformGizmo(
     pivot.updateMatrixWorld(true) // 确保是最新的
     gizmoStartMatrix.copy(pivot.matrixWorld)
 
-    // 2. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
+    // 3. 检测是否为旋转模式，并记录初始状态
+    if (editorStore.gizmoMode === 'rotate' && transformRef?.value) {
+      const controls = transformRef.value.instance || transformRef.value.value
+      if (controls && controls.axis) {
+        const axis = controls.axis.toUpperCase()
+        if (axis === 'X' || axis === 'Y' || axis === 'Z') {
+          isRotateMode.value = true
+          rotateAxis.value = axis as 'X' | 'Y' | 'Z'
+          startGizmoRotation.copy(pivot.rotation)
+          lastAppliedAngle.value = 0
+          hasInitializedRotation.value = false // 重置初始化标志
+        }
+      }
+    } else {
+      isRotateMode.value = false
+      rotateAxis.value = null
+    }
+
+    // 4. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
     if (scheme) {
       itemStartWorldMatrices.value = buildItemWorldMatricesMap(scheme, scheme.selectedItemIds.value)
     }
@@ -141,6 +250,9 @@ export function useThreeTransformGizmo(
     hasStartedTransform.value = false
     altDragCopyPending.value = false
     altDragCopyExecuted.value = false
+    isRotateMode.value = false
+    rotateAxis.value = null
+    hasInitializedRotation.value = false
     setOrbitControlsEnabled(true)
   }
 
@@ -184,11 +296,75 @@ export function useThreeTransformGizmo(
     return newWorldMatrices
   }
 
-  async function handleGizmoChange() {
+  async function handleGizmoChange(event?: any) {
     if (!isTransformDragging.value) return
 
     const pivot = pivotRef.value
     if (!pivot) return
+
+    // 旋转模式：用自定义角度计算替换 TransformControls 的默认计算
+    if (
+      isRotateMode.value &&
+      rotateAxis.value &&
+      activeCameraRef?.value &&
+      uiStore.editorContainerRect
+    ) {
+      // 获取当前鼠标位置（从 window.event 或者 TransformControls 事件）
+      const mouseEvent = event?.sourceEvent || (window as any).event
+      if (mouseEvent && mouseEvent.clientX !== undefined && mouseEvent.clientY !== undefined) {
+        const cameraComponent = activeCameraRef.value
+        const camera = cameraComponent?.value || cameraComponent?.instance || cameraComponent
+        const gizmoPos = new Vector3().setFromMatrixPosition(pivot.matrixWorld)
+
+        const currentAngle = calculateRotationAngle(
+          gizmoPos,
+          mouseEvent.clientX,
+          mouseEvent.clientY,
+          camera,
+          rotateAxis.value,
+          uiStore.editorContainerRect
+        )
+
+        if (currentAngle !== null) {
+          // 第一次计算角度：将其设为起始角度，不应用任何旋转
+          if (!hasInitializedRotation.value) {
+            startMouseAngle.value = currentAngle
+            hasInitializedRotation.value = true
+            return // 第一帧不应用变换，避免跳变
+          }
+
+          // 计算角度增量
+          let deltaAngle = currentAngle - startMouseAngle.value
+
+          // 处理角度跳变（从 -π 到 +π）
+          if (deltaAngle > Math.PI) {
+            deltaAngle -= 2 * Math.PI
+          } else if (deltaAngle < -Math.PI) {
+            deltaAngle += 2 * Math.PI
+          }
+
+          // 应用旋转吸附（如果启用）
+          if (settingsStore.settings.rotationSnap && settingsStore.settings.rotationSnap > 0) {
+            const snapRad = settingsStore.settings.rotationSnap // 已经是弧度值
+            deltaAngle = Math.round(deltaAngle / snapRad) * snapRad
+          }
+
+          // 直接设置 gizmoPivot 的旋转
+          const newRotation = startGizmoRotation.clone()
+          if (rotateAxis.value === 'X') {
+            newRotation.x += deltaAngle
+          } else if (rotateAxis.value === 'Y') {
+            newRotation.y += deltaAngle
+          } else {
+            newRotation.z += deltaAngle
+          }
+          pivot.rotation.copy(newRotation)
+          pivot.updateMatrixWorld(true)
+
+          lastAppliedAngle.value = deltaAngle
+        }
+      }
+    }
 
     // Alt+拖拽复制：检查是否需要执行延迟复制
     if (altDragCopyPending.value && !altDragCopyExecuted.value) {

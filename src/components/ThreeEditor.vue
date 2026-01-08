@@ -274,7 +274,9 @@ const {
   gizmoPivot,
   updateSelectedInstancesMatrix,
   isTransformDragging,
-  orbitControlsRef
+  orbitControlsRef,
+  activeCameraRef,
+  transformRef
 )
 
 // 自动管理 Gizmo 外观（一次性调用）
