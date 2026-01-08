@@ -9,6 +9,7 @@ import {
   Plane,
   Raycaster,
   Vector2,
+  Box3Helper,
   type Camera,
 } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
@@ -20,6 +21,15 @@ import { matrixTransform } from '@/lib/matrixTransform'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import type { AppItem } from '@/types/editor'
+import {
+  OBB,
+  OBBHelper,
+  getOBBFromMatrix,
+  getOBBFromMatrixAndModelBox,
+  mergeOBBs,
+  calculateOBBSnapVector,
+} from '@/lib/collision'
+import { getThreeModelManager } from '@/composables/useThreeModelManager'
 
 // 现代配色方案
 const AXIS_COLORS = {
@@ -45,6 +55,17 @@ export function useThreeTransformGizmo(
   const gizmoStartMatrix = markRaw(new Matrix4())
   // 记录拖拽开始时每个选中物品的世界矩阵
   const itemStartWorldMatrices = ref(new Map<string, Matrix4>())
+  // 记录拖拽开始时所有静止物品的世界矩阵及其元数据（用于碰撞检测）
+  const staticWorldMatrices = ref(
+    new Map<
+      string,
+      {
+        matrix: Matrix4
+        furnitureSize: Vector3
+        useModelScale: boolean
+      }
+    >()
+  )
   const hasStartedTransform = ref(false)
 
   // Alt+拖拽复制状态
@@ -59,6 +80,13 @@ export function useThreeTransformGizmo(
   const startGizmoRotation = markRaw(new Euler())
   const lastAppliedAngle = ref(0) // 已应用到 gizmoPivot 的累积角度
   const hasInitializedRotation = ref(false) // 是否已初始化旋转起始角度
+
+  // 碰撞吸附状态：记录起始位置用于计算移动方向
+  const gizmoStartPosition = markRaw(new Vector3())
+
+  // 🔧 调试：包围盒可视化（设为 true 启用调试）
+  const DEBUG_SHOW_BOUNDING_BOXES = false
+  const debugHelpers: (Box3Helper | OBBHelper)[] = []
 
   // 临时变量
   const scratchDeltaMatrix = markRaw(new Matrix4())
@@ -217,9 +245,10 @@ export function useThreeTransformGizmo(
       altDragCopyExecuted.value = false
     }
 
-    // 2. 记录 Gizmo 初始世界矩阵
+    // 2. 记录 Gizmo 初始世界矩阵和位置
     pivot.updateMatrixWorld(true) // 确保是最新的
     gizmoStartMatrix.copy(pivot.matrixWorld)
+    gizmoStartPosition.setFromMatrixPosition(pivot.matrixWorld)
 
     // 3. 检测是否为旋转模式，并记录初始状态
     if (editorStore.gizmoMode === 'rotate' && transformRef?.value) {
@@ -242,6 +271,32 @@ export function useThreeTransformGizmo(
     // 4. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
     if (scheme) {
       itemStartWorldMatrices.value = buildItemWorldMatricesMap(scheme, scheme.selectedItemIds.value)
+
+      // 5. 构建静止物品的世界矩阵及元数据（用于碰撞检测）
+      const staticMatrices = new Map<
+        string,
+        { matrix: Matrix4; furnitureSize: Vector3; useModelScale: boolean }
+      >()
+      const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+
+      for (const item of scheme.items.value) {
+        if (!scheme.selectedItemIds.value.has(item.internalId)) {
+          const currentMode = settingsStore.settings.threeDisplayMode
+          const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+          const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+          const useModelScale = !!(currentMode === 'model' && hasValidModel)
+          const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
+          const furnitureSize =
+            gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+
+          staticMatrices.set(item.internalId, {
+            matrix,
+            furnitureSize: new Vector3(...furnitureSize),
+            useModelScale,
+          })
+        }
+      }
+      staticWorldMatrices.value = staticMatrices
     }
 
     setOrbitControlsEnabled(false)
@@ -250,13 +305,34 @@ export function useThreeTransformGizmo(
   function endTransform() {
     isTransformDragging.value = false
     itemStartWorldMatrices.value = new Map() // clear
+    staticWorldMatrices.value = new Map() // clear
     hasStartedTransform.value = false
     altDragCopyPending.value = false
     altDragCopyExecuted.value = false
     isRotateMode.value = false
     rotateAxis.value = null
     hasInitializedRotation.value = false
+
+    // 🔧 调试：清理包围盒辅助对象
+    clearDebugHelpers()
+
     setOrbitControlsEnabled(true)
+  }
+
+  /**
+   * 清理调试用的包围盒辅助对象
+   */
+  function clearDebugHelpers() {
+    if (!DEBUG_SHOW_BOUNDING_BOXES) return
+
+    const pivot = pivotRef.value
+    if (!pivot || !pivot.parent) return
+
+    for (const helper of debugHelpers) {
+      pivot.parent.remove(helper)
+      helper.dispose()
+    }
+    debugHelpers.length = 0
   }
 
   function handleGizmoDragging(isDragging: boolean) {
@@ -272,7 +348,257 @@ export function useThreeTransformGizmo(
     startTransform()
   }
 
-  // 统一处理变换的核心逻辑：根据当前 Gizmo 状态计算所有物品的新状态
+  /**
+   * 应用吸附：统一的紧贴吸附逻辑
+   *
+   * 策略：
+   * 1. 计算每个静止物体与选区的"紧贴距离"
+   * 2. 如果距离在阈值范围内（-50 到 +50），触发吸附
+   * 3. 吸附到紧贴状态（距离=0）
+   * 4. 只在当前 Gizmo 拖动的轴上进行吸附
+   */
+  function applyCollisionSnap(newWorldMatrices: Map<string, Matrix4>): Map<string, Matrix4> {
+    // 1. 检查是否启用
+    if (!settingsStore.settings.enableSurfaceSnap) {
+      return newWorldMatrices
+    }
+
+    // 2. 仅对平移模式生效
+    if (editorStore.gizmoMode !== 'translate') {
+      return newWorldMatrices
+    }
+
+    // 3. 获取当前 TransformControls 的活动轴
+    const enabledAxes = { x: false, y: false, z: false }
+
+    if (transformRef?.value) {
+      const controls = transformRef.value.instance || transformRef.value.value
+      if (controls && controls.axis) {
+        const axis = controls.axis.toUpperCase()
+        // TransformControls 的 axis 可能是: 'X', 'Y', 'Z', 'XY', 'XZ', 'YZ', 'XYZ' 等
+        if (axis.includes('X')) enabledAxes.x = true
+        if (axis.includes('Y')) enabledAxes.y = true
+        if (axis.includes('Z')) enabledAxes.z = true
+      }
+    }
+
+    // 如果没有检测到任何活动轴，跳过吸附（避免误触发）
+    if (!enabledAxes.x && !enabledAxes.y && !enabledAxes.z) {
+      console.log('[Snap] 未检测到活动轴，跳过吸附')
+      return newWorldMatrices
+    }
+
+    // 4. 计算 Gizmo 局部轴在世界空间中的表示
+    // 当启用工作坐标系时，Gizmo 的局部 X/Y 轴会随工作坐标系旋转
+    // 吸附应该约束在这些旋转后的局部轴上，而不是世界轴
+    let gizmoWorldAxes = {
+      x: new Vector3(1, 0, 0), // 默认：世界轴
+      y: new Vector3(0, 1, 0),
+      z: new Vector3(0, 0, 1),
+    }
+
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+      // 绕 Z 轴旋转后的局部 X/Y 轴（注意符号：Gizmo pivot 用的是 -angleRad）
+      gizmoWorldAxes.x = new Vector3(Math.cos(-angleRad), Math.sin(-angleRad), 0).normalize()
+      gizmoWorldAxes.y = new Vector3(-Math.sin(-angleRad), Math.cos(-angleRad), 0).normalize()
+      // Z 轴不变
+    }
+
+    // 4. 计算选中物品的合并包围盒
+    const scheme = editorStore.activeScheme
+    if (!scheme) return newWorldMatrices
+
+    const currentMode = settingsStore.settings.threeDisplayMode
+    const modelManager = getThreeModelManager()
+    const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+
+    // 计算选中物体的 OBB
+    const selectedOBBs: OBB[] = []
+
+    for (const [id, matrix] of newWorldMatrices) {
+      const item = scheme.items.value.find((i) => i.internalId === id)
+      if (!item) continue
+
+      let obb: OBB
+      if (currentMode === 'model') {
+        const modelBox = modelManager.getModelBoundingBox(item.gameId)
+        if (modelBox) {
+          obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+        } else {
+          const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+          obb = getOBBFromMatrix(matrix, new Vector3(...size))
+        }
+      } else {
+        obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
+      }
+      selectedOBBs.push(obb)
+    }
+
+    if (selectedOBBs.length === 0) return newWorldMatrices
+
+    // 合并选区包围盒（单个物体时直接使用，避免退化为轴对齐）
+    // TypeScript: selectedOBBs 非空已验证，结果必定非 undefined
+    const selectionOBB = (selectedOBBs.length === 1 ? selectedOBBs[0] : mergeOBBs(selectedOBBs))!
+
+    // 🔧 调试：可视化选区包围盒
+    if (DEBUG_SHOW_BOUNDING_BOXES) {
+      clearDebugHelpers() // 清理旧的辅助对象
+
+      const pivot = pivotRef.value
+      if (pivot && pivot.parent) {
+        // 青色实线：OBB（定向包围盒）
+        const obbHelper = new OBBHelper(selectionOBB, new Color(0x00ffff))
+        pivot.parent.add(obbHelper)
+        debugHelpers.push(obbHelper)
+
+        // 绿色半透明：AABB（从 OBB 派生，用于对比可视化）
+        const aabbHelper = new Box3Helper(selectionOBB.getAABB(), new Color(0x00ff00))
+        pivot.parent.add(aabbHelper)
+        debugHelpers.push(aabbHelper)
+      }
+    }
+
+    // 5. 遍历静止物体，检测吸附
+    // 按轴独立累积修正：每个轴选择最优修正，最后合并
+    const correctionByAxis = {
+      x: { vector: null as Vector3 | null, distance: Infinity },
+      y: { vector: null as Vector3 | null, distance: Infinity },
+      z: { vector: null as Vector3 | null, distance: Infinity },
+    }
+
+    const snapThreshold = settingsStore.settings.surfaceSnapThreshold
+
+    // 计算选区中心和尺寸，用于距离剔除
+    // 直接使用 OBB 的 center 和 halfExtents，无需额外计算
+    const selectionCenter = selectionOBB.center.clone()
+    const selectionSize = selectionOBB.halfExtents.clone().multiplyScalar(2)
+
+    const maxSelectionDim = Math.max(selectionSize.x, selectionSize.y, selectionSize.z)
+    const selectionRadius = maxSelectionDim / 2
+
+    let checkedCount = 0
+    let culledCount = 0
+
+    for (const [id, data] of staticWorldMatrices.value) {
+      const item = scheme.items.value.find((i) => i.internalId === id)
+      if (!item) continue
+
+      // 计算静态物体的 OBB
+      let candidateOBB: OBB
+
+      if (currentMode === 'model') {
+        const modelBox = modelManager.getModelBoundingBox(item.gameId)
+        if (modelBox) {
+          candidateOBB = getOBBFromMatrixAndModelBox(data.matrix, modelBox)
+        } else {
+          candidateOBB = getOBBFromMatrix(data.matrix, data.furnitureSize)
+        }
+      } else {
+        candidateOBB = getOBBFromMatrix(data.matrix, new Vector3(1, 1, 1))
+      }
+
+      // 距离剔除：直接使用 OBB 的 center 和 halfExtents
+      const candidateCenter = candidateOBB.center.clone()
+      const candidateSize = candidateOBB.halfExtents.clone().multiplyScalar(2)
+      const maxCandidateDim = Math.max(candidateSize.x, candidateSize.y, candidateSize.z)
+      const candidateRadius = maxCandidateDim / 2
+
+      // 动态计算剔除半径：选区半径 + 候选物体半径 + 吸附距离
+      const dynamicCullRadius = selectionRadius + candidateRadius + snapThreshold
+      const distanceToCandidate = selectionCenter.distanceTo(candidateCenter)
+
+      if (distanceToCandidate > dynamicCullRadius) {
+        culledCount++
+        continue
+      }
+
+      checkedCount++
+
+      // 使用 OBB 进行精确的吸附检测
+      const snapVector = calculateOBBSnapVector(
+        selectionOBB,
+        candidateOBB,
+        snapThreshold,
+        enabledAxes
+      )
+
+      if (snapVector) {
+        // 按 Gizmo 局部轴投影分解吸附向量，每个轴独立选择最优吸附
+        // 关键修复：使用 gizmoWorldAxes 而不是固定的世界轴，解决工作坐标系下的吸附方向错误
+
+        if (enabledAxes.x) {
+          const projX = snapVector.dot(gizmoWorldAxes.x)
+          if (Math.abs(projX) > 0.1) {
+            const distX = Math.abs(projX)
+            if (distX < correctionByAxis.x.distance) {
+              correctionByAxis.x.vector = gizmoWorldAxes.x.clone().multiplyScalar(projX)
+              correctionByAxis.x.distance = distX
+            }
+          }
+        }
+
+        if (enabledAxes.y) {
+          const projY = snapVector.dot(gizmoWorldAxes.y)
+          if (Math.abs(projY) > 0.1) {
+            const distY = Math.abs(projY)
+            if (distY < correctionByAxis.y.distance) {
+              correctionByAxis.y.vector = gizmoWorldAxes.y.clone().multiplyScalar(projY)
+              correctionByAxis.y.distance = distY
+            }
+          }
+        }
+
+        if (enabledAxes.z) {
+          const projZ = snapVector.dot(gizmoWorldAxes.z)
+          if (Math.abs(projZ) > 0.1) {
+            const distZ = Math.abs(projZ)
+            if (distZ < correctionByAxis.z.distance) {
+              correctionByAxis.z.vector = gizmoWorldAxes.z.clone().multiplyScalar(projZ)
+              correctionByAxis.z.distance = distZ
+            }
+          }
+        }
+      }
+    }
+
+    // 6. 合并所有轴的吸附向量
+    const finalCorrection = new Vector3()
+    const appliedAxes: string[] = []
+
+    if (correctionByAxis.x.vector) {
+      finalCorrection.add(correctionByAxis.x.vector)
+      appliedAxes.push(`X(${correctionByAxis.x.distance.toFixed(2)})`)
+    }
+    if (correctionByAxis.y.vector) {
+      finalCorrection.add(correctionByAxis.y.vector)
+      appliedAxes.push(`Y(${correctionByAxis.y.distance.toFixed(2)})`)
+    }
+    if (correctionByAxis.z.vector) {
+      finalCorrection.add(correctionByAxis.z.vector)
+      appliedAxes.push(`Z(${correctionByAxis.z.distance.toFixed(2)})`)
+    }
+
+    // 7. 应用吸附修正
+    if (finalCorrection.length() > 0.1) {
+      const correctedMatrices = new Map<string, Matrix4>()
+
+      for (const [id, matrix] of newWorldMatrices) {
+        const corrected = matrix.clone()
+        const pos = new Vector3().setFromMatrixPosition(corrected)
+        pos.add(finalCorrection)
+        corrected.setPosition(pos)
+        correctedMatrices.set(id, corrected)
+      }
+
+      return correctedMatrices
+    }
+    return newWorldMatrices
+  }
+
+  /**
+   * 统一处理变换的核心逻辑：根据当前 Gizmo 状态计算所有物品的新状态
+   */
   function calculateCurrentTransforms() {
     const pivot = pivotRef.value
     if (!pivot) return null
@@ -423,8 +749,11 @@ export function useThreeTransformGizmo(
       }
     }
 
-    const newWorldMatrices = calculateCurrentTransforms()
+    let newWorldMatrices = calculateCurrentTransforms()
     if (!newWorldMatrices) return
+
+    // 应用碰撞吸附
+    newWorldMatrices = applyCollisionSnap(newWorldMatrices)
 
     // 第一次真正发生变换时保存历史
     if (!hasStartedTransform.value) {
@@ -443,9 +772,12 @@ export function useThreeTransformGizmo(
       return
     }
 
-    const newWorldMatrices = calculateCurrentTransforms()
+    let newWorldMatrices = calculateCurrentTransforms()
 
     if (newWorldMatrices) {
+      // ✅ 关键修复：松开鼠标时也要应用碰撞吸附，确保与拖拽过程中的处理一致
+      newWorldMatrices = applyCollisionSnap(newWorldMatrices)
+
       // 最后一次更新：进行 BVH 重建（拖拽结束，恢复拾取精度）
       updateSelectedInstancesMatrix(newWorldMatrices, false)
 

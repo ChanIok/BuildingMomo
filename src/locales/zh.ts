@@ -408,6 +408,8 @@ export const zhLocale = {
       translationStepHint: '拖拽时吸附到网格点（此值的倍数坐标）',
       rotationStep: '旋转步进',
       rotationStepHint: '每次旋转固定角度增量（相对步进）',
+      surfaceSnap: '表面吸附',
+      surfaceSnapHint: '移动时自动检测碰撞，防止物品重叠',
       disabled: '关闭',
     },
   },

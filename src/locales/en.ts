@@ -410,6 +410,8 @@ export const enLocale = {
       translationStepHint: 'Snap to grid points (multiples of this value)',
       rotationStep: 'Rotation Step',
       rotationStepHint: 'Rotate by fixed angle increments (relative step)',
+      surfaceSnap: 'Surface Snap',
+      surfaceSnapHint: 'Auto-detect collision when moving to prevent overlapping',
       disabled: 'Off',
     },
   },

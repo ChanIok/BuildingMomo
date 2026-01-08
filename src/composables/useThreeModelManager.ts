@@ -11,6 +11,7 @@ import {
   Matrix4,
   Quaternion,
   type Object3D,
+  Box3,
 } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -143,14 +144,16 @@ async function loadGLBModel(
  * @param config 家具模型配置
  * @param gltfLoader GLTF加载器实例
  * @param MODEL_BASE_URL 模型基础路径
- * @returns {geometry, material} 或 undefined
+ * @returns {geometry, material, boundingBox} 或 undefined
  */
 async function processGeometryForItem(
   itemId: number,
   config: any,
   gltfLoader: GLTFLoader,
   MODEL_BASE_URL: string
-): Promise<{ geometry: BufferGeometry; material: Material | Material[] } | undefined> {
+): Promise<
+  { geometry: BufferGeometry; material: Material | Material[]; boundingBox: Box3 } | undefined
+> {
   // 加载所有 mesh 文件
   const allGeometries: BufferGeometry[] = []
   const materials: Material[] = []
@@ -282,7 +285,11 @@ async function processGeometryForItem(
 
   // 注意：保留模型在 Blender 中设置的原点位置，不进行额外的对齐操作
 
-  return { geometry, material }
+  // 5. 计算并缓存包围盒（用于碰撞检测）
+  geometry.computeBoundingBox()
+  const boundingBox = geometry.boundingBox!.clone() // 克隆避免共享引用
+
+  return { geometry, material, boundingBox }
 }
 
 /**
@@ -316,7 +323,7 @@ export function useThreeModelManager() {
   // itemId -> 几何体和材质的缓存（用于创建 InstancedMesh）
   const geometryCache = new Map<
     number,
-    { geometry: BufferGeometry; material: Material | Material[] }
+    { geometry: BufferGeometry; material: Material | Material[]; boundingBox: Box3 }
   >()
 
   /**
@@ -437,6 +444,15 @@ export function useThreeModelManager() {
   }
 
   /**
+   * 获取指定家具的模型包围盒（模型空间）
+   * @param itemId 家具 ItemID
+   * @returns Box3 | null
+   */
+  function getModelBoundingBox(itemId: number): Box3 | null {
+    return geometryCache.get(itemId)?.boundingBox || null
+  }
+
+  /**
    * 批量预加载家具模型（完全并发）
    * @param itemIds 家具 ItemID 列表
    * @param onProgress 进度回调：(current, total, failed) => void
@@ -551,6 +567,7 @@ export function useThreeModelManager() {
     createInstancedMesh,
     getMesh,
     getAllMeshes,
+    getModelBoundingBox,
     getUnloadedModels,
     preloadModels,
     disposeMesh,

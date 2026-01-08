@@ -349,6 +349,17 @@ const fmt = (n: number, decimals: number = 0) => {
               {{ t('sidebar.snap.rotationStepHint') }}
             </p>
           </div>
+
+          <!-- 表面吸附开关 -->
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label class="text-xs">{{ t('sidebar.snap.surfaceSnap') }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.snap.surfaceSnapHint') }}
+              </p>
+            </div>
+            <Switch v-model="settingsStore.settings.enableSurfaceSnap" />
+          </div>
         </div>
 
         <!-- 分隔线 -->

@@ -35,6 +35,8 @@ export interface AppSettings {
   // 变换步进设置
   translationSnap: number // 平移步进值（0 表示禁用）
   rotationSnap: number // 旋转步进值，单位：弧度（0 表示禁用）
+  enableSurfaceSnap: boolean // 启用表面碰撞吸附
+  surfaceSnapThreshold: number // 表面吸附距离（单位）
 
   // 语言设置
   language: Locale
@@ -60,6 +62,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   cameraLockHorizontalMovement: false,
   translationSnap: 0,
   rotationSnap: 0,
+  enableSurfaceSnap: false,
+  surfaceSnapThreshold: 50,
   language: 'zh',
 }
 
