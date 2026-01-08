@@ -30,7 +30,10 @@ const AXIS_COLORS = {
 
 export function useThreeTransformGizmo(
   pivotRef: Ref<Object3D | null>,
-  updateSelectedInstancesMatrix: (idToWorldMatrixMap: Map<string, Matrix4>) => void,
+  updateSelectedInstancesMatrix: (
+    idToWorldMatrixMap: Map<string, Matrix4>,
+    skipBVHRefit?: boolean
+  ) => void,
   isTransformDragging: Ref<boolean>, // 必需：用于多个 composable 之间的状态共享
   orbitControlsRef?: Ref<any | null>,
   activeCameraRef?: Ref<any | null>,
@@ -429,8 +432,8 @@ export function useThreeTransformGizmo(
       hasStartedTransform.value = true
     }
 
-    // 更新视觉层
-    updateSelectedInstancesMatrix(newWorldMatrices)
+    // 更新视觉层（拖拽过程中跳过 BVH 重建以提升性能）
+    updateSelectedInstancesMatrix(newWorldMatrices, true)
   }
 
   function handleGizmoMouseUp() {
@@ -443,6 +446,9 @@ export function useThreeTransformGizmo(
     const newWorldMatrices = calculateCurrentTransforms()
 
     if (newWorldMatrices) {
+      // 最后一次更新：进行 BVH 重建（拖拽结束，恢复拾取精度）
+      updateSelectedInstancesMatrix(newWorldMatrices, false)
+
       const updates: any[] = []
 
       for (const [id, worldMatrix] of newWorldMatrices.entries()) {

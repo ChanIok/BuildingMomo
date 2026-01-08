@@ -22,6 +22,8 @@ export function useInstanceMatrix() {
 
   /**
    * 局部更新选中物品的世界矩阵（用于拖拽时的视觉更新）
+   *
+   * @param skipBVHRefit - 是否跳过 BVH 重建（拖拽过程中应跳过以提升性能）
    */
   function updateSelectedInstancesMatrix(
     idToWorldMatrixMap: Map<string, Matrix4>,
@@ -35,8 +37,13 @@ export function useInstanceMatrix() {
     // Model 模式额外参数
     modelMeshMap?: Map<number, InstancedMesh>,
     internalIdToMeshInfo?: Map<string, { itemId: number; localIndex: number }>,
-    fallbackMesh?: InstancedMesh | null
+    fallbackMesh?: InstancedMesh | null,
+    // 性能优化参数
+    skipBVHRefit: boolean = false
   ) {
+    // 追踪被修改的 mesh（用于精准 BVH refit）
+    const modifiedMeshes = new Set<InstancedMesh>()
+
     for (const [id, worldMatrix] of idToWorldMatrixMap.entries()) {
       let mesh: InstancedMesh | null = null
       let localIndex: number | undefined = undefined
@@ -141,25 +148,15 @@ export function useInstanceMatrix() {
       }
 
       mesh.instanceMatrix.needsUpdate = true
+      modifiedMeshes.add(mesh) // 记录被修改的 mesh
     }
 
-    // 更新完成后，重新适配 BVH（比完全重建快）
-    // 根据模式选择要更新的 mesh
-    const meshesToRefit: InstancedMesh[] = []
-    if (mode === 'box' && meshTarget) meshesToRefit.push(meshTarget)
-    else if (mode === 'icon' && iconMeshTarget) meshesToRefit.push(iconMeshTarget)
-    else if (mode === 'simple-box' && simpleBoxMeshTarget) meshesToRefit.push(simpleBoxMeshTarget)
-    else if (mode === 'model') {
-      // Model 模式：需要重新适配所有被修改的 mesh
-      if (modelMeshMap) {
-        for (const mesh of modelMeshMap.values()) {
-          meshesToRefit.push(mesh)
-        }
-      }
-      if (fallbackMesh) meshesToRefit.push(fallbackMesh)
-    }
+    // 拖拽过程中跳过 BVH 重建以提升性能
+    // BVH 用于射线检测（拾取），拖拽时不需要实时的拾取精度
+    if (skipBVHRefit) return
 
-    for (const mesh of meshesToRefit) {
+    // 只对被修改的 mesh 进行 BVH refit（比重建所有 mesh 快）
+    for (const mesh of modifiedMeshes) {
       if (mesh.geometry?.boundsTree) {
         mesh.geometry.boundsTree.refit()
       }

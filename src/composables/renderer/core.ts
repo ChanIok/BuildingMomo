@@ -159,8 +159,13 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   /**
    * 更新选中实例的矩阵（Gizmo 拖拽时调用）
+   *
+   * @param skipBVHRefit - 是否跳过 BVH 重建（拖拽过程中应传 true 以提升性能）
    */
-  function updateSelectedInstancesMatrix(idToWorldMatrixMap: Map<string, Matrix4>) {
+  function updateSelectedInstancesMatrix(
+    idToWorldMatrixMap: Map<string, Matrix4>,
+    skipBVHRefit: boolean = false
+  ) {
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
@@ -181,7 +186,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       // Model 模式额外参数
       modelMode.meshMap.value,
       modelMode.internalIdToMeshInfo.value,
-      modelMode.fallbackMesh.value
+      modelMode.fallbackMesh.value,
+      // 性能优化参数
+      skipBVHRefit
     )
 
     // Model 模式：同步更新 mask
