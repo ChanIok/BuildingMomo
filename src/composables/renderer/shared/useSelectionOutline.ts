@@ -9,16 +9,14 @@ import {
   Color,
   LinearFilter,
   InstancedMesh,
-  MeshBasicMaterial,
   DoubleSide,
   DynamicDrawUsage,
   Sphere,
   Vector3,
-  Matrix4,
   type WebGLRenderer,
   type Camera,
 } from 'three'
-import { scratchMatrix, scratchColor } from './scratchObjects'
+import { scratchColor } from './scratchObjects'
 
 // 颜色配置
 const SELECTED_COLOR = new Color(0x60a5fa) // 蓝色
@@ -44,9 +42,29 @@ export function useSelectionOutline() {
   // itemId -> mask InstancedMesh
   const maskMeshMap = ref(new Map<number, InstancedMesh>())
 
-  // 共享材质：depthTest=false 实现强穿透
+  // 共享材质：使用自定义 shader 支持通过 instanceColor 控制实例可见性
+  // depthTest=false 实现强穿透，fragment shader 通过 discard 排除未选中的实例
   const maskMaterial = markRaw(
-    new MeshBasicMaterial({
+    new ShaderMaterial({
+      vertexShader: `
+        varying vec3 vInstanceColor;
+        void main() {
+          // Three.js 自动注入 instanceColor attribute
+          vInstanceColor = instanceColor;
+          gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vInstanceColor;
+        void main() {
+          // 颜色为 (0,0,0) 表示未选中，discard 不渲染
+          if (vInstanceColor.r < 0.001) {
+            discard;
+          }
+          // 输出颜色用于后处理（r 通道编码选中/hover 状态）
+          gl_FragColor = vec4(vInstanceColor, 1.0);
+        }
+      `,
       side: DoubleSide,
       depthTest: false,
       depthWrite: false,
@@ -56,6 +74,9 @@ export function useSelectionOutline() {
   // Outline 全屏 quad
   const overlayScene = markRaw(new Scene())
   const overlayCamera = markRaw(new OrthographicCamera(-1, 1, 1, -1, 0, 1))
+
+  // 缓存：是否有需要描边的内容（避免每帧遍历 maskMeshMap）
+  const hasMaskContent = ref(false)
 
   const outlineShader = markRaw(
     new ShaderMaterial({
@@ -182,94 +203,88 @@ export function useSelectionOutline() {
 
   /**
    * 更新 mask 状态
-   *
-   * @param matrixOverrides - 可选的矩阵覆盖映射（internalId -> 局部矩阵）
-   *                          用于拖拽时直接使用计算好的矩阵，避免读取未同步的缓冲区
    */
   function updateMasks(
     selectedIds: Set<string>,
     hoveredId: string | null,
     meshMap: Map<number, InstancedMesh>,
     internalIdToMeshInfo: Map<string, { itemId: number; localIndex: number }>,
-    fallbackMesh: InstancedMesh | null,
-    matrixOverrides?: Map<string, Matrix4> // 🔧 新增：拖拽时的矩阵覆盖
+    fallbackMesh: InstancedMesh | null
   ) {
-    // 重置所有 mask mesh 的 count
-    for (const maskMesh of maskMeshMap.value.values()) {
-      maskMesh.count = 0
-    }
+    // ✅ 关键优化：让 mask mesh 共享主 mesh 的 instanceMatrix 缓冲区
+    // 这样无需拷贝任何矩阵数据，完全消除 getMatrixAt 的 CPU-GPU 同步开销
 
-    const maskIndexMap = new Map<number, number>()
+    let hasContent = false
 
-    function addMaskInstance(internalId: string, isSelected: boolean) {
-      const meshInfo = internalIdToMeshInfo.get(internalId)
-      if (!meshInfo) {
-        return
-      }
-
-      const { itemId, localIndex } = meshInfo
-
+    for (const [itemId, maskMesh] of maskMeshMap.value.entries()) {
       let originalMesh: InstancedMesh | null = null
       if (itemId === -1 && fallbackMesh) {
         originalMesh = fallbackMesh
       } else {
         originalMesh = meshMap.get(itemId) || null
       }
+
       if (!originalMesh) {
-        if (itemId !== -1) {
-          console.warn(`[SelectionOutline] No originalMesh found for itemId=${itemId}`)
-        }
-        return
+        // 没有对应的 originalMesh（模型已被删除），隐藏这个 maskMesh
+        maskMesh.count = 0
+        continue
       }
 
-      const maskMesh = maskMeshMap.value.get(itemId)
-      if (!maskMesh) {
-        console.warn(`[SelectionOutline] No maskMesh found for itemId=${itemId}`)
-        return
+      // 直接共享 instanceMatrix 缓冲区！
+      maskMesh.instanceMatrix = originalMesh.instanceMatrix
+
+      // ✅ 关键修复：maskMesh 的 count 应该等于主 mesh 的 count
+      // 然后通过颜色的 alpha=0 来隐藏未选中的实例
+      maskMesh.count = originalMesh.count
+
+      // 先将所有实例的颜色设为透明（alpha=0）
+      for (let i = 0; i < originalMesh.count; i++) {
+        scratchColor.setRGB(0, 0, 0) // alpha=0 表示不显示
+        maskMesh.setColorAt(i, scratchColor)
       }
-
-      // 🔧 优先使用覆盖矩阵（拖拽时），否则从原始 mesh 读取
-      if (matrixOverrides && matrixOverrides.has(internalId)) {
-        scratchMatrix.copy(matrixOverrides.get(internalId)!)
-      } else {
-        // 拷贝原始矩阵（不放大）
-        originalMesh.getMatrixAt(localIndex, scratchMatrix)
-      }
-
-      const maskIndex = maskIndexMap.get(itemId) || 0
-
-      maskMesh.setMatrixAt(maskIndex, scratchMatrix)
-
-      // 用 r 通道编码状态：selected=1, hover=0.5
-      const stateValue = isSelected ? 1.0 : 0.5
-      scratchColor.setRGB(stateValue, stateValue, stateValue)
-      maskMesh.setColorAt(maskIndex, scratchColor)
-
-      maskIndexMap.set(itemId, maskIndex + 1)
     }
 
-    // 先添加选中实例
+    // 为选中的实例设置颜色
     for (const id of selectedIds) {
-      addMaskInstance(id, true)
+      const meshInfo = internalIdToMeshInfo.get(id)
+      if (!meshInfo) continue
+
+      const { itemId, localIndex } = meshInfo
+      const maskMesh = maskMeshMap.value.get(itemId)
+      if (!maskMesh) continue
+
+      // 设置选中状态（r=1.0 表示 selected）
+      scratchColor.setRGB(1.0, 1.0, 1.0)
+      maskMesh.setColorAt(localIndex, scratchColor)
+
+      hasContent = true
     }
 
     // hover 且不在选中列表中
     if (hoveredId && !selectedIds.has(hoveredId)) {
-      addMaskInstance(hoveredId, false)
-    }
-
-    // 更新 count 和标记
-    for (const [itemId, maskMesh] of maskMeshMap.value.entries()) {
-      const count = maskIndexMap.get(itemId) || 0
-      maskMesh.count = count
-
-      if (count > 0) {
-        maskMesh.instanceMatrix.needsUpdate = true
-        if (maskMesh.instanceColor) {
-          maskMesh.instanceColor.needsUpdate = true
+      const meshInfo = internalIdToMeshInfo.get(hoveredId)
+      if (meshInfo) {
+        const { itemId, localIndex } = meshInfo
+        const maskMesh = maskMeshMap.value.get(itemId)
+        if (maskMesh) {
+          // 设置 hover 状态（r=0.5 表示 hover）
+          scratchColor.setRGB(0.5, 0.5, 0.5)
+          maskMesh.setColorAt(localIndex, scratchColor)
+          hasContent = true
         }
       }
     }
+
+    // 更新所有 maskMesh 的 needsUpdate
+    for (const maskMesh of maskMeshMap.value.values()) {
+      if (maskMesh.instanceColor) {
+        maskMesh.instanceColor.needsUpdate = true
+      }
+      maskMesh.instanceMatrix.needsUpdate = true
+    }
+
+    // 更新缓存标记
+    hasMaskContent.value = hasContent
   }
 
   /**
@@ -281,16 +296,7 @@ export function useSelectionOutline() {
    * @param height - canvas 高度
    */
   function renderMaskPass(renderer: WebGLRenderer, camera: Camera, width: number, height: number) {
-    // 检查是否有需要描边的实例
-    let hasContent = false
-    for (const maskMesh of maskMeshMap.value.values()) {
-      if (maskMesh.count > 0) {
-        hasContent = true
-        break
-      }
-    }
-
-    if (!hasContent) {
+    if (!hasMaskContent.value) {
       return false
     }
 
