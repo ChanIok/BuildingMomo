@@ -24,7 +24,13 @@ import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useThreeBackground } from '@/composables/useThreeBackground'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
-import { useMagicKeys, useElementSize, useResizeObserver, watchOnce } from '@vueuse/core'
+import {
+  useMagicKeys,
+  useElementSize,
+  useResizeObserver,
+  watchOnce,
+  useThrottleFn,
+} from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
 
 // 设置 Three.js 全局 Z 轴向上
@@ -139,7 +145,7 @@ const cameraOptions = computed(() => ({
   baseSpeed: settingsStore.settings.cameraBaseSpeed,
   shiftSpeedMultiplier: settingsStore.settings.cameraShiftMultiplier,
   mouseSensitivity: settingsStore.settings.cameraMouseSensitivity,
-  pitchLimits: { min: -90, max: 90 },
+  pitchLimits: { min: -89, max: 89 },
   minHeight: -10000,
 }))
 
@@ -222,13 +228,70 @@ watch(
   }
 )
 
-// 根据 FOV 动态计算 near 距离（解决大 FOV 下的近平面裁切问题）
-const cameraNear = computed(() => {
-  const fov = settingsStore.settings.cameraFov
-  if (fov <= 50) return 100
-  if (fov >= 70) return 50
-  // 50 < fov < 70: 线性插值 100 → 50
-  return 100 - ((fov - 50) / 20) * 50
+// ============================================================
+// 动态 near 平面：根据相机周边物体自动调整
+// ============================================================
+
+// 检测相机周围是否有物体（节流 200ms）
+const hasNearbyObjects = ref(false)
+
+// 核心检测逻辑（可直接调用或通过节流调用）
+function performNearbyCheck() {
+  const items = editorStore.activeScheme?.items.value
+  if (!items) {
+    hasNearbyObjects.value = false
+    return
+  }
+
+  const camPos = cameraPosition.value
+  const THRESHOLD_SQ = 1000 * 1000 // 1000 单位的平方
+
+  // 提前终止优化：找到第一个近处物体立即返回
+  for (const item of items) {
+    const dx = item.x - camPos[0]
+    const dy = item.y - -camPos[1] // Y 轴取反（Three.js 坐标系）
+    const dz = item.z - camPos[2]
+
+    if (dx * dx + dy * dy + dz * dz < THRESHOLD_SQ) {
+      hasNearbyObjects.value = true
+      return
+    }
+  }
+
+  hasNearbyObjects.value = false
+}
+
+// 节流版本（用于频繁触发的场景）
+const checkNearbyObjects = useThrottleFn(performNearbyCheck, 200)
+
+// 监听相机位置变化（节流）
+watch(cameraPosition, checkNearbyObjects, { deep: true })
+
+// 监听场景变化（物品增删，节流）
+watch(() => editorStore.sceneVersion, checkNearbyObjects)
+
+// 监听方案切换（立即执行，不节流）
+watch(
+  () => editorStore.activeSchemeId,
+  () => {
+    performNearbyCheck() // 直接调用，立即执行
+  }
+)
+
+// 动态 near 平面：有近处物体时用 10，无近处物体时用 100
+const dynamicNear = computed(() => {
+  return hasNearbyObjects.value ? 10 : 100
+})
+
+// 调试：监听 near 值变化
+watch(dynamicNear, (newNear, oldNear) => {
+  if (newNear !== oldNear) {
+    console.log(`[Camera] Near plane changed: ${oldNear} → ${newNear}`, {
+      hasNearbyObjects: hasNearbyObjects.value,
+      cameraPos: cameraPosition.value,
+      timestamp: new Date().toLocaleTimeString(),
+    })
+  }
 })
 
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 pickingConfig
@@ -589,7 +652,7 @@ onDeactivated(() => {
           :up="cameraUp"
           :zoom="cameraZoom"
           :fov="settingsStore.settings.cameraFov"
-          :near="cameraNear"
+          :near="dynamicNear"
           :far="100000"
         />
 
@@ -605,7 +668,7 @@ onDeactivated(() => {
           :right="orthoFrustum.right"
           :top="orthoFrustum.top"
           :bottom="orthoFrustum.bottom"
-          :near="100"
+          :near="dynamicNear"
           :far="100000"
         />
 

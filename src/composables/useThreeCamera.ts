@@ -416,9 +416,30 @@ export function useThreeCamera(
   function switchToOrbitMode(): Vec3 | null {
     if (controlMode.value === 'orbit') return null
 
-    // 计算前方焦点作为新 target
-    const forward = getForwardVector(state.value.yaw, state.value.pitch)
-    const newTarget = addScaled(state.value.position, forward, 2000)
+    let newTarget: Vec3
+
+    // 1. 检查是否有选中的物品
+    const scheme = editorStore.activeScheme
+    const selectedIds = scheme?.selectedItemIds.value
+
+    if (selectedIds && selectedIds.size > 0) {
+      // 有选中物品：使用选中物品的包围盒中心
+      const selectedItems = scheme!.items.value.filter((item) => selectedIds.has(item.internalId))
+      const bounds = calculateBounds(selectedItems, getItemSizeForBounds)
+
+      if (bounds) {
+        // 注意：Y 轴需要取反以适配 Three.js 坐标系
+        newTarget = [bounds.centerX, -bounds.centerY, bounds.centerZ]
+      } else {
+        // 包围盒计算失败，fallback 到原逻辑
+        const forward = getForwardVector(state.value.yaw, state.value.pitch)
+        newTarget = addScaled(state.value.position, forward, 2000)
+      }
+    } else {
+      // 无选中物品：使用视线前方固定距离（原逻辑）
+      const forward = getForwardVector(state.value.yaw, state.value.pitch)
+      newTarget = addScaled(state.value.position, forward, 2000)
+    }
 
     // 更新 state.target，watch 会自动同步到 OrbitControls
     state.value.target = [...newTarget]

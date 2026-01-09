@@ -108,7 +108,7 @@ export function useThreeBackground(
       backgroundPosition.value = [
         xOffset + width / 2,
         -(yOffset + height / 2), // 对应 Game Y (Y轴取反)
-        -1, // 微下移避免与网格 Z-fighting (Z-up)
+        -2, // 微下移避免与网格 Z-fighting (Z-up)
       ]
     })
   })
