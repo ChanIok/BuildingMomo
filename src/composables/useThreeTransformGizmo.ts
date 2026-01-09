@@ -28,6 +28,7 @@ import {
   getOBBFromMatrixAndModelBox,
   mergeOBBs,
   calculateOBBSnapVector,
+  transformOBBByMatrix,
 } from '@/lib/collision'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
 
@@ -55,17 +56,25 @@ export function useThreeTransformGizmo(
   const gizmoStartMatrix = markRaw(new Matrix4())
   // 记录拖拽开始时每个选中物品的世界矩阵
   const itemStartWorldMatrices = ref(new Map<string, Matrix4>())
-  // 记录拖拽开始时所有静止物品的世界矩阵及其元数据（用于碰撞检测）
-  const staticWorldMatrices = ref(
-    new Map<
-      string,
-      {
-        matrix: Matrix4
-        furnitureSize: Vector3
-        useModelScale: boolean
-      }
-    >()
-  )
+  // 记录拖拽开始时所有静止物品的预计算碰撞数据
+  interface StaticCollisionData {
+    matrix: Matrix4
+    obb: OBB
+    // 🚀 性能优化：预计算的角点（避免在拖拽循环中重复调用 getCorners）
+    corners: Vector3[]
+    // 用于快速距离剔除的包围球数据
+    center: Vector3
+    radius: number
+  }
+  const staticWorldMatrices = ref(new Map<string, StaticCollisionData>())
+  // 🚀 记录选中物品的局部 OBB 信息（形状数据，不含位置/旋转）
+  // 这些信息在拖拽过程中不变，只需计算一次，然后用增量矩阵更新
+  interface SelectedItemOBBInfo {
+    id: string
+    localSize: Vector3 // 局部尺寸（不含缩放）
+    localCenter: Vector3 // 局部中心偏移
+  }
+  const selectedItemsOBBInfo = ref<SelectedItemOBBInfo[]>([])
   const hasStartedTransform = ref(false)
 
   // Alt+拖拽复制状态
@@ -272,16 +281,53 @@ export function useThreeTransformGizmo(
     if (scheme) {
       itemStartWorldMatrices.value = buildItemWorldMatricesMap(scheme, scheme.selectedItemIds.value)
 
-      // 5. 构建静止物品的世界矩阵及元数据（用于碰撞检测）
-      const staticMatrices = new Map<
-        string,
-        { matrix: Matrix4; furnitureSize: Vector3; useModelScale: boolean }
-      >()
+      // 🚀 性能优化：预计算选中和静止物品的碰撞数据
+      const currentMode = settingsStore.settings.threeDisplayMode
+      const modelManager = getThreeModelManager()
       const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+
+      // 🚀 预计算选中物品的局部 OBB 信息（形状数据，不含位置/旋转）
+      // 这是第二轮性能优化的关键：避免每帧重新查询 item 数据和模型包围盒
+      const obbInfoList: SelectedItemOBBInfo[] = []
+
+      for (const id of scheme.selectedItemIds.value) {
+        const item = scheme.items.value.find((i) => i.internalId === id)
+        if (!item) continue
+
+        let localSize: Vector3
+        let localCenter: Vector3
+
+        if (currentMode === 'model') {
+          const modelBox = modelManager.getModelBoundingBox(item.gameId)
+          if (modelBox) {
+            // 模型有实际包围盒
+            localSize = new Vector3()
+            modelBox.getSize(localSize)
+            localCenter = new Vector3()
+            modelBox.getCenter(localCenter)
+          } else {
+            // 模型未加载，使用默认尺寸
+            const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+            localSize = new Vector3(...size)
+            localCenter = new Vector3()
+          }
+        } else {
+          // Simple/Icon 模式：使用单位立方体
+          localSize = new Vector3(1, 1, 1)
+          localCenter = new Vector3()
+        }
+
+        obbInfoList.push({ id, localSize, localCenter })
+      }
+
+      selectedItemsOBBInfo.value = obbInfoList
+
+      // 5. 构建静止物品的预计算碰撞数据
+      // 🚀 核心优化：一次性计算所有昂贵的 OBB、包围球和角点，避免在拖拽循环中重复计算
+      const staticMatrices = new Map<string, StaticCollisionData>()
 
       for (const item of scheme.items.value) {
         if (!scheme.selectedItemIds.value.has(item.internalId)) {
-          const currentMode = settingsStore.settings.threeDisplayMode
           const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
           const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
           const useModelScale = !!(currentMode === 'model' && hasValidModel)
@@ -289,10 +335,33 @@ export function useThreeTransformGizmo(
           const furnitureSize =
             gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
 
+          // 预计算 OBB
+          let obb: OBB
+          if (currentMode === 'model') {
+            const modelBox = modelManager.getModelBoundingBox(item.gameId)
+            if (modelBox) {
+              obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+            } else {
+              obb = getOBBFromMatrix(matrix, new Vector3(...furnitureSize))
+            }
+          } else {
+            obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
+          }
+
+          // 🚀 预计算角点：这是性能优化的关键！
+          // 每个静止物品的角点在拖拽过程中是不变的，一次性计算可以避免每帧数百次的重复计算
+          const corners = obb.getCorners()
+
+          // 预计算包围球用于快速剔除
+          // 使用 OBB 的半对角线长度作为半径
+          const radius = obb.halfExtents.length()
+
           staticMatrices.set(item.internalId, {
             matrix,
-            furnitureSize: new Vector3(...furnitureSize),
-            useModelScale,
+            obb,
+            corners,
+            center: obb.center.clone(),
+            radius,
           })
         }
       }
@@ -306,6 +375,7 @@ export function useThreeTransformGizmo(
     isTransformDragging.value = false
     itemStartWorldMatrices.value = new Map() // clear
     staticWorldMatrices.value = new Map() // clear
+    selectedItemsOBBInfo.value = [] // clear
     hasStartedTransform.value = false
     altDragCopyPending.value = false
     altDragCopyExecuted.value = false
@@ -409,29 +479,19 @@ export function useThreeTransformGizmo(
     const scheme = editorStore.activeScheme
     if (!scheme) return newWorldMatrices
 
-    const currentMode = settingsStore.settings.threeDisplayMode
-    const modelManager = getThreeModelManager()
-    const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
-
-    // 计算选中物体的 OBB
+    // 🚀 使用预计算的局部 OBB 信息 + 增量变换，替代每帧重新计算
+    // 这避免了：
+    // - 每帧遍历 scheme.items.value.find()
+    // - 每帧调用 getModelBoundingBox()
+    // - 每帧创建多个 OBB 对象
     const selectedOBBs: OBB[] = []
 
-    for (const [id, matrix] of newWorldMatrices) {
-      const item = scheme.items.value.find((i) => i.internalId === id)
-      if (!item) continue
+    for (const obbInfo of selectedItemsOBBInfo.value) {
+      const matrix = newWorldMatrices.get(obbInfo.id)
+      if (!matrix) continue
 
-      let obb: OBB
-      if (currentMode === 'model') {
-        const modelBox = modelManager.getModelBoundingBox(item.gameId)
-        if (modelBox) {
-          obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
-        } else {
-          const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-          obb = getOBBFromMatrix(matrix, new Vector3(...size))
-        }
-      } else {
-        obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
-      }
+      // 使用预计算的局部信息 + 当前世界矩阵，快速生成 OBB
+      const obb = transformOBBByMatrix(matrix, obbInfo.localSize, obbInfo.localCenter)
       selectedOBBs.push(obb)
     }
 
@@ -471,42 +531,24 @@ export function useThreeTransformGizmo(
 
     // 计算选区中心和尺寸，用于距离剔除
     // 直接使用 OBB 的 center 和 halfExtents，无需额外计算
-    const selectionCenter = selectionOBB.center.clone()
-    const selectionSize = selectionOBB.halfExtents.clone().multiplyScalar(2)
+    const selectionCenter = selectionOBB.center
+    // selectionOBB 的半径 (半对角线)
+    const selectionRadius = selectionOBB.halfExtents.length()
 
-    const maxSelectionDim = Math.max(selectionSize.x, selectionSize.y, selectionSize.z)
-    const selectionRadius = maxSelectionDim / 2
+    // 🚀 为选中物品的 OBB 预计算角点（对象复用）
+    // 创建一个可复用的向量数组，避免在循环中反复创建对象
+    const selectionCornersPool: Vector3[] = Array.from({ length: 8 }, () => new Vector3())
+    const selectionCorners = selectionOBB.getCorners(selectionCornersPool)
 
     let checkedCount = 0
     let culledCount = 0
 
-    for (const [id, data] of staticWorldMatrices.value) {
-      const item = scheme.items.value.find((i) => i.internalId === id)
-      if (!item) continue
-
-      // 计算静态物体的 OBB
-      let candidateOBB: OBB
-
-      if (currentMode === 'model') {
-        const modelBox = modelManager.getModelBoundingBox(item.gameId)
-        if (modelBox) {
-          candidateOBB = getOBBFromMatrixAndModelBox(data.matrix, modelBox)
-        } else {
-          candidateOBB = getOBBFromMatrix(data.matrix, data.furnitureSize)
-        }
-      } else {
-        candidateOBB = getOBBFromMatrix(data.matrix, new Vector3(1, 1, 1))
-      }
-
-      // 距离剔除：直接使用 OBB 的 center 和 halfExtents
-      const candidateCenter = candidateOBB.center.clone()
-      const candidateSize = candidateOBB.halfExtents.clone().multiplyScalar(2)
-      const maxCandidateDim = Math.max(candidateSize.x, candidateSize.y, candidateSize.z)
-      const candidateRadius = maxCandidateDim / 2
-
+    // 核心优化：直接遍历预计算的数据，无需查找 invalidId 或重新计算 OBB
+    for (const data of staticWorldMatrices.value.values()) {
       // 动态计算剔除半径：选区半径 + 候选物体半径 + 吸附距离
-      const dynamicCullRadius = selectionRadius + candidateRadius + snapThreshold
-      const distanceToCandidate = selectionCenter.distanceTo(candidateCenter)
+      // 两个球体相交检测：dist <= r1 + r2
+      const dynamicCullRadius = selectionRadius + data.radius + snapThreshold
+      const distanceToCandidate = selectionCenter.distanceTo(data.center)
 
       if (distanceToCandidate > dynamicCullRadius) {
         culledCount++
@@ -515,12 +557,16 @@ export function useThreeTransformGizmo(
 
       checkedCount++
 
-      // 使用 OBB 进行精确的吸附检测
+      // 🚀 使用预计算的角点进行精确的吸附检测
+      // 静止物品的角点已经在 startTransform() 中预计算
+      // 选中物品的角点在上方预计算，并复用同一个数组
       const snapVector = calculateOBBSnapVector(
         selectionOBB,
-        candidateOBB,
+        data.obb,
         snapThreshold,
-        enabledAxes
+        enabledAxes,
+        selectionCorners, // 传入选中物品的预计算角点
+        data.corners // 传入静止物品的预计算角点
       )
 
       if (snapVector) {

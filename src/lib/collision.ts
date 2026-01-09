@@ -209,22 +209,32 @@ export class OBB {
 
   /**
    * 获取 OBB 的 8 个角点（世界空间）
+   *
+   * @param out 可选的输出数组，用于对象复用。如果提供，必须包含至少 8 个 Vector3 对象。
+   *            如果不提供，会创建新数组（性能较低）。
+   * @returns 包含 8 个角点的数组（如果提供 out 参数，则返回 out）
    */
-  getCorners(): Vector3[] {
-    const corners: Vector3[] = []
+  getCorners(out?: Vector3[]): Vector3[] {
     const { center, halfExtents, axes } = this
 
+    // 如果没有提供输出数组，创建新数组（兼容旧代码）
+    const corners = out || []
+    if (!out) {
+      for (let i = 0; i < 8; i++) {
+        corners.push(new Vector3())
+      }
+    }
+
     for (let i = 0; i < 8; i++) {
-      const corner = center.clone()
       const signX = i & 1 ? 1 : -1
       const signY = i & 2 ? 1 : -1
       const signZ = i & 4 ? 1 : -1
 
-      corner.add(axes[0].clone().multiplyScalar(signX * halfExtents.x))
-      corner.add(axes[1].clone().multiplyScalar(signY * halfExtents.y))
-      corner.add(axes[2].clone().multiplyScalar(signZ * halfExtents.z))
-
-      corners.push(corner)
+      // 直接计算角点位置，避免多次 clone()
+      corners[i]!.copy(center)
+      corners[i]!.addScaledVector(axes[0], signX * halfExtents.x)
+      corners[i]!.addScaledVector(axes[1], signY * halfExtents.y)
+      corners[i]!.addScaledVector(axes[2], signZ * halfExtents.z)
     }
 
     return corners
@@ -317,6 +327,41 @@ export function getOBBFromMatrixAndModelBox(matrix: Matrix4, modelBox: Box3): OB
 }
 
 /**
+ * 从局部尺寸信息和世界矩阵快速生成 OBB
+ *
+ * 🚀 性能优化：用于增量更新选中物品的 OBB，避免每帧重新查询模型包围盒
+ *
+ * @param matrix 世界矩阵
+ * @param localSize 局部空间的尺寸（不包含缩放）
+ * @param localCenter 局部空间的中心偏移（可选，默认为原点）
+ * @returns OBB 实例
+ */
+export function transformOBBByMatrix(
+  matrix: Matrix4,
+  localSize: Vector3,
+  localCenter: Vector3 = new Vector3()
+): OBB {
+  // 1. 将局部中心变换到世界空间
+  const worldCenter = localCenter.clone().applyMatrix4(matrix)
+
+  // 2. 提取缩放和旋转
+  const scale = new Vector3().setFromMatrixScale(matrix)
+  const rotationMatrix = new Matrix4().extractRotation(matrix)
+
+  // 3. 计算局部坐标轴（世界空间单位向量）
+  const xAxis = new Vector3(1, 0, 0).applyMatrix4(rotationMatrix).normalize()
+  const yAxis = new Vector3(0, 1, 0).applyMatrix4(rotationMatrix).normalize()
+  const zAxis = new Vector3(0, 0, 1).applyMatrix4(rotationMatrix).normalize()
+
+  // 4. 计算半尺寸（应用缩放）
+  const halfX = (localSize.x * scale.x) / 2
+  const halfY = (localSize.y * scale.y) / 2
+  const halfZ = (localSize.z * scale.z) / 2
+
+  return new OBB(worldCenter, new Vector3(halfX, halfY, halfZ), [xAxis, yAxis, zAxis])
+}
+
+/**
  * 合并多个 OBB 为一个保守的 OBB
  *
  * 注意：这是一个简化实现，返回包含所有 OBB 的 AABB 再转换为轴对齐的 OBB
@@ -358,9 +403,12 @@ export function mergeOBBs(obbs: OBB[]): OBB {
 
 /**
  * 计算点在轴上的投影范围
+ *
+ * @param corners OBB 的 8 个角点（预计算或实时计算）
+ * @param axis 投影轴
+ * @returns 投影范围的 min/max
  */
-function projectOBBOnAxis(obb: OBB, axis: Vector3): { min: number; max: number } {
-  const corners = obb.getCorners()
+function projectOBBOnAxis(corners: Vector3[], axis: Vector3): { min: number; max: number } {
   let min = Infinity
   let max = -Infinity
 
@@ -387,13 +435,17 @@ function projectOBBOnAxis(obb: OBB, axis: Vector3): { min: number; max: number }
  * @param staticOBB 静止物体的 OBB（吸附目标）
  * @param snapThreshold 吸附阈值
  * @param enabledAxes 启用的世界轴（Gizmo 约束）
+ * @param movingCorners 可选：预计算的移动物体角点（性能优化）
+ * @param staticCorners 可选：预计算的静止物体角点（性能优化）
  * @returns 吸附向量，或 null
  */
 export function calculateOBBSnapVector(
   movingOBB: OBB,
   staticOBB: OBB,
   snapThreshold: number,
-  _enabledAxes?: { x: boolean; y: boolean; z: boolean } // 保留用于未来扩展，当前由调用方处理轴约束
+  _enabledAxes?: { x: boolean; y: boolean; z: boolean }, // 保留用于未来扩展，当前由调用方处理轴约束
+  movingCorners?: Vector3[],
+  staticCorners?: Vector3[]
 ): Vector3 | null {
   // 收集需要测试的分离轴：只使用静态物体的面法线
   // 吸附的本质是"贴到目标表面"，移动物体的朝向不应影响"吸到哪里"
@@ -407,15 +459,19 @@ export function calculateOBBSnapVector(
   // staticOBB 的三个轴本身就是正交的，不需要去重
   const uniqueAxes = testAxes
 
+  // 获取角点（使用预计算值或实时计算）
+  const corners1 = movingCorners || movingOBB.getCorners()
+  const corners2 = staticCorners || staticOBB.getCorners()
+
   // 查找最小间隙的轴
   let bestAxis: Vector3 | null = null
   let bestGap = Infinity
   let bestCorrection = 0
 
   for (const axis of uniqueAxes) {
-    // 计算两个 OBB 在该轴上的投影
-    const proj1 = projectOBBOnAxis(movingOBB, axis)
-    const proj2 = projectOBBOnAxis(staticOBB, axis)
+    // 🚀 性能优化：直接传入角点数组，避免在每次循环中重复调用 getCorners()
+    const proj1 = projectOBBOnAxis(corners1, axis)
+    const proj2 = projectOBBOnAxis(corners2, axis)
 
     // 计算重叠或间隙
     const overlap = Math.min(proj1.max, proj2.max) - Math.max(proj1.min, proj2.min)
