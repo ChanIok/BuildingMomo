@@ -57,10 +57,16 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const indexToIdMap = ref(new Map<number, string>())
   const idToIndexMap = ref(new Map<string, number>())
 
+  // 重建标志（用于避免异步竞态问题）
+  const isRebuilding = ref(false)
+
   /**
    * 主重建函数（路由到对应模式）
    */
   async function rebuildInstances() {
+    // 设置重建标志，防止 selectionVersion watcher 在异步操作完成前触发
+    isRebuilding.value = true
+
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
@@ -125,6 +131,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           simpleBoxMeshTarget,
           modelMode.indexToIdMap.value
         )
+
+        // 清除重建标志（Model 模式 early return）
+        isRebuilding.value = false
         return
     }
 
@@ -155,6 +164,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       simpleBoxMode.mesh.value,
       map
     )
+
+    // 清除重建标志
+    isRebuilding.value = false
   }
 
   /**
@@ -455,6 +467,14 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     ],
     () => {
       if (isTransformDragging?.value) {
+        return
+      }
+
+      // 如果正在重建实例，跳过此次更新（由 rebuildInstances 完成后处理）
+      // 这解决了 Model 模式下的异步竞态问题：
+      // - rebuildInstances() 是异步的（await modelMode.rebuild()）
+      // - 如果选择更新在重建完成前触发，internalIdToMeshInfo 还是旧的，导致新物品找不到 meshInfo
+      if (isRebuilding.value) {
         return
       }
 
