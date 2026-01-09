@@ -410,6 +410,7 @@ export const zhLocale = {
       rotationStepHint: '每次旋转固定角度增量（相对步进）',
       surfaceSnap: '表面吸附',
       surfaceSnapHint: '移动时自动检测碰撞，防止物品重叠',
+      surfaceSnapThreshold: '吸附阈值',
       disabled: '关闭',
     },
   },

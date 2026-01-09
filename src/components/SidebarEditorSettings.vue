@@ -55,6 +55,7 @@ function updateCameraZoomSpeed(value: number[] | undefined) {
 // 步进预设档位
 const TRANSLATION_SNAP_PRESETS = [0, 1, 5, 10, 50, 100, 500, 1000]
 const ROTATION_SNAP_PRESETS = [0, 1, 5, 15, 30, 45, 90] // 角度
+const SURFACE_SNAP_THRESHOLD_PRESETS = [5, 10, 20, 50, 100, 200] // 吸附阈值
 
 // 工具函数：从值找到最近的预设索引
 function findClosestPresetIndex(value: number, presets: number[]): number {
@@ -130,6 +131,32 @@ const rotationSnapDegrees = computed(() => {
   const radians = settingsStore.settings.rotationSnap
   return radians > 0 ? Math.round((radians * 180) / Math.PI) : 0
 })
+
+// 计算属性：表面吸附阈值的滑块索引
+const surfaceSnapThresholdIndex = computed(() => {
+  return findClosestPresetIndex(
+    settingsStore.settings.surfaceSnapThreshold,
+    SURFACE_SNAP_THRESHOLD_PRESETS
+  )
+})
+
+// 表面吸附阈值的更新函数
+function updateSurfaceSnapThreshold(value: number[] | undefined) {
+  if (!value) return
+  const index = Math.round(value[0]!)
+  settingsStore.settings.surfaceSnapThreshold = SURFACE_SNAP_THRESHOLD_PRESETS[index] || 50
+}
+
+function handleSurfaceSnapThresholdInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  let value = parseInt(input.value)
+
+  // 验证范围
+  if (isNaN(value) || value < 1) value = 1
+  if (value > 1000) value = 1000
+
+  settingsStore.settings.surfaceSnapThreshold = value
+}
 
 // 格式化函数
 const fmt = (n: number, decimals: number = 0) => {
@@ -359,6 +386,33 @@ const fmt = (n: number, decimals: number = 0) => {
               </p>
             </div>
             <Switch v-model="settingsStore.settings.enableSurfaceSnap" />
+          </div>
+
+          <!-- 吸附阈值滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.snap.surfaceSnapThreshold') }}
+              </Label>
+              <Input
+                :model-value="settingsStore.settings.surfaceSnapThreshold"
+                @blur="handleSurfaceSnapThresholdInput"
+                type="number"
+                min="1"
+                max="1000"
+                size="xs"
+                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+              />
+            </div>
+            <Slider
+              :model-value="[surfaceSnapThresholdIndex]"
+              @update:model-value="updateSurfaceSnapThreshold"
+              :min="0"
+              :max="5"
+              :step="1"
+              variant="thin"
+              class="w-full"
+            />
           </div>
         </div>
 

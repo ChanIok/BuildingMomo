@@ -65,7 +65,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   translationSnap: 0,
   rotationSnap: 0,
   enableSurfaceSnap: false,
-  surfaceSnapThreshold: 50,
+  surfaceSnapThreshold: 20,
   language: 'zh',
 }
 

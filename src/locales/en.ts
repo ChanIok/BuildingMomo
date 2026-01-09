@@ -412,6 +412,7 @@ export const enLocale = {
       rotationStepHint: 'Rotate by fixed angle increments (relative step)',
       surfaceSnap: 'Surface Snap',
       surfaceSnapHint: 'Auto-detect collision when moving to prevent overlapping',
+      surfaceSnapThreshold: 'Snap Threshold',
       disabled: 'Off',
     },
   },
