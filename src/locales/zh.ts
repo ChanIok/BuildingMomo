@@ -427,6 +427,12 @@ export const zhLocale = {
     correctionTip: 'Z轴旋转显示已校正<br />实际旋转 = 显示值 + {angle}°',
     range: '范围 (Min ~ Max)',
     rangeTip: '当前范围基于工作坐标系<br />旋转角度: {angle}°',
+    mirror: '镜像',
+    mirrorX: '沿 X 轴镜像',
+    mirrorY: '沿 Y 轴镜像',
+    mirrorZ: '沿 Z 轴镜像',
+    mirrorWithRotation: '同时镜像旋转',
+    mirrorWithRotationHint: '关闭后，镜像操作仅调整位置，不改变物品朝向',
   },
 
   // 家具背包

@@ -1,6 +1,8 @@
 import { storeToRefs } from 'pinia'
 import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
+import { useUIStore } from '../../stores/uiStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 import { calculateBounds } from '../../lib/geometry'
 import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
@@ -106,6 +108,8 @@ function calculateNewTransform(
 
 export function useEditorManipulation() {
   const store = useEditorStore()
+  const uiStore = useUIStore()
+  const settingsStore = useSettingsStore()
   const { activeScheme } = storeToRefs(store)
   const { saveHistory } = useEditorHistory()
 
@@ -393,12 +397,153 @@ export function useEditorManipulation() {
     store.triggerSceneUpdate()
   }
 
+  /**
+   * 镜像选中物品（沿指定轴镜像）
+   *
+   * 支持工作坐标系：当工作坐标系启用时，沿工作坐标系的轴镜像
+   *
+   * @param axis - 镜像轴 ('x' | 'y' | 'z')
+   */
+  function mirrorSelectedItems(axis: 'x' | 'y' | 'z') {
+    if (!activeScheme.value) return
+
+    const scheme = activeScheme.value
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return
+
+    saveHistory('edit')
+
+    // 获取选区中心（全局坐标系）
+    const globalCenter = getSelectedItemsCenter()
+    if (!globalCenter) return
+
+    // 转换到工作坐标系
+    const workingCenter = uiStore.globalToWorking(globalCenter)
+
+    // 更新每个选中物品
+    activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
+      if (!selectedIds.has(item.internalId)) {
+        return item
+      }
+
+      // === 1. 位置镜像 ===
+      // 转换到工作坐标系
+      const workingPos = uiStore.globalToWorking({ x: item.x, y: item.y, z: item.z })
+
+      // 沿指定轴镜像
+      workingPos[axis] = 2 * workingCenter[axis] - workingPos[axis]
+
+      // 转换回全局坐标系
+      const newPos = uiStore.workingToGlobal(workingPos)
+
+      // === 2. 旋转镜像 ===
+      // 当启用工作坐标系时，需要将 Z 轴旋转转换到工作坐标系后再镜像
+      let newRotation = { ...item.rotation }
+
+      // 检查是否启用"同时镜像旋转"
+      if (settingsStore.settings.mirrorWithRotation) {
+        if (uiStore.workingCoordinateSystem.enabled) {
+          // 将 Z 轴旋转转换到工作坐标系
+          const workingYaw = item.rotation.z - uiStore.workingCoordinateSystem.rotationAngle
+
+          // 在工作坐标系中执行镜像
+          const mirroredRotation = mirrorRotationInWorkingCoord(
+            { x: item.rotation.x, y: item.rotation.y, z: workingYaw },
+            axis
+          )
+
+          // 将 Z 轴旋转转换回全局坐标系
+          newRotation = {
+            x: mirroredRotation.x,
+            y: mirroredRotation.y,
+            z: mirroredRotation.z + uiStore.workingCoordinateSystem.rotationAngle,
+          }
+        } else {
+          // 未启用工作坐标系，直接在全局坐标系中镜像
+          newRotation = mirrorRotationInWorkingCoord(item.rotation, axis)
+        }
+      }
+      // 否则：不修改旋转，newRotation 保持为 item.rotation
+
+      return {
+        ...item,
+        x: newPos.x,
+        y: newPos.y,
+        z: newPos.z,
+        rotation: newRotation,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
+  /**
+   * 在工作坐标系中执行旋转镜像
+   *
+   * 使用镜像旋转公式：R' = M · R · D
+   * - M: 世界空间反射矩阵（翻转指定坐标轴）
+   * - R: 原始旋转矩阵
+   * - D: 局部空间手性修正矩阵（使结果 det = +1，成为合法旋转）
+   *
+   * 这个公式直接在数据空间工作，不涉及渲染管线的 Roll/Pitch 取反和场景 Y 轴翻转。
+   */
+  function mirrorRotationInWorkingCoord(
+    rotation: { x: number; y: number; z: number },
+    axis: 'x' | 'y' | 'z'
+  ): { x: number; y: number; z: number } {
+    // 1. 原始旋转：Euler -> 旋转矩阵 R
+    const euler = new Euler(
+      MathUtils.degToRad(rotation.x), // Roll
+      MathUtils.degToRad(rotation.y), // Pitch
+      MathUtils.degToRad(rotation.z), // Yaw
+      'ZYX'
+    )
+    const R = new Matrix4().makeRotationFromEuler(euler)
+
+    // 2. 构建世界空间反射矩阵 M
+    const M = new Matrix4()
+    switch (axis) {
+      case 'x':
+        M.makeScale(-1, 1, 1) // 翻转 X 轴
+        break
+      case 'y':
+        M.makeScale(1, -1, 1) // 翻转 Y 轴
+        break
+      case 'z':
+        M.makeScale(1, 1, -1) // 翻转 Z 轴
+        break
+    }
+
+    // 3. 构建局部空间手性修正矩阵 D
+    // 目的：使 det(M·R·D) = +1，恢复为合法旋转
+    // 三种镜像统一使用 diag(1, -1, 1)，翻转局部 Y 轴
+    const D = new Matrix4().makeScale(1, -1, 1)
+
+    // 4. 应用镜像公式：R' = M · R · D
+    const Rp = new Matrix4().multiplyMatrices(M, R).multiply(D)
+
+    // 5. 提取旋转部分并转回 Euler
+    const pos = new Vector3()
+    const quat = new Quaternion()
+    const scale = new Vector3()
+    Rp.decompose(pos, quat, scale)
+
+    const newEuler = new Euler().setFromQuaternion(quat, 'ZYX')
+
+    return {
+      x: MathUtils.radToDeg(newEuler.x), // Roll
+      y: MathUtils.radToDeg(newEuler.y), // Pitch
+      z: MathUtils.radToDeg(newEuler.z), // Yaw
+    }
+  }
+
   return {
     getSelectedItemsCenter,
     deleteSelected,
     updateSelectedItemsTransform,
     moveSelectedItems,
     rotateSelectedItems,
+    mirrorSelectedItems,
     commitBatchedTransform,
   }
 

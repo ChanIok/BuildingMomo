@@ -429,6 +429,13 @@ export const enLocale = {
     correctionTip: 'Z-Rotation is corrected<br />Actual = Display + {angle}°',
     range: 'Range (Min ~ Max)',
     rangeTip: 'Range based on working coordinate system<br />Rotation: {angle}°',
+    mirror: 'Mirror',
+    mirrorX: 'Mirror along X axis',
+    mirrorY: 'Mirror along Y axis',
+    mirrorZ: 'Mirror along Z axis',
+    mirrorWithRotation: 'Mirror rotation',
+    mirrorWithRotationHint:
+      'When disabled, mirroring only adjusts position without changing item orientation',
   },
 
   // Furniture Library
