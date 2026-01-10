@@ -177,16 +177,32 @@ export function useSelectionOutline() {
 
   /**
    * 初始化 mask mesh（为某个模型类型创建）
+   *
+   * 检测 originalMesh 是否变化（扩容、重建等），如果变化则重新创建 maskMesh
    */
   function initMaskMesh(
     itemId: number,
     originalMesh: InstancedMesh,
     maxInstances: number
   ): InstancedMesh {
-    if (maskMeshMap.value.has(itemId)) {
-      return maskMeshMap.value.get(itemId)!
+    const existingMask = maskMeshMap.value.get(itemId)
+
+    if (existingMask) {
+      // 检查 geometry 是否匹配（mesh 重建会导致 geometry 引用变化）
+      // 检查容量是否足够（扩容会导致 maxInstances 变化）
+      const geometryMatch = existingMask.geometry === originalMesh.geometry
+      const capacityMatch = existingMask.instanceMatrix.count >= originalMesh.instanceMatrix.count
+
+      if (geometryMatch && capacityMatch) {
+        // 可以复用现有的 maskMesh
+        return existingMask
+      }
+
+      // geometry 或容量不匹配，需要重建
+      disposeMaskMesh(itemId)
     }
 
+    // 创建新的 maskMesh
     const maskMesh = new InstancedMesh(originalMesh.geometry, maskMaterial, maxInstances)
 
     maskMesh.frustumCulled = false
