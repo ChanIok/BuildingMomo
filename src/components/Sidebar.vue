@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useEditorStore } from '../stores/editorStore'
+import { useUIStore } from '../stores/uiStore'
 import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
@@ -11,8 +11,8 @@ import SidebarToggleItem from './SidebarToggleItem.vue'
 import { Layers, Settings2, SlidersHorizontal } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
+const uiStore = useUIStore()
 const { t } = useI18n()
-const currentView = ref<'structure' | 'transform' | 'editorSettings'>('structure')
 </script>
 
 <template>
@@ -28,37 +28,37 @@ const currentView = ref<'structure' | 'transform' | 'editorSettings'>('structure
         <div class="shrink-0 border-b p-2 pl-4">
           <div class="flex gap-1 bg-transparent p-0">
             <SidebarToggleItem
-              :model-value="currentView === 'structure'"
+              :model-value="uiStore.sidebarView === 'structure'"
               @update:model-value="
                 (v: boolean) => {
-                  if (v) currentView = 'structure'
+                  if (v) uiStore.setSidebarView('structure')
                 }
               "
-              :tooltip="t('sidebar.structure')"
+              :tooltip="`${t('sidebar.structure')} (1)`"
             >
               <Layers class="h-4 w-4" />
             </SidebarToggleItem>
 
             <SidebarToggleItem
-              :model-value="currentView === 'transform'"
+              :model-value="uiStore.sidebarView === 'transform'"
               @update:model-value="
                 (v: boolean) => {
-                  if (v) currentView = 'transform'
+                  if (v) uiStore.setSidebarView('transform')
                 }
               "
-              :tooltip="t('sidebar.transform')"
+              :tooltip="`${t('sidebar.transform')} (2)`"
             >
               <Settings2 class="h-4 w-4" />
             </SidebarToggleItem>
 
             <SidebarToggleItem
-              :model-value="currentView === 'editorSettings'"
+              :model-value="uiStore.sidebarView === 'editorSettings'"
               @update:model-value="
                 (v: boolean) => {
-                  if (v) currentView = 'editorSettings'
+                  if (v) uiStore.setSidebarView('editorSettings')
                 }
               "
-              :tooltip="t('sidebar.editorSettings')"
+              :tooltip="`${t('sidebar.editorSettings')} (3)`"
             >
               <SlidersHorizontal class="h-4 w-4" />
             </SidebarToggleItem>
@@ -68,7 +68,7 @@ const currentView = ref<'structure' | 'transform' | 'editorSettings'>('structure
         <!-- 全局提示信息 -->
         <div
           v-if="
-            currentView !== 'editorSettings' &&
+            uiStore.sidebarView !== 'editorSettings' &&
             (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0
           "
           class="pt-10 text-center text-xs text-muted-foreground"
@@ -76,12 +76,15 @@ const currentView = ref<'structure' | 'transform' | 'editorSettings'>('structure
           {{ t('sidebar.noSelection') }}
         </div>
 
-        <div v-if="currentView === 'structure'" class="mt-0 flex min-h-0 flex-1 flex-col gap-3">
+        <div
+          v-if="uiStore.sidebarView === 'structure'"
+          class="mt-0 flex min-h-0 flex-1 flex-col gap-3"
+        >
           <!-- 选中物品组件 -->
           <SidebarSelection class="min-h-0 flex-1" />
         </div>
 
-        <div v-else-if="currentView === 'transform'" class="mt-0 min-h-0 flex-1">
+        <div v-else-if="uiStore.sidebarView === 'transform'" class="mt-0 min-h-0 flex-1">
           <!-- 变换面板 -->
           <ScrollArea class="h-full">
             <SidebarTransform />
@@ -90,7 +93,7 @@ const currentView = ref<'structure' | 'transform' | 'editorSettings'>('structure
           </ScrollArea>
         </div>
 
-        <div v-else-if="currentView === 'editorSettings'" class="mt-0 min-h-0 flex-1">
+        <div v-else-if="uiStore.sidebarView === 'editorSettings'" class="mt-0 min-h-0 flex-1">
           <!-- 编辑器设置面板 -->
           <SidebarEditorSettings class="h-full" />
         </div>

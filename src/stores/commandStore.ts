@@ -195,6 +195,41 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
 
+    // ===== 侧边栏菜单 =====
+    {
+      id: 'sidebar.showSelection',
+      label: t('command.sidebar.showSelection'),
+      shortcut: '1',
+      category: 'view',
+      enabled: () => true,
+      execute: () => {
+        console.log('[Command] 切换到选中列表面板')
+        uiStore.setSidebarView('structure')
+      },
+    },
+    {
+      id: 'sidebar.showTransform',
+      label: t('command.sidebar.showTransform'),
+      shortcut: '2',
+      category: 'view',
+      enabled: () => true,
+      execute: () => {
+        console.log('[Command] 切换到变换面板')
+        uiStore.setSidebarView('transform')
+      },
+    },
+    {
+      id: 'sidebar.showEditorSettings',
+      label: t('command.sidebar.showEditorSettings'),
+      shortcut: '3',
+      category: 'view',
+      enabled: () => true,
+      execute: () => {
+        console.log('[Command] 切换到编辑器设置面板')
+        uiStore.setSidebarView('editorSettings')
+      },
+    },
+
     // ===== 编辑菜单 =====
     {
       id: 'edit.undo',
@@ -415,7 +450,6 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewPerspective',
       label: t('command.view.setViewPerspective'),
-      shortcut: '1',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -426,7 +460,6 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewTop',
       label: t('command.view.setViewTop'),
-      shortcut: '2',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -437,7 +470,6 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewFront',
       label: t('command.view.setViewFront'),
-      shortcut: '3',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -448,7 +480,6 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewLeft',
       label: t('command.view.setViewLeft'),
-      shortcut: '4',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {
@@ -459,7 +490,6 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'view.setViewRight',
       label: t('command.view.setViewRight'),
-      shortcut: '5',
       category: 'view',
       enabled: () => uiStore.viewMode === '3d' && setViewPresetFn.value !== null,
       execute: () => {

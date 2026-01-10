@@ -14,6 +14,9 @@ export const useUIStore = defineStore('ui', () => {
   // 当前视图预设（透视、顶、前...）
   const currentViewPreset = ref<ViewPreset>('perspective')
 
+  // 侧边栏视图状态
+  const sidebarView = ref<'structure' | 'transform' | 'editorSettings'>('structure')
+
   // Three.js 容器的布局信息（用于性能优化，避免频繁调用 getBoundingClientRect）
   const editorContainerRect = ref<{ left: number; top: number; width: number; height: number }>({
     left: 0,
@@ -107,10 +110,18 @@ export const useUIStore = defineStore('ui', () => {
     }
   }
 
+  // ========== 侧边栏管理 ==========
+
+  function setSidebarView(view: 'structure' | 'transform' | 'editorSettings') {
+    sidebarView.value = view
+    console.log('[UIStore] Sidebar view set to:', view)
+  }
+
   return {
     // 状态
     viewMode,
     workingCoordinateSystem,
+    sidebarView,
 
     // 视图模式
     toggleViewMode,
@@ -119,6 +130,9 @@ export const useUIStore = defineStore('ui', () => {
     setCurrentViewPreset,
     editorContainerRect,
     updateEditorContainerRect,
+
+    // 侧边栏
+    setSidebarView,
 
     // 工作坐标系
     setWorkingCoordinateSystem,
