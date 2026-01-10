@@ -80,6 +80,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       for (const [, mesh] of modelMode.meshMap.value.entries()) {
         mesh.count = 0
       }
+      if (modelMode.fallbackMesh.value) {
+        modelMode.fallbackMesh.value.count = 0
+      }
     }
 
     // 执行对应模式的重建
