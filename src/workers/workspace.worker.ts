@@ -6,8 +6,10 @@ import type { WorkspaceSnapshot, ValidationResult } from '../types/persistence'
 const STORAGE_KEY = 'workspace_snapshot'
 
 // 浮点数容差常量
-// 缩放值容差：用于处理浮点数存储精度误差（如 0.699999988079071 vs 0.69999998807907）
-const SCALE_EPSILON = 1e-6 // 0.000001
+// 用于处理浮点数存储精度误差，避免误报
+// - 缩放验证：如 0.699999988079071 vs 0.69999998807907
+// - 旋转验证：如 0.0000001 应视为 0（禁止旋转的轴）
+const EPSILON = 1e-6 // 0.000001
 
 // 状态
 let currentSnapshot: WorkspaceSnapshot | null = null
@@ -165,29 +167,29 @@ function checkLimits(
         // 使用容差比较：只有超出范围 epsilon 以上才算违规
         // 例如：min=0.699999988, max=1.299999952, 实际值=1.2999999 → 合规
         if (
-          scale.X < min - SCALE_EPSILON ||
-          scale.X > max + SCALE_EPSILON ||
-          scale.Y < min - SCALE_EPSILON ||
-          scale.Y > max + SCALE_EPSILON ||
-          scale.Z < min - SCALE_EPSILON ||
-          scale.Z > max + SCALE_EPSILON
+          scale.X < min - EPSILON ||
+          scale.X > max + EPSILON ||
+          scale.Y < min - EPSILON ||
+          scale.Y > max + EPSILON ||
+          scale.Z < min - EPSILON ||
+          scale.Z > max + EPSILON
         ) {
           invalidScaleItemIds.push(item.internalId)
         }
       }
 
-      // 检查旋转是否在禁止的轴上（禁止旋转的轴必须严格为 0）
+      // 检查旋转是否在禁止的轴上（使用 epsilon 容差，避免浮点数精度误报）
       if (constraints.rotationAllowed) {
         const rot = item.rotation
         const allowed = constraints.rotationAllowed
 
-        // X轴（Roll）检查 - 必须严格为 0
-        if (!allowed.x && rot.x !== 0) {
+        // X轴（Roll）检查 - 使用容差判断是否接近 0
+        if (!allowed.x && Math.abs(rot.x) > EPSILON) {
           invalidRotationItemIds.push(item.internalId)
           continue // 避免重复添加
         }
-        // Y轴（Pitch）检查 - 必须严格为 0
-        if (!allowed.y && rot.y !== 0) {
+        // Y轴（Pitch）检查 - 使用容差判断是否接近 0
+        if (!allowed.y && Math.abs(rot.y) > EPSILON) {
           invalidRotationItemIds.push(item.internalId)
         }
       }

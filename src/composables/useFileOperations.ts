@@ -193,7 +193,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
     // 2. 检查限制问题
     if (hasLimitIssues.value) {
-      const { outOfBoundsItemIds, oversizedGroups } = limitIssues.value
+      const { outOfBoundsItemIds, oversizedGroups, invalidScaleItemIds, invalidRotationItemIds } =
+        limitIssues.value
       const limitMsgs: string[] = []
 
       if (outOfBoundsItemIds.length > 0) {
@@ -201,6 +202,12 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       }
       if (oversizedGroups.length > 0) {
         limitMsgs.push(t('fileOps.limit.oversized', { n: oversizedGroups.length }))
+      }
+      if (invalidScaleItemIds.length > 0) {
+        limitMsgs.push(t('fileOps.limit.invalidScale', { n: invalidScaleItemIds.length }))
+      }
+      if (invalidRotationItemIds.length > 0) {
+        limitMsgs.push(t('fileOps.limit.invalidRotation', { n: invalidRotationItemIds.length }))
       }
 
       if (limitMsgs.length > 0) {
@@ -240,6 +247,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     // 4. 处理数据
     const outOfBoundsIds = new Set(limitIssues.value.outOfBoundsItemIds)
     const oversizedGroupIds = new Set(limitIssues.value.oversizedGroups)
+    const invalidScaleIds = new Set(limitIssues.value.invalidScaleItemIds)
+    const invalidRotationIds = new Set(limitIssues.value.invalidRotationItemIds)
 
     // editorStore.items 已经是一个 computed 属性，返回的是 items.value，所以这里不需要改
     const gameItems: GameItem[] = (editorStore.activeScheme?.items.value ?? [])
@@ -253,6 +262,30 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
           newGroupId = 0
         }
 
+        // 处理缩放超限：截断到允许范围（参考 SidebarTransform.vue 的处理方式）
+        let finalScale = { ...item.extra.Scale }
+        if (invalidScaleIds.has(item.internalId)) {
+          const furniture = gameDataStore.getFurniture(item.gameId)
+          if (furniture?.scaleRange) {
+            const [min, max] = furniture.scaleRange
+            // 直接截断，不舍入（与 SidebarTransform.vue 第314-315行保持一致）
+            finalScale.X = Math.max(min, Math.min(max, finalScale.X))
+            finalScale.Y = Math.max(min, Math.min(max, finalScale.Y))
+            finalScale.Z = Math.max(min, Math.min(max, finalScale.Z))
+          }
+        }
+
+        // 处理旋转违规：禁止的轴置零
+        let finalRotation = { ...item.rotation }
+        if (invalidRotationIds.has(item.internalId)) {
+          const furniture = gameDataStore.getFurniture(item.gameId)
+          if (furniture?.rotationAllowed) {
+            // 禁止的轴置零（Z轴通常都允许，不处理）
+            if (!furniture.rotationAllowed.x) finalRotation.x = 0
+            if (!furniture.rotationAllowed.y) finalRotation.y = 0
+          }
+        }
+
         return {
           ...item.extra,
           ItemID: item.gameId,
@@ -264,10 +297,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
             Z: item.z,
           },
           Rotation: {
-            Roll: item.rotation.x,
-            Pitch: item.rotation.y,
-            Yaw: item.rotation.z,
+            Roll: finalRotation.x,
+            Pitch: finalRotation.y,
+            Yaw: finalRotation.z,
           },
+          Scale: finalScale, // 使用修正后的缩放值
         }
       })
 

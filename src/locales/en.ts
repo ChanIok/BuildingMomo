@@ -156,6 +156,8 @@ export const enLocale = {
       desc: 'The following issues will be fixed upon saving:',
       outOfBounds: '{n} items out of bounds (will be removed)',
       oversized: '{n} oversized groups (will be ungrouped)',
+      invalidScale: '{n} items with scale values exceeding limits (will be clamped)',
+      invalidRotation: '{n} items rotated on prohibited axes (will be reset to zero)',
     },
     save: {
       confirmTitle: 'Confirm Save',

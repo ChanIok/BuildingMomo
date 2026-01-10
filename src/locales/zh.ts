@@ -154,6 +154,8 @@ export const zhLocale = {
       desc: '保存时将自动修复以下问题：',
       outOfBounds: '{n} 个物品超出可建造区域 (将被移除)',
       oversized: '{n} 个组合超过 50 个物品上限 (将被解组)',
+      invalidScale: '{n} 个物品缩放值超出允许范围 (将自动截断到限制内)',
+      invalidRotation: '{n} 个物品在禁止的轴上有旋转 (违规轴将置零)',
     },
     save: {
       confirmTitle: '保存确认',
