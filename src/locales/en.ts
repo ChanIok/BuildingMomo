@@ -71,6 +71,7 @@ export const enLocale = {
       new: 'New Scheme',
       startWatchMode: 'Link Game Folder',
       stopWatchMode: 'Stop Watching',
+      importFromCode: 'Import from Code',
       import: 'Import Data',
       export: 'Export Data',
       saveToGame: 'Save to Game',
@@ -196,6 +197,18 @@ export const enLocale = {
     importWatched: {
       notStarted: 'Monitoring not started',
       notFound: 'BUILD_SAVEDATA_*.json not found',
+    },
+    importCode: {
+      title: 'Import from Code',
+      description: 'Enter a scheme code to load building data from cloud',
+      inputLabel: 'Scheme Code',
+      inputPlaceholder: 'Enter scheme code',
+      importing: 'Importing scheme...',
+      success: 'Scheme imported successfully!',
+      invalidCode: 'Please enter a valid scheme code',
+      notFound: 'Scheme code not found or expired',
+      networkError: 'Network error: {reason}',
+      parseError: 'Failed to parse data, please verify the scheme code',
     },
   },
 

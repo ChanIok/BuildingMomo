@@ -7,6 +7,7 @@ import { useEditorSelection } from '../composables/editor/useEditorSelection'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from './uiStore'
+import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
@@ -87,6 +88,20 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 停止监控模式')
         fileOps.stopWatchMode()
+      },
+    },
+    {
+      id: 'file.importFromCode',
+      label: t('command.file.importFromCode'),
+      category: 'file',
+      enabled: () => {
+        // 需要导入 settingsStore
+        const settingsStore = useSettingsStore()
+        return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
+      },
+      execute: () => {
+        console.log('[Command] 从方案码导入')
+        // 由 Toolbar 组件处理，打开对话框
       },
     },
     {

@@ -70,6 +70,7 @@ export const zhLocale = {
       new: '新建空白方案',
       startWatchMode: '选择游戏目录',
       stopWatchMode: '停止监控',
+      importFromCode: '从方案码导入',
       import: '导入建造数据',
       export: '导出建造数据',
       saveToGame: '保存到游戏',
@@ -194,6 +195,18 @@ export const zhLocale = {
     importWatched: {
       notStarted: '监控模式未启动',
       notFound: '未找到 BUILD_SAVEDATA_*.json 文件',
+    },
+    importCode: {
+      title: '从方案码导入',
+      description: '输入方案码，从云端加载建造数据',
+      inputLabel: '方案码',
+      inputPlaceholder: '请输入方案码',
+      importing: '正在导入方案...',
+      success: '方案导入成功！',
+      invalidCode: '请输入有效的方案码',
+      notFound: '方案码不存在或已过期',
+      networkError: '网络错误: {reason}',
+      parseError: '数据解析失败，请确认方案码是否正确',
     },
   },
 

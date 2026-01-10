@@ -859,6 +859,67 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     document.addEventListener('visibilitychange', handleVisibilityChange)
   }
 
+  // 从方案码导入
+  async function importFromCode(code: string): Promise<void> {
+    try {
+      // 触发游戏数据加载（如果尚未加载）
+      gameDataStore.initialize()
+      // 触发背景图预加载
+      preloadImage(backgroundUrl)
+
+      // 构建API URL
+      const apiUrl = `https://nuan5.pro/api/home/code/${encodeURIComponent(code)}?export=save-data`
+
+      // 调用API获取数据
+      const response = await fetch(apiUrl)
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          notification.error(t('fileOps.importCode.notFound'))
+        } else {
+          notification.error(t('fileOps.importCode.networkError', { reason: response.statusText }))
+        }
+        return
+      }
+
+      // 解析JSON
+      const jsonData = await response.json()
+
+      // 验证数据格式：API返回格式为 { data: [...] }
+      if (!jsonData || !jsonData.data || !Array.isArray(jsonData.data)) {
+        notification.error(t('fileOps.importCode.parseError'))
+        return
+      }
+
+      // 包装成完整的 GameDataFile 格式
+      const gameDataFile: GameDataFile = {
+        NeedRestore: true,
+        PlaceInfo: jsonData.data,
+      }
+
+      // 使用多方案导入API
+      const result = await editorStore.importJSONAsScheme(
+        JSON.stringify(gameDataFile),
+        `Scheme_${code}`,
+        Date.now()
+      )
+
+      if (result.success) {
+        console.log(`[FileOps] Successfully imported scheme from code: ${code}`)
+        notification.success(t('fileOps.importCode.success'))
+        // 预加载图标和模型
+        preloadActiveSchemeResources()
+      } else {
+        notification.error(t('fileOps.import.failed', { reason: result.error || 'Unknown error' }))
+      }
+    } catch (error: any) {
+      console.error('[FileOps] Failed to import from code:', error)
+      notification.error(
+        t('fileOps.importCode.networkError', { reason: error.message || 'Unknown error' })
+      )
+    }
+  }
+
   // 组件卸载时清理
   onUnmounted(() => {
     stopPolling()
@@ -870,6 +931,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   return {
     fileInputRef,
     importJSON,
+    importFromCode,
     exportJSON,
     saveToGame,
     isFileSystemAccessSupported,

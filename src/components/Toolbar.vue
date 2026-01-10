@@ -30,15 +30,28 @@ import { useI18n } from '../composables/useI18n'
 import { X, Settings, BookOpen } from 'lucide-vue-next'
 import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
+import ImportCodeDialog from './ImportCodeDialog.vue'
+import { useSettingsStore } from '../stores/settingsStore'
 
 // 使用命令系統 Store
 const commandStore = useCommandStore()
 const editorStore = useEditorStore()
 const tabStore = useTabStore()
+const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-// 按分类获取命令
-const fileCommands = computed(() => commandStore.getCommandsByCategory('file'))
+// 按分类获取命令（添加过滤）
+const fileCommands = computed(() => {
+  const cmds = commandStore.getCommandsByCategory('file')
+
+  return cmds.filter((cmd) => {
+    if (cmd.id === 'file.importFromCode') {
+      // 只在 secure 模式且已认证时显示
+      return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
+    }
+    return true
+  })
+})
 const editCommands = computed(() => commandStore.getCommandsByCategory('edit'))
 const viewCommands = computed(() => commandStore.getCommandsByCategory('view'))
 
@@ -89,6 +102,8 @@ const scrollAreaRef = ref<HTMLElement | null>(null)
 const globalSettingsOpen = ref(false)
 const schemeSettingsOpen = ref(false)
 const schemeSettingsTargetId = ref('')
+const importCodeDialogOpen = ref(false)
+const importCodeDialogRef = ref<InstanceType<typeof ImportCodeDialog> | null>(null)
 
 // 设置按钮 Tooltip 控制（避免与对话框冲突）
 const isSettingsTooltipAllowed = ref(true)
@@ -103,12 +118,34 @@ watch(globalSettingsOpen, (open) => {
 
 // 执行命令
 function handleCommand(commandId: string) {
+  // 特殊处理：从方案码导入命令打开对话框
+  if (commandId === 'file.importFromCode') {
+    importCodeDialogOpen.value = true
+    return
+  }
+
   commandStore.executeCommand(commandId)
 }
 
 // 检查命令是否可用
 function isEnabled(commandId: string): boolean {
   return commandStore.isCommandEnabled(commandId)
+}
+
+// 处理从方案码导入
+async function handleImportFromCode(code: string) {
+  // 设置加载状态
+  importCodeDialogRef.value?.setLoading(true)
+
+  try {
+    // 调用 fileOps 的导入方法
+    await commandStore.fileOps.importFromCode(code)
+    // 成功后关闭对话框
+    importCodeDialogOpen.value = false
+  } finally {
+    // 无论成功失败，都重置加载状态
+    importCodeDialogRef.value?.setLoading(false)
+  }
 }
 
 // --- 拖拽逻辑 (Pointer Events) ---
@@ -377,9 +414,10 @@ onMounted(() => {
         <MenubarTrigger class="text-sm font-medium">{{ t('menu.file') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
           <template v-for="cmd in fileCommands" :key="cmd.id">
-            <!-- 在"保存到游戏"、"选择游戏目录"、"导入"之前添加分隔线 -->
+            <!-- 在"保存到游戏"、"选择游戏目录"、"从方案码导入"之前添加分隔线 -->
             <MenubarSeparator
               v-if="
+                cmd.id === 'file.importFromCode' ||
                 cmd.id === 'file.import' ||
                 cmd.id === 'file.saveToGame' ||
                 cmd.id === 'file.startWatchMode'
@@ -606,6 +644,11 @@ onMounted(() => {
       v-if="schemeSettingsOpen"
       v-model:open="schemeSettingsOpen"
       :scheme-id="schemeSettingsTargetId"
+    />
+    <ImportCodeDialog
+      ref="importCodeDialogRef"
+      v-model:open="importCodeDialogOpen"
+      @confirm="handleImportFromCode"
     />
   </div>
 </template>
