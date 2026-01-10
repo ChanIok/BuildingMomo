@@ -338,6 +338,10 @@ export const zhLocale = {
       outOfBoundsTip: '{count} 个物品超出可建造区域 - 点击选中',
       oversized: '{count} 组过大',
       oversizedTip: '{count} 个组合超过 50 个物品上限 - 点击选中',
+      invalidScale: '{count} 个缩放超限',
+      invalidScaleTip: '{count} 个物品的缩放值超出家具允许范围 - 点击选中',
+      invalidRotation: '{count} 个旋转违规',
+      invalidRotationTip: '{count} 个物品在禁止的轴上进行了旋转 - 点击选中',
     },
     render: {
       limited: '渲染受限',

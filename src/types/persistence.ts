@@ -30,5 +30,7 @@ export interface ValidationResult {
   limitIssues: {
     outOfBoundsItemIds: string[]
     oversizedGroups: number[]
+    invalidScaleItemIds: string[]
+    invalidRotationItemIds: string[]
   }
 }

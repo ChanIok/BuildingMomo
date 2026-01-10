@@ -134,6 +134,29 @@ export function useWorkspaceWorker() {
     }
   }
 
+  // 5. 同步家具约束
+  const syncFurnitureConstraints = async () => {
+    if (!gameDataStore.isInitialized) return
+    try {
+      // 1. 提取约束信息
+      const constraintsMap = gameDataStore.getFurnitureConstraintsMap()
+
+      // 2. 将 Map 转换为普通对象，并使用 toRaw 确保深度去除响应式
+      const constraintsObj = Object.fromEntries(constraintsMap)
+      const rawConstraints = toRaw(constraintsObj)
+
+      // 3. 发送命令
+      const result = await workerApi.updateFurnitureConstraints(rawConstraints)
+
+      // 3. 更新 UI
+      if (result.validation) {
+        validationStore.setValidationResults(result.validation)
+      }
+    } catch (error) {
+      console.error('[Persistence] Failed to sync furniture constraints to worker:', error)
+    }
+  }
+
   const cleanupFns: (() => void)[] = []
   const isMonitoring = ref(false)
 
@@ -177,6 +200,7 @@ export function useWorkspaceWorker() {
     // 此时 Worker 已有 Snapshot，可以正确响应设置更新带来的验证请求
     syncSettings()
     syncBuildableAreas()
+    syncFurnitureConstraints()
 
     // 2. 监听状态变化 (拆分为结构性和内容性)
 

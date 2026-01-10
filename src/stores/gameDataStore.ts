@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, toRaw } from 'vue'
 import type {
   FurnitureItem,
   BuildingMomoFurniture,
@@ -47,7 +47,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     const result: Record<string, FurnitureItem> = {}
 
     for (const [itemId, value] of rawMap.entries()) {
-      const [nameZh, nameEn, iconId, dim] = value
+      const [nameZh, nameEn, iconId, dim, scaleRange, rot] = value
 
       // 基本校验：尺寸应为长度为3的数组
       const validSize =
@@ -59,12 +59,32 @@ export const useGameDataStore = defineStore('gameData', () => {
         ? (dim as [number, number, number])
         : [100, 100, 150]
 
+      // 校验缩放范围：应为长度为2的数组
+      const validScaleRange =
+        Array.isArray(scaleRange) &&
+        scaleRange.length === 2 &&
+        scaleRange.every((n) => typeof n === 'number' && Number.isFinite(n))
+
+      const parsedScaleRange: [number, number] = validScaleRange
+        ? (scaleRange as [number, number])
+        : [1, 1] // 默认不可缩放
+
+      // 校验旋转限制：应为长度为2的布尔数组
+      const validRot = Array.isArray(rot) && rot.length === 2
+      const parsedRot = validRot ? rot : [true, true] // 默认允许所有旋转
+
       result[itemId.toString()] = {
         name_cn: String(nameZh ?? ''),
         name_en: String(nameEn ?? ''),
         // 这里存储的是 icon_id，实际 URL 在 getIconUrl 中统一拼接 .webp
         icon: String(iconId ?? ''),
         size,
+        scaleRange: parsedScaleRange,
+        rotationAllowed: {
+          x: parsedRot[0] ?? true,
+          y: parsedRot[1] ?? true,
+          z: true, // Z 轴总是允许旋转
+        },
       }
     }
 
@@ -177,6 +197,32 @@ export const useGameDataStore = defineStore('gameData', () => {
     return config
   }
 
+  /**
+   * 获取所有家具的约束信息映射（用于 Worker 验证）
+   * @returns Map<gameId, {scaleRange, rotationAllowed}>
+   */
+  function getFurnitureConstraintsMap(): Map<
+    string,
+    {
+      scaleRange?: [number, number]
+      rotationAllowed?: { x: boolean; y: boolean; z: boolean }
+    }
+  > {
+    const map = new Map()
+
+    for (const [gameId, furniture] of Object.entries(furnitureData.value)) {
+      // 只包含有约束的家具
+      if (furniture.scaleRange || furniture.rotationAllowed) {
+        map.set(gameId, {
+          scaleRange: furniture.scaleRange ? toRaw(furniture.scaleRange) : undefined,
+          rotationAllowed: furniture.rotationAllowed ? toRaw(furniture.rotationAllowed) : undefined,
+        })
+      }
+    }
+
+    return map
+  }
+
   // 清除缓存 (仅重置状态)
   async function clearCache(): Promise<void> {
     console.log('[GameDataStore] Clearing state...')
@@ -210,6 +256,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     getFurnitureSize,
     getIconUrl,
     getFurnitureModelConfig,
+    getFurnitureConstraintsMap,
     clearCache,
   }
 })

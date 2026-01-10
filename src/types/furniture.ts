@@ -4,12 +4,19 @@
  * 原始家具条目：
  * [
  *   ItemID: number,
- *   [name_zh: string, name_en: string, icon_id: number, dim: [number, number, number]]
+ *   [name_zh: string, name_en: string, icon_id: number, dim: [number, number, number], scale: [min, max], rot: [x, y]]
  * ]
  */
 export type RawFurnitureEntry = [
   number,
-  [name_zh: string, name_en: string, icon_id: number, dim: [number, number, number]],
+  [
+    name_zh: string,
+    name_en: string,
+    icon_id: number,
+    dim: [number, number, number],
+    scale: [min: number, max: number],
+    rot: [x: boolean, y: boolean],
+  ],
 ]
 
 /** 远程数据格式 */
@@ -38,6 +45,14 @@ export interface FurnitureItem {
   icon: string
   /** 尺寸（游戏坐标系：X=长, Y=宽, Z=高，单位：cm） */
   size: [number, number, number]
+  /** 缩放范围限制 [最小值, 最大值] */
+  scaleRange: [number, number]
+  /** 旋转权限 */
+  rotationAllowed: {
+    x: boolean
+    y: boolean
+    z: boolean
+  }
 }
 
 /** IndexedDB 缓存结构 */

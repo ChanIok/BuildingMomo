@@ -5,9 +5,20 @@ import type { WorkspaceSnapshot, ValidationResult } from '../types/persistence'
 
 const STORAGE_KEY = 'workspace_snapshot'
 
+// 浮点数容差常量
+// 缩放值容差：用于处理浮点数存储精度误差（如 0.699999988079071 vs 0.69999998807907）
+const SCALE_EPSILON = 1e-6 // 0.000001
+
 // 状态
 let currentSnapshot: WorkspaceSnapshot | null = null
 let buildableAreas: Record<string, number[][]> | null = null
+let furnitureConstraints: Map<
+  string,
+  {
+    scaleRange?: [number, number]
+    rotationAllowed?: { x: boolean; y: boolean; z: boolean }
+  }
+> | null = null
 let settings = {
   enableDuplicateDetection: true,
   enableLimitDetection: true,
@@ -72,12 +83,21 @@ function checkLimits(
 ): {
   outOfBoundsItemIds: string[]
   oversizedGroups: number[]
+  invalidScaleItemIds: string[]
+  invalidRotationItemIds: string[]
 } {
   const outOfBoundsItemIds: string[] = []
   const oversizedGroups: number[] = []
+  const invalidScaleItemIds: string[] = []
+  const invalidRotationItemIds: string[] = []
 
   if (!config.enableLimitDetection) {
-    return { outOfBoundsItemIds, oversizedGroups }
+    return {
+      outOfBoundsItemIds,
+      oversizedGroups,
+      invalidScaleItemIds,
+      invalidRotationItemIds,
+    }
   }
 
   // 1. 组大小
@@ -131,7 +151,55 @@ function checkLimits(
     }
   }
 
-  return { outOfBoundsItemIds, oversizedGroups }
+  // 3. 家具约束检查（缩放和旋转）
+  if (furnitureConstraints) {
+    for (const item of items) {
+      const constraints = furnitureConstraints.get(item.gameId.toString())
+      if (!constraints) continue
+
+      // 检查缩放是否在允许范围内（使用 epsilon 容差处理浮点数精度）
+      if (constraints.scaleRange) {
+        const scale = item.extra.Scale
+        const [min, max] = constraints.scaleRange
+
+        // 使用容差比较：只有超出范围 epsilon 以上才算违规
+        // 例如：min=0.699999988, max=1.299999952, 实际值=1.2999999 → 合规
+        if (
+          scale.X < min - SCALE_EPSILON ||
+          scale.X > max + SCALE_EPSILON ||
+          scale.Y < min - SCALE_EPSILON ||
+          scale.Y > max + SCALE_EPSILON ||
+          scale.Z < min - SCALE_EPSILON ||
+          scale.Z > max + SCALE_EPSILON
+        ) {
+          invalidScaleItemIds.push(item.internalId)
+        }
+      }
+
+      // 检查旋转是否在禁止的轴上（禁止旋转的轴必须严格为 0）
+      if (constraints.rotationAllowed) {
+        const rot = item.rotation
+        const allowed = constraints.rotationAllowed
+
+        // X轴（Roll）检查 - 必须严格为 0
+        if (!allowed.x && rot.x !== 0) {
+          invalidRotationItemIds.push(item.internalId)
+          continue // 避免重复添加
+        }
+        // Y轴（Pitch）检查 - 必须严格为 0
+        if (!allowed.y && rot.y !== 0) {
+          invalidRotationItemIds.push(item.internalId)
+        }
+      }
+    }
+  }
+
+  return {
+    outOfBoundsItemIds,
+    oversizedGroups,
+    invalidScaleItemIds,
+    invalidRotationItemIds,
+  }
 }
 
 function runValidation(
@@ -181,7 +249,12 @@ function runValidationOnSnapshot(): ValidationResult {
   if (!currentSnapshot || !currentSnapshot.editor.activeSchemeId) {
     return {
       duplicateGroups: [],
-      limitIssues: { outOfBoundsItemIds: [], oversizedGroups: [] },
+      limitIssues: {
+        outOfBoundsItemIds: [],
+        oversizedGroups: [],
+        invalidScaleItemIds: [],
+        invalidRotationItemIds: [],
+      },
     }
   }
 
@@ -192,7 +265,12 @@ function runValidationOnSnapshot(): ValidationResult {
   if (!activeScheme) {
     return {
       duplicateGroups: [],
-      limitIssues: { outOfBoundsItemIds: [], oversizedGroups: [] },
+      limitIssues: {
+        outOfBoundsItemIds: [],
+        oversizedGroups: [],
+        invalidScaleItemIds: [],
+        invalidRotationItemIds: [],
+      },
     }
   }
 
@@ -356,6 +434,26 @@ const api = {
   // 7. 更新可建造区域 (缓存)
   updateBuildableAreas(areas: Record<string, number[][]> | null) {
     buildableAreas = areas
+
+    const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
+    if (shouldValidate) {
+      return { validation: runValidationOnSnapshot() }
+    }
+    return {}
+  },
+
+  // 8. 更新家具约束 (缩放和旋转限制)
+  updateFurnitureConstraints(
+    constraintsObj: Record<
+      string,
+      {
+        scaleRange?: [number, number]
+        rotationAllowed?: { x: boolean; y: boolean; z: boolean }
+      }
+    > | null
+  ) {
+    // 将普通对象转换为 Map（Web Worker 不支持直接传递 Map）
+    furnitureConstraints = constraintsObj ? new Map(Object.entries(constraintsObj)) : null
 
     const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
     if (shouldValidate) {

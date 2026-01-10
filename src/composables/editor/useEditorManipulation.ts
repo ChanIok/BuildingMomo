@@ -3,6 +3,7 @@ import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useGameDataStore } from '../../stores/gameDataStore'
 import { calculateBounds } from '../../lib/geometry'
 import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
@@ -110,6 +111,7 @@ export function useEditorManipulation() {
   const store = useEditorStore()
   const uiStore = useUIStore()
   const settingsStore = useSettingsStore()
+  const gameDataStore = useGameDataStore()
   const { activeScheme } = storeToRefs(store)
   const { saveHistory } = useEditorHistory()
 
@@ -197,12 +199,25 @@ export function useEditorManipulation() {
       let scalePositionOffset = { x: 0, y: 0, z: 0 } // 缩放导致的位置偏移（多选整体缩放）
 
       if (scale) {
+        const isLimitEnabled = settingsStore.settings.enableLimitDetection
+
         if (mode === 'absolute') {
           // 绝对模式：直接设置缩放值
           newScale = {
             X: scale.x !== undefined ? scale.x : newScale.X,
             Y: scale.y !== undefined ? scale.y : newScale.Y,
             Z: scale.z !== undefined ? scale.z : newScale.Z,
+          }
+
+          // 应用范围限制
+          if (isLimitEnabled) {
+            const furniture = gameDataStore.getFurniture(item.gameId)
+            if (furniture) {
+              const [min, max] = furniture.scaleRange
+              newScale.X = Math.max(min, Math.min(max, newScale.X))
+              newScale.Y = Math.max(min, Math.min(max, newScale.Y))
+              newScale.Z = Math.max(min, Math.min(max, newScale.Z))
+            }
           }
         } else {
           // 相对模式：简单的局部空间缩放（直接乘以倍数）
@@ -216,6 +231,17 @@ export function useEditorManipulation() {
             X: newScale.X * scaleMultiplier.x,
             Y: newScale.Y * scaleMultiplier.y,
             Z: newScale.Z * scaleMultiplier.z,
+          }
+
+          // 应用范围限制
+          if (isLimitEnabled) {
+            const furniture = gameDataStore.getFurniture(item.gameId)
+            if (furniture) {
+              const [min, max] = furniture.scaleRange
+              newScale.X = Math.max(min, Math.min(max, newScale.X))
+              newScale.Y = Math.max(min, Math.min(max, newScale.Y))
+              newScale.Z = Math.max(min, Math.min(max, newScale.Z))
+            }
           }
 
           // 多选时：实现整体缩放，同步调整物品相对于中心的位置

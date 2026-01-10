@@ -885,11 +885,36 @@ export function useThreeTransformGizmo(
    * 包括：
    * - 轴颜色自定义
    * - 隐藏 E 轴（视野平面旋转圈）
-   * - 处理旋转轴限制（限制检测开启时隐藏 X/Y 轴）
+   * - 处理旋转轴限制（限制检测开启时根据家具数据隐藏 X/Y 轴）
    * - Y 轴几何体翻转（适配游戏坐标系）
    */
   function setupGizmoAppearance(transformRef: Ref<any | null>, axesRef?: Ref<any | null>) {
     const settingsStore = useSettingsStore()
+
+    // 计算当前选中物品的约束信息
+    const computeConstraints = () => {
+      const scheme = editorStore.activeScheme
+      if (!scheme || scheme.selectedItemIds.value.size === 0) {
+        return { canRotateX: true, canRotateY: true }
+      }
+
+      const selectedIds = scheme.selectedItemIds.value
+      let canRotateX = true
+      let canRotateY = true
+
+      for (const id of selectedIds) {
+        const item = scheme.items.value.find((i) => i.internalId === id)
+        if (item) {
+          const furniture = gameDataStore.getFurniture(item.gameId)
+          if (furniture) {
+            canRotateX &&= furniture.rotationAllowed.x
+            canRotateY &&= furniture.rotationAllowed.y
+          }
+        }
+      }
+
+      return { canRotateX, canRotateY }
+    }
 
     // 自定义 TransformControls (Gizmo) 颜色，并隐藏 E 轴，同时处理旋转轴限制
     watch(
@@ -897,21 +922,25 @@ export function useThreeTransformGizmo(
         transformRef,
         () => editorStore.gizmoMode,
         () => settingsStore.settings.enableLimitDetection,
+        () => editorStore.selectionVersion, // 监听选择变化
       ],
       ([v]) => {
         const controls = v?.instance || v?.value
         if (!controls) return
 
-        // 限制处理：如果开启限制检测且处于旋转模式，则隐藏 X/Y 轴
+        // 限制处理：如果开启限制检测且处于旋转模式，则根据家具数据控制轴显示
         const isRotate = editorStore.gizmoMode === 'rotate'
         const isLimitEnabled = settingsStore.settings.enableLimitDetection
 
         if (isRotate && isLimitEnabled) {
-          controls.showX = false
-          controls.showY = false
+          const constraints = computeConstraints()
+          controls.showX = constraints.canRotateX
+          controls.showY = constraints.canRotateY
+          controls.showZ = true // Z 轴总是显示
         } else {
           controls.showX = true
           controls.showY = true
+          controls.showZ = true
         }
 
         const updateGizmo = () => {

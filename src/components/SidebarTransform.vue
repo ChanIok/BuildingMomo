@@ -4,6 +4,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useGameDataStore } from '../stores/gameDataStore'
 import { useI18n } from '../composables/useI18n'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -12,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
+const gameDataStore = useGameDataStore()
 const { t } = useI18n()
 const { updateSelectedItemsTransform, getSelectedItemsCenter, mirrorSelectedItems } =
   useEditorManipulation()
@@ -152,6 +154,58 @@ const selectionInfo = computed(() => {
   }
 })
 
+// 获取当前选中物品的变换约束信息
+const transformConstraints = computed(() => {
+  if (!selectionInfo.value) return null
+
+  const scheme = editorStore.activeScheme
+  if (!scheme) return null
+
+  const selected = scheme.items.value.filter((item) =>
+    scheme.selectedItemIds.value.has(item.internalId)
+  )
+
+  if (selected.length === 0) return null
+
+  // 多选时取交集（最严格限制）
+  let scaleMin = 0
+  let scaleMax = Infinity
+  let canRotateX = true
+  let canRotateY = true
+
+  for (const item of selected) {
+    const furniture = gameDataStore.getFurniture(item.gameId)
+    if (furniture) {
+      scaleMin = Math.max(scaleMin, furniture.scaleRange[0])
+      scaleMax = Math.min(scaleMax, furniture.scaleRange[1])
+      canRotateX &&= furniture.rotationAllowed.x
+      canRotateY &&= furniture.rotationAllowed.y
+    }
+  }
+
+  return {
+    scaleRange: [scaleMin, scaleMax] as [number, number],
+    rotationAllowed: { x: canRotateX, y: canRotateY, z: true },
+    isScaleLocked: scaleMin >= scaleMax,
+  }
+})
+
+// 计算各个控制的可用性
+const isRotationXAllowed = computed(() => {
+  if (!settingsStore.settings.enableLimitDetection) return true
+  return transformConstraints.value?.rotationAllowed.x ?? false
+})
+
+const isRotationYAllowed = computed(() => {
+  if (!settingsStore.settings.enableLimitDetection) return true
+  return transformConstraints.value?.rotationAllowed.y ?? false
+})
+
+const isScaleAllowed = computed(() => {
+  if (!settingsStore.settings.enableLimitDetection) return true
+  return !(transformConstraints.value?.isScaleLocked ?? false)
+})
+
 // 更新处理函数
 function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
@@ -252,9 +306,20 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
 function updateScale(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
 
+  // 应用范围限制（如果启用合规检测）
+  let clampedValue = value
+  if (settingsStore.settings.enableLimitDetection && transformConstraints.value) {
+    const [min, max] = transformConstraints.value.scaleRange
+    if (!isScaleRelative.value) {
+      // 绝对模式：只截断，不舍入（保持精确值，由逻辑层统一处理）
+      clampedValue = Math.max(min, Math.min(max, value))
+    }
+    // 相对模式：在 updateSelectedItemsTransform 内部处理
+  }
+
   if (isScaleRelative.value) {
     // 相对模式：值为乘数（例如 1.5 表示放大到 1.5 倍）
-    const multiplier = value
+    const multiplier = clampedValue
     if (multiplier === 1) return // 乘以 1 无变化
 
     const scaleArgs: any = {}
@@ -270,7 +335,7 @@ function updateScale(axis: 'x' | 'y' | 'z', value: number) {
   } else {
     // 绝对模式：直接设置缩放值
     const scaleArgs: any = {}
-    scaleArgs[axis] = value
+    scaleArgs[axis] = clampedValue
 
     updateSelectedItemsTransform({
       mode: 'absolute',
@@ -465,7 +530,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
         <div class="grid grid-cols-2 gap-2">
           <!-- Roll (X) -->
           <div
-            v-if="!settingsStore.settings.enableLimitDetection"
+            v-if="isRotationXAllowed"
             class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
             <span
@@ -488,7 +553,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           </div>
           <!-- Pitch (Y) -->
           <div
-            v-if="!settingsStore.settings.enableLimitDetection"
+            v-if="isRotationYAllowed"
             class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
           >
             <span
@@ -534,10 +599,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
         </div>
       </div>
       <!-- 缩放 -->
-      <div
-        v-if="!settingsStore.settings.enableLimitDetection"
-        class="flex flex-col items-stretch gap-2"
-      >
+      <div v-if="isScaleAllowed" class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">
           <label class="text-xs font-semibold text-sidebar-foreground">{{
             t('transform.scale')
@@ -629,10 +691,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
         </div>
       </div>
       <!-- 镜像 -->
-      <div
-        v-if="!settingsStore.settings.enableLimitDetection"
-        class="flex flex-col items-stretch gap-2"
-      >
+      <div v-if="isScaleAllowed" class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">
           <div class="flex items-center gap-1">
             <label class="text-xs font-semibold text-sidebar-foreground">{{

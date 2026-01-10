@@ -12,9 +12,16 @@ export const useValidationStore = defineStore('validation', () => {
 
   // 响应式状态
   const duplicateGroups = ref<string[][]>([])
-  const limitIssues = ref<{ outOfBoundsItemIds: string[]; oversizedGroups: number[] }>({
+  const limitIssues = ref<{
+    outOfBoundsItemIds: string[]
+    oversizedGroups: number[]
+    invalidScaleItemIds: string[]
+    invalidRotationItemIds: string[]
+  }>({
     outOfBoundsItemIds: [],
     oversizedGroups: [],
+    invalidScaleItemIds: [],
+    invalidRotationItemIds: [],
   })
   const isValidating = ref(false)
 
@@ -30,7 +37,9 @@ export const useValidationStore = defineStore('validation', () => {
   const hasLimitIssues = computed(() => {
     return (
       limitIssues.value.outOfBoundsItemIds.length > 0 ||
-      limitIssues.value.oversizedGroups.length > 0
+      limitIssues.value.oversizedGroups.length > 0 ||
+      limitIssues.value.invalidScaleItemIds.length > 0 ||
+      limitIssues.value.invalidRotationItemIds.length > 0
     )
   })
 
@@ -45,6 +54,8 @@ export const useValidationStore = defineStore('validation', () => {
     limitIssues.value = {
       outOfBoundsItemIds: [],
       oversizedGroups: [],
+      invalidScaleItemIds: [],
+      invalidRotationItemIds: [],
     }
   }
 
@@ -57,7 +68,12 @@ export const useValidationStore = defineStore('validation', () => {
       // 切换时先清空旧的验证结果，避免显示错误的警告
       setValidationResults({
         duplicateGroups: [],
-        limitIssues: { outOfBoundsItemIds: [], oversizedGroups: [] },
+        limitIssues: {
+          outOfBoundsItemIds: [],
+          oversizedGroups: [],
+          invalidScaleItemIds: [],
+          invalidRotationItemIds: [],
+        },
       })
       // 新方案的验证结果会随后由 Persistence 的 syncScheme 带回
     }
@@ -65,6 +81,11 @@ export const useValidationStore = defineStore('validation', () => {
 
   // 选择所有重复的物品
   function selectDuplicateItems() {
+    if (!activeScheme.value || duplicateGroups.value.length === 0) return
+
+    saveHistory('selection')
+    activeScheme.value.selectedItemIds.value.clear()
+
     duplicateGroups.value.forEach((group) => {
       // Skip the first one, select the rest
       group.slice(1).forEach((internalId) => {
@@ -108,6 +129,32 @@ export const useValidationStore = defineStore('validation', () => {
     editorStore.triggerSelectionUpdate()
   }
 
+  // 选择缩放超限的物品
+  function selectInvalidScaleItems() {
+    if (!activeScheme.value || limitIssues.value.invalidScaleItemIds.length === 0) return
+
+    saveHistory('selection')
+    activeScheme.value.selectedItemIds.value.clear()
+
+    limitIssues.value.invalidScaleItemIds.forEach((id) => {
+      activeScheme.value!.selectedItemIds.value.add(id)
+    })
+    editorStore.triggerSelectionUpdate()
+  }
+
+  // 选择旋转违规的物品
+  function selectInvalidRotationItems() {
+    if (!activeScheme.value || limitIssues.value.invalidRotationItemIds.length === 0) return
+
+    saveHistory('selection')
+    activeScheme.value.selectedItemIds.value.clear()
+
+    limitIssues.value.invalidRotationItemIds.forEach((id) => {
+      activeScheme.value!.selectedItemIds.value.add(id)
+    })
+    editorStore.triggerSelectionUpdate()
+  }
+
   return {
     duplicateGroups,
     hasDuplicate,
@@ -120,5 +167,7 @@ export const useValidationStore = defineStore('validation', () => {
     selectDuplicateItems,
     selectOutOfBoundsItems,
     selectOversizedGroupItems,
+    selectInvalidScaleItems,
+    selectInvalidRotationItems,
   }
 })

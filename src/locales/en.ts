@@ -340,6 +340,11 @@ export const enLocale = {
       outOfBoundsTip: '{count} items out of build area - Click to select',
       oversized: '{count} Oversized groups',
       oversizedTip: '{count} groups exceed 50 items - Click to select',
+      invalidScale: '{count} Invalid scale',
+      invalidScaleTip:
+        '{count} items have scale values exceeding furniture limits - Click to select',
+      invalidRotation: '{count} Invalid rotation',
+      invalidRotationTip: '{count} items are rotated on prohibited axes - Click to select',
     },
     render: {
       limited: 'Render Limited',

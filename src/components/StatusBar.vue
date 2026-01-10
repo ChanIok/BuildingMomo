@@ -9,7 +9,7 @@ import { useCommandStore } from '../stores/commandStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useI18n } from '@/composables/useI18n'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, AlertTriangle, Layers, EyeOff } from 'lucide-vue-next'
+import { Copy, AlertTriangle, Layers, EyeOff, Maximize2, RotateCw } from 'lucide-vue-next'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 
@@ -17,7 +17,13 @@ const editorStore = useEditorStore()
 const validationStore = useValidationStore()
 const { hasDuplicate, duplicateItemCount, limitIssues } = storeToRefs(validationStore)
 
-const { selectDuplicateItems, selectOutOfBoundsItems, selectOversizedGroupItems } = validationStore
+const {
+  selectDuplicateItems,
+  selectOutOfBoundsItems,
+  selectOversizedGroupItems,
+  selectInvalidScaleItems,
+  selectInvalidRotationItems,
+} = validationStore
 const uiStore = useUIStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
@@ -189,6 +195,58 @@ const handleDuplicateClick = () => {
               t('status.limit.outOfBoundsTip').replace(
                 '{count}',
                 String(limitIssues.outOfBoundsItemIds.length)
+              )
+            }}
+          </TooltipContent>
+        </Tooltip>
+
+        <!-- 限制警告：缩放超限 -->
+        <Tooltip v-if="limitIssues.invalidScaleItemIds.length > 0">
+          <TooltipTrigger as-child>
+            <div
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-500/90"
+              @click="selectInvalidScaleItems()"
+            >
+              <Maximize2 :size="14" />
+              <span class="text-xs">{{
+                t('status.limit.invalidScale').replace(
+                  '{count}',
+                  String(limitIssues.invalidScaleItemIds.length)
+                )
+              }}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {{
+              t('status.limit.invalidScaleTip').replace(
+                '{count}',
+                String(limitIssues.invalidScaleItemIds.length)
+              )
+            }}
+          </TooltipContent>
+        </Tooltip>
+
+        <!-- 限制警告：旋转违规 -->
+        <Tooltip v-if="limitIssues.invalidRotationItemIds.length > 0">
+          <TooltipTrigger as-child>
+            <div
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-orange-600 transition-colors hover:bg-orange-500/10 dark:text-orange-500/90"
+              @click="selectInvalidRotationItems()"
+            >
+              <RotateCw :size="14" />
+              <span class="text-xs">{{
+                t('status.limit.invalidRotation').replace(
+                  '{count}',
+                  String(limitIssues.invalidRotationItemIds.length)
+                )
+              }}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {{
+              t('status.limit.invalidRotationTip').replace(
+                '{count}',
+                String(limitIssues.invalidRotationItemIds.length)
               )
             }}
           </TooltipContent>
