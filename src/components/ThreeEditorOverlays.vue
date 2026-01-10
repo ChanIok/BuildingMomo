@@ -164,6 +164,21 @@ const showCameraDebug = computed({
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem
+        :disabled="!commandStore.isCommandEnabled('edit.group')"
+        @select="commandStore.executeCommand('edit.group')"
+      >
+        <span>{{ t('command.edit.group') }}</span>
+        <DropdownMenuShortcut>Ctrl+G</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        :disabled="!commandStore.isCommandEnabled('edit.ungroup')"
+        @select="commandStore.executeCommand('edit.ungroup')"
+      >
+        <span>{{ t('command.edit.ungroup') }}</span>
+        <DropdownMenuShortcut>Ctrl+Shift+G</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
         :disabled="!commandStore.isCommandEnabled('view.focusSelection')"
         @select="commandStore.executeCommand('view.focusSelection')"
       >
