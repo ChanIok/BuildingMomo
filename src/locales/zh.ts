@@ -85,6 +85,7 @@ export const zhLocale = {
       selectAll: '全选',
       deselectAll: '取消选择',
       invertSelection: '反选',
+      selectSameType: '选择同类',
       group: '成组',
       ungroup: '取消组合',
       move: '移动',

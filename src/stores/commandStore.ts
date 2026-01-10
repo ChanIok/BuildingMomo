@@ -28,7 +28,7 @@ export const useCommandStore = defineStore('command', () => {
   const editorStore = useEditorStore()
   const { undo, redo, canUndo, canRedo } = useEditorHistory()
   const { copy: copyCmd, cut: cutCmd, pasteItems, clipboard } = useClipboard()
-  const { selectAll, clearSelection, invertSelection } = useEditorSelection()
+  const { selectAll, clearSelection, invertSelection, selectSameType } = useEditorSelection()
   const { groupSelected, ungroupSelected } = useEditorGroups()
   const { deleteSelected } = useEditorManipulation()
 
@@ -345,12 +345,23 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'edit.invertSelection',
       label: t('command.edit.invertSelection'),
-      shortcut: 'Ctrl+Shift+A',
+      // 移除快捷键以避免与 selectSameType 冲突
       category: 'edit',
       enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
         console.log('[Command] 反选')
         invertSelection()
+      },
+    },
+    {
+      id: 'edit.selectSameType',
+      label: t('command.edit.selectSameType'),
+      shortcut: 'Ctrl+Shift+A',
+      category: 'edit',
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      execute: () => {
+        console.log('[Command] 选择同类')
+        selectSameType()
       },
     },
     {

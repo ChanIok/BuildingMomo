@@ -86,6 +86,7 @@ export const enLocale = {
       selectAll: 'Select All',
       deselectAll: 'Deselect All',
       invertSelection: 'Invert Selection',
+      selectSameType: 'Select Same Type',
       group: 'Group',
       ungroup: 'Ungroup',
       move: 'Move',

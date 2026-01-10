@@ -203,6 +203,38 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
+  // 选择同类型物品：选择所有与当前选中物品相同 gameId 的物品
+  function selectSameType() {
+    if (!activeScheme.value) return
+
+    const currentSelection = activeScheme.value.selectedItemIds.value
+    if (currentSelection.size === 0) return
+
+    // 保存历史（选择操作，会合并）
+    saveHistory('selection')
+
+    // 收集当前选中物品的所有 gameId
+    const gameIds = new Set<number>()
+    currentSelection.forEach((id) => {
+      const item = itemsMap.value.get(id)
+      if (item) {
+        gameIds.add(item.gameId)
+      }
+    })
+
+    // 遍历所有物品，选中匹配的 gameId（不自动扩展到组）
+    const newSelection = new Set<string>()
+    activeScheme.value.items.value.forEach((item: any) => {
+      if (gameIds.has(item.gameId)) {
+        newSelection.add(item.internalId)
+      }
+    })
+
+    activeScheme.value.selectedItemIds.value = newSelection
+
+    store.triggerSelectionUpdate()
+  }
+
   return {
     toggleSelection,
     updateSelection,
@@ -211,5 +243,6 @@ export function useEditorSelection() {
     clearSelection,
     selectAll,
     invertSelection,
+    selectSameType,
   }
 }
