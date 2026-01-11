@@ -459,6 +459,17 @@ export const zhLocale = {
     mirrorZ: '沿 Z 轴镜像',
     mirrorWithRotation: '同时镜像旋转',
     mirrorWithRotationHint: '关闭后，镜像操作仅调整位置，不改变物品朝向',
+    alignAndDistribute: '对齐与分布',
+    alignMin: '对齐到最小值',
+    alignCenter: '对齐到中心',
+    alignMax: '对齐到最大值',
+    distribute: '均匀分布',
+    alignMinHint: '将选中物品对齐到边界最小值',
+    alignCenterHint: '将选中物品对齐到边界中心',
+    alignMaxHint: '将选中物品对齐到边界最大值',
+    distributeHint: '在两端物品之间均匀分布',
+    requireTwoItems: '需要至少选中 2 个物品',
+    requireThreeItems: '需要至少选中 3 个物品',
   },
 
   // 家具背包

@@ -463,6 +463,17 @@ export const enLocale = {
     mirrorWithRotation: 'Mirror rotation',
     mirrorWithRotationHint:
       'When disabled, mirroring only adjusts position without changing item orientation',
+    alignAndDistribute: 'Align & Distribute',
+    alignMin: 'Align to Min',
+    alignCenter: 'Align to Center',
+    alignMax: 'Align to Max',
+    distribute: 'Distribute',
+    alignMinHint: 'Align selected items to minimum bounds',
+    alignCenterHint: 'Align selected items to center',
+    alignMaxHint: 'Align selected items to maximum bounds',
+    distributeHint: 'Evenly distribute items between endpoints',
+    requireTwoItems: 'Requires at least 2 selected items',
+    requireThreeItems: 'Requires at least 3 selected items',
   },
 
   // Furniture Library

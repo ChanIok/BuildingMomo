@@ -8,6 +8,9 @@ import { calculateBounds } from '../../lib/geometry'
 import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
+import { matrixTransform } from '../../lib/matrixTransform'
+import { transformOBBByMatrix } from '../../lib/collision'
+import { getThreeModelManager } from '../useThreeModelManager'
 
 /**
  * 计算物品在群组旋转后的新位置和姿态
@@ -563,6 +566,347 @@ export function useEditorManipulation() {
     }
   }
 
+  /**
+   * 对齐选中物品（沿指定轴对齐到最小值/中心/最大值）
+   *
+   * 根据渲染模式使用不同的对齐策略：
+   * - Box / Model 模式：使用包围盒边界进行对齐
+   * - Simple-box / Icon 模式：使用中心点进行对齐
+   *
+   * 支持工作坐标系：当工作坐标系启用时，在工作坐标系下进行对齐
+   *
+   * @param axis - 对齐轴 ('x' | 'y' | 'z')
+   * @param mode - 对齐模式 ('min' | 'center' | 'max')
+   */
+  function alignSelectedItems(axis: 'x' | 'y' | 'z', mode: 'min' | 'center' | 'max') {
+    if (!activeScheme.value) return
+
+    const scheme = activeScheme.value
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size < 2) return // 至少需要2个物品
+
+    saveHistory('edit')
+
+    const selectedItems = scheme.items.value.filter((item) => selectedIds.has(item.internalId))
+    const currentMode = settingsStore.settings.threeDisplayMode
+
+    // 快速路径：simple-box / icon 模式使用中心点对齐
+    if (currentMode === 'simple-box' || currentMode === 'icon') {
+      alignByCenterPoint(selectedItems, axis, mode)
+      return
+    }
+
+    // Box / Model 模式：使用包围盒对齐
+    alignByBoundingBox(selectedItems, axis, mode)
+  }
+
+  /**
+   * 使用中心点进行对齐（用于 simple-box / icon 模式）
+   */
+  function alignByCenterPoint(
+    selectedItems: AppItem[],
+    axis: 'x' | 'y' | 'z',
+    mode: 'min' | 'center' | 'max'
+  ) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+
+    // 在工作坐标系下计算positions
+    const workingPositions = selectedItems.map((item) => {
+      const pos = { x: item.x, y: item.y, z: item.z }
+      return uiStore.workingCoordinateSystem.enabled ? uiStore.globalToWorking(pos) : pos
+    })
+
+    // 计算对齐目标位置
+    const axisValues = workingPositions.map((pos) => pos[axis])
+    let targetValue: number
+
+    // Y轴特殊处理：由于渲染时使用 Scale(1, -1, 1) 翻转了Y轴
+    // 游戏数据Y小（北）→ 渲染后视觉Y大，游戏数据Y大（南）→ 渲染后视觉Y小
+    // 因此Y轴需要反转min/max逻辑以符合用户的视觉预期
+    const shouldInvert = axis === 'y'
+
+    switch (mode) {
+      case 'min':
+        targetValue = shouldInvert ? Math.max(...axisValues) : Math.min(...axisValues)
+        break
+      case 'center':
+        targetValue = (Math.min(...axisValues) + Math.max(...axisValues)) / 2
+        break
+      case 'max':
+        targetValue = shouldInvert ? Math.min(...axisValues) : Math.max(...axisValues)
+        break
+    }
+
+    // 更新每个选中物品
+    scheme.items.value = scheme.items.value.map((item) => {
+      if (!scheme.selectedItemIds.value.has(item.internalId)) {
+        return item
+      }
+
+      // 获取当前位置（工作坐标系）
+      const workingPos = uiStore.workingCoordinateSystem.enabled
+        ? uiStore.globalToWorking({ x: item.x, y: item.y, z: item.z })
+        : { x: item.x, y: item.y, z: item.z }
+
+      // 更新对齐轴
+      workingPos[axis] = targetValue
+
+      // 转换回全局坐标系
+      const newPos = uiStore.workingCoordinateSystem.enabled
+        ? uiStore.workingToGlobal(workingPos)
+        : workingPos
+
+      return {
+        ...item,
+        x: newPos.x,
+        y: newPos.y,
+        z: newPos.z,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
+  /**
+   * 使用包围盒进行对齐（用于 box / model 模式）
+   */
+  function alignByBoundingBox(
+    selectedItems: AppItem[],
+    axis: 'x' | 'y' | 'z',
+    mode: 'min' | 'center' | 'max'
+  ) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+
+    const currentMode = settingsStore.settings.threeDisplayMode
+    const modelManager = getThreeModelManager()
+    const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+
+    // 计算对齐轴在世界空间中的方向向量
+    const alignAxisVector = new Vector3()
+    if (axis === 'x') {
+      alignAxisVector.set(1, 0, 0)
+    } else if (axis === 'y') {
+      alignAxisVector.set(0, 1, 0)
+    } else {
+      alignAxisVector.set(0, 0, 1)
+    }
+
+    // 如果启用了工作坐标系，旋转对齐轴向量
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+      alignAxisVector.applyAxisAngle(new Vector3(0, 0, 1), -angleRad)
+    }
+
+    // 为每个物品计算包围盒投影
+    interface ItemProjection {
+      item: AppItem
+      projMin: number
+      projMax: number
+      projCenter: number
+    }
+
+    const itemProjections: ItemProjection[] = []
+
+    for (const item of selectedItems) {
+      // 1. 获取局部尺寸和中心
+      let localSize: Vector3
+      let localCenter: Vector3
+
+      if (currentMode === 'model') {
+        const modelBox = modelManager.getModelBoundingBox(item.gameId)
+        if (modelBox) {
+          // 模型有实际包围盒
+          localSize = new Vector3()
+          modelBox.getSize(localSize)
+          localCenter = new Vector3()
+          modelBox.getCenter(localCenter)
+        } else {
+          // 模型未加载，使用默认尺寸
+          const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+          localSize = new Vector3(...size)
+          localCenter = new Vector3()
+        }
+      } else {
+        // box 模式：使用家具尺寸
+        const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+        localSize = new Vector3(...size)
+        localCenter = new Vector3()
+      }
+
+      // 2. 构建世界矩阵
+      const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+      const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+      const useModelScale = !!(currentMode === 'model' && hasValidModel)
+      const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
+
+      // 3. 生成 OBB
+      const obb = transformOBBByMatrix(matrix, localSize, localCenter)
+
+      // 4. 获取 OBB 的 8 个角点
+      const corners = obb.getCorners()
+
+      // 5. 将角点投影到对齐轴上
+      let projMin = Infinity
+      let projMax = -Infinity
+
+      for (const corner of corners) {
+        const projection = corner.dot(alignAxisVector)
+        projMin = Math.min(projMin, projection)
+        projMax = Math.max(projMax, projection)
+      }
+
+      const projCenter = (projMin + projMax) / 2
+
+      itemProjections.push({
+        item,
+        projMin,
+        projMax,
+        projCenter,
+      })
+    }
+
+    // 6. 计算目标对齐值
+    // Y轴特殊处理：由于渲染时使用 Scale(1, -1, 1) 翻转了Y轴
+    // 需要反转min/max逻辑以符合用户的视觉预期
+    const shouldInvert = axis === 'y'
+    let targetValue: number
+
+    if (mode === 'min') {
+      if (shouldInvert) {
+        targetValue = Math.max(...itemProjections.map((p) => p.projMax))
+      } else {
+        targetValue = Math.min(...itemProjections.map((p) => p.projMin))
+      }
+    } else if (mode === 'center') {
+      const allMin = Math.min(...itemProjections.map((p) => p.projMin))
+      const allMax = Math.max(...itemProjections.map((p) => p.projMax))
+      targetValue = (allMin + allMax) / 2
+    } else {
+      // max
+      if (shouldInvert) {
+        targetValue = Math.min(...itemProjections.map((p) => p.projMin))
+      } else {
+        targetValue = Math.max(...itemProjections.map((p) => p.projMax))
+      }
+    }
+
+    // 7. 计算每个物品需要移动的距离并应用
+    scheme.items.value = scheme.items.value.map((item) => {
+      if (!scheme.selectedItemIds.value.has(item.internalId)) {
+        return item
+      }
+
+      // 找到对应的投影信息
+      const proj = itemProjections.find((p) => p.item.internalId === item.internalId)
+      if (!proj) return item
+
+      // 计算需要移动的距离
+      // Y轴反转时，min对应projMax，max对应projMin
+      let delta: number
+      if (mode === 'min') {
+        delta = shouldInvert ? targetValue - proj.projMax : targetValue - proj.projMin
+      } else if (mode === 'center') {
+        delta = targetValue - proj.projCenter
+      } else {
+        // max
+        delta = shouldInvert ? targetValue - proj.projMin : targetValue - proj.projMax
+      }
+
+      // 移动向量 = delta * alignAxisVector
+      const moveVector = alignAxisVector.clone().multiplyScalar(delta)
+
+      // 应用移动（moveVector 是在世界空间中，需要转换到数据空间）
+      // 数据空间 = (x, y, z) 在渲染中被 Scale(1, -1, 1) 变换
+      // 所以数据空间的增量 = (moveVector.x, -moveVector.y, moveVector.z)
+      const dataDelta = {
+        x: moveVector.x,
+        y: -moveVector.y, // 注意 Y 轴翻转
+        z: moveVector.z,
+      }
+
+      return {
+        ...item,
+        x: item.x + dataDelta.x,
+        y: item.y + dataDelta.y,
+        z: item.z + dataDelta.z,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
+  /**
+   * 分布选中物品（沿指定轴均匀分布）
+   *
+   * 支持工作坐标系：当工作坐标系启用时，在工作坐标系下进行分布
+   *
+   * @param axis - 分布轴 ('x' | 'y' | 'z')
+   */
+  function distributeSelectedItems(axis: 'x' | 'y' | 'z') {
+    if (!activeScheme.value) return
+
+    const scheme = activeScheme.value
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size < 3) return // 至少需要3个物品
+
+    saveHistory('edit')
+
+    const selectedItems = scheme.items.value.filter((item) => selectedIds.has(item.internalId))
+
+    // 在工作坐标系下处理
+    const itemsWithWorkingPos = selectedItems.map((item) => {
+      const pos = { x: item.x, y: item.y, z: item.z }
+      const workingPos = uiStore.workingCoordinateSystem.enabled
+        ? uiStore.globalToWorking(pos)
+        : pos
+      return { item, workingPos }
+    })
+
+    // 按指定轴排序
+    itemsWithWorkingPos.sort((a, b) => a.workingPos[axis] - b.workingPos[axis])
+
+    // 计算首尾位置
+    const firstItem = itemsWithWorkingPos[0]
+    const lastItem = itemsWithWorkingPos[itemsWithWorkingPos.length - 1]
+    if (!firstItem || !lastItem) return // 安全检查
+
+    const first = firstItem.workingPos[axis]
+    const last = lastItem.workingPos[axis]
+    const spacing = (last - first) / (itemsWithWorkingPos.length - 1)
+
+    // 创建ID到新位置的映射
+    const newPositionsMap = new Map<string, { x: number; y: number; z: number }>()
+
+    itemsWithWorkingPos.forEach(({ item, workingPos }, index) => {
+      const newWorkingPos = { ...workingPos }
+      newWorkingPos[axis] = first + spacing * index
+
+      // 转换回全局坐标系
+      const newGlobalPos = uiStore.workingCoordinateSystem.enabled
+        ? uiStore.workingToGlobal(newWorkingPos)
+        : newWorkingPos
+
+      newPositionsMap.set(item.internalId, newGlobalPos)
+    })
+
+    // 更新所有物品
+    activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
+      const newPos = newPositionsMap.get(item.internalId)
+      if (!newPos) return item
+
+      return {
+        ...item,
+        x: newPos.x,
+        y: newPos.y,
+        z: newPos.z,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
   return {
     getSelectedItemsCenter,
     deleteSelected,
@@ -570,6 +914,8 @@ export function useEditorManipulation() {
     moveSelectedItems,
     rotateSelectedItems,
     mirrorSelectedItems,
+    alignSelectedItems,
+    distributeSelectedItems,
     commitBatchedTransform,
   }
 

@@ -9,14 +9,29 @@ import { useI18n } from '../composables/useI18n'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
+import {
+  AlignStartHorizontal,
+  AlignCenterHorizontal,
+  AlignEndHorizontal,
+  AlignHorizontalSpaceBetween,
+  AlignStartVertical,
+  AlignCenterVertical,
+  AlignEndVertical,
+  AlignVerticalSpaceBetween,
+} from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const gameDataStore = useGameDataStore()
 const { t } = useI18n()
-const { updateSelectedItemsTransform, getSelectedItemsCenter, mirrorSelectedItems } =
-  useEditorManipulation()
+const {
+  updateSelectedItemsTransform,
+  getSelectedItemsCenter,
+  mirrorSelectedItems,
+  alignSelectedItems,
+  distributeSelectedItems,
+} = useEditorManipulation()
 
 // 三个独立的开关，默认都开启绝对模式 (false)
 const isPositionRelative = ref(false)
@@ -755,6 +770,255 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           >
             <span class="text-[10px] font-bold text-blue-500 dark:text-blue-500/90">Z</span>
           </button>
+        </div>
+      </div>
+      <!-- 对齐与分布 -->
+      <div v-if="selectionInfo.count > 1" class="flex flex-col items-stretch gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-y-2">
+          <div class="flex items-center gap-1">
+            <label class="text-xs font-semibold text-sidebar-foreground">{{
+              t('transform.alignAndDistribute')
+            }}</label>
+            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] text-primary">{{
+                    t('transform.workingCoord')
+                  }}</span>
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  <div
+                    v-html="
+                      t('transform.workingCoordTip', {
+                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                      })
+                    "
+                  ></div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+          <!-- X轴 -->
+          <div class="flex items-center gap-2">
+            <span class="w-4 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
+              >X</span
+            >
+            <div class="flex flex-1 gap-1.5">
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('x', 'min')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignStartVertical :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignMinHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('x', 'center')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignCenterVertical :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignCenterHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('x', 'max')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignEndVertical :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignMaxHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="distributeSelectedItems('x')"
+                      :disabled="selectionInfo.count < 3"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignHorizontalSpaceBetween :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.distributeHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+
+          <!-- Y轴 -->
+          <div class="flex items-center gap-2">
+            <span
+              class="w-4 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
+              >Y</span
+            >
+            <div class="flex flex-1 gap-1.5">
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('y', 'min')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignStartHorizontal :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignMinHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('y', 'center')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignCenterHorizontal :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignCenterHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('y', 'max')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignEndHorizontal :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignMaxHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="distributeSelectedItems('y')"
+                      :disabled="selectionInfo.count < 3"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignHorizontalSpaceBetween :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.distributeHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+
+          <!-- Z轴 -->
+          <div class="flex items-center gap-2">
+            <span class="w-4 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
+              >Z</span
+            >
+            <div class="flex flex-1 gap-1.5">
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('z', 'min')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignStartHorizontal :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignMinHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('z', 'center')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignCenterHorizontal :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignCenterHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="alignSelectedItems('z', 'max')"
+                      :disabled="selectionInfo.count < 2"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignEndHorizontal :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.alignMaxHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip :delay-duration="500">
+                  <TooltipTrigger as-child>
+                    <button
+                      @click="distributeSelectedItems('z')"
+                      :disabled="selectionInfo.count < 3"
+                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <AlignVerticalSpaceBetween :size="14" class="shrink-0" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ t('transform.distributeHint') }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
         </div>
       </div>
     </div>
