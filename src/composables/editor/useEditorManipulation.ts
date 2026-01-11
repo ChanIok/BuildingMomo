@@ -724,9 +724,9 @@ export function useEditorManipulation() {
           localCenter = new Vector3()
         }
       } else {
-        // box 模式：使用家具尺寸
-        const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-        localSize = new Vector3(...size)
+        // box 模式：尺寸已经编码在 matrix.scale 中（buildWorldMatrixFromItem 已处理）
+        // 所以这里使用单位向量，避免重复计算导致尺寸被平方
+        localSize = new Vector3(1, 1, 1)
         localCenter = new Vector3()
       }
 
