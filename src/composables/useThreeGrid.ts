@@ -36,7 +36,8 @@ export function useThreeGrid(basePosition: Ref<[number, number, number]>) {
     }
 
     const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-    return [0, angleRad, 0]
+    // 使用负角度，与相机 up 向量的视觉效果保持一致
+    return [0, -angleRad, 0]
   })
 
   // 网格位置计算 - 处理Z-fighting问题

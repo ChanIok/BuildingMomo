@@ -116,7 +116,8 @@ export function applyWCSRotation(
     return { direction: [...direction], up: [...up] }
   }
 
-  const angleRad = (wcs.rotationAngle * Math.PI) / 180
+  // 使用负角度，使得视野顺时针旋转，与 Gizmo 和 Grid 的视觉效果一致
+  const angleRad = (-wcs.rotationAngle * Math.PI) / 180
   const cos = Math.cos(angleRad)
   const sin = Math.sin(angleRad)
 

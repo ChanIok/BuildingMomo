@@ -916,6 +916,83 @@ export function useThreeTransformGizmo(
       return { canRotateX, canRotateY }
     }
 
+    // 提取可复用的 gizmo 外观更新函数
+    const updateGizmoAppearance = (controls: any) => {
+      if (!controls) return
+
+      // 1. 处理旋转轴限制
+      const isRotate = editorStore.gizmoMode === 'rotate'
+      const isLimitEnabled = settingsStore.settings.enableLimitDetection
+
+      if (isRotate && isLimitEnabled) {
+        const constraints = computeConstraints()
+        controls.showX = constraints.canRotateX
+        controls.showY = constraints.canRotateY
+        controls.showZ = true // Z 轴总是显示
+      } else {
+        controls.showX = true
+        controls.showY = true
+        controls.showZ = true
+      }
+
+      // 2. 颜色设置 & 收集需要移除的 'E' 和 'XYZE' 轴对象
+      const mainGizmo = controls.gizmo || controls.children?.[0]
+      if (!mainGizmo) return
+
+      const objectsToRemove: any[] = []
+
+      mainGizmo.traverse((obj: any) => {
+        // 标记需要移除的辅助轴
+        if (obj.name === 'E' || obj.name === 'XYZE') {
+          objectsToRemove.push(obj)
+          return
+        }
+
+        // 设置轴颜色
+        if (!obj.material || !obj.name) return
+
+        let color
+        if (/^(X|XYZX)$/.test(obj.name)) color = AXIS_COLORS.x
+        else if (/^(Y|XYZY)$/.test(obj.name)) {
+          color = AXIS_COLORS.y
+          // 翻转 Y 轴几何体的顶点方向，使其在视觉上指向"下方"以匹配游戏数据坐标系
+          if (!obj.userData.hasFlippedY) {
+            const posAttr = obj.geometry?.attributes?.position
+            if (posAttr) {
+              for (let i = 0; i < posAttr.count; i++) {
+                posAttr.setY(i, -posAttr.getY(i))
+              }
+              posAttr.needsUpdate = true
+              obj.userData.hasFlippedY = true
+            }
+          }
+        } else if (/^(Z|XYZZ)$/.test(obj.name)) color = AXIS_COLORS.z
+
+        if (color) {
+          obj.material.color.set(color)
+          // 关键：覆盖 tempColor 防止颜色被重置
+          obj.material.tempColor = obj.material.tempColor || new Color()
+          obj.material.tempColor.set(color)
+        }
+      })
+
+      // 遍历 picker 结构 (用于点击检测的隐藏物体)
+      if (controls.picker) {
+        controls.picker.traverse((obj: any) => {
+          if (obj.name === 'E' || obj.name === 'XYZE') {
+            objectsToRemove.push(obj)
+          }
+        })
+      }
+
+      // 3. 统一移除标记的对象
+      objectsToRemove.forEach((obj) => {
+        if (obj.parent) {
+          obj.parent.remove(obj)
+        }
+      })
+    }
+
     // 自定义 TransformControls (Gizmo) 颜色，并隐藏 E 轴，同时处理旋转轴限制
     watch(
       [
@@ -923,88 +1000,19 @@ export function useThreeTransformGizmo(
         () => editorStore.gizmoMode,
         () => settingsStore.settings.enableLimitDetection,
         () => editorStore.selectionVersion, // 监听选择变化
+        () => uiStore.currentViewPreset, // 监听视图切换，修复切换视图时外观失效问题
       ],
-      ([v]) => {
-        const controls = v?.instance || v?.value
-        if (!controls) return
+      () => {
+        // 延迟执行：等待 TransformControls 完成内部 gizmo 重建后再应用自定义外观
+        // 使用 requestAnimationFrame 确保在下一帧渲染时执行，避免时序问题
+        requestAnimationFrame(() => {
+          // 重新获取最新的 controls 引用（透视↔正交切换时实例可能重建）
+          const latestControls = transformRef.value?.instance || transformRef.value?.value
+          if (!latestControls) return
 
-        // 限制处理：如果开启限制检测且处于旋转模式，则根据家具数据控制轴显示
-        const isRotate = editorStore.gizmoMode === 'rotate'
-        const isLimitEnabled = settingsStore.settings.enableLimitDetection
-
-        if (isRotate && isLimitEnabled) {
-          const constraints = computeConstraints()
-          controls.showX = constraints.canRotateX
-          controls.showY = constraints.canRotateY
-          controls.showZ = true // Z 轴总是显示
-        } else {
-          controls.showX = true
-          controls.showY = true
-          controls.showZ = true
-        }
-
-        const updateGizmo = () => {
-          // 1. 颜色设置 & 收集需要移除的 'E' 和 'XYZE' 轴对象
-          const objectsToRemove: any[] = []
-
-          // 遍历 helper/gizmo 结构
-          const mainGizmo = controls.gizmo || controls.children?.[0]
-          if (mainGizmo) {
-            mainGizmo.traverse((obj: any) => {
-              // 标记需要移除的辅助轴
-              if (obj.name === 'E' || obj.name === 'XYZE') {
-                objectsToRemove.push(obj)
-                return
-              }
-
-              // 设置轴颜色
-              if (!obj.material || !obj.name) return
-
-              let color
-              if (/^(X|XYZX)$/.test(obj.name)) color = AXIS_COLORS.x
-              else if (/^(Y|XYZY)$/.test(obj.name)) {
-                color = AXIS_COLORS.y
-                // 翻转 Y 轴几何体的顶点方向，使其在视觉上指向"下方"以匹配游戏数据坐标系
-                // 检查标记：防止重复翻转
-                if (!obj.userData.hasFlippedY) {
-                  const posAttr = obj.geometry?.attributes?.position
-                  if (posAttr) {
-                    for (let i = 0; i < posAttr.count; i++) {
-                      posAttr.setY(i, -posAttr.getY(i))
-                    }
-                    posAttr.needsUpdate = true
-                    obj.userData.hasFlippedY = true
-                  }
-                }
-              } else if (/^(Z|XYZZ)$/.test(obj.name)) color = AXIS_COLORS.z
-
-              if (color) {
-                obj.material.color.set(color)
-                // 关键：覆盖 tempColor 防止颜色被重置
-                obj.material.tempColor = obj.material.tempColor || new Color()
-                obj.material.tempColor.set(color)
-              }
-            })
-          }
-
-          // 遍历 picker 结构 (用于点击检测的隐藏物体)
-          if (controls.picker) {
-            controls.picker.traverse((obj: any) => {
-              if (obj.name === 'E' || obj.name === 'XYZE') {
-                objectsToRemove.push(obj)
-              }
-            })
-          }
-
-          // 2. 统一移除
-          objectsToRemove.forEach((obj) => {
-            if (obj.parent) {
-              obj.parent.remove(obj)
-            }
-          })
-        }
-
-        updateGizmo()
+          // 应用所有外观设置
+          updateGizmoAppearance(latestControls)
+        })
       }
     )
 
