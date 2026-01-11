@@ -387,7 +387,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
 </script>
 
 <template>
-  <div v-if="selectionInfo" class="p-4 pr-2">
+  <div v-if="selectionInfo" class="p-4">
     <div class="flex flex-col items-stretch gap-3">
       <!-- 位置 -->
       <div class="flex flex-col items-stretch gap-2">
@@ -936,7 +936,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                       :disabled="selectionInfo.count < 3"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <AlignHorizontalSpaceBetween :size="14" class="shrink-0" />
+                      <AlignVerticalSpaceBetween :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
@@ -961,7 +961,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                       :disabled="selectionInfo.count < 2"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <AlignStartHorizontal :size="14" class="shrink-0" />
+                      <AlignEndHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
@@ -993,7 +993,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                       :disabled="selectionInfo.count < 2"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <AlignEndHorizontal :size="14" class="shrink-0" />
+                      <AlignStartHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">

@@ -621,20 +621,15 @@ export function useEditorManipulation() {
     const axisValues = workingPositions.map((pos) => pos[axis])
     let targetValue: number
 
-    // Y轴特殊处理：由于渲染时使用 Scale(1, -1, 1) 翻转了Y轴
-    // 游戏数据Y小（北）→ 渲染后视觉Y大，游戏数据Y大（南）→ 渲染后视觉Y小
-    // 因此Y轴需要反转min/max逻辑以符合用户的视觉预期
-    const shouldInvert = axis === 'y'
-
     switch (mode) {
       case 'min':
-        targetValue = shouldInvert ? Math.max(...axisValues) : Math.min(...axisValues)
+        targetValue = Math.min(...axisValues)
         break
       case 'center':
         targetValue = (Math.min(...axisValues) + Math.max(...axisValues)) / 2
         break
       case 'max':
-        targetValue = shouldInvert ? Math.min(...axisValues) : Math.max(...axisValues)
+        targetValue = Math.max(...axisValues)
         break
     }
 
