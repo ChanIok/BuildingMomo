@@ -45,20 +45,40 @@
 
     <h2>使用中的常见问题</h2>
 
-    <h3>界面显示 &lt;MISSING STRING TABLE ENTRY&gt; 等占位文本</h3>
+    <h3>「保存到游戏」提示权限错误</h3>
     <p>
-      <strong>问题描述：</strong>在保存或加载方案时，游戏界面显示类似
-      <code>&lt;MISSING STRING TABLE ENTRY&gt;</code> 的占位符。
+      <strong>问题描述：</strong>保存失败，错误信息类似
+      <code>...could not be modified due to the state of the underlying filesystem</code>。
     </p>
     <p>
-      <strong>原因：</strong>这是游戏本身的
-      Bug，与本工具无关。该问题在社区早有反馈，即使不使用工具也可能随机触发。
+      <strong>原因：</strong>游戏安装在系统保护目录（如 Program Files），浏览器无法直接写入文件。
     </p>
-    <p><strong>解决方法：</strong></p>
-    <ul>
-      <li>返回游戏登录界面，重新登录即可恢复正常</li>
-      <li>如问题反复出现，建议通过游戏内工单系统向官方反馈</li>
-    </ul>
+    <p><strong>解决方法（任选其一）：</strong></p>
+    <ol>
+      <li>
+        <strong>以管理员身份运行浏览器（推荐）</strong>
+        <ul>
+          <li>关闭浏览器</li>
+          <li>右键浏览器图标 → "以管理员身份运行"</li>
+          <li>重新访问编辑器网站</li>
+        </ul>
+      </li>
+      <li>
+        <strong>修改文件夹权限</strong>
+        <ul>
+          <li>右键 BuildData 文件夹 → 属性 → 安全 → 编辑</li>
+          <li>选择当前用户（或 Everyone）</li>
+          <li>勾选"完全控制"的"允许"</li>
+        </ul>
+      </li>
+      <li>
+        <strong>使用导出功能代替</strong>
+        <ul>
+          <li>使用「文件 > 导出建造数据」下载 JSON 文件</li>
+          <li>手动复制到游戏目录替换原文件</li>
+        </ul>
+      </li>
+    </ol>
 
     <h3>没有点击「脱离卡死」却收到导入数据提示</h3>
     <p>
@@ -136,7 +156,5 @@
         开源，游戏素材版权归原厂商所有。
       </li>
     </ul>
-
-    <p class="mt-8 text-sm text-muted-foreground">最后更新：2025-12-11</p>
   </div>
 </template>

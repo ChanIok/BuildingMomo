@@ -44,20 +44,41 @@
 
     <h2>Troubleshooting</h2>
 
-    <h3>UI Shows Placeholder Text (e.g., &lt;MISSING STRING TABLE ENTRY&gt;)</h3>
+    <h3>"Save to Game" Permission Error</h3>
     <p>
-      <strong>Issue:</strong> When saving or loading schemes, the game UI displays placeholder text
-      like <code>&lt;MISSING STRING TABLE ENTRY&gt;</code>.
+      <strong>Issue:</strong> Save fails with an error message like
+      <code>...could not be modified due to the state of the underlying filesystem</code>.
     </p>
     <p>
-      <strong>Cause:</strong> This is a known game bug, unrelated to this tool. It has been reported
-      by the community and can randomly occur even during normal gameplay.
+      <strong>Cause:</strong> The game is installed in a system-protected directory (e.g., Program
+      Files), preventing the browser from writing files.
     </p>
-    <p><strong>Solution:</strong></p>
-    <ul>
-      <li>Return to the game's login screen and re-login to restore normal display</li>
-      <li>If the issue persists, report it to the game's official support team</li>
-    </ul>
+    <p><strong>Solutions (choose one):</strong></p>
+    <ol>
+      <li>
+        <strong>Run browser as administrator (Recommended)</strong>
+        <ul>
+          <li>Close your browser completely</li>
+          <li>Right-click browser icon → "Run as administrator"</li>
+          <li>Re-open the editor website</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Modify folder permissions</strong>
+        <ul>
+          <li>Right-click BuildData folder → Properties → Security → Edit</li>
+          <li>Select your current user (or Everyone)</li>
+          <li>Check "Allow" for "Full control"</li>
+        </ul>
+      </li>
+      <li>
+        <strong>Use export instead</strong>
+        <ul>
+          <li>Use "File > Export Scheme" to download the JSON file</li>
+          <li>Manually copy it to the game directory to replace the original file</li>
+        </ul>
+      </li>
+    </ol>
 
     <h3>Import Prompts Appear During Building</h3>
     <p>
@@ -150,7 +171,5 @@
         >. Game assets belong to the original developer.
       </li>
     </ul>
-
-    <p class="mt-8 text-sm text-muted-foreground">Last Updated: 2025-12-11</p>
   </div>
 </template>
