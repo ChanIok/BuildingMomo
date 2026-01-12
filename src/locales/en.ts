@@ -463,6 +463,8 @@ export const enLocale = {
     mirrorWithRotation: 'Mirror rotation',
     mirrorWithRotationHint:
       'When disabled, mirroring only adjusts position without changing item orientation',
+    customPivot: 'Custom Pivot',
+    customPivotHint: 'When enabled, you can specify a custom coordinate as the rotation center',
     alignAndDistribute: 'Align & Distribute',
     alignMin: 'Align to Min',
     alignCenter: 'Align to Center',

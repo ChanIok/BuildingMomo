@@ -141,6 +141,16 @@ export function useEditorManipulation() {
     }
   }
 
+  /**
+   * 获取旋转中心：如果启用了定点旋转，使用自定义中心，否则使用选区中心
+   */
+  function getRotationCenter(): { x: number; y: number; z: number } | null {
+    if (uiStore.customPivotEnabled && uiStore.customPivotPosition) {
+      return uiStore.customPivotPosition
+    }
+    return getSelectedItemsCenter()
+  }
+
   // 删除选中物品
   function deleteSelected() {
     if (!activeScheme.value) return
@@ -167,8 +177,8 @@ export function useEditorManipulation() {
     const ids = scheme.selectedItemIds.value
     if (ids.size === 0) return
 
-    // 计算选区中心（用于旋转和绝对位置）
-    const center = getSelectedItemsCenter()
+    // 计算旋转中心（支持定点旋转）和绝对位置的参考点
+    const center = getRotationCenter()
     if (!center) return
 
     // 计算位置偏移量
@@ -383,8 +393,8 @@ export function useEditorManipulation() {
     const list = scheme.items.value
     const selectedItems = list.filter((item) => selectedIds.has(item.internalId))
 
-    // 获取选中物品的中心点（旋转中心）
-    const center = getSelectedItemsCenter()
+    // 获取旋转中心（支持定点旋转）
+    const center = getRotationCenter()
     if (!center) return
 
     // 构建增量旋转四元数（ZYX 顺序）
@@ -442,8 +452,8 @@ export function useEditorManipulation() {
 
     saveHistory('edit')
 
-    // 获取选区中心（全局坐标系）
-    const globalCenter = getSelectedItemsCenter()
+    // 获取旋转/镜像中心（支持定点旋转）
+    const globalCenter = getRotationCenter()
     if (!globalCenter) return
 
     // 转换到工作坐标系

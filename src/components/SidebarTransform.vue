@@ -45,6 +45,12 @@ const positionState = ref({ x: 0, y: 0, z: 0 })
 // 缩放输入的临时状态（相对模式默认为 1，因为是乘法）
 const scaleState = ref({ x: 1, y: 1, z: 1 })
 
+// 定点旋转状态
+const customPivotEnabled = ref(false)
+const customPivotX = ref<number | null>(null)
+const customPivotY = ref<number | null>(null)
+const customPivotZ = ref<number | null>(null)
+
 // Tabs 绑定的计算属性
 const positionMode = computed({
   get: () => (isPositionRelative.value ? 'relative' : 'absolute'),
@@ -84,6 +90,25 @@ watch(
   },
   { deep: true }
 )
+
+// 监听定点旋转开关，同步到 uiStore
+watch(customPivotEnabled, (enabled) => {
+  uiStore.setCustomPivotEnabled(enabled)
+  if (!enabled) {
+    customPivotX.value = null
+    customPivotY.value = null
+    customPivotZ.value = null
+  }
+})
+
+// 监听定点旋转坐标变化，同步到 uiStore
+watch([customPivotX, customPivotY, customPivotZ], ([x, y, z]) => {
+  if (customPivotEnabled.value && x !== null && y !== null && z !== null) {
+    uiStore.setCustomPivotPosition({ x, y, z })
+  } else {
+    uiStore.setCustomPivotPosition(null)
+  }
+})
 
 const selectionInfo = computed(() => {
   const scheme = editorStore.activeScheme
@@ -442,6 +467,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
+              step="any"
               :value="
                 isPositionRelative
                   ? positionState.x === 0
@@ -463,6 +489,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
+              step="any"
               :value="
                 isPositionRelative
                   ? positionState.y === 0
@@ -484,6 +511,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
+              step="any"
               :value="
                 isPositionRelative
                   ? positionState.z === 0
@@ -542,6 +570,71 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             </TabsList>
           </Tabs>
         </div>
+        <!-- 定点旋转 -->
+        <div class="flex items-center justify-between gap-2">
+          <TooltipProvider>
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <label
+                  for="custom-pivot-toggle"
+                  class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
+                >
+                  {{ t('transform.customPivot') }}
+                </label>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                {{ t('transform.customPivotHint') }}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Switch id="custom-pivot-toggle" v-model="customPivotEnabled" />
+        </div>
+        <div v-if="customPivotEnabled" class="grid grid-cols-3 gap-2">
+          <div
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
+          >
+            <span class="mr-1.5 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
+              >X</span
+            >
+            <input
+              type="number"
+              step="any"
+              v-model.number="customPivotX"
+              placeholder=""
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
+          >
+            <span
+              class="mr-1.5 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
+              >Y</span
+            >
+            <input
+              type="number"
+              step="any"
+              v-model.number="customPivotY"
+              placeholder=""
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div
+            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
+          >
+            <span
+              class="mr-1.5 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
+              >Z</span
+            >
+            <input
+              type="number"
+              step="any"
+              v-model.number="customPivotZ"
+              placeholder=""
+              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-2">
           <!-- Roll (X) -->
           <div
@@ -554,6 +647,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
+              step="any"
               :value="
                 rotationMode === 'relative'
                   ? rotationState.x === 0
@@ -577,6 +671,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
+              step="any"
               :value="
                 rotationMode === 'relative'
                   ? rotationState.y === 0
@@ -599,6 +694,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
+              step="any"
               :value="
                 rotationMode === 'relative'
                   ? rotationState.z === 0
@@ -646,7 +742,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
-              step="0.1"
+              step="any"
               :value="
                 isScaleRelative
                   ? scaleState.x === 1
@@ -668,7 +764,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
-              step="0.1"
+              step="any"
               :value="
                 isScaleRelative
                   ? scaleState.y === 1
@@ -690,7 +786,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             >
             <input
               type="number"
-              step="0.1"
+              step="any"
               :value="
                 isScaleRelative
                   ? scaleState.z === 1
@@ -1059,6 +1155,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <div class="flex flex-1 items-center gap-2">
             <input
               type="number"
+              step="any"
               :value="fmt(selectionInfo.bounds.min.x)"
               @change="
                 (e) => updateBounds('x', 'min', Number((e.target as HTMLInputElement).value))
@@ -1068,6 +1165,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <span class="text-[10px] text-muted-foreground">~</span>
             <input
               type="number"
+              step="any"
               :value="fmt(selectionInfo.bounds.max.x)"
               @change="
                 (e) => updateBounds('x', 'max', Number((e.target as HTMLInputElement).value))
@@ -1085,6 +1183,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <div class="flex flex-1 items-center gap-2">
             <input
               type="number"
+              step="any"
               :value="fmt(selectionInfo.bounds.min.y)"
               @change="
                 (e) => updateBounds('y', 'min', Number((e.target as HTMLInputElement).value))
@@ -1094,6 +1193,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <span class="text-[10px] text-muted-foreground">~</span>
             <input
               type="number"
+              step="any"
               :value="fmt(selectionInfo.bounds.max.y)"
               @change="
                 (e) => updateBounds('y', 'max', Number((e.target as HTMLInputElement).value))
@@ -1111,6 +1211,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <div class="flex flex-1 items-center gap-2">
             <input
               type="number"
+              step="any"
               :value="fmt(selectionInfo.bounds.min.z)"
               @change="
                 (e) => updateBounds('z', 'min', Number((e.target as HTMLInputElement).value))
@@ -1120,6 +1221,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <span class="text-[10px] text-muted-foreground">~</span>
             <input
               type="number"
+              step="any"
               :value="fmt(selectionInfo.bounds.max.z)"
               @change="
                 (e) => updateBounds('z', 'max', Number((e.target as HTMLInputElement).value))

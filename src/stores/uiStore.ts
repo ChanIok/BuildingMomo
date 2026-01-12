@@ -31,6 +31,10 @@ export const useUIStore = defineStore('ui', () => {
     rotationAngle: 0,
   })
 
+  // 定点旋转状态（临时状态，不持久化）
+  const customPivotEnabled = ref(false)
+  const customPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
+
   // ========== 视图模式管理 ==========
 
   function toggleViewMode() {
@@ -117,11 +121,26 @@ export const useUIStore = defineStore('ui', () => {
     console.log('[UIStore] Sidebar view set to:', view)
   }
 
+  // ========== 定点旋转管理 ==========
+
+  function setCustomPivotEnabled(enabled: boolean) {
+    customPivotEnabled.value = enabled
+    if (!enabled) {
+      customPivotPosition.value = null
+    }
+  }
+
+  function setCustomPivotPosition(position: { x: number; y: number; z: number } | null) {
+    customPivotPosition.value = position
+  }
+
   return {
     // 状态
     viewMode,
     workingCoordinateSystem,
     sidebarView,
+    customPivotEnabled,
+    customPivotPosition,
 
     // 视图模式
     toggleViewMode,
@@ -138,5 +157,9 @@ export const useUIStore = defineStore('ui', () => {
     setWorkingCoordinateSystem,
     workingToGlobal,
     globalToWorking,
+
+    // 定点旋转
+    setCustomPivotEnabled,
+    setCustomPivotPosition,
   }
 })

@@ -194,13 +194,20 @@ export function useThreeTransformGizmo(
     uiStore.workingCoordinateSystem.enabled ? 'local' : 'world'
   )
 
-  // 跟随选中物品中心更新 gizmo 位置（非拖拽时）
+  // 跟随选中物品中心或自定义旋转中心更新 gizmo 位置（非拖拽时）
   watchEffect(() => {
     if (isTransformDragging.value) {
       return
     }
 
-    const center = getSelectedItemsCenter()
+    // 支持定点旋转：如果启用了定点旋转，使用自定义中心
+    let center: { x: number; y: number; z: number } | null = null
+    if (uiStore.customPivotEnabled && uiStore.customPivotPosition) {
+      center = uiStore.customPivotPosition
+    } else {
+      center = getSelectedItemsCenter()
+    }
+
     const pivot = pivotRef.value
 
     if (!center || !pivot) {
