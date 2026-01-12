@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useGameDataStore } from '@/stores/gameDataStore'
-import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { useI18n } from '@/composables/useI18n'
@@ -11,10 +10,9 @@ import { Button } from '@/components/ui/button'
 import { X, Search } from 'lucide-vue-next'
 
 const gameDataStore = useGameDataStore()
-const settingsStore = useSettingsStore()
 const editorStore = useEditorStore()
 const { addFurnitureItem } = useEditorItemAdd()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 // 控制显示
 const isVisible = defineModel<boolean>('open', { default: false })
@@ -24,7 +22,7 @@ const searchQuery = ref('')
 // 处理家具列表
 const furnitureList = computed(() => {
   const data = gameDataStore.furnitureData
-  const lang = settingsStore.settings.language
+  const lang = locale.value
 
   return Object.entries(data).map(([id, item]) => ({
     id: parseInt(id),
