@@ -77,18 +77,18 @@ export function useThreeTransformGizmo(
   const selectedItemsOBBInfo = ref<SelectedItemOBBInfo[]>([])
   const hasStartedTransform = ref(false)
 
-  // Alt+拖拽复制状态
-  const altDragCopyPending = ref(false)
-  const altDragCopyExecuted = ref(false)
-  const gizmoStartScreenPosition = ref({ x: 0, y: 0 })
-
   // 旋转模式状态：基于角度的旋转计算
   const isRotateMode = ref(false)
   const rotateAxis = ref<'X' | 'Y' | 'Z' | null>(null)
   const startMouseAngle = ref(0)
   const startGizmoRotation = markRaw(new Euler())
-  const lastAppliedAngle = ref(0) // 已应用到 gizmoPivot 的累积角度
   const hasInitializedRotation = ref(false) // 是否已初始化旋转起始角度
+  const lastRotationMatrices = ref<Map<string, Matrix4> | null>(null) // 缓存最后一次旋转计算的矩阵
+
+  // Alt+拖拽复制状态
+  const altDragCopyPending = ref(false)
+  const altDragCopyExecuted = ref(false)
+  const gizmoStartScreenPosition = ref({ x: 0, y: 0 })
 
   // 碰撞吸附状态：记录起始位置用于计算移动方向
   const gizmoStartPosition = markRaw(new Vector3())
@@ -115,7 +115,8 @@ export function useThreeTransformGizmo(
   /**
    * 计算鼠标在旋转平面上的角度
    * @param gizmoWorldPos Gizmo 中心的世界坐标
-   * @param mouseEvent 鼠标事件，用于获取屏幕坐标
+   * @param mouseClientX 鼠标 X 坐标
+   * @param mouseClientY 鼠标 Y 坐标
    * @param camera 当前相机
    * @param axis 旋转轴
    * @param containerRect 容器的布局信息
@@ -166,6 +167,13 @@ export function useThreeTransformGizmo(
 
     // 4. 计算交点相对于 gizmo 中心的角度
     const localPos = intersection.clone().sub(gizmoWorldPos)
+
+    // ✅ 关键修复：如果启用了工作坐标系，需要将 localPos 转换到工作坐标系局部空间
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+      // 正向旋转（逆变换）：将世界空间位置转换到工作坐标系局部空间
+      localPos.applyAxisAngle(new Vector3(0, 0, 1), angleRad)
+    }
 
     // 根据轴选择正确的两个分量计算 atan2
     let angle: number
@@ -266,7 +274,7 @@ export function useThreeTransformGizmo(
     gizmoStartMatrix.copy(pivot.matrixWorld)
     gizmoStartPosition.setFromMatrixPosition(pivot.matrixWorld)
 
-    // 3. 检测是否为旋转模式，并记录初始状态
+    // 2.5. 检测是否为旋转模式，并记录初始状态
     if (editorStore.gizmoMode === 'rotate' && transformRef?.value) {
       const controls = transformRef.value.instance || transformRef.value.value
       if (controls && controls.axis) {
@@ -275,7 +283,6 @@ export function useThreeTransformGizmo(
           isRotateMode.value = true
           rotateAxis.value = axis as 'X' | 'Y' | 'Z'
           startGizmoRotation.copy(pivot.rotation)
-          lastAppliedAngle.value = 0
           hasInitializedRotation.value = false // 重置初始化标志
         }
       }
@@ -284,7 +291,7 @@ export function useThreeTransformGizmo(
       rotateAxis.value = null
     }
 
-    // 4. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
+    // 3. 记录所有选中物品的初始世界矩阵 (根据数据从头计算，而不是读取渲染器可能被 Icon 模式修改过的矩阵)
     if (scheme) {
       itemStartWorldMatrices.value = buildItemWorldMatricesMap(scheme, scheme.selectedItemIds.value)
 
@@ -389,6 +396,7 @@ export function useThreeTransformGizmo(
     isRotateMode.value = false
     rotateAxis.value = null
     hasInitializedRotation.value = false
+    lastRotationMatrices.value = null
 
     // 🔧 调试：清理包围盒辅助对象
     clearDebugHelpers()
@@ -731,21 +739,67 @@ export function useThreeTransformGizmo(
             deltaAngle = Math.round(deltaAngle / snapRad) * snapRad
           }
 
-          // 直接设置 gizmoPivot 的旋转
-          const newRotation = startGizmoRotation.clone()
-          if (rotateAxis.value === 'X') {
-            newRotation.x += deltaAngle
-          } else if (rotateAxis.value === 'Y') {
-            newRotation.y += deltaAngle
-          } else {
-            newRotation.z += deltaAngle
-          }
-          pivot.rotation.copy(newRotation)
-          pivot.updateMatrixWorld(true)
+          // ✅ 关键修复：不修改 pivot.rotation，而是直接计算物品的新世界矩阵
 
-          lastAppliedAngle.value = deltaAngle
+          // 1. 在 Gizmo 局部空间构建旋转矩阵
+          const localRotationMatrix = new Matrix4()
+          if (rotateAxis.value === 'X') {
+            localRotationMatrix.makeRotationX(deltaAngle)
+          } else if (rotateAxis.value === 'Y') {
+            localRotationMatrix.makeRotationY(deltaAngle)
+          } else {
+            localRotationMatrix.makeRotationZ(deltaAngle)
+          }
+
+          // 2. 获取 Gizmo 的旋转矩阵（用于坐标系转换）
+          const gizmoRotationMatrix = new Matrix4().makeRotationFromEuler(pivot.rotation)
+          const gizmoRotationInverse = gizmoRotationMatrix.clone().invert()
+
+          // 3. 转换到世界空间：World = GizmoRot × LocalRot × GizmoRotInv
+          const worldRotationMatrix = new Matrix4()
+            .multiplyMatrices(gizmoRotationMatrix, localRotationMatrix)
+            .multiply(gizmoRotationInverse)
+
+          // 4. 应用到所有物品
+          const newWorldMatrices = new Map<string, Matrix4>()
+          const gizmoWorldPos = new Vector3().setFromMatrixPosition(pivot.matrixWorld)
+
+          for (const [id, startMatrix] of itemStartWorldMatrices.value.entries()) {
+            // 提取起始位置
+            const startPos = new Vector3().setFromMatrixPosition(startMatrix)
+
+            // 计算相对于 Gizmo 中心的位置
+            const relativePos = startPos.clone().sub(gizmoWorldPos)
+
+            // 旋转相对位置（公转）
+            relativePos.applyMatrix4(worldRotationMatrix)
+
+            // 计算新位置
+            const newPos = gizmoWorldPos.clone().add(relativePos)
+
+            // 应用旋转到物品本身（自转）
+            const newMatrix = worldRotationMatrix.clone().multiply(startMatrix)
+            newMatrix.setPosition(newPos)
+
+            newWorldMatrices.set(id, newMatrix)
+          }
+
+          // 第一次真正发生变换时保存历史
+          if (!hasStartedTransform.value) {
+            saveHistory('edit')
+            hasStartedTransform.value = true
+          }
+
+          // ✅ 缓存最后一次计算的矩阵，供 mouseUp 时使用
+          lastRotationMatrices.value = newWorldMatrices
+
+          // 更新视觉层（拖拽过程中跳过 BVH 重建以提升性能）
+          updateSelectedInstancesMatrix(newWorldMatrices, true)
         }
       }
+
+      // ✅ 重要：提前返回，不执行默认逻辑
+      return
     }
 
     // Alt+拖拽复制：检查是否需要执行延迟复制
@@ -825,7 +879,14 @@ export function useThreeTransformGizmo(
       return
     }
 
-    let newWorldMatrices = calculateCurrentTransforms()
+    // ✅ 旋转模式：使用缓存的最后一次计算结果
+    let newWorldMatrices: Map<string, Matrix4> | null = null
+    if (isRotateMode.value && lastRotationMatrices.value) {
+      newWorldMatrices = lastRotationMatrices.value
+    } else {
+      // 非旋转模式：使用默认逻辑
+      newWorldMatrices = calculateCurrentTransforms()
+    }
 
     if (newWorldMatrices) {
       // ✅ 关键修复：松开鼠标时也要应用碰撞吸附，确保与拖拽过程中的处理一致
