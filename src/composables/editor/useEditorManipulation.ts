@@ -177,9 +177,20 @@ export function useEditorManipulation() {
     const ids = scheme.selectedItemIds.value
     if (ids.size === 0) return
 
-    // 计算旋转中心（支持定点旋转）和绝对位置的参考点
+    // 计算旋转中心（支持定点旋转）
     const center = getRotationCenter()
     if (!center) return
+
+    // 计算位置参考点（支持参照物）
+    let referencePoint = center
+    const pivotId = uiStore.alignmentPivotId
+    if (pivotId && mode === 'absolute' && position) {
+      // 如果有参照物，使用参照物的位置
+      const pivotItem = store.itemsMap.get(pivotId)
+      if (pivotItem && scheme.selectedItemIds.value.has(pivotId)) {
+        referencePoint = { x: pivotItem.x, y: pivotItem.y, z: pivotItem.z }
+      }
+    }
 
     // 计算位置偏移量
     let positionOffset = { x: 0, y: 0, z: 0 }
@@ -187,9 +198,9 @@ export function useEditorManipulation() {
     if (mode === 'absolute' && position) {
       // 绝对模式：移动到指定坐标
       positionOffset = {
-        x: (position.x ?? center.x) - center.x,
-        y: (position.y ?? center.y) - center.y,
-        z: (position.z ?? center.z) - center.z,
+        x: (position.x ?? referencePoint.x) - referencePoint.x,
+        y: (position.y ?? referencePoint.y) - referencePoint.y,
+        z: (position.z ?? referencePoint.z) - referencePoint.z,
       }
     } else if (mode === 'relative' && position) {
       // 相对模式：偏移指定距离

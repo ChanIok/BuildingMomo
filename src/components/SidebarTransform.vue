@@ -9,6 +9,7 @@ import { useI18n } from '../composables/useI18n'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
+import { toast } from 'vue-sonner'
 import {
   AlignStartHorizontal,
   AlignCenterHorizontal,
@@ -18,6 +19,7 @@ import {
   AlignCenterVertical,
   AlignEndVertical,
   AlignVerticalSpaceBetween,
+  X,
 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
@@ -118,7 +120,15 @@ const selectionInfo = computed(() => {
   const selected = scheme.items.value.filter((item) => ids.has(item.internalId))
 
   // 位置中心点（用于绝对模式显示）
-  let center = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
+  let center = { x: 0, y: 0, z: 0 }
+
+  // 如果有参照物，使用参照物的位置
+  if (pivotItem.value) {
+    center = { x: pivotItem.value.x, y: pivotItem.value.y, z: pivotItem.value.z }
+  } else {
+    // 否则使用选区中心
+    center = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
+  }
 
   // 如果启用了工作坐标系，将中心点转换到工作坐标系
   if (uiStore.workingCoordinateSystem.enabled) {
@@ -245,6 +255,62 @@ const isScaleAllowed = computed(() => {
   if (!settingsStore.settings.enableLimitDetection) return true
   return !(transformConstraints.value?.isScaleLocked ?? false)
 })
+
+// ========== 参照物相关逻辑 ==========
+
+// 当前参照物
+const pivotItem = computed(() => {
+  if (!uiStore.alignmentPivotId) return null
+
+  const pivotId = uiStore.alignmentPivotId
+  return editorStore.itemsMap.get(pivotId) || null
+})
+
+// 参照物名称
+const pivotItemName = computed(() => {
+  if (!pivotItem.value) return ''
+  const furniture = gameDataStore.getFurniture(pivotItem.value.gameId)
+
+  if (!furniture) {
+    return t('sidebar.itemDefaultName', { id: pivotItem.value.gameId })
+  }
+
+  // 根据当前语言选择名称（与 useThreeTooltip 保持一致）
+  const { locale } = useI18n()
+  return locale.value === 'zh' ? furniture.name_cn : furniture.name_en || furniture.name_cn
+})
+
+// 开始选择参照物
+function startSelectingPivot() {
+  if (!editorStore.activeScheme) return
+  if (editorStore.activeScheme.selectedItemIds.value.size < 2) {
+    toast.warning(t('transform.requireTwoItems'))
+    return
+  }
+
+  uiStore.setSelectingAlignmentPivot(true)
+  toast.info(t('transform.selectingPivot'))
+}
+
+// 清除参照物
+function clearPivot() {
+  uiStore.clearAlignmentPivot()
+}
+
+// 监听选区变化，自动清除不在选区内的参照物
+watch(
+  () => editorStore.activeScheme?.selectedItemIds.value,
+  (newSelection) => {
+    if (!uiStore.alignmentPivotId) return
+
+    const pivotId = uiStore.alignmentPivotId
+    if (newSelection && !newSelection.has(pivotId)) {
+      // 参照物不在选区内，清除
+      uiStore.clearAlignmentPivot()
+    }
+  },
+  { deep: true }
+)
 
 // 更新处理函数
 function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
@@ -457,6 +523,55 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             </TabsList>
           </Tabs>
         </div>
+
+        <!-- 参照物选择 (仅在多选时显示) -->
+        <div v-if="selectionInfo.count > 1" class="flex items-center justify-between gap-2">
+          <label class="text-xs text-sidebar-foreground">{{ t('transform.pivotReference') }}</label>
+          <div class="flex min-w-0 flex-1 items-center justify-end">
+            <!-- 未选择且未在选择中 -->
+            <button
+              v-if="!pivotItem && !uiStore.isSelectingAlignmentPivot"
+              @click="startSelectingPivot"
+              class="h-6 rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              {{ t('transform.selectButton') }}
+            </button>
+            <!-- 选择中状态 -->
+            <button
+              v-else-if="!pivotItem && uiStore.isSelectingAlignmentPivot"
+              @click="uiStore.setSelectingAlignmentPivot(false)"
+              class="h-6 rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              {{ t('transform.cancelSelectingPivot') }}
+            </button>
+            <!-- 已设置参照物 -->
+            <div
+              v-else-if="pivotItem"
+              class="flex min-w-0 items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1"
+            >
+              <TooltipProvider>
+                <Tooltip :delay-duration="300">
+                  <TooltipTrigger as-child>
+                    <span class="min-w-0 cursor-help truncate text-[10px] text-sidebar-foreground">
+                      {{ pivotItemName }}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs" variant="light">
+                    {{ pivotItemName }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <button
+                @click="clearPivot"
+                class="flex-shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                :title="t('transform.clearPivot')"
+              >
+                <X :size="12" />
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-2 gap-2">
           <div
             class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"

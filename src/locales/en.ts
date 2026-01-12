@@ -476,6 +476,14 @@ export const enLocale = {
     distributeHint: 'Evenly distribute items between endpoints',
     requireTwoItems: 'Requires at least 2 selected items',
     requireThreeItems: 'Requires at least 3 selected items',
+    pivotReference: 'Reference',
+    selectButton: 'Select',
+    cancelSelectingPivot: 'Cancel',
+    pivotLabel: 'Pivot',
+    clearPivot: 'Clear Pivot',
+    selectingPivot: 'Click an item in the scene as pivot',
+    pivotItemNotInSelection: 'Please select an item from current selection',
+    pivotSet: 'Pivot set successfully',
   },
 
   // Furniture Library

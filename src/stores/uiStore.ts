@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
@@ -34,6 +34,10 @@ export const useUIStore = defineStore('ui', () => {
   // 定点旋转状态（临时状态，不持久化）
   const customPivotEnabled = ref(false)
   const customPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
+
+  // 参照物选择模式（临时状态，不持久化）
+  const isSelectingAlignmentPivot = ref(false)
+  const alignmentPivotId = ref<string | null>(null)
 
   // ========== 视图模式管理 ==========
 
@@ -134,6 +138,32 @@ export const useUIStore = defineStore('ui', () => {
     customPivotPosition.value = position
   }
 
+  // ========== 参照物选择管理 ==========
+
+  function setSelectingAlignmentPivot(selecting: boolean) {
+    isSelectingAlignmentPivot.value = selecting
+  }
+
+  function setAlignmentPivotId(id: string | null) {
+    alignmentPivotId.value = id
+  }
+
+  function clearAlignmentPivot() {
+    alignmentPivotId.value = null
+  }
+
+  // 监听方案切换，自动清除参照物
+  // 注意：这里使用延迟导入避免循环依赖
+  import('./editorStore').then(({ useEditorStore }) => {
+    const editorStore = useEditorStore()
+    watch(
+      () => editorStore.activeSchemeId,
+      () => {
+        alignmentPivotId.value = null
+      }
+    )
+  })
+
   return {
     // 状态
     viewMode,
@@ -141,6 +171,8 @@ export const useUIStore = defineStore('ui', () => {
     sidebarView,
     customPivotEnabled,
     customPivotPosition,
+    isSelectingAlignmentPivot,
+    alignmentPivotId,
 
     // 视图模式
     toggleViewMode,
@@ -161,5 +193,10 @@ export const useUIStore = defineStore('ui', () => {
     // 定点旋转
     setCustomPivotEnabled,
     setCustomPivotPosition,
+
+    // 参照物选择
+    setSelectingAlignmentPivot,
+    setAlignmentPivotId,
+    clearAlignmentPivot,
   }
 })

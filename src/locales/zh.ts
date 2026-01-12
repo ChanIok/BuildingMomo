@@ -472,6 +472,14 @@ export const zhLocale = {
     distributeHint: '在两端物品之间均匀分布',
     requireTwoItems: '需要至少选中 2 个物品',
     requireThreeItems: '需要至少选中 3 个物品',
+    pivotReference: '参照物',
+    selectButton: '选择',
+    cancelSelectingPivot: '取消',
+    pivotLabel: '参照',
+    clearPivot: '清除参照物',
+    selectingPivot: '请在场景中点击参照物',
+    pivotItemNotInSelection: '请选择当前选区内的物品',
+    pivotSet: '参照物已设置',
   },
 
   // 家具背包
