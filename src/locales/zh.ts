@@ -473,6 +473,7 @@ export const zhLocale = {
     requireTwoItems: '需要至少选中 2 个物品',
     requireThreeItems: '需要至少选中 3 个物品',
     pivotReference: '参照物',
+    pivotReferenceHint: '以此物品为基准，移动时其他物品跟随',
     selectButton: '选择',
     cancelSelectingPivot: '取消',
     pivotLabel: '参照',

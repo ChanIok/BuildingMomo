@@ -47,11 +47,127 @@ const positionState = ref({ x: 0, y: 0, z: 0 })
 // 缩放输入的临时状态（相对模式默认为 1，因为是乘法）
 const scaleState = ref({ x: 1, y: 1, z: 1 })
 
-// 定点旋转状态
+// 定点旋转状态（存储全局坐标系的值）
 const customPivotEnabled = ref(false)
-const customPivotX = ref<number | null>(null)
-const customPivotY = ref<number | null>(null)
-const customPivotZ = ref<number | null>(null)
+const customPivotGlobalX = ref<number | null>(null)
+const customPivotGlobalY = ref<number | null>(null)
+const customPivotGlobalZ = ref<number | null>(null)
+
+// 定点旋转显示值（根据工作坐标系转换）
+const customPivotDisplayX = computed({
+  get: () => {
+    if (
+      customPivotGlobalX.value === null ||
+      customPivotGlobalY.value === null ||
+      customPivotGlobalZ.value === null
+    ) {
+      return null
+    }
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const working = uiStore.globalToWorking({
+        x: customPivotGlobalX.value,
+        y: customPivotGlobalY.value,
+        z: customPivotGlobalZ.value,
+      })
+      return working.x
+    }
+    return customPivotGlobalX.value
+  },
+  set: (value: number | null) => {
+    if (value === null) {
+      customPivotGlobalX.value = null
+      return
+    }
+
+    if (uiStore.workingCoordinateSystem.enabled) {
+      // 构造工作坐标系下的完整坐标
+      const workingY = customPivotDisplayY.value ?? 0
+      const workingZ = customPivotDisplayZ.value ?? 0
+      const global = uiStore.workingToGlobal({ x: value, y: workingY, z: workingZ })
+      customPivotGlobalX.value = global.x
+      customPivotGlobalY.value = global.y
+      customPivotGlobalZ.value = global.z
+    } else {
+      customPivotGlobalX.value = value
+    }
+  },
+})
+
+const customPivotDisplayY = computed({
+  get: () => {
+    if (
+      customPivotGlobalX.value === null ||
+      customPivotGlobalY.value === null ||
+      customPivotGlobalZ.value === null
+    ) {
+      return null
+    }
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const working = uiStore.globalToWorking({
+        x: customPivotGlobalX.value,
+        y: customPivotGlobalY.value,
+        z: customPivotGlobalZ.value,
+      })
+      return working.y
+    }
+    return customPivotGlobalY.value
+  },
+  set: (value: number | null) => {
+    if (value === null) {
+      customPivotGlobalY.value = null
+      return
+    }
+
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const workingX = customPivotDisplayX.value ?? 0
+      const workingZ = customPivotDisplayZ.value ?? 0
+      const global = uiStore.workingToGlobal({ x: workingX, y: value, z: workingZ })
+      customPivotGlobalX.value = global.x
+      customPivotGlobalY.value = global.y
+      customPivotGlobalZ.value = global.z
+    } else {
+      customPivotGlobalY.value = value
+    }
+  },
+})
+
+const customPivotDisplayZ = computed({
+  get: () => {
+    if (
+      customPivotGlobalX.value === null ||
+      customPivotGlobalY.value === null ||
+      customPivotGlobalZ.value === null
+    ) {
+      return null
+    }
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const working = uiStore.globalToWorking({
+        x: customPivotGlobalX.value,
+        y: customPivotGlobalY.value,
+        z: customPivotGlobalZ.value,
+      })
+      return working.z
+    }
+    return customPivotGlobalZ.value
+  },
+  set: (value: number | null) => {
+    if (value === null) {
+      customPivotGlobalZ.value = null
+      return
+    }
+
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const workingX = customPivotDisplayX.value ?? 0
+      const workingY = customPivotDisplayY.value ?? 0
+      const global = uiStore.workingToGlobal({ x: workingX, y: workingY, z: value })
+      customPivotGlobalX.value = global.x
+      customPivotGlobalY.value = global.y
+      customPivotGlobalZ.value = global.z
+    } else {
+      customPivotGlobalZ.value = value
+    }
+  },
+})
 
 // Tabs 绑定的计算属性
 const positionMode = computed({
@@ -97,14 +213,14 @@ watch(
 watch(customPivotEnabled, (enabled) => {
   uiStore.setCustomPivotEnabled(enabled)
   if (!enabled) {
-    customPivotX.value = null
-    customPivotY.value = null
-    customPivotZ.value = null
+    customPivotGlobalX.value = null
+    customPivotGlobalY.value = null
+    customPivotGlobalZ.value = null
   }
 })
 
-// 监听定点旋转坐标变化，同步到 uiStore
-watch([customPivotX, customPivotY, customPivotZ], ([x, y, z]) => {
+// 监听定点旋转坐标变化（全局坐标），同步到 uiStore
+watch([customPivotGlobalX, customPivotGlobalY, customPivotGlobalZ], ([x, y, z]) => {
   if (customPivotEnabled.value && x !== null && y !== null && z !== null) {
     uiStore.setCustomPivotPosition({ x, y, z })
   } else {
@@ -324,21 +440,10 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     let posArgs: any = { x: 0, y: 0, z: 0 }
     posArgs[axis] = delta
 
-    // 工作坐标系下的相对移动：需要旋转增量向量
+    // 工作坐标系下的相对移动：将增量向量从工作坐标系转换到全局坐标系
     if (uiStore.workingCoordinateSystem.enabled) {
-      // 这里不需要平移，只需要旋转向量
-      // workingToGlobal 包含平移逻辑吗？uiStore 中的实现是纯旋转变换（看起来是 2D 旋转 + Z 不变）
-      // 让我们检查 uiStore.workingToGlobal 的实现
-      // 实现是: x' = x*cos - y*sin ... 这是一个纯线性变换（旋转），所以对向量也适用
       posArgs = uiStore.workingToGlobal(posArgs)
     }
-
-    // updateSelectedItemsTransform 接受的是全局增量
-    // 但注意：这个函数签名的 posArgs 是 Partial<{x,y,z}>
-    // 如果旋转后 x,y 都有值，我们需要正确传递
-    // 为了安全，我们需要构造一个完整的 delta 对象传递给 updateSelectedItemsTransform
-    // 但是 updateSelectedItemsTransform 在 relative 模式下接受的是 Partial
-    // 我们传递旋转后的完整对象即可
 
     updateSelectedItemsTransform({
       mode: 'relative',
@@ -526,7 +631,18 @@ const fmt = (n: number) => Math.round(n * 100) / 100
 
         <!-- 参照物选择 (仅在多选时显示) -->
         <div v-if="selectionInfo.count > 1" class="flex items-center justify-between gap-2">
-          <label class="text-xs text-sidebar-foreground">{{ t('transform.pivotReference') }}</label>
+          <TooltipProvider>
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <label class="cursor-help text-xs text-sidebar-foreground hover:text-foreground">
+                  {{ t('transform.pivotReference') }}
+                </label>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                {{ t('transform.pivotReferenceHint') }}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <div class="flex min-w-0 flex-1 items-center justify-end">
             <!-- 未选择且未在选择中 -->
             <button
@@ -690,12 +806,20 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <TooltipProvider>
             <Tooltip :delay-duration="300">
               <TooltipTrigger as-child>
-                <label
-                  for="custom-pivot-toggle"
-                  class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
-                >
-                  {{ t('transform.customPivot') }}
-                </label>
+                <div class="flex items-center gap-1">
+                  <label
+                    for="custom-pivot-toggle"
+                    class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
+                  >
+                    {{ t('transform.customPivot') }}
+                  </label>
+                  <span
+                    v-if="uiStore.workingCoordinateSystem.enabled"
+                    class="cursor-help text-[10px] text-primary"
+                  >
+                    {{ t('transform.workingCoord') }}
+                  </span>
+                </div>
               </TooltipTrigger>
               <TooltipContent class="text-xs" variant="light">
                 {{ t('transform.customPivotHint') }}
@@ -714,7 +838,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               step="any"
-              v-model.number="customPivotX"
+              v-model.number="customPivotDisplayX"
               placeholder=""
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
@@ -729,7 +853,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               step="any"
-              v-model.number="customPivotY"
+              v-model.number="customPivotDisplayY"
               placeholder=""
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
@@ -744,7 +868,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               step="any"
-              v-model.number="customPivotZ"
+              v-model.number="customPivotDisplayZ"
               placeholder=""
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />

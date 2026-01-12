@@ -208,11 +208,22 @@ export function useThreeTransformGizmo(
       return
     }
 
-    // 支持定点旋转：如果启用了定点旋转，使用自定义中心
+    // 优先级：定点旋转 > 参照物 > 选区几何中心
     let center: { x: number; y: number; z: number } | null = null
     if (uiStore.customPivotEnabled && uiStore.customPivotPosition) {
+      // 1. 定点旋转：使用自定义旋转中心
       center = uiStore.customPivotPosition
+    } else if (uiStore.alignmentPivotId) {
+      // 2. 参照物：使用参照物的位置
+      const pivotItem = editorStore.itemsMap.get(uiStore.alignmentPivotId)
+      if (pivotItem) {
+        center = { x: pivotItem.x, y: pivotItem.y, z: pivotItem.z }
+      } else {
+        // 理论上不会到这里（有自动清除机制），但保险起见回退到几何中心
+        center = getSelectedItemsCenter()
+      }
     } else {
+      // 3. 默认：使用选区几何中心
       center = getSelectedItemsCenter()
     }
 

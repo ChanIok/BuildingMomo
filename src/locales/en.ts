@@ -477,6 +477,7 @@ export const enLocale = {
     requireTwoItems: 'Requires at least 2 selected items',
     requireThreeItems: 'Requires at least 3 selected items',
     pivotReference: 'Reference',
+    pivotReferenceHint: 'Use as reference; others follow when moved',
     selectButton: 'Select',
     cancelSelectingPivot: 'Cancel',
     pivotLabel: 'Pivot',
