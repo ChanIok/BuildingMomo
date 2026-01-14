@@ -47,125 +47,31 @@ const positionState = ref({ x: 0, y: 0, z: 0 })
 // 缩放输入的临时状态（相对模式默认为 1，因为是乘法）
 const scaleState = ref({ x: 1, y: 1, z: 1 })
 
-// 定点旋转状态（存储全局坐标系的值）
+// 定点旋转状态（存储工作坐标系的值，即用户直接输入的值）
 const customPivotEnabled = ref(false)
-const customPivotGlobalX = ref<number | null>(null)
-const customPivotGlobalY = ref<number | null>(null)
-const customPivotGlobalZ = ref<number | null>(null)
+const customPivotWorkingX = ref<number | null>(null)
+const customPivotWorkingY = ref<number | null>(null)
+const customPivotWorkingZ = ref<number | null>(null)
 
-// 定点旋转显示值（根据工作坐标系转换）
+// 定点旋转显示值（直接使用工作坐标，用户输入什么就显示什么）
 const customPivotDisplayX = computed({
-  get: () => {
-    if (
-      customPivotGlobalX.value === null ||
-      customPivotGlobalY.value === null ||
-      customPivotGlobalZ.value === null
-    ) {
-      return null
-    }
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const working = uiStore.globalToWorking({
-        x: customPivotGlobalX.value,
-        y: customPivotGlobalY.value,
-        z: customPivotGlobalZ.value,
-      })
-      return working.x
-    }
-    return customPivotGlobalX.value
-  },
+  get: () => customPivotWorkingX.value,
   set: (value: number | null) => {
-    if (value === null) {
-      customPivotGlobalX.value = null
-      return
-    }
-
-    if (uiStore.workingCoordinateSystem.enabled) {
-      // 构造工作坐标系下的完整坐标
-      const workingY = customPivotDisplayY.value ?? 0
-      const workingZ = customPivotDisplayZ.value ?? 0
-      const global = uiStore.workingToGlobal({ x: value, y: workingY, z: workingZ })
-      customPivotGlobalX.value = global.x
-      customPivotGlobalY.value = global.y
-      customPivotGlobalZ.value = global.z
-    } else {
-      customPivotGlobalX.value = value
-    }
+    customPivotWorkingX.value = value
   },
 })
 
 const customPivotDisplayY = computed({
-  get: () => {
-    if (
-      customPivotGlobalX.value === null ||
-      customPivotGlobalY.value === null ||
-      customPivotGlobalZ.value === null
-    ) {
-      return null
-    }
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const working = uiStore.globalToWorking({
-        x: customPivotGlobalX.value,
-        y: customPivotGlobalY.value,
-        z: customPivotGlobalZ.value,
-      })
-      return working.y
-    }
-    return customPivotGlobalY.value
-  },
+  get: () => customPivotWorkingY.value,
   set: (value: number | null) => {
-    if (value === null) {
-      customPivotGlobalY.value = null
-      return
-    }
-
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const workingX = customPivotDisplayX.value ?? 0
-      const workingZ = customPivotDisplayZ.value ?? 0
-      const global = uiStore.workingToGlobal({ x: workingX, y: value, z: workingZ })
-      customPivotGlobalX.value = global.x
-      customPivotGlobalY.value = global.y
-      customPivotGlobalZ.value = global.z
-    } else {
-      customPivotGlobalY.value = value
-    }
+    customPivotWorkingY.value = value
   },
 })
 
 const customPivotDisplayZ = computed({
-  get: () => {
-    if (
-      customPivotGlobalX.value === null ||
-      customPivotGlobalY.value === null ||
-      customPivotGlobalZ.value === null
-    ) {
-      return null
-    }
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const working = uiStore.globalToWorking({
-        x: customPivotGlobalX.value,
-        y: customPivotGlobalY.value,
-        z: customPivotGlobalZ.value,
-      })
-      return working.z
-    }
-    return customPivotGlobalZ.value
-  },
+  get: () => customPivotWorkingZ.value,
   set: (value: number | null) => {
-    if (value === null) {
-      customPivotGlobalZ.value = null
-      return
-    }
-
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const workingX = customPivotDisplayX.value ?? 0
-      const workingY = customPivotDisplayY.value ?? 0
-      const global = uiStore.workingToGlobal({ x: workingX, y: workingY, z: value })
-      customPivotGlobalX.value = global.x
-      customPivotGlobalY.value = global.y
-      customPivotGlobalZ.value = global.z
-    } else {
-      customPivotGlobalZ.value = value
-    }
+    customPivotWorkingZ.value = value
   },
 })
 
@@ -213,16 +119,19 @@ watch(
 watch(customPivotEnabled, (enabled) => {
   uiStore.setCustomPivotEnabled(enabled)
   if (!enabled) {
-    customPivotGlobalX.value = null
-    customPivotGlobalY.value = null
-    customPivotGlobalZ.value = null
+    // 清空工作坐标
+    customPivotWorkingX.value = null
+    customPivotWorkingY.value = null
+    customPivotWorkingZ.value = null
   }
 })
 
-// 监听定点旋转坐标变化（全局坐标），同步到 uiStore
-watch([customPivotGlobalX, customPivotGlobalY, customPivotGlobalZ], ([x, y, z]) => {
+// 监听定点旋转坐标变化（工作坐标），转换成全局坐标同步到 uiStore
+watch([customPivotWorkingX, customPivotWorkingY, customPivotWorkingZ], ([x, y, z]) => {
   if (customPivotEnabled.value && x !== null && y !== null && z !== null) {
-    uiStore.setCustomPivotPosition({ x, y, z })
+    // 将工作坐标转换为全局坐标
+    const global = uiStore.workingToGlobal({ x, y, z })
+    uiStore.setCustomPivotPosition(global)
   } else {
     uiStore.setCustomPivotPosition(null)
   }

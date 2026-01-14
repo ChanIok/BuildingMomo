@@ -199,7 +199,7 @@ export const zhLocale = {
     },
     importCode: {
       title: '从方案码导入',
-      description: '输入方案码，从云端加载建造数据',
+      description: '输入方案码，从云端加载建造数据（暂不支持染色家具）',
       inputLabel: '方案码',
       inputPlaceholder: '请输入方案码',
       importing: '正在导入方案...',
