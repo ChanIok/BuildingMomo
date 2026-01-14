@@ -154,3 +154,13 @@ export interface HistoryStack {
   redoStack: HistorySnapshot[]
   maxSize: number // 最大历史记录数量
 }
+
+// 关闭的方案历史记录
+export interface ClosedSchemeHistory {
+  id: string // 原方案 ID（用于去重和标识）
+  name: string // 方案名称
+  fileName?: string // 原始文件名（如果有）
+  gameData: GameDataFile // 导出的游戏 JSON 数据
+  lastModified?: number // 最后修改时间
+  closedAt: number // 关闭时间戳
+}

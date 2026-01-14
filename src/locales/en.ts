@@ -75,6 +75,7 @@ export const enLocale = {
       import: 'Import Data',
       export: 'Export Data',
       saveToGame: 'Save to Game',
+      reopenLastClosedScheme: 'Reopen Closed Scheme',
     },
     edit: {
       undo: 'Undo',

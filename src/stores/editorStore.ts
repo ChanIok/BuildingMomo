@@ -1,6 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef, triggerRef } from 'vue'
-import type { AppItem, GameItem, GameDataFile, HomeScheme } from '../types/editor'
+
+import type {
+  AppItem,
+  GameItem,
+  GameDataFile,
+  HomeScheme,
+  ClosedSchemeHistory,
+} from '../types/editor'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
 
@@ -22,6 +29,10 @@ export const useEditorStore = defineStore('editor', () => {
 
   // 全局剪贴板（支持跨方案复制粘贴）- 使用 ShallowRef
   const clipboardRef = shallowRef<AppItem[]>([])
+
+  // 关闭方案历史记录（最多保留10条）
+  const MAX_CLOSED_HISTORY = 10
+  const closedSchemesHistory = ref<ClosedSchemeHistory[]>([])
 
   // 当前工具状态
   const currentTool = ref<'select' | 'hand'>('select')
@@ -203,6 +214,44 @@ export const useEditorStore = defineStore('editor', () => {
 
   // 方案管理：关闭方案
   function closeScheme(schemeId: string) {
+    const scheme = schemes.value.find((s) => s.id === schemeId)
+    if (!scheme) return
+
+    // 📌 新增：导出方案数据并保存到历史
+    try {
+      const gameData: GameDataFile = {
+        PlaceInfo: scheme.items.value.map((item) => ({
+          ItemID: item.gameId,
+          InstanceID: item.instanceId,
+          Location: { X: item.x, Y: item.y, Z: item.z },
+          Rotation: {
+            Roll: item.rotation.x,
+            Pitch: item.rotation.y,
+            Yaw: item.rotation.z,
+          },
+          GroupID: item.groupId,
+          ...item.extra, // 其他字段（Scale, AttachID, ColorMap, TempInfo 等）
+        })),
+      }
+
+      // 保存到历史记录
+      closedSchemesHistory.value.unshift({
+        id: scheme.id,
+        name: scheme.name.value,
+        fileName: scheme.filePath.value,
+        gameData: gameData,
+        lastModified: scheme.lastModified.value,
+        closedAt: Date.now(),
+      })
+
+      // 限制历史长度
+      if (closedSchemesHistory.value.length > MAX_CLOSED_HISTORY) {
+        closedSchemesHistory.value.pop()
+      }
+    } catch (error) {
+      console.error('Failed to save scheme snapshot:', error)
+    }
+
     // 先从 TabStore 关闭标签
     const tabStore = useTabStore()
     const tab = tabStore.tabs.find((t) => t.schemeId === schemeId)
@@ -281,6 +330,37 @@ export const useEditorStore = defineStore('editor', () => {
     clipboardRef.value = []
   }
 
+  // 重新打开已关闭的方案
+  async function reopenClosedScheme(historyIndex: number = 0) {
+    const history = closedSchemesHistory.value[historyIndex]
+    if (!history) return { success: false, error: 'No history found' }
+
+    try {
+      // 将 GameDataFile 转换为 JSON 字符串
+      const fileContent = JSON.stringify(history.gameData, null, 2)
+
+      // 复用现有的导入逻辑
+      const result = await importJSONAsScheme(
+        fileContent,
+        history.fileName || history.name,
+        history.lastModified
+      )
+
+      if (result.success) {
+        // 从历史记录中移除（避免重复恢复）
+        closedSchemesHistory.value.splice(historyIndex, 1)
+      }
+
+      return result
+    } catch (error) {
+      console.error('Failed to reopen scheme:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  }
+
   // ========== 编辑操作 ==========\
 
   return {
@@ -306,6 +386,10 @@ export const useEditorStore = defineStore('editor', () => {
     saveCurrentViewConfig,
     getSavedViewConfig,
     clearData,
+
+    // 关闭方案历史
+    closedSchemesHistory,
+    reopenClosedScheme,
 
     // 手动触发更新 (Crucial for ShallowRef pattern)
     sceneVersion,

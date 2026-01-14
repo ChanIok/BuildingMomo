@@ -105,6 +105,17 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'file.reopenLastClosedScheme',
+      label: t('command.file.reopenLastClosedScheme'),
+      shortcut: 'Ctrl+Shift+T',
+      category: 'file',
+      enabled: () => editorStore.closedSchemesHistory.length > 0,
+      execute: async () => {
+        console.log('[Command] 重新打开最近关闭的方案')
+        await editorStore.reopenClosedScheme(0)
+      },
+    },
+    {
       id: 'file.import',
       label: t('command.file.import'),
       shortcut: 'Ctrl+Shift+O',

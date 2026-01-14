@@ -74,6 +74,7 @@ export const zhLocale = {
       import: '导入建造数据',
       export: '导出建造数据',
       saveToGame: '保存到游戏',
+      reopenLastClosedScheme: '恢复关闭的方案',
     },
     edit: {
       undo: '撤销',
