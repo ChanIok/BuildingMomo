@@ -472,6 +472,17 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'view.toggleGizmoSpace',
+      label: t('command.view.toggleGizmoSpace'),
+      shortcut: 'X',
+      category: 'view',
+      enabled: () => uiStore.viewMode === '3d' && editorStore.activeScheme !== null,
+      execute: () => {
+        console.log('[Command] 切换坐标系')
+        uiStore.gizmoSpace = uiStore.gizmoSpace === 'world' ? 'local' : 'world'
+      },
+    },
+    {
       id: 'view.toggleCameraMode',
       label: t('command.view.toggleCameraMode'),
       shortcut: 'Tab',

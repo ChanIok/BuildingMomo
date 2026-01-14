@@ -96,6 +96,7 @@ export const zhLocale = {
       fitToView: '重置视图',
       focusSelection: '聚焦选中物品',
       coordinateSystem: '工作坐标系',
+      toggleGizmoSpace: '切换坐标系',
       toggleCameraMode: '切换相机模式',
       setViewPerspective: '透视视图',
       setViewTop: '顶视图',
@@ -349,6 +350,10 @@ export const zhLocale = {
       enabled: '已启用',
       disabled: '未启用',
       tooltip: '工作坐标系: {angle}° ({state}) - 点击调整',
+      world: 'World',
+      local: 'Local',
+      working: 'Working {angle}°',
+      fallbackHint: '(回退到 {mode})',
     },
     duplicate: {
       found: '发现 {count} 个重复物品 - 点击选中',

@@ -96,19 +96,61 @@ const stats = computed(() => {
 
 const isRenderLimitExceeded = computed(() => stats.value.total > MAX_RENDER_INSTANCES)
 
-// 工作坐标系
+// 坐标系显示
 const coordinateSystem = computed(() => ({
   enabled: uiStore.workingCoordinateSystem.enabled,
   angle: uiStore.workingCoordinateSystem.rotationAngle,
 }))
 
+// 获取当前坐标系显示标签
+const currentCoordinateLabel = computed(() => {
+  const scheme = editorStore.activeScheme
+  const selectedCount = scheme?.selectedItemIds.value.size ?? 0
+
+  if (uiStore.gizmoSpace === 'local') {
+    if (selectedCount === 1) {
+      return t('status.coordinate.local') // Local
+    } else if (selectedCount > 1) {
+      // 多选回退
+      if (uiStore.workingCoordinateSystem.enabled) {
+        return t('status.coordinate.working').replace(
+          '{angle}',
+          String(uiStore.workingCoordinateSystem.rotationAngle)
+        )
+      }
+      return t('status.coordinate.world') // 回退到 World
+    }
+  }
+
+  // World 模式
+  if (uiStore.workingCoordinateSystem.enabled) {
+    return t('status.coordinate.working').replace(
+      '{angle}',
+      String(uiStore.workingCoordinateSystem.rotationAngle)
+    )
+  }
+
+  return t('status.coordinate.world')
+})
+
 const coordinateTooltip = computed(() => {
-  const state = coordinateSystem.value.enabled
-    ? t('status.coordinate.enabled')
-    : t('status.coordinate.disabled')
-  return t('status.coordinate.tooltip')
-    .replace('{angle}', String(coordinateSystem.value.angle))
-    .replace('{state}', state)
+  const scheme = editorStore.activeScheme
+  const selectedCount = scheme?.selectedItemIds.value.size ?? 0
+  const label = currentCoordinateLabel.value
+
+  // 多选 + Local 模式回退时，显示回退提示
+  if (uiStore.gizmoSpace === 'local' && selectedCount > 1) {
+    const fallbackMode = uiStore.workingCoordinateSystem.enabled
+      ? t('status.coordinate.working').replace(
+          '{angle}',
+          String(uiStore.workingCoordinateSystem.rotationAngle)
+        )
+      : t('status.coordinate.world')
+    const hint = t('status.coordinate.fallbackHint').replace('{mode}', fallbackMode)
+    return `${label} ${hint}`
+  }
+
+  return label
 })
 
 const handleCoordinateClick = () => {
@@ -338,20 +380,21 @@ const handleDuplicateClick = () => {
           }}</span>
         </div>
 
-        <!-- 工作坐标系 -->
+        <!-- 坐标系显示 -->
         <Tooltip>
           <TooltipTrigger as-child @mouseenter="isCoordinateTooltipAllowed = true">
             <div
               class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-accent"
-              :class="
-                coordinateSystem.enabled
-                  ? 'font-medium text-orange-600 dark:text-orange-400/90'
-                  : 'text-muted-foreground'
-              "
+              :class="{
+                'font-medium text-orange-600 dark:text-orange-400/90':
+                  uiStore.gizmoSpace === 'local' || coordinateSystem.enabled,
+                'text-muted-foreground':
+                  uiStore.gizmoSpace === 'world' && !coordinateSystem.enabled,
+              }"
               @click="handleCoordinateClick"
             >
               <span>⟲</span>
-              <span class="text-xs">{{ coordinateSystem.angle }}°</span>
+              <span class="text-xs">{{ currentCoordinateLabel }}</span>
             </div>
           </TooltipTrigger>
           <TooltipContent v-if="isCoordinateTooltipAllowed">

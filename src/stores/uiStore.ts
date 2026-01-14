@@ -31,6 +31,9 @@ export const useUIStore = defineStore('ui', () => {
     rotationAngle: 0,
   })
 
+  // Gizmo 空间模式：world（全局坐标系）或 local（物体自身坐标系）
+  const gizmoSpace = ref<'world' | 'local'>('world')
+
   // 定点旋转状态（临时状态，不持久化）
   const customPivotEnabled = ref(false)
   const customPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
@@ -168,6 +171,7 @@ export const useUIStore = defineStore('ui', () => {
     // 状态
     viewMode,
     workingCoordinateSystem,
+    gizmoSpace,
     sidebarView,
     customPivotEnabled,
     customPivotPosition,

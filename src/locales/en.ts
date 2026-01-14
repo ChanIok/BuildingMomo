@@ -97,6 +97,7 @@ export const enLocale = {
       fitToView: 'Frame All',
       focusSelection: 'Frame Selection',
       coordinateSystem: 'Coordinate System',
+      toggleGizmoSpace: 'Toggle Gizmo Space',
       toggleCameraMode: 'Toggle Camera Mode',
       setViewPerspective: 'Perspective',
       setViewTop: 'Top',
@@ -351,6 +352,10 @@ export const enLocale = {
       enabled: 'Enabled',
       disabled: 'Disabled',
       tooltip: 'Working Coord: {angle}° ({state}) - Click to adjust',
+      world: 'World',
+      local: 'Local',
+      working: 'Working {angle}°',
+      fallbackHint: '(Fallback to {mode})',
     },
     duplicate: {
       found: 'Found {count} duplicates - Click to select',

@@ -113,6 +113,52 @@ export function useThreeTransformGizmo(
   const { Alt } = useMagicKeys()
 
   /**
+   * 获取当前应该使用的 Gizmo 旋转角度（度）
+   *
+   * 逻辑优先级：
+   * 1. Local 模式 + 单选：使用物体自身的 rotation.z
+   * 2. Local 模式 + 多选：回退到 Working（如启用）或 World
+   * 3. World 模式：使用 Working（如启用）或 World（0°）
+   */
+  function getEffectiveGizmoRotation(): number {
+    const scheme = editorStore.activeScheme
+    if (!scheme) return 0
+
+    const selectedIds = scheme.selectedItemIds.value
+
+    // 1. Local 模式
+    if (uiStore.gizmoSpace === 'local') {
+      // 单选：使用物体自身旋转
+      if (selectedIds.size === 1) {
+        const itemId = Array.from(selectedIds)[0]
+        if (itemId) {
+          const item = editorStore.itemsMap.get(itemId)
+          if (item) {
+            return item.rotation.z // 使用物体的 Yaw 角度
+          }
+        }
+      }
+
+      // 多选：回退到 Working（如启用）
+      if (uiStore.workingCoordinateSystem.enabled) {
+        return uiStore.workingCoordinateSystem.rotationAngle
+      }
+
+      // 否则回退到 World
+      return 0
+    }
+
+    // 2. World 模式
+    // 如果启用了 Working，使用 Working 角度
+    if (uiStore.workingCoordinateSystem.enabled) {
+      return uiStore.workingCoordinateSystem.rotationAngle
+    }
+
+    // 否则使用 World（0°）
+    return 0
+  }
+
+  /**
    * 计算鼠标在旋转平面上的角度
    * @param gizmoWorldPos Gizmo 中心的世界坐标
    * @param mouseClientX 鼠标 X 坐标
@@ -147,9 +193,10 @@ export function useThreeTransformGizmo(
       planeNormal = new Vector3(0, 0, 1)
     }
 
-    // 如果启用了工作坐标系，需要旋转平面法线
-    if (uiStore.workingCoordinateSystem.enabled && pivotRef.value) {
-      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+    // 使用有效旋转角度旋转平面法线
+    const effectiveRotation = getEffectiveGizmoRotation()
+    if (effectiveRotation !== 0 && pivotRef.value) {
+      const angleRad = (effectiveRotation * Math.PI) / 180
       planeNormal.applyAxisAngle(new Vector3(0, 0, 1), -angleRad)
     }
 
@@ -168,10 +215,10 @@ export function useThreeTransformGizmo(
     // 4. 计算交点相对于 gizmo 中心的角度
     const localPos = intersection.clone().sub(gizmoWorldPos)
 
-    // ✅ 关键修复：如果启用了工作坐标系，需要将 localPos 转换到工作坐标系局部空间
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-      // 正向旋转（逆变换）：将世界空间位置转换到工作坐标系局部空间
+    // ✅ 关键修复：将 localPos 转换到当前 Gizmo 的局部空间
+    if (effectiveRotation !== 0) {
+      const angleRad = (effectiveRotation * Math.PI) / 180
+      // 正向旋转（逆变换）：将世界空间位置转换到局部空间
       localPos.applyAxisAngle(new Vector3(0, 0, 1), angleRad)
     }
 
@@ -197,10 +244,8 @@ export function useThreeTransformGizmo(
       editorStore.gizmoMode !== null
   )
 
-  // Gizmo 空间模式：如果启用了工作坐标系，则使用 local 模式
-  const transformSpace = computed(() =>
-    uiStore.workingCoordinateSystem.enabled ? 'local' : 'world'
-  )
+  // Gizmo 空间模式：始终使用 'local'，通过旋转 pivot 来实现各种模式
+  const transformSpace = computed<'local' | 'world'>(() => 'local')
 
   // 跟随选中物品中心或自定义旋转中心更新 gizmo 位置（非拖拽时）
   watchEffect(() => {
@@ -238,14 +283,11 @@ export function useThreeTransformGizmo(
     // 视觉上 items 在 (x, -y, z)，所以 Gizmo 也应该在这里。
     pivot.position.set(center.x, -center.y, center.z)
 
-    // 更新 Gizmo 旋转以匹配工作坐标系
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
-      // Z-up 系统，绕 Z 轴旋转
-      pivot.setRotationFromEuler(new Euler(0, 0, -angleRad))
-    } else {
-      pivot.setRotationFromEuler(new Euler(0, 0, 0))
-    }
+    // 更新 Gizmo 旋转使用有效旋转角度
+    const effectiveRotation = getEffectiveGizmoRotation()
+    const angleRad = (effectiveRotation * Math.PI) / 180
+    // Z-up 系统，绕 Z 轴旋转
+    pivot.setRotationFromEuler(new Euler(0, 0, -angleRad))
   })
 
   function setOrbitControlsEnabled(enabled: boolean) {
@@ -485,16 +527,16 @@ export function useThreeTransformGizmo(
     }
 
     // 4. 计算 Gizmo 局部轴在世界空间中的表示
-    // 当启用工作坐标系时，Gizmo 的局部 X/Y 轴会随工作坐标系旋转
-    // 吸附应该约束在这些旋转后的局部轴上，而不是世界轴
+    // 使用有效旋转角度计算 Gizmo 的局部轴
     let gizmoWorldAxes = {
       x: new Vector3(1, 0, 0), // 默认：世界轴
       y: new Vector3(0, 1, 0),
       z: new Vector3(0, 0, 1),
     }
 
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+    const effectiveRotation = getEffectiveGizmoRotation()
+    if (effectiveRotation !== 0) {
+      const angleRad = (effectiveRotation * Math.PI) / 180
       // 绕 Z 轴旋转后的局部 X/Y 轴（注意符号：Gizmo pivot 用的是 -angleRad）
       gizmoWorldAxes.x = new Vector3(Math.cos(-angleRad), Math.sin(-angleRad), 0).normalize()
       gizmoWorldAxes.y = new Vector3(-Math.sin(-angleRad), Math.cos(-angleRad), 0).normalize()
@@ -702,6 +744,12 @@ export function useThreeTransformGizmo(
 
     const pivot = pivotRef.value
     if (!pivot) return
+
+    // 在旋转模式下，强制锁定 pivot.rotation
+    // 防止 TransformControls 修改它导致 gizmo 轴跟随旋转
+    if (isRotateMode.value && rotateAxis.value) {
+      pivot.rotation.copy(startGizmoRotation)
+    }
 
     // 旋转模式：用自定义角度计算替换 TransformControls 的默认计算
     if (
