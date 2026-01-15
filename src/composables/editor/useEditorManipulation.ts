@@ -252,11 +252,14 @@ export function useEditorManipulation() {
       if (mode === 'relative' && rotation) {
         const rotationInfo = extractSingleAxisRotation(rotation)
         if (rotationInfo) {
-          // 使用 uiStore 的统一方法获取有效的工作坐标系旋转
+          // 使用 uiStore 的统一方法获取有效的工作坐标系旋转（视觉空间）
           const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
             ids,
             store.itemsMap
           ) || { x: 0, y: 0, z: 0 }
+
+          // 转换为数据空间（与工作坐标系处理一致）
+          const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveWorkingRotation)
 
           // 使用新的工作坐标系旋转函数（单物品情况）
           // 注意：这里临时使用单物品数组调用，后续会在外层优化为批量处理
@@ -265,7 +268,7 @@ export function useEditorManipulation() {
             rotationInfo.axis,
             rotationInfo.angle,
             center,
-            effectiveWorkingRotation, // 使用有效的工作坐标系旋转
+            dataSpaceRotation, // 使用数据空间的旋转值
             false // 暂不使用模型缩放（box 模式）
           )
           const rotatedItem = rotatedItems[0]
@@ -364,14 +367,17 @@ export function useEditorManipulation() {
     const globalCenter = getRotationCenter()
     if (!globalCenter) return
 
-    // 使用 uiStore 的统一方法获取有效的坐标系旋转
+    // 使用 uiStore 的统一方法获取有效的坐标系旋转（视觉空间）
     const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
       selectedIds,
       store.itemsMap
     ) || { x: 0, y: 0, z: 0 }
 
+    // 转换为数据空间（与工作坐标系处理一致）
+    const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveWorkingRotation)
+
     // 转换到有效坐标系
-    const workingCenter = convertPositionGlobalToWorking(globalCenter, effectiveWorkingRotation)
+    const workingCenter = convertPositionGlobalToWorking(globalCenter, dataSpaceRotation)
 
     // 更新每个选中物品
     activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
@@ -383,14 +389,14 @@ export function useEditorManipulation() {
       // 转换到有效坐标系
       const workingPos = convertPositionGlobalToWorking(
         { x: item.x, y: item.y, z: item.z },
-        effectiveWorkingRotation
+        dataSpaceRotation
       )
 
       // 沿指定轴镜像
       workingPos[axis] = 2 * workingCenter[axis] - workingPos[axis]
 
       // 转换回全局坐标系
-      const newPos = convertPositionWorkingToGlobal(workingPos, effectiveWorkingRotation)
+      const newPos = convertPositionWorkingToGlobal(workingPos, dataSpaceRotation)
 
       // === 2. 旋转镜像（支持完整三轴）===
       let newRotation = { ...item.rotation }
@@ -404,16 +410,13 @@ export function useEditorManipulation() {
 
         if (hasEffectiveRotation) {
           // 转换到工作坐标系
-          const workingRotation = convertRotationGlobalToWorking(
-            item.rotation,
-            effectiveWorkingRotation
-          )
+          const workingRotation = convertRotationGlobalToWorking(item.rotation, dataSpaceRotation)
 
           // 在工作坐标系中执行镜像
           const mirroredWorking = mirrorRotationInWorkingCoord(workingRotation, axis)
 
           // 转回全局坐标系
-          newRotation = convertRotationWorkingToGlobal(mirroredWorking, effectiveWorkingRotation)
+          newRotation = convertRotationWorkingToGlobal(mirroredWorking, dataSpaceRotation)
         } else {
           // 未启用工作坐标系，直接在全局坐标系中镜像
           newRotation = mirrorRotationInWorkingCoord(item.rotation, axis)

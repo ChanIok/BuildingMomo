@@ -11,6 +11,7 @@ import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
+import { matrixTransform } from '../lib/matrixTransform'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
 // 命令接口
@@ -512,11 +513,14 @@ export const useCommandStore = defineStore('command', () => {
         if (firstId !== undefined) {
           const item = editorStore.itemsMap.get(firstId)
           if (item) {
-            uiStore.setWorkingCoordinateSystem(true, {
-              x: item.rotation.x,
-              y: item.rotation.y,
-              z: item.rotation.z,
-            })
+            uiStore.setWorkingCoordinateSystem(
+              true,
+              matrixTransform.dataRotationToVisual({
+                x: item.rotation.x,
+                y: item.rotation.y,
+                z: item.rotation.z,
+              })
+            )
           }
         }
       },

@@ -205,7 +205,8 @@ export function useThreeTransformGizmo(
         'ZYX'
       )
       const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
-      // 逆变换：将世界空间位置转换到局部空间
+      // 逆变换：将世界空间位置转换到局部空间（必须使用逆矩阵）
+      rotationMatrix.invert()
       localPos.applyMatrix4(rotationMatrix)
     }
 

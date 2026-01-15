@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { matrixTransform } from '../lib/matrixTransform'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorStore } from '../stores/editorStore'
 import {
@@ -78,9 +79,10 @@ function setFromSelection() {
 
   const item = editorStore.itemsMap.get(firstId)
   if (item) {
-    rotationX.value = item.rotation.x
-    rotationY.value = item.rotation.y
-    rotationZ.value = item.rotation.z
+    const visualRot = matrixTransform.dataRotationToVisual(item.rotation)
+    rotationX.value = visualRot.x
+    rotationY.value = visualRot.y
+    rotationZ.value = visualRot.z
   }
 }
 

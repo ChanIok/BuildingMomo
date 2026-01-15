@@ -140,4 +140,56 @@ export const matrixTransform = {
   applyParentFlip(matrix: Matrix4): Matrix4 {
     return this.applyParentFlipInPlace(matrix.clone())
   },
+
+  /**
+   * 将数据空间旋转转换为视觉空间旋转（补偿渲染管线的 X/Y 取反）
+   *
+   * 变换逻辑：Y 轴取反（Scale(1, -1, 1)）会导致 Quaternion 变换
+   * 等效于：x' = x, y' = -y, z' = z
+   */
+  dataRotationToVisual(rotation: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    return {
+      x: rotation.x,
+      y: -rotation.y,
+      z: rotation.z,
+    }
+  },
+
+  /**
+   * 将视觉空间旋转转换为数据空间旋转（逆变换）
+   *
+   * 变换逻辑：x' = x, y' = -y, z' = z (自逆变换)
+   */
+  visualRotationToData(rotation: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    return {
+      x: rotation.x,
+      y: -rotation.y,
+      z: rotation.z,
+    }
+  },
+
+  /**
+   * 将 UI 输入值转换为视觉空间旋转
+   * (UI 输入通常直接对应 Data Space，但在 Coordinate 系统中我们希望用户输入的是 Data Space 的值，
+   *  但存储为 Visual Space 给 Gizmo 用，或者反之。
+   *  目前的设计是：UI/Gizmo 使用 "Visual Space"，而存储使用 "Data Space"。
+   *  所以从 UI (Visual) 到 Data，使用 visualRotationToData)
+   *
+   * 别名，为了语义清晰
+   */
+  visualRotationToUI(visualRotation: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    return this.visualRotationToData(visualRotation)
+  },
 }

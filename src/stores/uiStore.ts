@@ -237,11 +237,11 @@ export const useUIStore = defineStore('ui', () => {
         const itemId = Array.from(selectedIds)[0]
         const item = itemId ? itemsMap.get(itemId) : null
         if (item) {
-          return {
+          return matrixTransform.dataRotationToVisual({
             x: item.rotation.x,
             y: item.rotation.y,
             z: item.rotation.z,
-          }
+          })
         }
       }
 

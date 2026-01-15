@@ -12,6 +12,7 @@ import {
   convertPositionWorkingToGlobal,
   convertRotationWorkingToGlobal,
 } from '../lib/coordinateTransform'
+import { matrixTransform } from '../lib/matrixTransform'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
@@ -41,9 +42,9 @@ const {
   distributeSelectedItems,
 } = useEditorManipulation()
 
-// 三个独立的开关，默认都开启绝对模式 (false)
+// 位置和缩放默认为绝对模式 (false)，旋转默认为相对模式 (true)
 const isPositionRelative = ref(false)
-const isRotationRelative = ref(false)
+const isRotationRelative = ref(true)
 const isScaleRelative = ref(false)
 
 // 旋转输入的临时状态
@@ -139,7 +140,7 @@ const selectionInfo = computed(() => {
     center = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
   }
 
-  // 使用 uiStore 的统一方法获取有效的坐标系旋转
+  // 使用 uiStore 的统一方法获取有效的坐标系旋转（视觉空间）
   const effectiveCoordRotation = uiStore.getEffectiveCoordinateRotation(
     scheme.selectedItemIds.value,
     editorStore.itemsMap
@@ -147,7 +148,9 @@ const selectionInfo = computed(() => {
 
   // 如果有有效的坐标系，将中心点转换到该坐标系
   if (effectiveCoordRotation) {
-    center = convertPositionGlobalToWorking(center, effectiveCoordRotation)
+    // 转换为数据空间（与工作坐标系处理一致）
+    const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveCoordRotation)
+    center = convertPositionGlobalToWorking(center, dataSpaceRotation)
   }
 
   // 旋转角度（用于绝对模式显示）
@@ -155,14 +158,16 @@ const selectionInfo = computed(() => {
   if (selected.length === 1) {
     const item = selected[0]
     if (item) {
-      rotation = {
+      rotation = matrixTransform.dataRotationToVisual({
         x: item.rotation.x,
         y: item.rotation.y,
         z: item.rotation.z,
-      }
+      })
       // 如果有有效的坐标系，将全局旋转转换为相对旋转（使用四元数精确转换）
       if (effectiveCoordRotation) {
-        rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
+        // 转换为数据空间（与工作坐标系处理一致）
+        const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveCoordRotation)
+        rotation = convertRotationGlobalToWorking(rotation, dataSpaceRotation)
       }
     }
   } else {
@@ -340,7 +345,7 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     let posArgs: any = { x: 0, y: 0, z: 0 }
     posArgs[axis] = delta
 
-    // 获取有效的坐标系旋转
+    // 获取有效的坐标系旋转（视觉空间）
     const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
       editorStore.activeScheme.selectedItemIds.value,
       editorStore.itemsMap
@@ -348,7 +353,9 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
 
     // 如果有有效的坐标系，将增量向量转换到全局坐标系
     if (effectiveRotation) {
-      posArgs = convertPositionWorkingToGlobal(posArgs, effectiveRotation)
+      // 转换为数据空间（与工作坐标系处理一致）
+      const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveRotation)
+      posArgs = convertPositionWorkingToGlobal(posArgs, dataSpaceRotation)
     }
 
     updateSelectedItemsTransform({
@@ -373,7 +380,9 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     )
     let newGlobalPos = newEffectivePos
     if (effectiveRotation) {
-      newGlobalPos = convertPositionWorkingToGlobal(newEffectivePos, effectiveRotation)
+      // 转换为数据空间（与工作坐标系处理一致）
+      const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveRotation)
+      newGlobalPos = convertPositionWorkingToGlobal(newEffectivePos, dataSpaceRotation)
     }
 
     updateSelectedItemsTransform({
@@ -417,14 +426,17 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
         editorStore.activeScheme.selectedItemIds.value,
         editorStore.itemsMap
       )
-      const globalRotation = coordRotation
-        ? convertRotationWorkingToGlobal(effectiveRotation, coordRotation)
-        : effectiveRotation
+      let globalRotation = effectiveRotation
+      if (coordRotation) {
+        // 转换为数据空间（与工作坐标系处理一致）
+        const dataSpaceRotation = matrixTransform.visualRotationToUI(coordRotation)
+        globalRotation = convertRotationWorkingToGlobal(effectiveRotation, dataSpaceRotation)
+      }
 
       // 传递完整的三轴旋转，而非仅单轴
       updateSelectedItemsTransform({
         mode: 'absolute',
-        rotation: globalRotation,
+        rotation: matrixTransform.visualRotationToData(globalRotation),
       })
     }
   }
@@ -484,7 +496,7 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
   let posArgs: any = { x: 0, y: 0, z: 0 }
   posArgs[axis] = delta
 
-  // 获取有效的坐标系旋转
+  // 获取有效的坐标系旋转（视觉空间）
   const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
     editorStore.activeScheme.selectedItemIds.value,
     editorStore.itemsMap
@@ -492,7 +504,9 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
 
   // 如果有有效的坐标系，将位移向量转换到全局坐标系
   if (effectiveRotation) {
-    posArgs = convertPositionWorkingToGlobal(posArgs, effectiveRotation)
+    // 转换为数据空间（与工作坐标系处理一致）
+    const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveRotation)
+    posArgs = convertPositionWorkingToGlobal(posArgs, dataSpaceRotation)
   }
 
   updateSelectedItemsTransform({
