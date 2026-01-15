@@ -111,7 +111,7 @@ const viewPresetCommands = computed(() =>
 // 监控状态
 const watchState = computed(() => commandStore.fileOps.watchState)
 const watchHistory = computed(() => commandStore.fileOps.getWatchHistory())
-const showWatchButton = computed(() => !!editorStore.activeScheme)
+const showWatchButton = computed(() => !!editorStore.activeScheme || watchState.value.isActive)
 const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
 
 // 标签容器引用
@@ -176,9 +176,9 @@ async function handleImportLatest() {
 }
 
 // 从历史记录导入
-async function handleImportFromHistory(fileName: string) {
+async function handleImportFromHistory(historyId: string) {
   watchHistoryOpen.value = false
-  await commandStore.fileOps.importFromHistory(fileName)
+  await commandStore.fileOps.importFromHistory(historyId)
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -205,6 +205,16 @@ function handleStartWatchMode() {
 
 function handleClearHistory() {
   commandStore.fileOps.clearWatchHistory()
+}
+
+// 删除单条历史记录
+async function handleDeleteHistoryRecord(historyId: string, event: Event) {
+  event.stopPropagation() // 阻止触发导入操作
+  try {
+    await commandStore.fileOps.deleteHistoryRecord(historyId)
+  } catch (error) {
+    console.error('[Toolbar] Failed to delete history record:', error)
+  }
 }
 
 // --- 拖拽逻辑 (Pointer Events) ---
@@ -754,17 +764,30 @@ onMounted(() => {
                   </div>
                   <Item
                     v-for="record in watchHistory"
-                    :key="`${record.name}-${record.detectedAt}`"
+                    :key="record.id"
                     size="sm"
                     as="button"
-                    class="w-full cursor-pointer p-2 hover:bg-accent"
-                    @click="handleImportFromHistory(record.name)"
+                    class="group w-full cursor-pointer p-2 hover:bg-accent"
+                    @click="handleImportFromHistory(record.id)"
                   >
                     <ItemContent class="flex w-full flex-row items-center justify-between text-sm">
                       <span class="text-xs">{{
                         t('watchMode.history.itemCount', { n: record.itemCount })
                       }}</span>
-                      <span class="text-xs">{{ formatRelativeTime(record.detectedAt) }}</span>
+                      <div class="relative ml-auto flex items-center justify-end">
+                        <span class="text-xs transition-opacity group-hover:opacity-0">{{
+                          formatRelativeTime(record.detectedAt)
+                        }}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          class="absolute right-0 h-5 w-5 cursor-pointer rounded-sm opacity-0 transition-all group-hover:opacity-100 hover:bg-accent"
+                          @click="handleDeleteHistoryRecord(record.id, $event)"
+                          :title="t('common.delete')"
+                        >
+                          <X class="h-3 w-3" />
+                        </Button>
+                      </div>
                     </ItemContent>
                   </Item>
                 </div>

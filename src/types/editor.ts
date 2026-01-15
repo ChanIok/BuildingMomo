@@ -109,10 +109,12 @@ export interface FileWatchIndexEntry {
 }
 
 export interface FileWatchHistoryEntry {
+  id: string // IndexedDB 的 key: `${fileName}_${lastModified}`
   name: string
   lastModified: number
   itemCount: number
   detectedAt: number
+  size: number // 内容大小（字节）
 }
 
 export interface FileWatchState {

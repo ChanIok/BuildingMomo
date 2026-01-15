@@ -11,6 +11,9 @@ import { getIconLoader } from './useIconLoader'
 import { getThreeModelManager } from './useThreeModelManager'
 import { useI18n } from './useI18n'
 import backgroundUrl from '@/assets/home.webp'
+import { WatchHistoryDB } from '../lib/watchHistoryStore'
+
+const MAX_WATCH_HISTORY = 30
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -638,24 +641,46 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
       // 第三阶段：只提示最新的文件
       if (latestFile) {
-        // 记录变动历史（仅会话内）
+        // 生成唯一 ID
+        const historyId = `${latestFile.name}_${latestFile.file.lastModified}`
+
+        // 保存到 IndexedDB
+        try {
+          await WatchHistoryDB.save({
+            id: historyId,
+            fileName: latestFile.name,
+            content: latestFile.content,
+            itemCount: latestFile.itemCount,
+            lastModified: latestFile.file.lastModified,
+            detectedAt: Date.now(),
+            size: new Blob([latestFile.content]).size,
+          })
+          console.log(`[FileWatch] Saved to history DB: ${historyId}`)
+        } catch (error) {
+          console.error('[FileWatch] Failed to save to history DB:', error)
+        }
+
+        // 记录变动历史（仅会话内，只保存元数据）
         const history = watchState.value.updateHistory
         const lastEntry = history[0]
-        if (
-          !lastEntry ||
-          lastEntry.name !== latestFile.name ||
-          lastEntry.lastModified !== latestFile.file.lastModified
-        ) {
+        if (!lastEntry || lastEntry.id !== historyId) {
           history.unshift({
+            id: historyId,
             name: latestFile.name,
             lastModified: latestFile.file.lastModified,
             itemCount: latestFile.itemCount,
             detectedAt: Date.now(),
+            size: new Blob([latestFile.content]).size,
           })
-          if (history.length > 30) {
+          if (history.length > MAX_WATCH_HISTORY) {
             history.pop()
           }
         }
+
+        // 清理 IndexedDB 中的旧记录（保留最新 MAX_WATCH_HISTORY 条）
+        WatchHistoryDB.clearOld(MAX_WATCH_HISTORY).catch((err) =>
+          console.error('[FileWatch] Failed to clean old history:', err)
+        )
 
         console.log(
           `[FileWatch] File updated: ${latestFile.name}, lastModified: ${new Date(latestFile.file.lastModified).toLocaleString()}`
@@ -775,23 +800,35 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         }
       }
 
-      // 5. 设置监控状态
-      const existingHistory = watchState.value.updateHistory
+      // 5. 从 IndexedDB 恢复历史记录
+      let restoredHistory: typeof watchState.value.updateHistory = []
+      try {
+        const allMetadata = await WatchHistoryDB.getAllMetadata()
+        // 保留最新的 MAX_WATCH_HISTORY 条
+        restoredHistory = allMetadata.slice(0, MAX_WATCH_HISTORY)
+        console.log(`[FileWatch] Restored ${restoredHistory.length} history records from IndexedDB`)
+      } catch (error) {
+        console.error('[FileWatch] Failed to restore history from IndexedDB:', error)
+        // 如果恢复失败，使用当前会话的历史
+        restoredHistory = watchState.value.updateHistory
+      }
+
+      // 6. 设置监控状态
       watchState.value = {
         isActive: true,
         dirHandle: buildDataDir,
         dirPath: buildDataDir.name,
         lastCheckedTime: Date.now(),
         fileIndex: fileIndex,
-        updateHistory: existingHistory,
+        updateHistory: restoredHistory,
         lastImportedFileHandle: fileHandle,
         lastImportedFileName: fileName,
       }
 
-      // 6. 启动轮询
+      // 7. 启动轮询
       startPolling()
 
-      // 7. 如果有现有文件，检查 NeedRestore 再决定是否提示导入
+      // 8. 如果有现有文件，检查 NeedRestore 再决定是否提示导入
       if (result) {
         try {
           const content = await result.file.text()
@@ -812,6 +849,48 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
             if (shouldImport) {
               await importFromWatchedFile()
+
+              // 将首次导入的文件添加到历史记录
+              const historyId = `${fileName}_${lastModified}`
+              const itemCount = getItemCountFromContent(content)
+
+              try {
+                // 保存到 IndexedDB
+                await WatchHistoryDB.save({
+                  id: historyId,
+                  fileName: fileName,
+                  content: content,
+                  itemCount: itemCount,
+                  lastModified: lastModified,
+                  detectedAt: Date.now(),
+                  size: new Blob([content]).size,
+                })
+
+                // 添加到内存历史（如果不存在）
+                const history = watchState.value.updateHistory
+                if (!history.some((h) => h.id === historyId)) {
+                  history.unshift({
+                    id: historyId,
+                    name: fileName,
+                    lastModified: lastModified,
+                    itemCount: itemCount,
+                    detectedAt: Date.now(),
+                    size: new Blob([content]).size,
+                  })
+                  if (history.length > MAX_WATCH_HISTORY) {
+                    history.pop()
+                  }
+                }
+
+                console.log(`[FileWatch] Added initial file to history: ${historyId}`)
+
+                // 清理 IndexedDB 中的旧记录
+                WatchHistoryDB.clearOld(MAX_WATCH_HISTORY).catch((err) =>
+                  console.error('[FileWatch] Failed to clean old history:', err)
+                )
+              } catch (error) {
+                console.error('[FileWatch] Failed to add initial file to history:', error)
+              }
             }
           } else {
             // NeedRestore 为 false，说明暂无建造数据
@@ -973,22 +1052,48 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     watchState.value.updateHistory = []
   }
 
+  // 删除单条历史记录
+  async function deleteHistoryRecord(historyId: string): Promise<void> {
+    try {
+      // 从 IndexedDB 删除
+      await WatchHistoryDB.delete(historyId)
+
+      // 从内存中的历史列表删除
+      const index = watchState.value.updateHistory.findIndex((h) => h.id === historyId)
+      if (index !== -1) {
+        watchState.value.updateHistory.splice(index, 1)
+      }
+
+      console.log(`[FileWatch] Deleted history record: ${historyId}`)
+    } catch (error) {
+      console.error('[FileWatch] Failed to delete history record:', error)
+      throw error
+    }
+  }
+
   // 从监控历史导入
-  async function importFromHistory(fileName: string): Promise<void> {
+  async function importFromHistory(historyId: string): Promise<void> {
     if (!watchState.value.isActive || !watchState.value.dirHandle) {
       notification.warning(t('fileOps.importWatched.notStarted'))
       return
     }
 
-    const entry = watchState.value.fileIndex.get(fileName)
-    if (!entry) {
-      notification.warning(t('fileOps.importWatched.notFound'))
-      return
-    }
-
     try {
-      const handle = await watchState.value.dirHandle.getFileHandle(fileName)
-      await importFromContent(entry.lastContent, fileName, handle, entry.lastModified)
+      // 从 IndexedDB 读取历史快照
+      const snapshot = await WatchHistoryDB.get(historyId)
+
+      if (!snapshot) {
+        notification.warning(t('fileOps.importWatched.notFound'))
+        return
+      }
+
+      // 获取文件句柄（用于后续保存）
+      const handle = await watchState.value.dirHandle.getFileHandle(snapshot.fileName)
+
+      // 导入内容
+      await importFromContent(snapshot.content, snapshot.fileName, handle, snapshot.lastModified)
+
+      console.log(`[FileWatch] Imported from history: ${historyId}`)
     } catch (error: any) {
       console.error('[FileWatch] Failed to import from history:', error)
       notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
@@ -1092,6 +1197,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     checkFileUpdate,
     getWatchHistory,
     clearWatchHistory,
+    deleteHistoryRecord,
     importFromHistory,
   }
 }
