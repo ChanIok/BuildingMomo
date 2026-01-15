@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useUIStore } from '../stores/uiStore'
+import { useEditorStore } from '../stores/editorStore'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
+import { Kbd } from '@/components/ui/kbd'
+import { RotateCcw } from 'lucide-vue-next'
 
 import { useI18n } from '@/composables/useI18n'
 
@@ -25,60 +30,96 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const uiStore = useUIStore()
+const editorStore = useEditorStore()
 
-// 坐标系角度（默认为 0）
-const workingAngle = ref<number>(0)
+// 三轴旋转角度
+const rotationX = ref<number>(0)
+const rotationY = ref<number>(0)
+const rotationZ = ref<number>(0)
+
+// 局部坐标系开关
+const useLocalSpace = ref<boolean>(false)
 
 // 当对话框打开时，填充当前状态
 watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      if (uiStore.workingCoordinateSystem.enabled) {
-        workingAngle.value = uiStore.workingCoordinateSystem.rotationAngle
+      const ws = uiStore.workingCoordinateSystem
+      if (ws.enabled) {
+        rotationX.value = ws.rotation.x
+        rotationY.value = ws.rotation.y
+        rotationZ.value = ws.rotation.z
       } else {
-        workingAngle.value = 0
+        rotationX.value = 0
+        rotationY.value = 0
+        rotationZ.value = 0
       }
+      useLocalSpace.value = uiStore.gizmoSpace === 'local'
     }
   }
 )
 
-// 计算坐标轴显示角度
-const displayAngle = computed(() => {
-  return workingAngle.value
+// 检查是否有单个选中物体
+const hasSelectedSingleItem = computed(() => {
+  return editorStore.activeScheme?.selectedItemIds.value.size === 1
 })
 
-const angleRad = computed(() => (displayAngle.value * Math.PI) / 180)
+// 从选中物体设置
+function setFromSelection() {
+  const scheme = editorStore.activeScheme
+  if (!scheme) return
 
-// SVG 坐标轴的端点（箭头长度为 40，比原来的 25 稍大）
-const xAxisEnd = computed(() => ({
-  x: 40 * Math.cos(angleRad.value),
-  y: 40 * Math.sin(angleRad.value),
-}))
+  const selectedIds = Array.from(scheme.selectedItemIds.value)
+  if (selectedIds.length !== 1) return
 
-const yAxisEnd = computed(() => ({
-  x: 40 * Math.cos(angleRad.value + Math.PI / 2),
-  y: 40 * Math.sin(angleRad.value + Math.PI / 2),
-}))
+  const firstId = selectedIds[0]
+  if (!firstId) return
 
-// 文字标签位置（稍微偏移）
-const xLabelPos = computed(() => ({
-  x: xAxisEnd.value.x + (xAxisEnd.value.x > 0 ? 10 : -10),
-  y: xAxisEnd.value.y + 5,
-}))
+  const item = editorStore.itemsMap.get(firstId)
+  if (item) {
+    rotationX.value = item.rotation.x
+    rotationY.value = item.rotation.y
+    rotationZ.value = item.rotation.z
+  }
+}
 
-const yLabelPos = computed(() => ({
-  x: yAxisEnd.value.x + (yAxisEnd.value.x > 0 ? 10 : -10),
-  y: yAxisEnd.value.y + 5,
-}))
+// 重置旋转
+function resetRotation() {
+  rotationX.value = 0
+  rotationY.value = 0
+  rotationZ.value = 0
+}
+
+// Input 输入处理
+function handleRotationInput(axis: 'x' | 'y' | 'z', event: Event) {
+  const input = event.target as HTMLInputElement
+  let value = parseInt(input.value)
+
+  // 验证范围
+  if (isNaN(value)) value = 0
+  if (value < -180) value = -180
+  if (value > 180) value = 180
+
+  if (axis === 'x') rotationX.value = value
+  else if (axis === 'y') rotationY.value = value
+  else rotationZ.value = value
+}
 
 // 确认按钮处理
 function handleConfirm() {
-  if (workingAngle.value === 0) {
-    uiStore.setWorkingCoordinateSystem(false, 0)
-  } else {
-    uiStore.setWorkingCoordinateSystem(true, workingAngle.value)
-  }
+  // 保存 gizmoSpace
+  uiStore.gizmoSpace = useLocalSpace.value ? 'local' : 'world'
+
+  // 保存工作坐标系（全零时自动禁用）
+  const allZero = rotationX.value === 0 && rotationY.value === 0 && rotationZ.value === 0
+
+  uiStore.setWorkingCoordinateSystem(!allZero, {
+    x: rotationX.value,
+    y: rotationY.value,
+    z: rotationZ.value,
+  })
+
   emit('update:open', false)
 }
 
@@ -93,154 +134,126 @@ function handleCancel() {
     <DialogContent class="sm:max-w-[450px]">
       <DialogHeader>
         <DialogTitle>{{ t('coordinate.title') }}</DialogTitle>
-        <DialogDescription> {{ t('coordinate.description') }} </DialogDescription>
+        <DialogDescription>{{ t('coordinate.description') }}</DialogDescription>
       </DialogHeader>
 
       <div class="grid gap-6 py-4">
-        <!-- 坐标系可视化 -->
-        <div class="flex justify-center">
-          <div class="rounded-lg bg-muted/50 p-4">
-            <div class="mb-2 text-center text-sm font-medium text-muted-foreground">
-              {{
-                workingAngle === 0
-                  ? t('coordinate.globalLabel')
-                  : t('coordinate.workingLabel', { angle: workingAngle })
-              }}
+        <!-- 局部坐标系开关 -->
+        <div class="flex items-center justify-between">
+          <div class="space-y-0.5">
+            <Label class="flex items-center gap-2 text-sm font-medium">
+              {{ t('coordinate.localSpace') }}
+              <Kbd>X</Kbd>
+            </Label>
+            <p class="text-xs text-muted-foreground">
+              {{ t('coordinate.localSpaceHint') }}
+            </p>
+          </div>
+          <Switch v-model="useLocalSpace" />
+        </div>
+
+        <!-- 分隔线 -->
+        <div class="border-t border-border"></div>
+
+        <!-- 工作坐标系旋转 -->
+        <div class="grid gap-4">
+          <div class="flex items-center justify-between">
+            <Label class="text-sm font-medium">{{ t('coordinate.workingRotation') }}</Label>
+            <Button
+              @click="resetRotation"
+              variant="ghost"
+              size="icon-sm"
+              class="h-6 w-6"
+              :title="t('coordinate.resetRotation')"
+            >
+              <RotateCcw class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+
+          <!-- X 轴 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">{{ t('coordinate.axisX') }}</Label>
+              <Input
+                :model-value="rotationX"
+                @blur="(e: Event) => handleRotationInput('x', e)"
+                type="number"
+                min="-180"
+                max="180"
+                size="xs"
+                class="w-16 text-center [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
             </div>
-            <svg width="120" height="120" viewBox="-60 -60 120 120" class="mx-auto">
-              <!-- 背景圆 -->
-              <circle
-                cx="0"
-                cy="0"
-                r="50"
-                class="fill-background stroke-border"
-                stroke-width="1.5"
+            <Slider
+              :model-value="[rotationX]"
+              @update:model-value="(v) => (rotationX = v?.[0] ?? 0)"
+              :min="-180"
+              :max="180"
+              :step="5"
+              class="w-full"
+            />
+          </div>
+
+          <!-- Y 轴 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">{{ t('coordinate.axisY') }}</Label>
+              <Input
+                :model-value="rotationY"
+                @blur="(e: Event) => handleRotationInput('y', e)"
+                type="number"
+                min="-180"
+                max="180"
+                size="xs"
+                class="w-16 text-center [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
+            </div>
+            <Slider
+              :model-value="[rotationY]"
+              @update:model-value="(v) => (rotationY = v?.[0] ?? 0)"
+              :min="-180"
+              :max="180"
+              :step="5"
+              class="w-full"
+            />
+          </div>
 
-              <!-- 原点 -->
-              <circle cx="0" cy="0" r="3" class="fill-muted-foreground" />
-
-              <!-- 箭头标记定义 -->
-              <defs>
-                <marker
-                  id="arrowRed"
-                  markerWidth="6"
-                  markerHeight="6"
-                  refX="5"
-                  refY="3"
-                  orient="auto"
-                  markerUnits="strokeWidth"
-                >
-                  <polygon points="0 0, 6 3, 0 6" class="fill-red-500" />
-                </marker>
-                <marker
-                  id="arrowGreen"
-                  markerWidth="6"
-                  markerHeight="6"
-                  refX="5"
-                  refY="3"
-                  orient="auto"
-                  markerUnits="strokeWidth"
-                >
-                  <polygon points="0 0, 6 3, 0 6" class="fill-green-500" />
-                </marker>
-              </defs>
-
-              <!-- X 轴（红色）-->
-              <line
-                x1="0"
-                y1="0"
-                :x2="xAxisEnd.x"
-                :y2="xAxisEnd.y"
-                class="stroke-red-500"
-                stroke-width="3"
-                marker-end="url(#arrowRed)"
+          <!-- Z 轴 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">{{ t('coordinate.axisZ') }}</Label>
+              <Input
+                :model-value="rotationZ"
+                @blur="(e: Event) => handleRotationInput('z', e)"
+                type="number"
+                min="-180"
+                max="180"
+                size="xs"
+                class="w-16 text-center [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-              <text
-                :x="xLabelPos.x"
-                :y="xLabelPos.y"
-                class="fill-red-500 text-xs font-bold"
-                text-anchor="middle"
-                dominant-baseline="middle"
-              >
-                X
-              </text>
-
-              <!-- Y 轴（绿色）-->
-              <line
-                x1="0"
-                y1="0"
-                :x2="yAxisEnd.x"
-                :y2="yAxisEnd.y"
-                class="stroke-green-500"
-                stroke-width="3"
-                marker-end="url(#arrowGreen)"
-              />
-              <text
-                :x="yLabelPos.x"
-                :y="yLabelPos.y"
-                class="fill-green-500 text-xs font-bold"
-                text-anchor="middle"
-                dominant-baseline="middle"
-              >
-                Y
-              </text>
-            </svg>
+            </div>
+            <Slider
+              :model-value="[rotationZ]"
+              @update:model-value="(v) => (rotationZ = v?.[0] ?? 0)"
+              :min="-180"
+              :max="180"
+              :step="5"
+              class="w-full"
+            />
           </div>
         </div>
 
-        <!-- 工作坐标系角度调整 -->
-        <div class="grid gap-3">
-          <Label class="text-sm font-medium">{{ t('coordinate.rotationLabel') }}</Label>
-          <div class="flex items-center gap-2">
-            <Input v-model.number="workingAngle" type="number" class="h-9 w-24" />
-            <span class="text-sm text-muted-foreground">{{ t('coordinate.unit') }}</span>
-          </div>
-
-          <!-- 快捷角度按钮 -->
-          <div class="grid grid-cols-5 gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              :class="{ 'border-primary bg-accent text-accent-foreground': workingAngle === -45 }"
-              @click="workingAngle = -45"
-            >
-              -45°
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :class="{ 'border-primary bg-accent text-accent-foreground': workingAngle === -30 }"
-              @click="workingAngle = -30"
-            >
-              -30°
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :class="{ 'border-primary bg-accent text-accent-foreground': workingAngle === 0 }"
-              @click="workingAngle = 0"
-            >
-              0°
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :class="{ 'border-primary bg-accent text-accent-foreground': workingAngle === 30 }"
-              @click="workingAngle = 30"
-            >
-              30°
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              :class="{ 'border-primary bg-accent text-accent-foreground': workingAngle === 45 }"
-              @click="workingAngle = 45"
-            >
-              45°
-            </Button>
-          </div>
-        </div>
+        <!-- 从选中物体设置 -->
+        <Button
+          v-if="hasSelectedSingleItem"
+          @click="setFromSelection"
+          variant="outline"
+          size="sm"
+          class="gap-2"
+        >
+          {{ t('coordinate.setFromSelection') }}
+          <Kbd>Z</Kbd>
+        </Button>
       </div>
 
       <DialogFooter>

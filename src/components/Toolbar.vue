@@ -71,6 +71,10 @@ const NAVIGATION_CMD_IDS = ['view.focusSelection', 'view.fitToView']
 const CAMERA_MODE_CMD_ID = 'view.toggleCameraMode'
 const COORDINATE_CMD_ID = 'view.coordinateSystem'
 const TOGGLE_GIZMO_SPACE_CMD_ID = 'view.toggleGizmoSpace'
+const WORKING_COORD_CMD_IDS = [
+  'view.setWorkingCoordinateFromSelection',
+  'view.resetWorkingCoordinate',
+]
 
 // 导航组命令（聚焦、重置视图）
 const navigationCommands = computed(() =>
@@ -90,6 +94,11 @@ const coordinateCommand = computed(() =>
 // 切换坐标系命令
 const toggleGizmoSpaceCommand = computed(() =>
   viewCommands.value.find((cmd) => cmd.id === TOGGLE_GIZMO_SPACE_CMD_ID)
+)
+
+// 工作坐标系操作命令（Z、Shift+Z）
+const workingCoordCommands = computed(() =>
+  viewCommands.value.filter((cmd) => WORKING_COORD_CMD_IDS.includes(cmd.id))
 )
 
 // 视图预设命令，保持在 commandStore 中定义的顺序
@@ -514,7 +523,15 @@ onMounted(() => {
             }}</MenubarShortcut>
           </MenubarItem>
 
-          <!-- 组 4 与视图预设之间的分隔线 -->
+          <!-- 组 5: 工作坐标系操作命令（Z、Shift+Z） -->
+          <template v-for="cmd in workingCoordCommands" :key="cmd.id">
+            <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
+              {{ cmd.label }}
+              <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>
+            </MenubarItem>
+          </template>
+
+          <!-- 组 5 与视图预设之间的分隔线 -->
           <MenubarSeparator />
 
           <!-- 视图预设子菜单：透视视图 + 正交六视图 -->

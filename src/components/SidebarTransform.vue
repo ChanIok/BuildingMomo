@@ -170,9 +170,9 @@ const selectionInfo = computed(() => {
         y: item.rotation.y,
         z: item.rotation.z,
       }
-      // 工作坐标系下，Z轴旋转需要减去坐标系角度
+      // 工作坐标系下，将全局旋转转换为工作坐标系下的相对旋转（使用四元数精确转换）
       if (uiStore.workingCoordinateSystem.enabled) {
-        rotation.z -= uiStore.workingCoordinateSystem.rotationAngle
+        rotation = uiStore.rotationGlobalToWorking(rotation)
       }
     }
   } else {
@@ -404,16 +404,19 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     // 绝对模式
     // 此时肯定是单选，因为多选强制为 relative
     if (selectionInfo.value.count === 1) {
-      // 单选绝对模式：直接应用目标值
+      // 单选绝对模式：将工作坐标系下的输入值转换为全局旋转
+
+      // 构建完整的工作坐标系旋转（用户输入 + 其他轴的当前值）
+      const workingRotation = { ...selectionInfo.value.rotation }
+      workingRotation[axis] = value
+
+      // 转换为全局旋转（使用四元数精确转换）
+      const globalRotation = uiStore.workingCoordinateSystem.enabled
+        ? uiStore.rotationWorkingToGlobal(workingRotation)
+        : workingRotation
+
       const rotationArgs: any = {}
-      let targetValue = value
-
-      // 如果启用了工作坐标系，且修改的是 Z 轴，需要还原回全局角度
-      if (axis === 'z' && uiStore.workingCoordinateSystem.enabled) {
-        targetValue += uiStore.workingCoordinateSystem.rotationAngle
-      }
-
-      rotationArgs[axis] = targetValue
+      rotationArgs[axis] = globalRotation[axis]
 
       updateSelectedItemsTransform({
         mode: 'absolute',
@@ -512,7 +515,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   <div
                     v-html="
                       t('transform.workingCoordTip', {
-                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
                       })
                     "
                   ></div>
@@ -684,7 +687,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   <div
                     v-html="
                       t('transform.correctionTip', {
-                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
                       })
                     "
                   ></div>
@@ -967,7 +970,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   <div
                     v-html="
                       t('transform.workingCoordTip', {
-                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
                       })
                     "
                   ></div>
@@ -1034,7 +1037,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                   <div
                     v-html="
                       t('transform.workingCoordTip', {
-                        angle: uiStore.workingCoordinateSystem.rotationAngle,
+                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
                       })
                     "
                   ></div>
@@ -1286,7 +1289,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
                 <div
                   v-html="
                     t('transform.rangeTip', {
-                      angle: uiStore.workingCoordinateSystem.rotationAngle,
+                      angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
                     })
                   "
                 ></div>

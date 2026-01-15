@@ -113,16 +113,16 @@ export function useThreeTransformGizmo(
   const { Alt } = useMagicKeys()
 
   /**
-   * 获取当前应该使用的 Gizmo 旋转角度（度）
+   * 获取当前应该使用的 Gizmo 旋转（三轴旋转角度，度）
    *
    * 逻辑优先级：
-   * 1. Local 模式 + 单选：使用物体自身的 rotation.z
+   * 1. Local 模式 + 单选：使用物体自身的 rotation (x, y, z)
    * 2. Local 模式 + 多选：回退到 Working（如启用）或 World
-   * 3. World 模式：使用 Working（如启用）或 World（0°）
+   * 3. World 模式：使用 Working（如启用）或 World (0, 0, 0)
    */
-  function getEffectiveGizmoRotation(): number {
+  function getEffectiveGizmoRotation(): { x: number; y: number; z: number } {
     const scheme = editorStore.activeScheme
-    if (!scheme) return 0
+    if (!scheme) return { x: 0, y: 0, z: 0 }
 
     const selectedIds = scheme.selectedItemIds.value
 
@@ -134,28 +134,40 @@ export function useThreeTransformGizmo(
         if (itemId) {
           const item = editorStore.itemsMap.get(itemId)
           if (item) {
-            return item.rotation.z // 使用物体的 Yaw 角度
+            return {
+              x: item.rotation.x,
+              y: item.rotation.y,
+              z: item.rotation.z,
+            }
           }
         }
       }
 
       // 多选：回退到 Working（如启用）
       if (uiStore.workingCoordinateSystem.enabled) {
-        return uiStore.workingCoordinateSystem.rotationAngle
+        return {
+          x: uiStore.workingCoordinateSystem.rotation.x,
+          y: uiStore.workingCoordinateSystem.rotation.y,
+          z: uiStore.workingCoordinateSystem.rotation.z,
+        }
       }
 
       // 否则回退到 World
-      return 0
+      return { x: 0, y: 0, z: 0 }
     }
 
     // 2. World 模式
-    // 如果启用了 Working，使用 Working 角度
+    // 如果启用了 Working，使用 Working 旋转
     if (uiStore.workingCoordinateSystem.enabled) {
-      return uiStore.workingCoordinateSystem.rotationAngle
+      return {
+        x: uiStore.workingCoordinateSystem.rotation.x,
+        y: uiStore.workingCoordinateSystem.rotation.y,
+        z: uiStore.workingCoordinateSystem.rotation.z,
+      }
     }
 
-    // 否则使用 World（0°）
-    return 0
+    // 否则使用 World (0, 0, 0)
+    return { x: 0, y: 0, z: 0 }
   }
 
   /**
@@ -195,9 +207,17 @@ export function useThreeTransformGizmo(
 
     // 使用有效旋转角度旋转平面法线
     const effectiveRotation = getEffectiveGizmoRotation()
-    if (effectiveRotation !== 0 && pivotRef.value) {
-      const angleRad = (effectiveRotation * Math.PI) / 180
-      planeNormal.applyAxisAngle(new Vector3(0, 0, 1), -angleRad)
+    const hasRotation =
+      effectiveRotation.x !== 0 || effectiveRotation.y !== 0 || effectiveRotation.z !== 0
+    if (hasRotation && pivotRef.value) {
+      const euler = new Euler(
+        (effectiveRotation.x * Math.PI) / 180,
+        (effectiveRotation.y * Math.PI) / 180,
+        -(effectiveRotation.z * Math.PI) / 180,
+        'ZYX'
+      )
+      const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
+      planeNormal.applyMatrix4(rotationMatrix)
     }
 
     const plane = new Plane().setFromNormalAndCoplanarPoint(planeNormal, gizmoWorldPos)
@@ -216,10 +236,16 @@ export function useThreeTransformGizmo(
     const localPos = intersection.clone().sub(gizmoWorldPos)
 
     // ✅ 关键修复：将 localPos 转换到当前 Gizmo 的局部空间
-    if (effectiveRotation !== 0) {
-      const angleRad = (effectiveRotation * Math.PI) / 180
-      // 正向旋转（逆变换）：将世界空间位置转换到局部空间
-      localPos.applyAxisAngle(new Vector3(0, 0, 1), angleRad)
+    if (hasRotation) {
+      const euler = new Euler(
+        (effectiveRotation.x * Math.PI) / 180,
+        (effectiveRotation.y * Math.PI) / 180,
+        -(effectiveRotation.z * Math.PI) / 180,
+        'ZYX'
+      )
+      const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
+      // 逆变换：将世界空间位置转换到局部空间
+      localPos.applyMatrix4(rotationMatrix)
     }
 
     // 根据轴选择正确的两个分量计算 atan2
@@ -283,11 +309,15 @@ export function useThreeTransformGizmo(
     // 视觉上 items 在 (x, -y, z)，所以 Gizmo 也应该在这里。
     pivot.position.set(center.x, -center.y, center.z)
 
-    // 更新 Gizmo 旋转使用有效旋转角度
+    // 更新 Gizmo 旋转使用有效旋转角度（三轴）
     const effectiveRotation = getEffectiveGizmoRotation()
-    const angleRad = (effectiveRotation * Math.PI) / 180
-    // Z-up 系统，绕 Z 轴旋转
-    pivot.setRotationFromEuler(new Euler(0, 0, -angleRad))
+    const euler = new Euler(
+      (effectiveRotation.x * Math.PI) / 180,
+      (effectiveRotation.y * Math.PI) / 180,
+      -(effectiveRotation.z * Math.PI) / 180, // 注意 Z 轴符号
+      'ZYX'
+    )
+    pivot.setRotationFromEuler(euler)
   })
 
   function setOrbitControlsEnabled(enabled: boolean) {
@@ -535,12 +565,20 @@ export function useThreeTransformGizmo(
     }
 
     const effectiveRotation = getEffectiveGizmoRotation()
-    if (effectiveRotation !== 0) {
-      const angleRad = (effectiveRotation * Math.PI) / 180
-      // 绕 Z 轴旋转后的局部 X/Y 轴（注意符号：Gizmo pivot 用的是 -angleRad）
-      gizmoWorldAxes.x = new Vector3(Math.cos(-angleRad), Math.sin(-angleRad), 0).normalize()
-      gizmoWorldAxes.y = new Vector3(-Math.sin(-angleRad), Math.cos(-angleRad), 0).normalize()
-      // Z 轴不变
+    const hasRotation =
+      effectiveRotation.x !== 0 || effectiveRotation.y !== 0 || effectiveRotation.z !== 0
+    if (hasRotation) {
+      const euler = new Euler(
+        (effectiveRotation.x * Math.PI) / 180,
+        (effectiveRotation.y * Math.PI) / 180,
+        -(effectiveRotation.z * Math.PI) / 180,
+        'ZYX'
+      )
+      const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
+      // 应用旋转到各轴
+      gizmoWorldAxes.x.applyMatrix4(rotationMatrix)
+      gizmoWorldAxes.y.applyMatrix4(rotationMatrix)
+      gizmoWorldAxes.z.applyMatrix4(rotationMatrix)
     }
 
     // 4. 计算选中物品的合并包围盒

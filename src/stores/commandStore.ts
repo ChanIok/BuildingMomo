@@ -493,6 +493,49 @@ export const useCommandStore = defineStore('command', () => {
         toggleCameraModeFn.value?.()
       },
     },
+    {
+      id: 'view.setWorkingCoordinateFromSelection',
+      label: t('command.view.setWorkingCoordinateFromSelection'),
+      shortcut: 'Z',
+      category: 'view',
+      enabled: () => {
+        const scheme = editorStore.activeScheme
+        return scheme?.selectedItemIds.value.size === 1
+      },
+      execute: () => {
+        console.log('[Command] 从选中物体设置工作坐标系')
+        const scheme = editorStore.activeScheme
+        if (!scheme) return
+
+        const selectedIds = Array.from(scheme.selectedItemIds.value)
+        const firstId = selectedIds[0]
+        if (firstId !== undefined) {
+          const item = editorStore.itemsMap.get(firstId)
+          if (item) {
+            uiStore.setWorkingCoordinateSystem(true, {
+              x: item.rotation.x,
+              y: item.rotation.y,
+              z: item.rotation.z,
+            })
+          }
+        }
+      },
+    },
+    {
+      id: 'view.resetWorkingCoordinate',
+      label: t('command.view.resetWorkingCoordinate'),
+      shortcut: 'Shift+Z',
+      category: 'view',
+      enabled: () => uiStore.workingCoordinateSystem.enabled,
+      execute: () => {
+        console.log('[Command] 重置工作坐标系到全局坐标系')
+        uiStore.setWorkingCoordinateSystem(false, {
+          x: 0,
+          y: 0,
+          z: 0,
+        })
+      },
+    },
 
     // ===== 3D视图预设 =====
     {

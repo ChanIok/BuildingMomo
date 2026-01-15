@@ -112,12 +112,14 @@ export function applyWCSRotation(
   wcs: WorkingCoordinateSystem
 ): { direction: Vec3; up: Vec3 } {
   // 透视视图或未启用 WCS 时不旋转
-  if (!wcs.enabled || wcs.rotationAngle === 0 || preset === 'perspective') {
+  const hasRotation = wcs.rotation.x !== 0 || wcs.rotation.y !== 0 || wcs.rotation.z !== 0
+  if (!wcs.enabled || !hasRotation || preset === 'perspective') {
     return { direction: [...direction], up: [...up] }
   }
 
   // 使用负角度，使得视野顺时针旋转，与 Gizmo 和 Grid 的视觉效果一致
-  const angleRad = (-wcs.rotationAngle * Math.PI) / 180
+  // 注意：对于 top/bottom 视图，主要使用 Z 轴旋转
+  const angleRad = (-wcs.rotation.z * Math.PI) / 180
   const cos = Math.cos(angleRad)
   const sin = Math.sin(angleRad)
 

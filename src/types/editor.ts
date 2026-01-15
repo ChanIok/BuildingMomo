@@ -136,7 +136,11 @@ export interface TransformParams {
 // 工作坐标系配置
 export interface WorkingCoordinateSystem {
   enabled: boolean // 是否启用工作坐标系
-  rotationAngle: number // 旋转角度（以度为单位，0° = 全局坐标系）
+  rotation: {
+    x: number // X 轴旋转角度（Roll，以度为单位）
+    y: number // Y 轴旋转角度（Pitch，以度为单位）
+    z: number // Z 轴旋转角度（Yaw，以度为单位）
+  }
 }
 
 // 历史记录快照

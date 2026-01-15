@@ -35,7 +35,7 @@ export function useThreeGrid(basePosition: Ref<[number, number, number]>) {
       return [0, 0, 0]
     }
 
-    const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+    const angleRad = (uiStore.workingCoordinateSystem.rotation.z * Math.PI) / 180
     // 使用负角度，与相机 up 向量的视觉效果保持一致
     return [0, -angleRad, 0]
   })

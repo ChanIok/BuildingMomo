@@ -23,13 +23,16 @@ export const enLocale = {
 
   // Coordinate System
   coordinate: {
-    title: 'Coordinate System Settings',
-    description:
-      'Set the rotation angle for the working coordinate system. 0° means global system.',
-    globalLabel: 'Global Axis (0°)',
-    workingLabel: 'Working Axis ({angle}°)',
-    rotationLabel: 'Rotation Angle',
-    unit: 'Degrees',
+    title: 'Working Coordinate System',
+    description: 'Customize the editing coordinate system direction or enable object local space',
+    localSpace: 'Local Coordinate System',
+    localSpaceHint: "When enabled, Gizmo aligns to the selected object's rotation",
+    workingRotation: 'Working Rotation',
+    axisX: 'X Axis (Roll)',
+    axisY: 'Y Axis (Pitch)',
+    axisZ: 'Z Axis (Yaw)',
+    setFromSelection: 'Set from Selection',
+    resetRotation: 'Reset Rotation',
   },
 
   // Welcome Screen
@@ -97,8 +100,10 @@ export const enLocale = {
       fitToView: 'Frame All',
       focusSelection: 'Frame Selection',
       coordinateSystem: 'Coordinate System',
-      toggleGizmoSpace: 'Toggle Gizmo Space',
+      toggleGizmoSpace: 'Gizmo: World/Local',
       toggleCameraMode: 'Toggle Camera Mode',
+      setWorkingCoordinateFromSelection: 'Working: Fit to Object',
+      resetWorkingCoordinate: 'Working: Reset',
       setViewPerspective: 'Perspective',
       setViewTop: 'Top',
       setViewBottom: 'Bottom',
@@ -349,12 +354,12 @@ export const enLocale = {
     unnamed: 'Unnamed',
     lastModified: 'Last modified: {time}',
     coordinate: {
-      enabled: 'Enabled',
-      disabled: 'Disabled',
-      tooltip: 'Working Coord: {angle}° ({state}) - Click to adjust',
       world: 'World',
       local: 'Local',
-      working: 'Working {angle}°',
+      working: 'Working',
+      tooltipWorld: 'World Coordinate System',
+      tooltipLocal: 'Local Coordinate System',
+      tooltipWorking: 'Working Coordinate System\nRotation: ({rotation})',
       fallbackHint: '(Fallback to {mode})',
     },
     duplicate: {

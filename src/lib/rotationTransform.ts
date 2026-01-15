@@ -1,4 +1,4 @@
-import { Matrix4, Vector3 } from 'three'
+import { Matrix4, Vector3, Euler } from 'three'
 import type { AppItem } from '@/types/editor'
 import { matrixTransform } from './matrixTransform'
 
@@ -6,7 +6,7 @@ import { matrixTransform } from './matrixTransform'
  * 在工作坐标系下旋转物品
  *
  * 核心算法：worldRotation = W × L × W⁻¹
- * - W: 工作坐标系旋转矩阵
+ * - W: 工作坐标系旋转矩阵（三轴）
  * - L: 局部空间（工作坐标系）的单轴旋转矩阵
  * - W⁻¹: 工作坐标系旋转的逆矩阵
  *
@@ -14,7 +14,7 @@ import { matrixTransform } from './matrixTransform'
  * @param axis 旋转轴 ('x' | 'y' | 'z')
  * @param angleDeg 旋转角度（度数），正值为逆时针
  * @param center 旋转中心（游戏数据空间坐标）
- * @param workingAngleDeg 工作坐标系的 Z 轴旋转角度（度数），0 表示禁用工作坐标系
+ * @param workingRotation 工作坐标系的三轴旋转角度（度数）
  * @param useModelScale 是否使用模型缩放（影响矩阵构建）
  * @returns 更新后的物品列表
  */
@@ -23,21 +23,27 @@ export function rotateItemsInWorkingCoordinate(
   axis: 'x' | 'y' | 'z',
   angleDeg: number,
   center: { x: number; y: number; z: number },
-  workingAngleDeg: number,
+  workingRotation: { x: number; y: number; z: number },
   useModelScale: boolean = false
 ): AppItem[] {
   if (items.length === 0 || angleDeg === 0) {
     return items
   }
 
-  // 1. 构建工作坐标系旋转矩阵 W（如果启用）
+  // 1. 构建工作坐标系旋转矩阵 W（三轴）
   const gizmoRotationMatrix = new Matrix4()
   const gizmoRotationInverse = new Matrix4()
 
-  if (workingAngleDeg !== 0) {
-    const angleRad = (workingAngleDeg * Math.PI) / 180
-    // 注意：工作坐标系角度需要取负（与 Gizmo 的 pivot.rotation.z = -workingAngle 一致）
-    gizmoRotationMatrix.makeRotationZ(-angleRad)
+  const hasRotation = workingRotation.x !== 0 || workingRotation.y !== 0 || workingRotation.z !== 0
+  if (hasRotation) {
+    // 注意：工作坐标系角度需要取负（Z 轴），以与 Gizmo 的 pivot 旋转一致
+    const euler = new Euler(
+      (workingRotation.x * Math.PI) / 180,
+      (workingRotation.y * Math.PI) / 180,
+      -(workingRotation.z * Math.PI) / 180,
+      'ZYX'
+    )
+    gizmoRotationMatrix.makeRotationFromEuler(euler)
     gizmoRotationInverse.copy(gizmoRotationMatrix).invert()
   }
   // 否则保持为单位矩阵

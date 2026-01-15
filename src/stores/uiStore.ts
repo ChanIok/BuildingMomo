@@ -2,6 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import type { WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
+import {
+  convertPositionWorkingToGlobal,
+  convertPositionGlobalToWorking,
+  convertRotationWorkingToGlobal,
+  convertRotationGlobalToWorking,
+} from '../lib/coordinateTransform'
 
 /**
  * UI状态管理Store
@@ -28,7 +34,11 @@ export const useUIStore = defineStore('ui', () => {
   // 工作坐标系状态
   const workingCoordinateSystem = ref<WorkingCoordinateSystem>({
     enabled: false,
-    rotationAngle: 0,
+    rotation: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
   })
 
   // Gizmo 空间模式：world（全局坐标系）或 local（物体自身坐标系）
@@ -70,12 +80,22 @@ export const useUIStore = defineStore('ui', () => {
 
   // ========== 工作坐标系管理 ==========
 
-  function setWorkingCoordinateSystem(enabled: boolean, angle: number) {
+  function setWorkingCoordinateSystem(
+    enabled: boolean,
+    rotation: { x: number; y: number; z: number }
+  ) {
+    // 四舍五入到2位小数，避免浮点数精度问题（作为最终防线）
+    const roundedX = Math.round(rotation.x * 100) / 100
+    const roundedY = Math.round(rotation.y * 100) / 100
+    const roundedZ = Math.round(rotation.z * 100) / 100
+
     workingCoordinateSystem.value.enabled = enabled
-    workingCoordinateSystem.value.rotationAngle = angle
+    workingCoordinateSystem.value.rotation.x = roundedX
+    workingCoordinateSystem.value.rotation.y = roundedY
+    workingCoordinateSystem.value.rotation.z = roundedZ
     console.log('[UIStore] Working coordinate system updated:', {
       enabled,
-      angle,
+      rotation: { x: roundedX, y: roundedY, z: roundedZ },
     })
   }
 
@@ -89,15 +109,7 @@ export const useUIStore = defineStore('ui', () => {
       return point
     }
 
-    const angleRad = (workingCoordinateSystem.value.rotationAngle * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
-
-    return {
-      x: point.x * cos - point.y * sin,
-      y: point.x * sin + point.y * cos,
-      z: point.z,
-    }
+    return convertPositionWorkingToGlobal(point, workingCoordinateSystem.value.rotation)
   }
 
   // 工作坐标系坐标转换：全局坐标系 -> 工作坐标系
@@ -110,15 +122,49 @@ export const useUIStore = defineStore('ui', () => {
       return point
     }
 
-    const angleRad = (-workingCoordinateSystem.value.rotationAngle * Math.PI) / 180
-    const cos = Math.cos(angleRad)
-    const sin = Math.sin(angleRad)
+    return convertPositionGlobalToWorking(point, workingCoordinateSystem.value.rotation)
+  }
 
-    return {
-      x: point.x * cos - point.y * sin,
-      y: point.x * sin + point.y * cos,
-      z: point.z,
+  // ========== 旋转转换（四元数版本，精确处理三轴旋转） ==========
+
+  /**
+   * 工作坐标系旋转转换：工作坐标系 -> 全局坐标系
+   *
+   * 使用四元数确保旋转组合的正确性，避免欧拉角的万向锁问题
+   *
+   * @param workingRotation 工作坐标系中的相对旋转（度）
+   * @returns 全局坐标系中的绝对旋转（度）
+   */
+  function rotationWorkingToGlobal(workingRotation: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    if (!workingCoordinateSystem.value.enabled) {
+      return workingRotation
     }
+
+    return convertRotationWorkingToGlobal(workingRotation, workingCoordinateSystem.value.rotation)
+  }
+
+  /**
+   * 工作坐标系旋转转换：全局坐标系 -> 工作坐标系
+   *
+   * 使用四元数确保旋转分解的正确性，避免欧拉角的万向锁问题
+   *
+   * @param globalRotation 全局坐标系中的绝对旋转（度）
+   * @returns 工作坐标系中的相对旋转（度）
+   */
+  function rotationGlobalToWorking(globalRotation: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    if (!workingCoordinateSystem.value.enabled) {
+      return globalRotation
+    }
+
+    return convertRotationGlobalToWorking(globalRotation, workingCoordinateSystem.value.rotation)
   }
 
   // ========== 侧边栏管理 ==========
@@ -193,6 +239,8 @@ export const useUIStore = defineStore('ui', () => {
     setWorkingCoordinateSystem,
     workingToGlobal,
     globalToWorking,
+    rotationWorkingToGlobal,
+    rotationGlobalToWorking,
 
     // 定点旋转
     setCustomPivotEnabled,

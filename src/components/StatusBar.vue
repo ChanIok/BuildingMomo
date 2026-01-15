@@ -96,12 +96,6 @@ const stats = computed(() => {
 
 const isRenderLimitExceeded = computed(() => stats.value.total > MAX_RENDER_INSTANCES)
 
-// 坐标系显示
-const coordinateSystem = computed(() => ({
-  enabled: uiStore.workingCoordinateSystem.enabled,
-  angle: uiStore.workingCoordinateSystem.rotationAngle,
-}))
-
 // 获取当前坐标系显示标签
 const currentCoordinateLabel = computed(() => {
   const scheme = editorStore.activeScheme
@@ -113,44 +107,56 @@ const currentCoordinateLabel = computed(() => {
     } else if (selectedCount > 1) {
       // 多选回退
       if (uiStore.workingCoordinateSystem.enabled) {
-        return t('status.coordinate.working').replace(
-          '{angle}',
-          String(uiStore.workingCoordinateSystem.rotationAngle)
-        )
+        return t('status.coordinate.working') // Working
       }
-      return t('status.coordinate.world') // 回退到 World
+      return t('status.coordinate.world') // World
     }
   }
 
   // World 模式
   if (uiStore.workingCoordinateSystem.enabled) {
-    return t('status.coordinate.working').replace(
-      '{angle}',
-      String(uiStore.workingCoordinateSystem.rotationAngle)
-    )
+    return t('status.coordinate.working') // Working
   }
 
-  return t('status.coordinate.world')
+  return t('status.coordinate.world') // World
 })
 
 const coordinateTooltip = computed(() => {
   const scheme = editorStore.activeScheme
   const selectedCount = scheme?.selectedItemIds.value.size ?? 0
-  const label = currentCoordinateLabel.value
 
-  // 多选 + Local 模式回退时，显示回退提示
-  if (uiStore.gizmoSpace === 'local' && selectedCount > 1) {
-    const fallbackMode = uiStore.workingCoordinateSystem.enabled
-      ? t('status.coordinate.working').replace(
-          '{angle}',
-          String(uiStore.workingCoordinateSystem.rotationAngle)
-        )
-      : t('status.coordinate.world')
-    const hint = t('status.coordinate.fallbackHint').replace('{mode}', fallbackMode)
-    return `${label} ${hint}`
+  // 格式化旋转值（保留2位小数，去除多余的0）
+  const formatRotation = (value: number) => {
+    const rounded = Math.round(value * 100) / 100
+    return rounded.toFixed(2).replace(/\.?0+$/, '')
   }
 
-  return label
+  if (uiStore.gizmoSpace === 'local') {
+    if (selectedCount === 1) {
+      return t('status.coordinate.tooltipLocal')
+    } else if (selectedCount > 1) {
+      // 多选回退
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const rot = uiStore.workingCoordinateSystem.rotation
+        const rotationStr = `${formatRotation(rot.x)}°, ${formatRotation(rot.y)}°, ${formatRotation(rot.z)}°`
+        const workingLabel = t('status.coordinate.working')
+        const fallbackHint = t('status.coordinate.fallbackHint').replace('{mode}', workingLabel)
+        return `${t('status.coordinate.tooltipWorking').replace('{rotation}', rotationStr)}\n${fallbackHint}`
+      }
+      const worldLabel = t('status.coordinate.world')
+      const fallbackHint = t('status.coordinate.fallbackHint').replace('{mode}', worldLabel)
+      return `${t('status.coordinate.tooltipWorld')}\n${fallbackHint}`
+    }
+  }
+
+  // World 模式
+  if (uiStore.workingCoordinateSystem.enabled) {
+    const rot = uiStore.workingCoordinateSystem.rotation
+    const rotationStr = `${formatRotation(rot.x)}°, ${formatRotation(rot.y)}°, ${formatRotation(rot.z)}°`
+    return t('status.coordinate.tooltipWorking').replace('{rotation}', rotationStr)
+  }
+
+  return t('status.coordinate.tooltipWorld')
 })
 
 const handleCoordinateClick = () => {
@@ -384,16 +390,10 @@ const handleDuplicateClick = () => {
         <Tooltip>
           <TooltipTrigger as-child @mouseenter="isCoordinateTooltipAllowed = true">
             <div
-              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-accent"
-              :class="{
-                'font-medium text-orange-600 dark:text-orange-400/90':
-                  uiStore.gizmoSpace === 'local' || coordinateSystem.enabled,
-                'text-muted-foreground':
-                  uiStore.gizmoSpace === 'world' && !coordinateSystem.enabled,
-              }"
+              class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 text-muted-foreground transition-colors hover:bg-accent"
               @click="handleCoordinateClick"
             >
-              <span>⟲</span>
+              <RotateCw :size="14" />
               <span class="text-xs">{{ currentCoordinateLabel }}</span>
             </div>
           </TooltipTrigger>

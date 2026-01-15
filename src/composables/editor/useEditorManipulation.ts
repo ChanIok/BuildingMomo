@@ -254,8 +254,8 @@ export function useEditorManipulation() {
             rotationInfo.angle,
             center,
             uiStore.workingCoordinateSystem.enabled
-              ? uiStore.workingCoordinateSystem.rotationAngle
-              : 0,
+              ? uiStore.workingCoordinateSystem.rotation
+              : { x: 0, y: 0, z: 0 },
             false // 暂不使用模型缩放（box 模式）
           )
           const rotatedItem = rotatedItems[0]
@@ -380,8 +380,8 @@ export function useEditorManipulation() {
       // 检查是否启用"同时镜像旋转"
       if (settingsStore.settings.mirrorWithRotation) {
         if (uiStore.workingCoordinateSystem.enabled) {
-          // 将 Z 轴旋转转换到工作坐标系
-          const workingYaw = item.rotation.z - uiStore.workingCoordinateSystem.rotationAngle
+          // 暂时仅支持 Z 轴的镜像转换（三轴工作坐标系的完整镜像需要更复杂的矩阵运算）
+          const workingYaw = item.rotation.z - uiStore.workingCoordinateSystem.rotation.z
 
           // 在工作坐标系中执行镜像
           const mirroredRotation = mirrorRotationInWorkingCoord(
@@ -393,7 +393,7 @@ export function useEditorManipulation() {
           newRotation = {
             x: mirroredRotation.x,
             y: mirroredRotation.y,
-            z: mirroredRotation.z + uiStore.workingCoordinateSystem.rotationAngle,
+            z: mirroredRotation.z + uiStore.workingCoordinateSystem.rotation.z,
           }
         } else {
           // 未启用工作坐标系，直接在全局坐标系中镜像
@@ -598,7 +598,9 @@ export function useEditorManipulation() {
 
     // 如果启用了工作坐标系，旋转对齐轴向量
     if (uiStore.workingCoordinateSystem.enabled) {
-      const angleRad = (uiStore.workingCoordinateSystem.rotationAngle * Math.PI) / 180
+      // 注意：这里仅对 Z 轴旋转做了简化处理
+      // 完整的三轴旋转需要使用旋转矩阵
+      const angleRad = (uiStore.workingCoordinateSystem.rotation.z * Math.PI) / 180
       alignAxisVector.applyAxisAngle(new Vector3(0, 0, 1), -angleRad)
     }
 
