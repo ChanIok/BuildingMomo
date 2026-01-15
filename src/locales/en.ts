@@ -472,9 +472,10 @@ export const enLocale = {
     absolute: 'Absolute',
     relative: 'Relative',
     workingCoord: '(Working Coord)',
-    workingCoordTip: 'Values converted to working coordinate system<br />Rotation: {angle}°',
-    correction: '(Corrected)',
-    correctionTip: 'Z-Rotation is corrected<br />Actual = Display + {angle}°',
+    workingCoordTip: 'Showing rotation in working coordinate system<br />Coord rotation: {angle}',
+    localCoord: '(Local Space)',
+    localCoordTip:
+      "Showing rotation in object's local coordinate system, relative to object's current orientation",
     range: 'Range (Min ~ Max)',
     rangeTip: 'Range based on working coordinate system<br />Rotation: {angle}°',
     mirror: 'Mirror',

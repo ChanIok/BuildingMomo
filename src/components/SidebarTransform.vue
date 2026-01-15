@@ -6,6 +6,12 @@ import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useGameDataStore } from '../stores/gameDataStore'
 import { useI18n } from '../composables/useI18n'
+import {
+  convertPositionGlobalToWorking,
+  convertRotationGlobalToWorking,
+  convertPositionWorkingToGlobal,
+  convertRotationWorkingToGlobal,
+} from '../lib/coordinateTransform'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
@@ -52,28 +58,6 @@ const customPivotEnabled = ref(false)
 const customPivotWorkingX = ref<number | null>(null)
 const customPivotWorkingY = ref<number | null>(null)
 const customPivotWorkingZ = ref<number | null>(null)
-
-// 定点旋转显示值（直接使用工作坐标，用户输入什么就显示什么）
-const customPivotDisplayX = computed({
-  get: () => customPivotWorkingX.value,
-  set: (value: number | null) => {
-    customPivotWorkingX.value = value
-  },
-})
-
-const customPivotDisplayY = computed({
-  get: () => customPivotWorkingY.value,
-  set: (value: number | null) => {
-    customPivotWorkingY.value = value
-  },
-})
-
-const customPivotDisplayZ = computed({
-  get: () => customPivotWorkingZ.value,
-  set: (value: number | null) => {
-    customPivotWorkingZ.value = value
-  },
-})
 
 // Tabs 绑定的计算属性
 const positionMode = computed({
@@ -155,9 +139,15 @@ const selectionInfo = computed(() => {
     center = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
   }
 
-  // 如果启用了工作坐标系，将中心点转换到工作坐标系
-  if (uiStore.workingCoordinateSystem.enabled) {
-    center = uiStore.globalToWorking(center)
+  // 使用 uiStore 的统一方法获取有效的坐标系旋转
+  const effectiveCoordRotation = uiStore.getEffectiveCoordinateRotation(
+    scheme.selectedItemIds.value,
+    editorStore.itemsMap
+  )
+
+  // 如果有有效的坐标系，将中心点转换到该坐标系
+  if (effectiveCoordRotation) {
+    center = convertPositionGlobalToWorking(center, effectiveCoordRotation)
   }
 
   // 旋转角度（用于绝对模式显示）
@@ -170,9 +160,9 @@ const selectionInfo = computed(() => {
         y: item.rotation.y,
         z: item.rotation.z,
       }
-      // 工作坐标系下，将全局旋转转换为工作坐标系下的相对旋转（使用四元数精确转换）
-      if (uiStore.workingCoordinateSystem.enabled) {
-        rotation = uiStore.rotationGlobalToWorking(rotation)
+      // 如果有有效的坐标系，将全局旋转转换为相对旋转（使用四元数精确转换）
+      if (effectiveCoordRotation) {
+        rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
       }
     }
   } else {
@@ -340,6 +330,7 @@ watch(
 // 更新处理函数
 function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
+  if (!editorStore.activeScheme) return
 
   if (isPositionRelative.value) {
     // 相对模式：值为增量
@@ -349,9 +340,15 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     let posArgs: any = { x: 0, y: 0, z: 0 }
     posArgs[axis] = delta
 
-    // 工作坐标系下的相对移动：将增量向量从工作坐标系转换到全局坐标系
-    if (uiStore.workingCoordinateSystem.enabled) {
-      posArgs = uiStore.workingToGlobal(posArgs)
+    // 获取有效的坐标系旋转
+    const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
+      editorStore.activeScheme.selectedItemIds.value,
+      editorStore.itemsMap
+    )
+
+    // 如果有有效的坐标系，将增量向量转换到全局坐标系
+    if (effectiveRotation) {
+      posArgs = convertPositionWorkingToGlobal(posArgs, effectiveRotation)
     }
 
     updateSelectedItemsTransform({
@@ -363,16 +360,20 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     positionState.value[axis] = 0
   } else {
     // 绝对模式
-    // 用户输入的是工作坐标系下的目标值
-    // 我们需要结合其他两个轴的当前值（工作坐标系下），构造完整的工作坐标点，然后转回全局
+    // 用户输入的是有效坐标系下的目标值
+    // 我们需要结合其他两个轴的当前值（有效坐标系下），构造完整的坐标点，然后转回全局
 
-    const currentWorking = selectionInfo.value.center // 这是已经在 computed 中转换过的
-    const newWorkingPos = { ...currentWorking, [axis]: value }
+    const currentEffective = selectionInfo.value.center // 这是已经在 computed 中转换过的
+    const newEffectivePos = { ...currentEffective, [axis]: value }
 
     // 转换回全局
-    let newGlobalPos = newWorkingPos
-    if (uiStore.workingCoordinateSystem.enabled) {
-      newGlobalPos = uiStore.workingToGlobal(newWorkingPos)
+    const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
+      editorStore.activeScheme.selectedItemIds.value,
+      editorStore.itemsMap
+    )
+    let newGlobalPos = newEffectivePos
+    if (effectiveRotation) {
+      newGlobalPos = convertPositionWorkingToGlobal(newEffectivePos, effectiveRotation)
     }
 
     updateSelectedItemsTransform({
@@ -384,6 +385,7 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
 
 function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
+  if (!editorStore.activeScheme) return
 
   if (rotationMode.value === 'relative') {
     // 相对模式
@@ -404,23 +406,25 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     // 绝对模式
     // 此时肯定是单选，因为多选强制为 relative
     if (selectionInfo.value.count === 1) {
-      // 单选绝对模式：将工作坐标系下的输入值转换为全局旋转
+      // 单选绝对模式：将有效坐标系下的输入值转换为全局旋转
 
-      // 构建完整的工作坐标系旋转（用户输入 + 其他轴的当前值）
-      const workingRotation = { ...selectionInfo.value.rotation }
-      workingRotation[axis] = value
+      // 构建完整的有效坐标系旋转（用户输入 + 其他轴的当前值）
+      const effectiveRotation = { ...selectionInfo.value.rotation }
+      effectiveRotation[axis] = value
 
       // 转换为全局旋转（使用四元数精确转换）
-      const globalRotation = uiStore.workingCoordinateSystem.enabled
-        ? uiStore.rotationWorkingToGlobal(workingRotation)
-        : workingRotation
+      const coordRotation = uiStore.getEffectiveCoordinateRotation(
+        editorStore.activeScheme.selectedItemIds.value,
+        editorStore.itemsMap
+      )
+      const globalRotation = coordRotation
+        ? convertRotationWorkingToGlobal(effectiveRotation, coordRotation)
+        : effectiveRotation
 
-      const rotationArgs: any = {}
-      rotationArgs[axis] = globalRotation[axis]
-
+      // 传递完整的三轴旋转，而非仅单轴
       updateSelectedItemsTransform({
         mode: 'absolute',
-        rotation: rotationArgs,
+        rotation: globalRotation,
       })
     }
   }
@@ -469,6 +473,7 @@ function updateScale(axis: 'x' | 'y' | 'z', value: number) {
 
 function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number) {
   if (!selectionInfo.value?.bounds) return
+  if (!editorStore.activeScheme) return
 
   const currentVal = selectionInfo.value.bounds[type][axis]
   const delta = value - currentVal
@@ -479,9 +484,15 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
   let posArgs: any = { x: 0, y: 0, z: 0 }
   posArgs[axis] = delta
 
-  // 如果启用了工作坐标系，将位移向量从工作坐标系转回全局坐标系
-  if (uiStore.workingCoordinateSystem.enabled) {
-    posArgs = uiStore.workingToGlobal(posArgs)
+  // 获取有效的坐标系旋转
+  const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
+    editorStore.activeScheme.selectedItemIds.value,
+    editorStore.itemsMap
+  )
+
+  // 如果有有效的坐标系，将位移向量转换到全局坐标系
+  if (effectiveRotation) {
+    posArgs = convertPositionWorkingToGlobal(posArgs, effectiveRotation)
   }
 
   updateSelectedItemsTransform({
@@ -504,7 +515,21 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <label class="text-xs font-semibold text-sidebar-foreground">{{
               t('transform.position')
             }}</label>
-            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+            <!-- Local 模式提示 (单选时显示) -->
+            <TooltipProvider v-if="uiStore.gizmoSpace === 'local' && selectionInfo?.count === 1">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] text-primary">{{
+                    t('transform.localCoord')
+                  }}</span>
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  {{ t('transform.localCoordTip') }}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <!-- 工作坐标系提示 -->
+            <TooltipProvider v-else-if="uiStore.workingCoordinateSystem.enabled">
               <Tooltip :delay-duration="300">
                 <TooltipTrigger as-child>
                   <span class="cursor-help text-[10px] text-primary">{{
@@ -676,17 +701,31 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <label class="text-xs font-semibold text-sidebar-foreground">{{
               t('transform.rotation')
             }}</label>
-            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+            <!-- Local 模式提示 (单选时显示) -->
+            <TooltipProvider v-if="uiStore.gizmoSpace === 'local' && selectionInfo?.count === 1">
               <Tooltip :delay-duration="300">
                 <TooltipTrigger as-child>
                   <span class="cursor-help text-[10px] text-primary">{{
-                    t('transform.correction')
+                    t('transform.localCoord')
+                  }}</span>
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  {{ t('transform.localCoordTip') }}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <!-- 工作坐标系提示 -->
+            <TooltipProvider v-else-if="uiStore.workingCoordinateSystem.enabled">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] text-primary">{{
+                    t('transform.workingCoord')
                   }}</span>
                 </TooltipTrigger>
                 <TooltipContent class="text-xs" variant="light">
                   <div
                     v-html="
-                      t('transform.correctionTip', {
+                      t('transform.workingCoordTip', {
                         angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
                       })
                     "
@@ -750,7 +789,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               step="any"
-              v-model.number="customPivotDisplayX"
+              v-model.number="customPivotWorkingX"
               placeholder=""
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
@@ -765,7 +804,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               step="any"
-              v-model.number="customPivotDisplayY"
+              v-model.number="customPivotWorkingY"
               placeholder=""
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
@@ -780,7 +819,7 @@ const fmt = (n: number) => Math.round(n * 100) / 100
             <input
               type="number"
               step="any"
-              v-model.number="customPivotDisplayZ"
+              v-model.number="customPivotWorkingZ"
               placeholder=""
               class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />

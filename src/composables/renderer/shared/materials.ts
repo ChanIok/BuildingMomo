@@ -53,7 +53,7 @@ export function createBoxMaterial(opacity: number): ShaderMaterial {
       varying vec3 vLocalNormal;
 
       void main() {
-        // === 物理等宽边框 + 平滑抗锯齿 + 面校正 ===
+        // === 物理等宽边框 + 平滑抗锯齿 + 面处理 ===
         
         // 根据法线判断当前渲染的是哪个面，并获取该面对应的物理尺寸
         // BoxGeometry 的 UV 映射规则:
@@ -64,7 +64,7 @@ export function createBoxMaterial(opacity: number): ShaderMaterial {
         vec3 absNormal = abs(vLocalNormal);
         vec2 faceScale = vec2(1.0);
         
-        // Z-Up 修正：Z 轴是高度
+        // Z-Up 处理：Z 轴是高度
         if (absNormal.z > 0.5) {
           // 顶面或底面 (XY Plane)
           faceScale = vec2(vScale.x, vScale.y);
@@ -79,7 +79,7 @@ export function createBoxMaterial(opacity: number): ShaderMaterial {
         }
         
         // 1. 计算基础边框宽度 (UV空间)
-        // 使用校正后的 faceScale
+        // 使用处理后的 faceScale
         vec2 baseUvBorder = uBorderWidth / max(faceScale, vec2(0.001));
         
         // 2. 计算平滑过渡区

@@ -15,6 +15,12 @@ import {
   rotateItemsInWorkingCoordinate,
   extractSingleAxisRotation,
 } from '../../lib/rotationTransform'
+import {
+  convertPositionGlobalToWorking,
+  convertPositionWorkingToGlobal,
+  convertRotationGlobalToWorking,
+  convertRotationWorkingToGlobal,
+} from '../../lib/coordinateTransform'
 
 /**
  * 应用位置偏移（纯位置变换，不涉及旋转）
@@ -246,6 +252,12 @@ export function useEditorManipulation() {
       if (mode === 'relative' && rotation) {
         const rotationInfo = extractSingleAxisRotation(rotation)
         if (rotationInfo) {
+          // 使用 uiStore 的统一方法获取有效的工作坐标系旋转
+          const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
+            ids,
+            store.itemsMap
+          ) || { x: 0, y: 0, z: 0 }
+
           // 使用新的工作坐标系旋转函数（单物品情况）
           // 注意：这里临时使用单物品数组调用，后续会在外层优化为批量处理
           const rotatedItems = rotateItemsInWorkingCoordinate(
@@ -253,9 +265,7 @@ export function useEditorManipulation() {
             rotationInfo.axis,
             rotationInfo.angle,
             center,
-            uiStore.workingCoordinateSystem.enabled
-              ? uiStore.workingCoordinateSystem.rotation
-              : { x: 0, y: 0, z: 0 },
+            effectiveWorkingRotation, // 使用有效的工作坐标系旋转
             false // 暂不使用模型缩放（box 模式）
           )
           const rotatedItem = rotatedItems[0]
@@ -354,8 +364,14 @@ export function useEditorManipulation() {
     const globalCenter = getRotationCenter()
     if (!globalCenter) return
 
-    // 转换到工作坐标系
-    const workingCenter = uiStore.globalToWorking(globalCenter)
+    // 使用 uiStore 的统一方法获取有效的坐标系旋转
+    const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
+      selectedIds,
+      store.itemsMap
+    ) || { x: 0, y: 0, z: 0 }
+
+    // 转换到有效坐标系
+    const workingCenter = convertPositionGlobalToWorking(globalCenter, effectiveWorkingRotation)
 
     // 更新每个选中物品
     activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
@@ -364,37 +380,40 @@ export function useEditorManipulation() {
       }
 
       // === 1. 位置镜像 ===
-      // 转换到工作坐标系
-      const workingPos = uiStore.globalToWorking({ x: item.x, y: item.y, z: item.z })
+      // 转换到有效坐标系
+      const workingPos = convertPositionGlobalToWorking(
+        { x: item.x, y: item.y, z: item.z },
+        effectiveWorkingRotation
+      )
 
       // 沿指定轴镜像
       workingPos[axis] = 2 * workingCenter[axis] - workingPos[axis]
 
       // 转换回全局坐标系
-      const newPos = uiStore.workingToGlobal(workingPos)
+      const newPos = convertPositionWorkingToGlobal(workingPos, effectiveWorkingRotation)
 
-      // === 2. 旋转镜像 ===
-      // 当启用工作坐标系时，需要将 Z 轴旋转转换到工作坐标系后再镜像
+      // === 2. 旋转镜像（支持完整三轴）===
       let newRotation = { ...item.rotation }
 
       // 检查是否启用"同时镜像旋转"
       if (settingsStore.settings.mirrorWithRotation) {
-        if (uiStore.workingCoordinateSystem.enabled) {
-          // 暂时仅支持 Z 轴的镜像转换（三轴工作坐标系的完整镜像需要更复杂的矩阵运算）
-          const workingYaw = item.rotation.z - uiStore.workingCoordinateSystem.rotation.z
+        const hasEffectiveRotation =
+          effectiveWorkingRotation.x !== 0 ||
+          effectiveWorkingRotation.y !== 0 ||
+          effectiveWorkingRotation.z !== 0
 
-          // 在工作坐标系中执行镜像
-          const mirroredRotation = mirrorRotationInWorkingCoord(
-            { x: item.rotation.x, y: item.rotation.y, z: workingYaw },
-            axis
+        if (hasEffectiveRotation) {
+          // 转换到工作坐标系
+          const workingRotation = convertRotationGlobalToWorking(
+            item.rotation,
+            effectiveWorkingRotation
           )
 
-          // 将 Z 轴旋转转换回全局坐标系
-          newRotation = {
-            x: mirroredRotation.x,
-            y: mirroredRotation.y,
-            z: mirroredRotation.z + uiStore.workingCoordinateSystem.rotation.z,
-          }
+          // 在工作坐标系中执行镜像
+          const mirroredWorking = mirrorRotationInWorkingCoord(workingRotation, axis)
+
+          // 转回全局坐标系
+          newRotation = convertRotationWorkingToGlobal(mirroredWorking, effectiveWorkingRotation)
         } else {
           // 未启用工作坐标系，直接在全局坐标系中镜像
           newRotation = mirrorRotationInWorkingCoord(item.rotation, axis)
@@ -596,12 +615,16 @@ export function useEditorManipulation() {
       alignAxisVector.set(0, 0, 1)
     }
 
-    // 如果启用了工作坐标系，旋转对齐轴向量
+    // 如果启用了工作坐标系，旋转对齐轴向量（支持完整三轴）
     if (uiStore.workingCoordinateSystem.enabled) {
-      // 注意：这里仅对 Z 轴旋转做了简化处理
-      // 完整的三轴旋转需要使用旋转矩阵
-      const angleRad = (uiStore.workingCoordinateSystem.rotation.z * Math.PI) / 180
-      alignAxisVector.applyAxisAngle(new Vector3(0, 0, 1), -angleRad)
+      const rotation = uiStore.workingCoordinateSystem.rotation
+      const euler = new Euler(
+        (rotation.x * Math.PI) / 180,
+        (rotation.y * Math.PI) / 180,
+        -(rotation.z * Math.PI) / 180, // 与 coordinateTransform 一致
+        'ZYX'
+      )
+      alignAxisVector.applyEuler(euler)
     }
 
     // 为每个物品计算包围盒投影

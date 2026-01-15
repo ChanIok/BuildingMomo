@@ -115,59 +115,20 @@ export function useThreeTransformGizmo(
   /**
    * 获取当前应该使用的 Gizmo 旋转（三轴旋转角度，度）
    *
-   * 逻辑优先级：
-   * 1. Local 模式 + 单选：使用物体自身的 rotation (x, y, z)
-   * 2. Local 模式 + 多选：回退到 Working（如启用）或 World
-   * 3. World 模式：使用 Working（如启用）或 World (0, 0, 0)
+   * 使用 uiStore 的统一方法，避免代码重复
    */
   function getEffectiveGizmoRotation(): { x: number; y: number; z: number } {
     const scheme = editorStore.activeScheme
     if (!scheme) return { x: 0, y: 0, z: 0 }
 
     const selectedIds = scheme.selectedItemIds.value
-
-    // 1. Local 模式
-    if (uiStore.gizmoSpace === 'local') {
-      // 单选：使用物体自身旋转
-      if (selectedIds.size === 1) {
-        const itemId = Array.from(selectedIds)[0]
-        if (itemId) {
-          const item = editorStore.itemsMap.get(itemId)
-          if (item) {
-            return {
-              x: item.rotation.x,
-              y: item.rotation.y,
-              z: item.rotation.z,
-            }
-          }
-        }
+    return (
+      uiStore.getEffectiveCoordinateRotation(selectedIds, editorStore.itemsMap) || {
+        x: 0,
+        y: 0,
+        z: 0,
       }
-
-      // 多选：回退到 Working（如启用）
-      if (uiStore.workingCoordinateSystem.enabled) {
-        return {
-          x: uiStore.workingCoordinateSystem.rotation.x,
-          y: uiStore.workingCoordinateSystem.rotation.y,
-          z: uiStore.workingCoordinateSystem.rotation.z,
-        }
-      }
-
-      // 否则回退到 World
-      return { x: 0, y: 0, z: 0 }
-    }
-
-    // 2. World 模式
-    // 如果启用了 Working，使用 Working 旋转
-    if (uiStore.workingCoordinateSystem.enabled) {
-      return {
-        x: uiStore.workingCoordinateSystem.rotation.x,
-        y: uiStore.workingCoordinateSystem.rotation.y,
-        z: uiStore.workingCoordinateSystem.rotation.z,
-      }
-    }
-
-    // 否则使用 World (0, 0, 0)
-    return { x: 0, y: 0, z: 0 }
+    )
   }
 
   /**
@@ -626,8 +587,8 @@ export function useThreeTransformGizmo(
     }
 
     // 5. 遍历静止物体，检测吸附
-    // 按轴独立累积修正：每个轴选择最优修正，最后合并
-    const correctionByAxis = {
+    // 按轴独立累积位移：每个轴选择最优位移，最后合并
+    const snapByAxis = {
       x: { vector: null as Vector3 | null, distance: Infinity },
       y: { vector: null as Vector3 | null, distance: Infinity },
       z: { vector: null as Vector3 | null, distance: Infinity },
@@ -683,9 +644,9 @@ export function useThreeTransformGizmo(
           const projX = snapVector.dot(gizmoWorldAxes.x)
           if (Math.abs(projX) > 0.1) {
             const distX = Math.abs(projX)
-            if (distX < correctionByAxis.x.distance) {
-              correctionByAxis.x.vector = gizmoWorldAxes.x.clone().multiplyScalar(projX)
-              correctionByAxis.x.distance = distX
+            if (distX < snapByAxis.x.distance) {
+              snapByAxis.x.vector = gizmoWorldAxes.x.clone().multiplyScalar(projX)
+              snapByAxis.x.distance = distX
             }
           }
         }
@@ -694,9 +655,9 @@ export function useThreeTransformGizmo(
           const projY = snapVector.dot(gizmoWorldAxes.y)
           if (Math.abs(projY) > 0.1) {
             const distY = Math.abs(projY)
-            if (distY < correctionByAxis.y.distance) {
-              correctionByAxis.y.vector = gizmoWorldAxes.y.clone().multiplyScalar(projY)
-              correctionByAxis.y.distance = distY
+            if (distY < snapByAxis.y.distance) {
+              snapByAxis.y.vector = gizmoWorldAxes.y.clone().multiplyScalar(projY)
+              snapByAxis.y.distance = distY
             }
           }
         }
@@ -705,9 +666,9 @@ export function useThreeTransformGizmo(
           const projZ = snapVector.dot(gizmoWorldAxes.z)
           if (Math.abs(projZ) > 0.1) {
             const distZ = Math.abs(projZ)
-            if (distZ < correctionByAxis.z.distance) {
-              correctionByAxis.z.vector = gizmoWorldAxes.z.clone().multiplyScalar(projZ)
-              correctionByAxis.z.distance = distZ
+            if (distZ < snapByAxis.z.distance) {
+              snapByAxis.z.vector = gizmoWorldAxes.z.clone().multiplyScalar(projZ)
+              snapByAxis.z.distance = distZ
             }
           }
         }
@@ -715,35 +676,35 @@ export function useThreeTransformGizmo(
     }
 
     // 6. 合并所有轴的吸附向量
-    const finalCorrection = new Vector3()
+    const finalSnapOffset = new Vector3()
     const appliedAxes: string[] = []
 
-    if (correctionByAxis.x.vector) {
-      finalCorrection.add(correctionByAxis.x.vector)
-      appliedAxes.push(`X(${correctionByAxis.x.distance.toFixed(2)})`)
+    if (snapByAxis.x.vector) {
+      finalSnapOffset.add(snapByAxis.x.vector)
+      appliedAxes.push(`X(${snapByAxis.x.distance.toFixed(2)})`)
     }
-    if (correctionByAxis.y.vector) {
-      finalCorrection.add(correctionByAxis.y.vector)
-      appliedAxes.push(`Y(${correctionByAxis.y.distance.toFixed(2)})`)
+    if (snapByAxis.y.vector) {
+      finalSnapOffset.add(snapByAxis.y.vector)
+      appliedAxes.push(`Y(${snapByAxis.y.distance.toFixed(2)})`)
     }
-    if (correctionByAxis.z.vector) {
-      finalCorrection.add(correctionByAxis.z.vector)
-      appliedAxes.push(`Z(${correctionByAxis.z.distance.toFixed(2)})`)
+    if (snapByAxis.z.vector) {
+      finalSnapOffset.add(snapByAxis.z.vector)
+      appliedAxes.push(`Z(${snapByAxis.z.distance.toFixed(2)})`)
     }
 
-    // 7. 应用吸附修正
-    if (finalCorrection.length() > 0.1) {
-      const correctedMatrices = new Map<string, Matrix4>()
+    // 7. 应用吸附位移
+    if (finalSnapOffset.length() > 0.1) {
+      const snappedMatrices = new Map<string, Matrix4>()
 
       for (const [id, matrix] of newWorldMatrices) {
-        const corrected = matrix.clone()
-        const pos = new Vector3().setFromMatrixPosition(corrected)
-        pos.add(finalCorrection)
-        corrected.setPosition(pos)
-        correctedMatrices.set(id, corrected)
+        const snapped = matrix.clone()
+        const pos = new Vector3().setFromMatrixPosition(snapped)
+        pos.add(finalSnapOffset)
+        snapped.setPosition(pos)
+        snappedMatrices.set(id, snapped)
       }
 
-      return correctedMatrices
+      return snappedMatrices
     }
     return newWorldMatrices
   }

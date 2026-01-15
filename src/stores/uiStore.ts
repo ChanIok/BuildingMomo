@@ -201,6 +201,56 @@ export const useUIStore = defineStore('ui', () => {
     alignmentPivotId.value = null
   }
 
+  // ========== 坐标系统一管理 ==========
+
+  /**
+   * 获取当前有效的坐标系旋转
+   *
+   * 优先级（与 Gizmo 一致）：
+   * 1. Local 模式 + 单选 → 使用物品自身旋转
+   * 2. Local 模式 + 多选 → 回退到 Working（如启用）或 World
+   * 3. World 模式 → 使用 Working（如启用）或 World
+   *
+   * @param selectedIds 当前选中的物品 ID 集合
+   * @param itemsMap 物品映射表（用于查找单选物品）
+   * @returns 有效的坐标系旋转，或 null（表示全局坐标系）
+   */
+  function getEffectiveCoordinateRotation(
+    selectedIds: Set<string>,
+    itemsMap: Map<string, any>
+  ): { x: number; y: number; z: number } | null {
+    // 1. Local 模式
+    if (gizmoSpace.value === 'local') {
+      // 单选：使用物品自身旋转
+      if (selectedIds.size === 1) {
+        const itemId = Array.from(selectedIds)[0]
+        const item = itemId ? itemsMap.get(itemId) : null
+        if (item) {
+          return {
+            x: item.rotation.x,
+            y: item.rotation.y,
+            z: item.rotation.z,
+          }
+        }
+      }
+
+      // 多选：回退到 Working（如启用）
+      if (workingCoordinateSystem.value.enabled) {
+        return workingCoordinateSystem.value.rotation
+      }
+
+      // 否则回退到 World
+      return null
+    }
+
+    // 2. World 模式
+    if (workingCoordinateSystem.value.enabled) {
+      return workingCoordinateSystem.value.rotation
+    }
+
+    return null
+  }
+
   // 监听方案切换，自动清除参照物
   // 注意：这里使用延迟导入避免循环依赖
   import('./editorStore').then(({ useEditorStore }) => {
@@ -241,6 +291,7 @@ export const useUIStore = defineStore('ui', () => {
     globalToWorking,
     rotationWorkingToGlobal,
     rotationGlobalToWorking,
+    getEffectiveCoordinateRotation,
 
     // 定点旋转
     setCustomPivotEnabled,

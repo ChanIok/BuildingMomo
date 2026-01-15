@@ -29,16 +29,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useTabStore } from '../stores/tabStore'
 import { useI18n } from '../composables/useI18n'
 import { Item, ItemContent } from '@/components/ui/item'
-import {
-  X,
-  Settings,
-  BookOpen,
-  Clock,
-  FolderSearch,
-  Folder,
-  Download,
-  Trash2,
-} from 'lucide-vue-next'
+import { X, Settings, BookOpen, FolderSearch, Download, Trash2 } from 'lucide-vue-next'
 import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 import ImportCodeDialog from './ImportCodeDialog.vue'
