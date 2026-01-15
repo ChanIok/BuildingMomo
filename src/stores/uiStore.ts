@@ -8,6 +8,7 @@ import {
   convertRotationWorkingToGlobal,
   convertRotationGlobalToWorking,
 } from '../lib/coordinateTransform'
+import { matrixTransform } from '../lib/matrixTransform'
 
 /**
  * UI状态管理Store
@@ -144,7 +145,12 @@ export const useUIStore = defineStore('ui', () => {
       return workingRotation
     }
 
-    return convertRotationWorkingToGlobal(workingRotation, workingCoordinateSystem.value.rotation)
+    // 将工作坐标系旋转从视觉空间转换回数据空间
+    // workingCoordinateSystem.rotation 存储的是视觉空间的值（经过 dataRotationToVisual 转换）
+    const workingDataRotation = matrixTransform.visualRotationToUI(
+      workingCoordinateSystem.value.rotation
+    )
+    return convertRotationWorkingToGlobal(workingRotation, workingDataRotation)
   }
 
   /**
@@ -164,7 +170,12 @@ export const useUIStore = defineStore('ui', () => {
       return globalRotation
     }
 
-    return convertRotationGlobalToWorking(globalRotation, workingCoordinateSystem.value.rotation)
+    // 将工作坐标系旋转从视觉空间转换回数据空间
+    // workingCoordinateSystem.rotation 存储的是视觉空间的值（经过 dataRotationToVisual 转换）
+    const workingDataRotation = matrixTransform.visualRotationToUI(
+      workingCoordinateSystem.value.rotation
+    )
+    return convertRotationGlobalToWorking(globalRotation, workingDataRotation)
   }
 
   // ========== 侧边栏管理 ==========

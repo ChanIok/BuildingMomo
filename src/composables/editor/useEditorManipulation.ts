@@ -617,11 +617,14 @@ export function useEditorManipulation() {
 
     // 如果启用了工作坐标系，旋转对齐轴向量（支持完整三轴）
     if (uiStore.workingCoordinateSystem.enabled) {
-      const rotation = uiStore.workingCoordinateSystem.rotation
+      // 将工作坐标系旋转从视觉空间转换回数据空间
+      const workingDataRotation = matrixTransform.visualRotationToUI(
+        uiStore.workingCoordinateSystem.rotation
+      )
       const euler = new Euler(
-        (rotation.x * Math.PI) / 180,
-        (rotation.y * Math.PI) / 180,
-        -(rotation.z * Math.PI) / 180, // 与 coordinateTransform 一致
+        (workingDataRotation.x * Math.PI) / 180,
+        (workingDataRotation.y * Math.PI) / 180,
+        -(workingDataRotation.z * Math.PI) / 180, // 与 coordinateTransform 一致
         'ZYX'
       )
       alignAxisVector.applyEuler(euler)
