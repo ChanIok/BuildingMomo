@@ -169,6 +169,130 @@ const fmt = (n: number, decimals: number = 0) => {
   <div class="flex h-full flex-col overflow-hidden p-4 pr-0">
     <ScrollArea class="h-full">
       <div class="flex flex-col gap-4 pr-4">
+        <!-- 步进设置 -->
+        <div class="flex flex-col gap-4">
+          <h3 class="text-xs font-semibold text-sidebar-foreground">
+            {{ t('sidebar.snap.label') }}
+          </h3>
+
+          <!-- 平移步进滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.snap.translationStep') }}
+              </Label>
+              <Input
+                v-if="settingsStore.settings.translationSnap > 0"
+                :model-value="settingsStore.settings.translationSnap"
+                @blur="handleTranslationSnapInput"
+                type="number"
+                min="0"
+                max="10000"
+                size="xs"
+                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+              />
+              <span
+                v-else
+                class="flex h-6 shrink-0 items-center text-xs font-medium text-sidebar-foreground"
+              >
+                {{ t('sidebar.snap.disabled') }}
+              </span>
+            </div>
+            <Slider
+              :model-value="[translationSnapIndex]"
+              @update:model-value="updateTranslationSnap"
+              :min="0"
+              :max="7"
+              :step="1"
+              variant="thin"
+              class="w-full"
+            />
+            <p class="text-[10px] text-muted-foreground">
+              {{ t('sidebar.snap.translationStepHint') }}
+            </p>
+          </div>
+
+          <!-- 旋转步进滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.snap.rotationStep') }}
+              </Label>
+              <div v-if="settingsStore.settings.rotationSnap > 0" class="flex items-center gap-1">
+                <Input
+                  :model-value="rotationSnapDegrees"
+                  @blur="handleRotationSnapInput"
+                  type="number"
+                  min="0"
+                  max="180"
+                  size="xs"
+                  class="w-12 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+                />
+                <span class="text-xs text-muted-foreground">°</span>
+              </div>
+              <span
+                v-else
+                class="flex h-6 shrink-0 items-center text-xs font-medium text-sidebar-foreground"
+              >
+                {{ t('sidebar.snap.disabled') }}
+              </span>
+            </div>
+            <Slider
+              :model-value="[rotationSnapIndex]"
+              @update:model-value="updateRotationSnap"
+              :min="0"
+              :max="6"
+              :step="1"
+              variant="thin"
+              class="w-full"
+            />
+            <p class="text-[10px] text-muted-foreground">
+              {{ t('sidebar.snap.rotationStepHint') }}
+            </p>
+          </div>
+
+          <!-- 表面吸附开关 -->
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label class="text-xs">{{ t('sidebar.snap.surfaceSnap') }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.snap.surfaceSnapHint') }}
+              </p>
+            </div>
+            <Switch v-model="settingsStore.settings.enableSurfaceSnap" />
+          </div>
+
+          <!-- 吸附阈值滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.snap.surfaceSnapThreshold') }}
+              </Label>
+              <Input
+                :model-value="settingsStore.settings.surfaceSnapThreshold"
+                @blur="handleSurfaceSnapThresholdInput"
+                type="number"
+                min="1"
+                max="1000"
+                size="xs"
+                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+              />
+            </div>
+            <Slider
+              :model-value="[surfaceSnapThresholdIndex]"
+              @update:model-value="updateSurfaceSnapThreshold"
+              :min="0"
+              :max="5"
+              :step="1"
+              variant="thin"
+              class="w-full"
+            />
+          </div>
+        </div>
+
+        <!-- 分隔线 -->
+        <div class="border-t border-sidebar-border"></div>
+
         <!-- 相机设置 -->
         <div class="flex flex-col gap-4">
           <h3 class="text-xs font-semibold text-sidebar-foreground">
@@ -289,130 +413,6 @@ const fmt = (n: number, decimals: number = 0) => {
               </p>
             </div>
             <Switch v-model="settingsStore.settings.cameraLockHorizontalMovement" />
-          </div>
-        </div>
-
-        <!-- 分隔线 -->
-        <div class="border-t border-sidebar-border"></div>
-
-        <!-- 步进设置 -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-xs font-semibold text-sidebar-foreground">
-            {{ t('sidebar.snap.label') }}
-          </h3>
-
-          <!-- 平移步进滑块 -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <Label class="text-xs text-muted-foreground">
-                {{ t('sidebar.snap.translationStep') }}
-              </Label>
-              <Input
-                v-if="settingsStore.settings.translationSnap > 0"
-                :model-value="settingsStore.settings.translationSnap"
-                @blur="handleTranslationSnapInput"
-                type="number"
-                min="0"
-                max="10000"
-                size="xs"
-                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
-              />
-              <span
-                v-else
-                class="flex h-6 shrink-0 items-center text-xs font-medium text-sidebar-foreground"
-              >
-                {{ t('sidebar.snap.disabled') }}
-              </span>
-            </div>
-            <Slider
-              :model-value="[translationSnapIndex]"
-              @update:model-value="updateTranslationSnap"
-              :min="0"
-              :max="7"
-              :step="1"
-              variant="thin"
-              class="w-full"
-            />
-            <p class="text-[10px] text-muted-foreground">
-              {{ t('sidebar.snap.translationStepHint') }}
-            </p>
-          </div>
-
-          <!-- 旋转步进滑块 -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <Label class="text-xs text-muted-foreground">
-                {{ t('sidebar.snap.rotationStep') }}
-              </Label>
-              <div v-if="settingsStore.settings.rotationSnap > 0" class="flex items-center gap-1">
-                <Input
-                  :model-value="rotationSnapDegrees"
-                  @blur="handleRotationSnapInput"
-                  type="number"
-                  min="0"
-                  max="180"
-                  size="xs"
-                  class="w-12 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
-                />
-                <span class="text-xs text-muted-foreground">°</span>
-              </div>
-              <span
-                v-else
-                class="flex h-6 shrink-0 items-center text-xs font-medium text-sidebar-foreground"
-              >
-                {{ t('sidebar.snap.disabled') }}
-              </span>
-            </div>
-            <Slider
-              :model-value="[rotationSnapIndex]"
-              @update:model-value="updateRotationSnap"
-              :min="0"
-              :max="6"
-              :step="1"
-              variant="thin"
-              class="w-full"
-            />
-            <p class="text-[10px] text-muted-foreground">
-              {{ t('sidebar.snap.rotationStepHint') }}
-            </p>
-          </div>
-
-          <!-- 表面吸附开关 -->
-          <div class="flex items-center justify-between">
-            <div class="mr-2 space-y-0.5">
-              <Label class="text-xs">{{ t('sidebar.snap.surfaceSnap') }}</Label>
-              <p class="text-[11px] text-muted-foreground">
-                {{ t('sidebar.snap.surfaceSnapHint') }}
-              </p>
-            </div>
-            <Switch v-model="settingsStore.settings.enableSurfaceSnap" />
-          </div>
-
-          <!-- 吸附阈值滑块 -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <Label class="text-xs text-muted-foreground">
-                {{ t('sidebar.snap.surfaceSnapThreshold') }}
-              </Label>
-              <Input
-                :model-value="settingsStore.settings.surfaceSnapThreshold"
-                @blur="handleSurfaceSnapThresholdInput"
-                type="number"
-                min="1"
-                max="1000"
-                size="xs"
-                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
-              />
-            </div>
-            <Slider
-              :model-value="[surfaceSnapThresholdIndex]"
-              @update:model-value="updateSurfaceSnapThreshold"
-              :min="0"
-              :max="5"
-              :step="1"
-              variant="thin"
-              class="w-full"
-            />
           </div>
         </div>
 

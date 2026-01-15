@@ -283,17 +283,6 @@ const dynamicNear = computed(() => {
   return hasNearbyObjects.value ? 10 : 100
 })
 
-// 调试：监听 near 值变化
-watch(dynamicNear, (newNear, oldNear) => {
-  if (newNear !== oldNear) {
-    console.log(`[Camera] Near plane changed: ${oldNear} → ${newNear}`, {
-      hasNearbyObjects: hasNearbyObjects.value,
-      cameraPos: cameraPosition.value,
-      timestamp: new Date().toLocaleTimeString(),
-    })
-  }
-})
-
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 pickingConfig
 const {
   instancedMesh,
