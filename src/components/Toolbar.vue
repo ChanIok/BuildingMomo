@@ -361,6 +361,20 @@ onUnmounted(() => {
   window.removeEventListener('pointercancel', handlePointerUp)
 })
 
+// 滚动到激活的标签
+function scrollToActiveTab() {
+  nextTick(() => {
+    // 兼容 TransitionGroup 组件引用
+    const containerEl = (tabsContainer.value as any)?.$el || tabsContainer.value
+    const activeTab = containerEl?.querySelector('[data-tab-active="true"]')
+    activeTab?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    })
+  })
+}
+
 // 切换标签
 function switchTab(tabId: string) {
   // 如果正在拖拽中且位移较大，不要触发切换（避免误触）
@@ -374,17 +388,8 @@ function switchTab(tabId: string) {
     editorStore.setActiveScheme(tab.schemeId)
   }
 
-  // 滚动到激活的标签
-  nextTick(() => {
-    // 兼容 TransitionGroup 组件引用
-    const containerEl = (tabsContainer.value as any)?.$el || tabsContainer.value
-    const activeTab = containerEl?.querySelector('[data-tab-active="true"]')
-    activeTab?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'center',
-    })
-  })
+  // 复用滚动逻辑
+  scrollToActiveTab()
 }
 
 // 核心关闭逻辑
@@ -469,6 +474,17 @@ onMounted(() => {
     }
   })
 })
+
+// 监听激活标签变化，自动滚动到新激活的标签
+watch(
+  () => tabStore.activeTabId,
+  (newTabId, oldTabId) => {
+    // 只在标签真正改变时滚动（覆盖导入、新建等所有场景）
+    if (newTabId && newTabId !== oldTabId) {
+      scrollToActiveTab()
+    }
+  }
+)
 </script>
 
 <template>
