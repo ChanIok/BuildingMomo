@@ -123,6 +123,17 @@ async function handleVerify() {
           <Switch v-model="settingsStore.settings.enableAutoSave" />
         </div>
 
+        <!-- 文件监控弹窗提示 -->
+        <div class="flex items-center justify-between">
+          <div class="space-y-0.5">
+            <Label>{{ t('settings.watchNotification.label') }}</Label>
+            <p class="text-xs text-muted-foreground">
+              {{ t('settings.watchNotification.hint') }}
+            </p>
+          </div>
+          <Switch v-model="settingsStore.settings.enableWatchNotification" />
+        </div>
+
         <!-- 实验性功能 -->
         <div v-if="isSecureMode" class="flex items-center justify-between">
           <div class="space-y-0.5">

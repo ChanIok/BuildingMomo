@@ -27,7 +27,7 @@
     "idb-keyval": "^6.2.2",
     "lucide-vue-next": "^0.553.0",
     "pinia": "^3.0.4",
-    "reka-ui": "^2.6.1",
+    "reka-ui": "^2.7.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.17",
     "three": "^0.181.1",

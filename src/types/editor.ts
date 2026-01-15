@@ -101,13 +101,29 @@ export interface HomeScheme {
 }
 
 // 文件监控状态
+export interface FileWatchIndexEntry {
+  lastModified: number
+  lastContent: string
+  itemCount: number
+  firstDetectedAt: number
+}
+
+export interface FileWatchHistoryEntry {
+  name: string
+  lastModified: number
+  itemCount: number
+  detectedAt: number
+}
+
 export interface FileWatchState {
   isActive: boolean // 是否正在监控
   dirHandle: FileSystemDirectoryHandle | null // 监控的目录句柄
   dirPath: string // 目录路径（用于显示）
   lastCheckedTime: number // 上次检查的时间戳
-  // 目录内所有文件的索引 Map<文件名, { lastModified, lastContent }>
-  fileIndex: Map<string, { lastModified: number; lastContent: string }>
+  // 目录内所有文件的索引 Map<文件名, 监控条目>
+  fileIndex: Map<string, FileWatchIndexEntry>
+  // 变动历史（仅本次会话，不持久化）
+  updateHistory: FileWatchHistoryEntry[]
   // 记录上次导入的文件句柄，用于 saveToGame 回退
   lastImportedFileHandle: FileSystemFileHandle | null
   lastImportedFileName: string

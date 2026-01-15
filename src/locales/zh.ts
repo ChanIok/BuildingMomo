@@ -267,6 +267,10 @@ export const zhLocale = {
       label: '工作台记忆',
       hint: '自动保存当前状态，以便下次继续编辑。',
     },
+    watchNotification: {
+      label: '文件监控弹窗',
+      hint: '文件变化时弹窗询问是否导入，关闭后仅记录历史。',
+    },
     autoUpdateFurniture: '家具数据自动更新',
     threeDisplayMode: '3D显示模式',
     threeSymbolScale: '图标/方块缩放比例',
@@ -275,7 +279,21 @@ export const zhLocale = {
 
   // 监控状态
   watchMode: {
+    clickToStart: '选择游戏目录',
+    clickToStartTip: '选择游戏目录，自动检测建造数据更新',
     monitoring: '监控中',
+    stop: '停止监控',
+    history: {
+      title: '变动历史',
+      loadLatest: '读取最新方案',
+      noHistory: '暂无历史方案',
+      itemCount: '{n} 个物品',
+      clear: '清空历史',
+      justNow: '刚刚',
+      minutesAgo: '{n} 分钟前',
+      hoursAgo: '{n} 小时前',
+      daysAgo: '{n} 天前',
+    },
   },
 
   // 其他通用文本

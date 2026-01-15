@@ -91,6 +91,16 @@ async function findBuildDataDirectory(
   return null
 }
 
+// 辅助函数：从文件内容提取物品数量
+function getItemCountFromContent(content: string): number {
+  try {
+    const jsonData = JSON.parse(content)
+    return Array.isArray(jsonData?.PlaceInfo) ? jsonData.PlaceInfo.length : 0
+  } catch {
+    return 0
+  }
+}
+
 // 辅助函数：在 BuildData 目录中查找最新的 BUILD_SAVEDATA 文件
 async function findLatestBuildSaveData(
   buildDataDir: FileSystemDirectoryHandle
@@ -167,6 +177,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     dirPath: '',
     lastCheckedTime: 0,
     fileIndex: new Map(),
+    updateHistory: [],
     lastImportedFileHandle: null,
     lastImportedFileName: '',
   })
@@ -491,12 +502,15 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
       // 5. 更新监控状态和文件索引
       const updatedFile = await handle.getFile()
+      const cached = watchState.value.fileIndex.get(finalFileName)
       watchState.value.lastImportedFileHandle = handle
       watchState.value.lastImportedFileName = finalFileName
       // 更新文件索引
       watchState.value.fileIndex.set(finalFileName, {
         lastModified: updatedFile.lastModified + 1000, // +1秒缓冲，避免触发自己的保存
         lastContent: jsonString,
+        itemCount: gameItems.length,
+        firstDetectedAt: cached?.firstDetectedAt ?? updatedFile.lastModified,
       })
 
       console.log(`[FileOps] Successfully saved to game: ${finalFileName}`)
@@ -567,6 +581,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         file: File
         handle: FileSystemFileHandle
         content: string
+        itemCount: number
       } | null = null
       let latestModified = 0
 
@@ -579,7 +594,9 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
           console.log(`[FileWatch] File touched but content identical: ${name}`)
           watchState.value.fileIndex.set(name, {
             lastModified: file.lastModified,
-            lastContent: content,
+            lastContent: cached.lastContent,
+            itemCount: cached.itemCount ?? 0,
+            firstDetectedAt: cached.firstDetectedAt ?? file.lastModified,
           })
           continue
         }
@@ -587,40 +604,76 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         // 检查 NeedRestore
         try {
           const jsonData = JSON.parse(content)
+          const itemCount = Array.isArray(jsonData?.PlaceInfo) ? jsonData.PlaceInfo.length : 0
           if (jsonData.NeedRestore === true) {
             // 找出最新的文件
             if (file.lastModified > latestModified) {
               latestModified = file.lastModified
-              latestFile = { name, file, handle, content }
+              latestFile = { name, file, handle, content, itemCount }
             }
           }
+          // 更新索引
+          watchState.value.fileIndex.set(name, {
+            lastModified: file.lastModified,
+            lastContent: content,
+            itemCount,
+            firstDetectedAt: cached?.firstDetectedAt ?? file.lastModified,
+          })
         } catch (parseError) {
           console.error(`[FileWatch] Failed to parse JSON for ${name}:`, parseError)
           // 解析失败也视为需要提示
           if (file.lastModified > latestModified) {
             latestModified = file.lastModified
-            latestFile = { name, file, handle, content }
+            latestFile = { name, file, handle, content, itemCount: 0 }
           }
+          // 更新索引（解析失败时物品数量为0）
+          watchState.value.fileIndex.set(name, {
+            lastModified: file.lastModified,
+            lastContent: content,
+            itemCount: 0,
+            firstDetectedAt: cached?.firstDetectedAt ?? file.lastModified,
+          })
         }
-
-        // 更新索引
-        watchState.value.fileIndex.set(name, {
-          lastModified: file.lastModified,
-          lastContent: content,
-        })
       }
 
       // 第三阶段：只提示最新的文件
       if (latestFile) {
+        // 记录变动历史（仅会话内）
+        const history = watchState.value.updateHistory
+        const lastEntry = history[0]
+        if (
+          !lastEntry ||
+          lastEntry.name !== latestFile.name ||
+          lastEntry.lastModified !== latestFile.file.lastModified
+        ) {
+          history.unshift({
+            name: latestFile.name,
+            lastModified: latestFile.file.lastModified,
+            itemCount: latestFile.itemCount,
+            detectedAt: Date.now(),
+          })
+          if (history.length > 30) {
+            history.pop()
+          }
+        }
+
         console.log(
           `[FileWatch] File updated: ${latestFile.name}, lastModified: ${new Date(latestFile.file.lastModified).toLocaleString()}`
         )
-        const confirmed = await notification.fileUpdate(
-          latestFile.name,
-          latestFile.file.lastModified
-        )
-        if (confirmed) {
-          await importFromWatchedFile()
+        if (settingsStore.settings.enableWatchNotification) {
+          const confirmed = await notification.fileUpdate(
+            latestFile.name,
+            latestFile.file.lastModified
+          )
+          if (confirmed) {
+            // 使用预读取的内容导入，避免在用户确认期间文件被再次修改
+            await importFromContent(
+              latestFile.content,
+              latestFile.name,
+              latestFile.handle,
+              latestFile.file.lastModified
+            )
+          }
         }
         return true
       }
@@ -703,24 +756,34 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       }
 
       // 4. 建立文件索引
-      const fileIndex = new Map<string, { lastModified: number; lastContent: string }>()
+      const fileIndex = new Map<
+        string,
+        { lastModified: number; lastContent: string; itemCount: number; firstDetectedAt: number }
+      >()
 
       for await (const entry of (buildDataDir as any).values()) {
         if (entry.kind === 'file' && isBuildSaveDataFile(entry.name)) {
           const fileHandle = entry as FileSystemFileHandle
           const file = await fileHandle.getFile()
           const content = await file.text()
-          fileIndex.set(entry.name, { lastModified: file.lastModified, lastContent: content })
+          fileIndex.set(entry.name, {
+            lastModified: file.lastModified,
+            lastContent: content,
+            itemCount: getItemCountFromContent(content),
+            firstDetectedAt: file.lastModified,
+          })
         }
       }
 
       // 5. 设置监控状态
+      const existingHistory = watchState.value.updateHistory
       watchState.value = {
         isActive: true,
         dirHandle: buildDataDir,
         dirPath: buildDataDir.name,
         lastCheckedTime: Date.now(),
         fileIndex: fileIndex,
+        updateHistory: existingHistory,
         lastImportedFileHandle: fileHandle,
         lastImportedFileName: fileName,
       }
@@ -777,19 +840,70 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   // 停止监控模式
   function stopWatchMode() {
     stopPolling()
+    const existingHistory = watchState.value.updateHistory
     watchState.value = {
       isActive: false,
       dirHandle: null,
       dirPath: '',
       lastCheckedTime: 0,
       fileIndex: new Map(),
+      updateHistory: existingHistory,
       lastImportedFileHandle: null,
       lastImportedFileName: '',
     }
     console.log('[FileWatch] Watch mode stopped')
   }
 
-  // 从监控的文件导入
+  // 从预读取的内容导入（避免二次读取导致的时间窗口问题）
+  async function importFromContent(
+    content: string,
+    fileName: string,
+    handle: FileSystemFileHandle,
+    lastModified: number
+  ): Promise<void> {
+    if (!watchState.value.isActive) {
+      notification.warning(t('fileOps.importWatched.notStarted'))
+      return
+    }
+
+    try {
+      const uid = extractUidFromFilename(fileName) || 'unknown'
+      console.log(`[FileWatch] Importing from pre-read content: ${fileName} (UID: ${uid})`)
+
+      // 使用 editorStore 的导入方法
+      const importResult = await editorStore.importJSONAsScheme(content, fileName, lastModified)
+
+      if (importResult.success) {
+        console.log(`[FileWatch] Successfully imported from pre-read content: ${fileName}`)
+
+        // 更新监控状态：记录上次导入的文件句柄
+        watchState.value.lastImportedFileHandle = handle
+        watchState.value.lastImportedFileName = fileName
+
+        // 更新文件索引
+        const cached = watchState.value.fileIndex.get(fileName)
+        watchState.value.fileIndex.set(fileName, {
+          lastModified: lastModified,
+          lastContent: content,
+          itemCount: getItemCountFromContent(content),
+          firstDetectedAt: cached?.firstDetectedAt ?? lastModified,
+        })
+
+        notification.success(t('fileOps.import.success'))
+        // 预加载图标和模型
+        preloadActiveSchemeResources()
+      } else {
+        notification.error(
+          t('fileOps.import.failed', { reason: importResult.error || 'Unknown error' })
+        )
+      }
+    } catch (error: any) {
+      console.error('[FileWatch] Failed to import from pre-read content:', error)
+      notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
+    }
+  }
+
+  // 从监控的文件导入（重新查找最新文件，用于手动触发的导入操作）
   async function importFromWatchedFile(): Promise<void> {
     if (!watchState.value.isActive || !watchState.value.dirHandle) {
       notification.warning(t('fileOps.importWatched.notStarted'))
@@ -827,9 +941,12 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         watchState.value.lastImportedFileName = file.name
 
         // 更新文件索引
+        const cached = watchState.value.fileIndex.get(file.name)
         watchState.value.fileIndex.set(file.name, {
           lastModified: file.lastModified,
           lastContent: content,
+          itemCount: getItemCountFromContent(content),
+          firstDetectedAt: cached?.firstDetectedAt ?? file.lastModified,
         })
 
         notification.success(t('fileOps.import.success'))
@@ -842,6 +959,38 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       }
     } catch (error: any) {
       console.error('[FileWatch] Failed to import from watched file:', error)
+      notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
+    }
+  }
+
+  // 获取监控历史（按时间倒序）
+  function getWatchHistory() {
+    return watchState.value.updateHistory
+  }
+
+  // 清空监控历史（仅会话内）
+  function clearWatchHistory() {
+    watchState.value.updateHistory = []
+  }
+
+  // 从监控历史导入
+  async function importFromHistory(fileName: string): Promise<void> {
+    if (!watchState.value.isActive || !watchState.value.dirHandle) {
+      notification.warning(t('fileOps.importWatched.notStarted'))
+      return
+    }
+
+    const entry = watchState.value.fileIndex.get(fileName)
+    if (!entry) {
+      notification.warning(t('fileOps.importWatched.notFound'))
+      return
+    }
+
+    try {
+      const handle = await watchState.value.dirHandle.getFileHandle(fileName)
+      await importFromContent(entry.lastContent, fileName, handle, entry.lastModified)
+    } catch (error: any) {
+      console.error('[FileWatch] Failed to import from history:', error)
       notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
     }
   }
@@ -941,5 +1090,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     stopWatchMode,
     importFromWatchedFile,
     checkFileUpdate,
+    getWatchHistory,
+    clearWatchHistory,
+    importFromHistory,
   }
 }

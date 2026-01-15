@@ -19,6 +19,7 @@ export interface AppSettings {
   enableLimitDetection: boolean
   enableAutoSave: boolean
   mirrorWithRotation: boolean // 镜像时同时旋转
+  enableWatchNotification: boolean // 文件监控弹窗提示
 
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
@@ -53,6 +54,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableLimitDetection: true,
   enableAutoSave: true,
   mirrorWithRotation: true,
+  enableWatchNotification: true,
   threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
   cameraFov: 50,

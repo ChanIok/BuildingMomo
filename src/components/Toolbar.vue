@@ -23,11 +23,22 @@ import {
 import { Button } from '@/components/ui/button'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useCommandStore } from '../stores/commandStore'
 import { useEditorStore } from '../stores/editorStore'
 import { useTabStore } from '../stores/tabStore'
 import { useI18n } from '../composables/useI18n'
-import { X, Settings, BookOpen } from 'lucide-vue-next'
+import { Item, ItemContent } from '@/components/ui/item'
+import {
+  X,
+  Settings,
+  BookOpen,
+  Clock,
+  FolderSearch,
+  Folder,
+  Download,
+  Trash2,
+} from 'lucide-vue-next'
 import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 import ImportCodeDialog from './ImportCodeDialog.vue'
@@ -108,6 +119,9 @@ const viewPresetCommands = computed(() =>
 
 // 监控状态
 const watchState = computed(() => commandStore.fileOps.watchState)
+const watchHistory = computed(() => commandStore.fileOps.getWatchHistory())
+const showWatchButton = computed(() => !!editorStore.activeScheme)
+const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
 
 // 标签容器引用
 const tabsContainer = ref<HTMLElement | null>(null)
@@ -119,6 +133,7 @@ const schemeSettingsOpen = ref(false)
 const schemeSettingsTargetId = ref('')
 const importCodeDialogOpen = ref(false)
 const importCodeDialogRef = ref<InstanceType<typeof ImportCodeDialog> | null>(null)
+const watchHistoryOpen = ref(false)
 
 // 设置按钮 Tooltip 控制（避免与对话框冲突）
 const isSettingsTooltipAllowed = ref(true)
@@ -161,6 +176,44 @@ async function handleImportFromCode(code: string) {
     // 无论成功失败，都重置加载状态
     importCodeDialogRef.value?.setLoading(false)
   }
+}
+
+// 读取最新方案
+async function handleImportLatest() {
+  watchHistoryOpen.value = false
+  await commandStore.fileOps.importFromWatchedFile()
+}
+
+// 从历史记录导入
+async function handleImportFromHistory(fileName: string) {
+  watchHistoryOpen.value = false
+  await commandStore.fileOps.importFromHistory(fileName)
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now()
+  const diffMs = now - timestamp
+  if (diffMs < 0) {
+    return t('watchMode.history.justNow')
+  }
+
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return t('watchMode.history.justNow')
+  if (minutes < 60) return t('watchMode.history.minutesAgo', { n: minutes })
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('watchMode.history.hoursAgo', { n: hours })
+
+  const days = Math.floor(hours / 24)
+  return t('watchMode.history.daysAgo', { n: days })
+}
+
+function handleStartWatchMode() {
+  handleCommand('file.startWatchMode')
+}
+
+function handleClearHistory() {
+  commandStore.fileOps.clearWatchHistory()
 }
 
 // --- 拖拽逻辑 (Pointer Events) ---
@@ -642,17 +695,94 @@ onMounted(() => {
     <!-- 右侧：监控状态 + 设置按钮（始终固定在最右边） -->
     <div class="ml-auto flex flex-none items-center gap-2">
       <!-- 监控状态指示器 -->
-      <div v-if="watchState.isActive" class="flex flex-none items-center gap-2">
-        <div
-          class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 dark:bg-green-950/60"
-        >
-          <div class="h-2 w-2 animate-pulse rounded-full bg-green-500 dark:bg-green-300"></div>
-          <span class="text-xs text-green-600 dark:text-green-300">
-            {{ t('watchMode.monitoring') }}
-          </span>
-          <span class="text-xs text-green-600 dark:text-green-300">{{ watchState.dirPath }}</span>
-        </div>
-      </div>
+      <template v-if="showWatchButton">
+        <!-- 未监控状态：提示选择游戏目录 -->
+        <Tooltip v-if="!watchState.isActive">
+          <TooltipTrigger as-child>
+            <Button
+              variant="outline"
+              size="sm"
+              class="flex items-center gap-2"
+              @click="handleStartWatchMode"
+            >
+              <FolderSearch class="h-3.5 w-3.5" />
+              <span class="text-xs">{{ t('watchMode.clickToStart') }}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t('watchMode.clickToStartTip') }}</TooltipContent>
+        </Tooltip>
+
+        <!-- 已监控状态：显示历史 Popover -->
+        <Popover v-else v-model:open="watchHistoryOpen">
+          <PopoverTrigger as-child>
+            <button
+              class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
+            >
+              <div class="h-2 w-2 animate-pulse rounded-full bg-green-500 dark:bg-green-300"></div>
+              <span class="text-xs text-green-600 dark:text-green-300">
+                {{ t('watchMode.monitoring') }}
+              </span>
+              <span class="text-xs text-green-600 dark:text-green-300">{{
+                watchState.dirPath
+              }}</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent class="w-64 p-0" align="end" :side-offset="10">
+            <div class="flex flex-col">
+              <!-- 顶部操作栏 -->
+              <div class="flex items-center justify-between gap-2 p-3 pb-0">
+                <Button
+                  size="sm"
+                  class="h-8 text-xs"
+                  :disabled="!hasWatchedFiles"
+                  @click="handleImportLatest"
+                >
+                  <Download class="mr-1.5 h-3.5 w-3.5" />
+                  {{ t('watchMode.history.loadLatest') }}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  class="h-8 w-8 flex-none text-muted-foreground hover:text-foreground"
+                  :disabled="watchHistory.length === 0"
+                  @click="handleClearHistory"
+                  :title="t('watchMode.history.clear')"
+                >
+                  <Trash2 class="h-4 w-4" />
+                </Button>
+              </div>
+
+              <!-- 历史记录列表 -->
+              <ScrollArea class="max-h-64">
+                <div class="p-2">
+                  <div
+                    v-if="watchHistory.length === 0"
+                    class="px-4 py-8 text-center text-xs text-muted-foreground"
+                  >
+                    {{ t('watchMode.history.noHistory') }}
+                  </div>
+                  <Item
+                    v-for="record in watchHistory"
+                    :key="`${record.name}-${record.detectedAt}`"
+                    size="sm"
+                    as="button"
+                    class="w-full cursor-pointer p-2 hover:bg-accent"
+                    @click="handleImportFromHistory(record.name)"
+                  >
+                    <ItemContent class="flex w-full flex-row items-center justify-between text-sm">
+                      <span class="text-xs">{{
+                        t('watchMode.history.itemCount', { n: record.itemCount })
+                      }}</span>
+                      <span class="text-xs">{{ formatRelativeTime(record.detectedAt) }}</span>
+                    </ItemContent>
+                  </Item>
+                </div>
+                <ScrollBar orientation="vertical" />
+              </ScrollArea>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </template>
 
       <!-- 设置按钮 -->
       <Tooltip>

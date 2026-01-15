@@ -268,6 +268,10 @@ export const enLocale = {
       label: 'Workspace Memory',
       hint: 'Automatically save current state to resume editing later.',
     },
+    watchNotification: {
+      label: 'Watch Popup',
+      hint: 'Show a popup when the file changes; disabled will only record history.',
+    },
     autoUpdateFurniture: 'Auto-Update Furniture Data',
     threeDisplayMode: '3D Display Mode',
     threeSymbolScale: 'Icon/Block Scale',
@@ -277,6 +281,12 @@ export const enLocale = {
   // Watch Mode
   watchMode: {
     monitoring: 'Monitoring',
+    history: {
+      title: 'History',
+      loadLatest: 'Load Latest Scheme',
+      noHistory: 'No history schemes',
+      itemCount: '{n} items',
+    },
   },
 
   // Common Text
