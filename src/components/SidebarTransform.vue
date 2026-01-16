@@ -44,7 +44,7 @@ const {
 
 // 位置和缩放默认为绝对模式 (false)，旋转默认为相对模式 (true)
 const isPositionRelative = ref(false)
-const isRotationRelative = ref(true)
+const isRotationRelative = ref(false)
 const isScaleRelative = ref(false)
 
 // 旋转输入的临时状态

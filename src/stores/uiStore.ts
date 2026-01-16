@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
 import {
@@ -9,12 +9,15 @@ import {
   convertRotationGlobalToWorking,
 } from '../lib/coordinateTransform'
 import { matrixTransform } from '../lib/matrixTransform'
+import { useSettingsStore } from './settingsStore'
 
 /**
  * UI状态管理Store
  * 专门管理界面相关的状态，与业务逻辑分离
  */
 export const useUIStore = defineStore('ui', () => {
+  const settingsStore = useSettingsStore()
+
   // 视图模式状态
   const viewMode = ref<'2d' | '3d'>('3d')
 
@@ -42,8 +45,13 @@ export const useUIStore = defineStore('ui', () => {
     },
   })
 
-  // Gizmo 空间模式：world（全局坐标系）或 local（物体自身坐标系）
-  const gizmoSpace = ref<'world' | 'local'>('world')
+  // Gizmo 空间模式：代理到 settingsStore，自动持久化
+  const gizmoSpace = computed({
+    get: () => settingsStore.settings.gizmoSpace,
+    set: (value) => {
+      settingsStore.settings.gizmoSpace = value
+    },
+  })
 
   // 定点旋转状态（临时状态，不持久化）
   const customPivotEnabled = ref(false)

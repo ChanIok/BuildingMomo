@@ -34,6 +34,9 @@ export interface AppSettings {
   perspectiveControlMode: 'orbit' | 'flight' // 透视视图下的控制模式偏好
   cameraLockHorizontalMovement: boolean // 锁定水平移动（WASD仅在水平面移动）
 
+  // 坐标系设置
+  gizmoSpace: 'world' | 'local' // Gizmo 空间模式（全局/局部坐标系）
+
   // 变换步进设置
   translationSnap: number // 平移步进值（0 表示禁用）
   rotationSnap: number // 旋转步进值，单位：弧度（0 表示禁用）
@@ -64,6 +67,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cameraZoomSpeed: 2.5,
   perspectiveControlMode: 'orbit',
   cameraLockHorizontalMovement: false,
+  gizmoSpace: 'world',
   translationSnap: 0,
   rotationSnap: 0,
   enableSurfaceSnap: false,
