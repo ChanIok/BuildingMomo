@@ -13,6 +13,7 @@ export interface AlertDetailItem {
 // AlertDialog 配置接口
 export interface AlertConfig {
   id: string
+  category?: string // 弹窗类别（用于同类型弹窗替换策略）
   title: string
   description?: string
   details?: AlertDetailItem[]
@@ -43,7 +44,40 @@ export const useNotificationStore = defineStore('notification', () => {
       ...config,
     }
 
-    // 如果当前没有显示的 Alert，直接显示
+    // 🔑 如果新弹窗有 category，执行替换策略
+    if (config.category) {
+      // 步骤1: 如果当前弹窗是同类型，直接替换
+      if (currentAlert.value?.category === config.category) {
+        console.log(`[NotificationStore] Replacing current alert of category: ${config.category}`)
+        // 触发旧弹窗的 onCancel，确保旧 Promise 被正确清理
+        currentAlert.value.onCancel?.()
+
+        // 替换为新弹窗
+        currentAlert.value = alert
+        return // 直接返回，不加入队列
+      }
+
+      // 步骤2: 清除队列中所有同类型的弹窗
+      const oldQueueLength = alerts.value.length
+      alerts.value = alerts.value.filter((a) => {
+        if (a.category === config.category) {
+          // 触发被清除弹窗的 onCancel
+          a.onCancel?.()
+          return false
+        }
+        return true
+      })
+
+      // 记录清理日志
+      const clearedCount = oldQueueLength - alerts.value.length
+      if (clearedCount > 0) {
+        console.log(
+          `[NotificationStore] Cleared ${clearedCount} queued alert(s) of category: ${config.category}`
+        )
+      }
+    }
+
+    // 原有逻辑：显示或排队
     if (!currentAlert.value) {
       currentAlert.value = alert
     } else {
@@ -54,6 +88,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   // 显示 Confirm（返回 Promise）
   function confirm(config: {
+    category?: string
     title: string
     description?: string
     details?: AlertDetailItem[]
@@ -71,6 +106,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
   // 显示带勾选框的 Confirm（返回 Promise<{ confirmed: boolean, checked: boolean }>）
   function confirmWithCheckbox(config: {
+    category?: string
     title: string
     description?: string
     details?: AlertDetailItem[]

@@ -101,6 +101,7 @@ export function useNotification() {
      */
     fileUpdate: (fileName: string, lastModified: number): Promise<boolean> => {
       return notificationStore.confirm({
+        category: 'file-update', // 🔑 标记为文件更新类弹窗，支持智能替换
         title: t('notification.fileUpdate.title'),
         description: t('notification.fileUpdate.desc', {
           name: fileName,

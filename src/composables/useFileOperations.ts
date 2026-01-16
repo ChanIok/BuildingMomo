@@ -704,19 +704,26 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
           `[FileWatch] File updated: ${latestFile.name}, lastModified: ${new Date(latestFile.file.lastModified).toLocaleString()}`
         )
         if (settingsStore.settings.enableWatchNotification) {
-          const confirmed = await notification.fileUpdate(
-            latestFile.name,
-            latestFile.file.lastModified
-          )
-          if (confirmed) {
-            // 使用预读取的内容导入，避免在用户确认期间文件被再次修改
-            await importFromContent(
-              latestFile.content,
-              latestFile.name,
-              latestFile.handle,
-              latestFile.file.lastModified
-            )
-          }
+          // 🔑 不使用 await，避免阻塞轮询
+          // 弹窗异步显示，用户确认后再导入
+          notification
+            .fileUpdate(latestFile.name, latestFile.file.lastModified)
+            .then((confirmed) => {
+              if (confirmed) {
+                // 使用预读取的内容导入，避免在用户确认期间文件被再次修改
+                importFromContent(
+                  latestFile.content,
+                  latestFile.name,
+                  latestFile.handle,
+                  latestFile.file.lastModified
+                ).catch((err) => {
+                  console.error('[FileWatch] Failed to import from content:', err)
+                })
+              }
+            })
+            .catch((err) => {
+              console.error('[FileWatch] File update notification error:', err)
+            })
         }
         return true
       }
