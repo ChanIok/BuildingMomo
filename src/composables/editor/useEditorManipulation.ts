@@ -9,7 +9,7 @@ import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
 import { matrixTransform } from '../../lib/matrixTransform'
-import { transformOBBByMatrix } from '../../lib/collision'
+import { transformOBBByMatrix, getOBBFromMatrixAndModelBox } from '../../lib/collision'
 import { getThreeModelManager } from '../useThreeModelManager'
 import {
   rotateItemsInWorkingCoordinate,
@@ -606,7 +606,6 @@ export function useEditorManipulation() {
 
     const currentMode = settingsStore.settings.threeDisplayMode
     const modelManager = getThreeModelManager()
-    const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 
     // 计算对齐轴在世界空间中的方向向量
     const alignAxisVector = new Vector3()
@@ -644,39 +643,37 @@ export function useEditorManipulation() {
     const itemProjections: ItemProjection[] = []
 
     for (const item of selectedItems) {
-      // 1. 获取局部尺寸和中心
-      let localSize: Vector3
-      let localCenter: Vector3
-
-      if (currentMode === 'model') {
-        const modelBox = modelManager.getModelBoundingBox(item.gameId)
-        if (modelBox) {
-          // 模型有实际包围盒
-          localSize = new Vector3()
-          modelBox.getSize(localSize)
-          localCenter = new Vector3()
-          modelBox.getCenter(localCenter)
-        } else {
-          // 模型未加载，使用默认尺寸
-          const size = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-          localSize = new Vector3(...size)
-          localCenter = new Vector3()
-        }
-      } else {
-        // box 模式：尺寸已经编码在 matrix.scale 中（buildWorldMatrixFromItem 已处理）
-        // 所以这里使用单位向量，避免重复计算导致尺寸被平方
-        localSize = new Vector3(1, 1, 1)
-        localCenter = new Vector3()
-      }
-
-      // 2. 构建世界矩阵
+      // 1. 先判断是否真的有可用的模型配置
+      // 这决定了 matrix 的构建方式（是否包含家具尺寸）
       const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
       const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
       const useModelScale = !!(currentMode === 'model' && hasValidModel)
+
+      // 2. 构建世界矩阵
+      // - useModelScale=true: matrix.scale 只包含用户缩放（不含家具尺寸）
+      // - useModelScale=false: matrix.scale 包含用户缩放 * 家具尺寸
       const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
 
-      // 3. 生成 OBB
-      const obb = transformOBBByMatrix(matrix, localSize, localCenter)
+      // 3. 根据 useModelScale 决定 OBB 计算方式
+      let obb
+
+      if (useModelScale) {
+        // 真正的 Model 模式：matrix 不含尺寸，需要从 modelBox 获取
+        const modelBox = modelManager.getModelBoundingBox(item.gameId)
+        if (modelBox) {
+          // 使用专用函数，正确处理模型尺寸和中心偏移
+          obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+        } else {
+          // 理论上不应该到这里（hasValidModel 为 true 但 modelBox 为 null）
+          // 安全 fallback：使用单位向量（matrix 此时可能不含尺寸，结果会不准确）
+          console.warn(`Model ${item.gameId} has valid config but no bounding box`)
+          obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+        }
+      } else {
+        // Box 模式 或 Model Fallback：matrix 已包含完整尺寸
+        // 使用单位向量，避免重复计算
+        obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+      }
 
       // 4. 获取 OBB 的 8 个角点
       const corners = obb.getCorners()
