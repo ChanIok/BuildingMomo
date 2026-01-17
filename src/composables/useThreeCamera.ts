@@ -508,6 +508,11 @@ export function useThreeCamera(
    * 自动处理透视↔正交的 zoom/distance 转换
    */
   function switchToViewPreset(preset: ViewPreset) {
+    // 调用 switchToOrbitMode() 自动确定合理的 target（选区中心或视线前方点）
+    if (controlMode.value === 'flight' && preset !== 'perspective') {
+      switchToOrbitMode()
+    }
+
     const fromPreset = currentViewPreset.value
 
     // 1. 计算当前相机到目标的实际物理距离
