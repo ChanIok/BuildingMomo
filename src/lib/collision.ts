@@ -364,12 +364,15 @@ export function transformOBBByMatrix(
 /**
  * 合并多个 OBB 为一个保守的 OBB
  *
- * 注意：这是一个简化实现，返回包含所有 OBB 的 AABB 再转换为轴对齐的 OBB
+ * 支持两种模式：
+ * 1. 默认模式：返回包含所有 OBB 的 AABB 再转换为轴对齐的 OBB
+ * 2. 参照坐标系模式：在指定的坐标系下计算包围盒，支持工作坐标系等非轴对齐的合并
  *
  * @param obbs OBB 数组
+ * @param referenceAxes 可选的参照坐标系轴（三个正交的单位向量）
  * @returns 合并后的 OBB
  */
-export function mergeOBBs(obbs: OBB[]): OBB {
+export function mergeOBBs(obbs: OBB[], referenceAxes?: [Vector3, Vector3, Vector3]): OBB {
   if (obbs.length === 0) {
     return new OBB(new Vector3(), new Vector3(), [
       new Vector3(1, 0, 0),
@@ -378,7 +381,52 @@ export function mergeOBBs(obbs: OBB[]): OBB {
     ])
   }
 
-  // 计算包含所有 OBB 的 AABB
+  // 如果提供了参照坐标系，在该坐标系下计算包围盒
+  if (referenceAxes) {
+    // 收集所有 OBB 的角点
+    const allCorners: Vector3[] = []
+    for (const obb of obbs) {
+      const corners = obb.getCorners()
+      allCorners.push(...corners)
+    }
+
+    // 在参照坐标系的每个轴上计算投影范围
+    let minX = Infinity,
+      maxX = -Infinity
+    let minY = Infinity,
+      maxY = -Infinity
+    let minZ = Infinity,
+      maxZ = -Infinity
+
+    for (const corner of allCorners) {
+      const projX = corner.dot(referenceAxes[0])
+      const projY = corner.dot(referenceAxes[1])
+      const projZ = corner.dot(referenceAxes[2])
+
+      minX = Math.min(minX, projX)
+      maxX = Math.max(maxX, projX)
+      minY = Math.min(minY, projY)
+      maxY = Math.max(maxY, projY)
+      minZ = Math.min(minZ, projZ)
+      maxZ = Math.max(maxZ, projZ)
+    }
+
+    // 计算在参照坐标系下的半尺寸
+    const halfExtents = new Vector3((maxX - minX) / 2, (maxY - minY) / 2, (maxZ - minZ) / 2)
+
+    // 计算中心在参照坐标系下的坐标
+    const centerInRef = new Vector3((maxX + minX) / 2, (maxY + minY) / 2, (maxZ + minZ) / 2)
+
+    // 将中心从参照坐标系转换回世界坐标系
+    const center = new Vector3()
+      .addScaledVector(referenceAxes[0], centerInRef.x)
+      .addScaledVector(referenceAxes[1], centerInRef.y)
+      .addScaledVector(referenceAxes[2], centerInRef.z)
+
+    return new OBB(center, halfExtents, referenceAxes)
+  }
+
+  // 默认模式：计算包含所有 OBB 的 AABB
   const aabb = new Box3()
   for (const obb of obbs) {
     const corners = obb.getCorners()

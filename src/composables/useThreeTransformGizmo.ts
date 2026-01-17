@@ -565,9 +565,22 @@ export function useThreeTransformGizmo(
 
     if (selectedOBBs.length === 0) return newWorldMatrices
 
-    // 合并选区包围盒（单个物体时直接使用，避免退化为轴对齐）
-    // TypeScript: selectedOBBs 非空已验证，结果必定非 undefined
-    const selectionOBB = (selectedOBBs.length === 1 ? selectedOBBs[0] : mergeOBBs(selectedOBBs))!
+    // 合并选区包围盒
+    // - 单选：直接使用，保留物品自身的朝向
+    // - 多选：使用当前坐标系的轴作为参照系合并，确保与 Gizmo 方向一致
+    let selectionOBB: OBB
+    if (selectedOBBs.length === 1) {
+      selectionOBB = selectedOBBs[0]!
+    } else {
+      // 多选时，使用工作坐标系的轴作为参照
+      // 这样合并后的 OBB 会与 Gizmo 的朝向保持一致，解决工作坐标系下吸附方向错误的问题
+      const referenceAxes: [Vector3, Vector3, Vector3] = [
+        gizmoWorldAxes.x.clone(),
+        gizmoWorldAxes.y.clone(),
+        gizmoWorldAxes.z.clone(),
+      ]
+      selectionOBB = mergeOBBs(selectedOBBs, referenceAxes)
+    }
 
     // 🔧 调试：可视化选区包围盒
     if (DEBUG_SHOW_BOUNDING_BOXES) {
