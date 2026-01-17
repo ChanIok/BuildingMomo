@@ -8,7 +8,7 @@ import { useEditorStore } from '@/stores/editorStore'
  */
 export function useEditorSelectionAction() {
   const editorStore = useEditorStore()
-  const { shift, alt } = useMagicKeys()
+  const { shift, alt, ctrl } = useMagicKeys()
 
   const activeAction = computed(() => {
     // 快捷键优先级高于 UI 设置
@@ -26,7 +26,12 @@ export function useEditorSelectionAction() {
     return editorStore.selectionAction
   })
 
+  // Ctrl 键控制强制单选模式（不扩展到组）
+  // 与 activeAction 正交，可组合使用（如 Ctrl+Shift 表示强制单选+加选）
+  const forceIndividualSelection = computed(() => ctrl?.value ?? false)
+
   return {
     activeAction,
+    forceIndividualSelection,
   }
 }

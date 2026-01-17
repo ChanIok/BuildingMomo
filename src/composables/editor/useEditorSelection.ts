@@ -56,12 +56,33 @@ export function useEditorSelection() {
     return result
   }
 
-  function toggleSelection(itemId: string, additive: boolean) {
+  function toggleSelection(
+    itemId: string,
+    additive: boolean,
+    options?: { skipGroupExpansion?: boolean }
+  ) {
     if (!activeScheme.value) return
 
     // 保存历史（选择操作，会合并）
     saveHistory('selection')
 
+    // 强制单选模式：直接操作单个物品，不扩展到组
+    if (options?.skipGroupExpansion) {
+      if (additive) {
+        if (activeScheme.value.selectedItemIds.value.has(itemId)) {
+          activeScheme.value.selectedItemIds.value.delete(itemId)
+        } else {
+          activeScheme.value.selectedItemIds.value.add(itemId)
+        }
+      } else {
+        activeScheme.value.selectedItemIds.value.clear()
+        activeScheme.value.selectedItemIds.value.add(itemId)
+      }
+      store.triggerSelectionUpdate()
+      return
+    }
+
+    // 组模式：原有逻辑，扩展到整组
     if (additive) {
       if (activeScheme.value.selectedItemIds.value.has(itemId)) {
         // 取消选择：如果是组，取消整组
@@ -100,7 +121,11 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  function updateSelection(itemIds: string[], additive: boolean) {
+  function updateSelection(
+    itemIds: string[],
+    additive: boolean,
+    options?: { skipGroupExpansion?: boolean }
+  ) {
     if (!activeScheme.value) return
 
     // 保存历史(选择操作,会合并)
@@ -110,25 +135,35 @@ export function useEditorSelection() {
       activeScheme.value.selectedItemIds.value.clear()
     }
 
-    // 扩展选择到整组(框选行为)
-    const initialSelection = new Set(itemIds)
-    const expandedSelection = expandSelectionToGroups(initialSelection)
-    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
+    // 强制单选模式：直接添加，不扩展到组
+    if (options?.skipGroupExpansion) {
+      itemIds.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
+    } else {
+      // 组模式：扩展选择到整组(框选行为)
+      const initialSelection = new Set(itemIds)
+      const expandedSelection = expandSelectionToGroups(initialSelection)
+      expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
+    }
 
     store.triggerSelectionUpdate()
   }
 
   // 减选功能:从当前选择中移除指定物品
-  function deselectItems(itemIds: string[]) {
+  function deselectItems(itemIds: string[], options?: { skipGroupExpansion?: boolean }) {
     if (!activeScheme.value) return
 
     // 保存历史(选择操作,会合并)
     saveHistory('selection')
 
-    // 扩展选择到整组(框选行为)
-    const initialSelection = new Set(itemIds)
-    const expandedSelection = expandSelectionToGroups(initialSelection)
-    expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
+    // 强制单选模式：直接移除，不扩展到组
+    if (options?.skipGroupExpansion) {
+      itemIds.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
+    } else {
+      // 组模式：扩展选择到整组(框选行为)
+      const initialSelection = new Set(itemIds)
+      const expandedSelection = expandSelectionToGroups(initialSelection)
+      expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
+    }
 
     store.triggerSelectionUpdate()
   }
@@ -178,25 +213,34 @@ export function useEditorSelection() {
   }
 
   // 交叉选择：只保留当前选择与新选择的重叠部分
-  function intersectSelection(itemIds: string[]) {
+  function intersectSelection(itemIds: string[], options?: { skipGroupExpansion?: boolean }) {
     if (!activeScheme.value) return
 
     // 保存历史（选择操作，会合并）
     saveHistory('selection')
 
-    // 扩展选择到整组
-    const initialSelection = new Set(itemIds)
-    const expandedSelection = expandSelectionToGroups(initialSelection)
-
     const currentSelection = activeScheme.value.selectedItemIds.value
     const newSelection = new Set<string>()
 
-    // 计算交集
-    currentSelection.forEach((id) => {
-      if (expandedSelection.has(id)) {
-        newSelection.add(id)
-      }
-    })
+    // 强制单选模式：直接计算交集，不扩展到组
+    if (options?.skipGroupExpansion) {
+      const targetSet = new Set(itemIds)
+      currentSelection.forEach((id) => {
+        if (targetSet.has(id)) {
+          newSelection.add(id)
+        }
+      })
+    } else {
+      // 组模式：扩展选择到整组后计算交集
+      const initialSelection = new Set(itemIds)
+      const expandedSelection = expandSelectionToGroups(initialSelection)
+
+      currentSelection.forEach((id) => {
+        if (expandedSelection.has(id)) {
+          newSelection.add(id)
+        }
+      })
+    }
 
     activeScheme.value.selectedItemIds.value = newSelection
 

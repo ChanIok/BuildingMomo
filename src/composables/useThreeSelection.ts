@@ -44,7 +44,7 @@ export function useThreeSelection(
     useEditorSelection()
 
   // 计算当前有效的选择行为（结合 Store 设置和键盘修饰键）
-  const { activeAction: effectiveAction } = useEditorSelectionAction()
+  const { activeAction: effectiveAction, forceIndividualSelection } = useEditorSelectionAction()
 
   function getRelativePosition(evt: any) {
     // 性能优化：使用 Store 中的缓存 Rect，避免 getBoundingClientRect()
@@ -241,29 +241,31 @@ export function useThreeSelection(
 
     if (internalId) {
       const action = effectiveAction.value
+      // Ctrl 键控制是否强制单选（不扩展到组）
+      const skipGroupExpansion = forceIndividualSelection.value
 
       switch (action) {
         case 'add':
           // 加选：如果已选中则不变（符合多选习惯），或者 toggle？
           // 通常多选模式下，点击未选中的是加选，点击已选中的可能是不变或减选
           // 这里使用 updateSelection(..., true) 是加选逻辑（Set.add）
-          updateSelection([internalId], true)
+          updateSelection([internalId], true, { skipGroupExpansion })
           break
         case 'subtract':
-          deselectItems([internalId])
+          deselectItems([internalId], { skipGroupExpansion })
           break
         case 'intersect':
           // 点击单个物品做交叉选区：
           // 如果该物品在当前选区中，则结果只剩该物品
           // 如果不在，则结果为空
-          intersectSelection([internalId])
+          intersectSelection([internalId], { skipGroupExpansion })
           break
         case 'new':
         default:
           // 新选区：清空其他，选中当前
           // 优化：如果点击的是当前已选中的，且没有拖拽，是否保持选中？
           // updateSelection(..., false) 会先 clear 再 add
-          updateSelection([internalId], false)
+          updateSelection([internalId], false, { skipGroupExpansion })
           break
       }
     } else {
@@ -295,6 +297,8 @@ export function useThreeSelection(
     if (!itemById) return
 
     const selectedIds: string[] = []
+    // Ctrl 键控制是否强制单选（不扩展到组）
+    const skipGroupExpansion = forceIndividualSelection.value
 
     for (const id of idMap.values()) {
       const item = itemById.get(id)
@@ -329,19 +333,19 @@ export function useThreeSelection(
     if (selectedIds.length > 0 || action === 'intersect') {
       switch (action) {
         case 'add':
-          updateSelection(selectedIds, true)
+          updateSelection(selectedIds, true, { skipGroupExpansion })
           break
         case 'subtract':
           if (selectedIds.length > 0) {
-            deselectItems(selectedIds)
+            deselectItems(selectedIds, { skipGroupExpansion })
           }
           break
         case 'intersect':
-          intersectSelection(selectedIds)
+          intersectSelection(selectedIds, { skipGroupExpansion })
           break
         case 'new':
         default:
-          updateSelection(selectedIds, false)
+          updateSelection(selectedIds, false, { skipGroupExpansion })
           break
       }
     }
@@ -361,6 +365,8 @@ export function useThreeSelection(
     if (!itemById) return
 
     const selectedIds: string[] = []
+    // Ctrl 键控制是否强制单选（不扩展到组）
+    const skipGroupExpansion = forceIndividualSelection.value
 
     // 优化 2：包围盒预筛选
     let minX = Infinity,
@@ -405,19 +411,19 @@ export function useThreeSelection(
     if (selectedIds.length > 0 || action === 'intersect') {
       switch (action) {
         case 'add':
-          updateSelection(selectedIds, true)
+          updateSelection(selectedIds, true, { skipGroupExpansion })
           break
         case 'subtract':
           if (selectedIds.length > 0) {
-            deselectItems(selectedIds)
+            deselectItems(selectedIds, { skipGroupExpansion })
           }
           break
         case 'intersect':
-          intersectSelection(selectedIds)
+          intersectSelection(selectedIds, { skipGroupExpansion })
           break
         case 'new':
         default:
-          updateSelection(selectedIds, false)
+          updateSelection(selectedIds, false, { skipGroupExpansion })
           break
       }
     }
