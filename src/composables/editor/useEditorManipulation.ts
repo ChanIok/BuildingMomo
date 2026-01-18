@@ -777,14 +777,31 @@ export function useEditorManipulation() {
    */
   function distributeSelectedItems(axis: 'x' | 'y' | 'z') {
     if (!activeScheme.value) return
-
     const scheme = activeScheme.value
     const selectedIds = scheme.selectedItemIds.value
     if (selectedIds.size < 3) return // 至少需要3个物品
 
     saveHistory('edit')
 
-    const selectedItems = scheme.items.value.filter((item) => selectedIds.has(item.internalId))
+    const groupCache = new Map<number, { member: AppItem[]; virtualItem: AppItem }>() // 用于缓存分组数据
+    const selectedItems = scheme.items.value.filter((item) => {
+      if (!selectedIds.has(item.internalId)) return false
+      if (item.groupId) {
+        // 存在于分组时单独处理
+        if (groupCache.has(item.groupId)) groupCache.get(item.groupId)!.member.push(item)
+        else groupCache.set(item.groupId, { member: [item], virtualItem: { ...item } })
+        return false
+      }
+      return true
+    })
+    // 处理分组物品
+    groupCache.forEach((groupData) => {
+      // 计算分组成员的中心点作为虚拟物品的位置
+      const axisValues = groupData.member.map((item: AppItem) => item[axis])
+      const centerPoint = (Math.min(...axisValues) + Math.max(...axisValues)) / 2
+      groupData.virtualItem[axis] = centerPoint
+      selectedItems.push(groupData.virtualItem) // 添加虚拟物品到选中列表
+    })
 
     // 在工作坐标系下处理
     const itemsWithWorkingPos = selectedItems.map((item) => {
@@ -812,14 +829,27 @@ export function useEditorManipulation() {
 
     itemsWithWorkingPos.forEach(({ item, workingPos }, index) => {
       const newWorkingPos = { ...workingPos }
-      newWorkingPos[axis] = first + spacing * index
-
-      // 转换回全局坐标系
-      const newGlobalPos = uiStore.workingCoordinateSystem.enabled
-        ? uiStore.workingToGlobal(newWorkingPos)
-        : newWorkingPos
-
-      newPositionsMap.set(item.internalId, newGlobalPos)
+      if (groupCache.has(item.groupId)) {
+        // 分组虚拟物品 更新整组位置
+        groupCache.get(item.groupId)!.member.forEach((member: AppItem) => {
+          const newGlobalPos = uiStore.workingCoordinateSystem.enabled
+            ? uiStore.workingToGlobal(newWorkingPos)
+            : {
+                x: member.x,
+                y: member.y,
+                z: member.z,
+              }
+          newGlobalPos[axis] = first + spacing * index + (member[axis] - item[axis]) // 修改指定轴
+          newPositionsMap.set(member.internalId, newGlobalPos)
+        })
+      } else {
+        newWorkingPos[axis] = first + spacing * index
+        // 转换回全局坐标系
+        const newGlobalPos = uiStore.workingCoordinateSystem.enabled
+          ? uiStore.workingToGlobal(newWorkingPos)
+          : newWorkingPos
+        newPositionsMap.set(item.internalId, newGlobalPos)
+      }
     })
 
     // 更新所有物品
