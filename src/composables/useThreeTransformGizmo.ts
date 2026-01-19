@@ -1143,6 +1143,14 @@ export function useThreeTransformGizmo(
                 posAttr.setY(i, -posAttr.getY(i))
               }
               posAttr.needsUpdate = true
+
+              // 重新计算包围盒，确保可以正确选中
+              const geo = obj.geometry
+              if (geo) {
+                geo.computeBoundingSphere()
+                geo.computeBoundingBox()
+              }
+
               obj.userData.hasFlippedY = true
             }
           }
@@ -1183,15 +1191,20 @@ export function useThreeTransformGizmo(
         () => uiStore.currentViewPreset, // 监听视图切换，修复切换视图时外观失效问题
       ],
       () => {
-        // 延迟执行：等待 TransformControls 完成内部 gizmo 重建后再应用自定义外观
-        // 使用 requestAnimationFrame 确保在下一帧渲染时执行，避免时序问题
-        requestAnimationFrame(() => {
-          // 重新获取最新的 controls 引用（透视↔正交切换时实例可能重建）
-          const latestControls = transformRef.value?.instance || transformRef.value?.value
-          if (!latestControls) return
+        // 重新获取最新的 controls 引用（透视↔正交切换时实例可能重建）
+        const latestControls = transformRef.value?.instance || transformRef.value?.value
+        if (!latestControls) return
 
+        // 立即隐藏 Gizmo，避免用户看到未修改的初始状态
+        latestControls.visible = false
+
+        // 延迟执行：等待 TransformControls 完成内部 gizmo 重建后再应用自定义外观
+        requestAnimationFrame(() => {
           // 应用所有外观设置
           updateGizmoAppearance(latestControls)
+
+          // 修改完成后显示 Gizmo
+          latestControls.visible = true
         })
       }
     )
