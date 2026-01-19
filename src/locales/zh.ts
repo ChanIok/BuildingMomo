@@ -206,7 +206,7 @@ export const zhLocale = {
     },
     importCode: {
       title: '从方案码导入',
-      description: '输入方案码，从云端加载建造数据（暂不支持染色家具）',
+      description: '输入方案码，从云端加载建造数据',
       inputLabel: '方案码',
       inputPlaceholder: '请输入方案码',
       importing: '正在导入方案...',
@@ -237,8 +237,43 @@ export const zhLocale = {
   settings: {
     title: '设置',
     description: '配置应用的显示选项和编辑设置',
+    menu: {
+      general: '通用',
+      shortcuts: '快捷键',
+    },
     language: '语言 / Language',
     languageHint: '切换界面语言',
+    inputBindings: {
+      title: '输入设置',
+      camera: {
+        label: '相机控制',
+        orbitRotate: '轨道旋转视角',
+        flightLook: '飞行视角控制',
+        enableAltLeftClick: 'Alt+左键相机控制',
+        enableAltLeftClickHint: '按住 Alt 时，左键可旋转(透视)/平移(正交)相机',
+      },
+      selection: {
+        label: '选择修饰键',
+        add: '加选',
+        subtract: '减选',
+        toggleIndividual: '切换选中',
+        toggleIndividualHint: '切换选中状态（不触发组合选择）。',
+        intersect: '交叉选择',
+        intersectHint: '选择与现有选区交集的物品',
+      },
+      keys: {
+        shift: 'Shift',
+        ctrl: 'Ctrl',
+        alt: 'Alt',
+        middle: '中键',
+        right: '右键',
+        disabled: '禁用',
+      },
+      keysShort: {
+        middle: '中键',
+        right: '右键',
+      },
+    },
     theme: {
       label: '外观主题',
       hint: '切换应用的深色/浅色模式',
@@ -280,7 +315,7 @@ export const zhLocale = {
   // 监控状态
   watchMode: {
     clickToStart: '选择游戏目录',
-    clickToStartTip: '选择游戏目录，自动检测建造数据更新',
+    clickToStartTip: '监控存档变动',
     monitoring: '监控中',
     stop: '停止监控',
     history: {
@@ -324,9 +359,9 @@ export const zhLocale = {
       orbit: '轨道模式',
     },
     controls: {
-      ortho: '左键选择 · 中键/空格平移 · 滚轮缩放',
-      orbit: '左键选择 · 中键环绕 · 滚轮缩放 · F 聚焦选中',
-      flight: 'WASD 平移 · Space/Q 升降 · 按住中键转向 · F 聚焦选中',
+      ortho: '左键选择 · {pan}/空格平移 · 滚轮缩放',
+      orbit: '左键选择 · {rotate}环绕 · 滚轮缩放 · F 聚焦选中',
+      flight: 'WASD 平移 · Space/Q 升降 · 按住{look}转向 · F 聚焦选中',
       tabSwitch: 'Tab 切换',
     },
     sizeControl: {
@@ -435,10 +470,10 @@ export const zhLocale = {
     },
     selectionMode: {
       label: '选择模式',
-      new: '新选区 (默认)',
-      add: '加选 (Shift)',
-      subtract: '减选 (Alt)',
-      intersect: '交叉选区 (Shift+Alt)',
+      new: '新选区',
+      add: '加选',
+      subtract: '减选',
+      intersect: '交叉选择',
     },
     displayMode: {
       label: '显示',

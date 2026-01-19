@@ -15,6 +15,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import {
   computeViewPose,
   computeZoomConversion,
@@ -109,6 +110,9 @@ export function useThreeCamera(
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
 
+  // 获取相机输入配置（统一管理）
+  const cameraInput = useCameraInputConfig()
+
   // 支持响应式 options
   const optionsValue = computed(() => toValue(options))
   const baseSpeed = computed(() => toValue(optionsValue.value.baseSpeed) ?? 1000)
@@ -138,7 +142,7 @@ export function useThreeCamera(
   const controlMode = ref<ControlMode>('orbit')
 
   const isViewFocused = ref(false)
-  const isMiddleButtonDown = ref(false)
+  const isMouseLookActive = ref(false) // 重命名：是否正在进行鼠标视角拖拽
   let isActive = false
 
   // === 派生状态 (Computed) ===
@@ -457,15 +461,17 @@ export function useThreeCamera(
     if (deps.isTransformDragging?.value) return
     isViewFocused.value = true
 
-    // 中键在 flight 模式下控制视角
-    if (evt.button === 1 && controlMode.value === 'flight') {
-      isMiddleButtonDown.value = true
-      evt.preventDefault()
+    // Flight 模式下根据配置控制视角
+    if (controlMode.value === 'flight') {
+      if (cameraInput.shouldTriggerFlightLook(evt.button)) {
+        isMouseLookActive.value = true
+        evt.preventDefault()
+      }
     }
   }
 
   function handleNavPointerMove(evt: PointerEvent) {
-    if (!isMiddleButtonDown.value || controlMode.value !== 'flight') return
+    if (!isMouseLookActive.value || controlMode.value !== 'flight') return
     if (deps.isTransformDragging?.value) return
 
     // 更新 yaw/pitch（透视视角下始终视为透视预设的连续变体）
@@ -480,8 +486,9 @@ export function useThreeCamera(
   }
 
   function handleNavPointerUp(evt: PointerEvent) {
-    if (evt.button === 1) {
-      isMiddleButtonDown.value = false
+    // 检查是否是当前配置的按键
+    if (cameraInput.shouldReleaseFlightLook(evt.button)) {
+      isMouseLookActive.value = false
     }
   }
 

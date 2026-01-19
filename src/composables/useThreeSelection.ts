@@ -217,6 +217,17 @@ export function useThreeSelection(
       const skipGroupExpansion = forceIndividualSelection.value
 
       switch (action) {
+        case 'toggle': {
+          // Toggle: 如果已选中则取消，未选中则选中
+          const scheme = editorStore.activeScheme
+          const isSelected = scheme?.selectedItemIds.value.has(internalId)
+          if (isSelected) {
+            deselectItems([internalId], { skipGroupExpansion })
+          } else {
+            updateSelection([internalId], true, { skipGroupExpansion })
+          }
+          break
+        }
         case 'add':
           // 加选：如果已选中则不变（符合多选习惯），或者 toggle？
           // 通常多选模式下，点击未选中的是加选，点击已选中的可能是不变或减选
@@ -315,6 +326,29 @@ export function useThreeSelection(
         case 'intersect':
           intersectSelection(selectedIds, { skipGroupExpansion })
           break
+        case 'toggle': {
+          // Toggle: 对框选中的每个物品逐个判断选中状态
+          const scheme = editorStore.activeScheme
+          const currentSelected = scheme?.selectedItemIds.value
+          const toSelect: string[] = []
+          const toDeselect: string[] = []
+
+          for (const id of selectedIds) {
+            if (currentSelected?.has(id)) {
+              toDeselect.push(id)
+            } else {
+              toSelect.push(id)
+            }
+          }
+
+          if (toDeselect.length > 0) {
+            deselectItems(toDeselect, { skipGroupExpansion })
+          }
+          if (toSelect.length > 0) {
+            updateSelection(toSelect, true, { skipGroupExpansion })
+          }
+          break
+        }
         case 'new':
         default:
           updateSelection(selectedIds, false, { skipGroupExpansion })
@@ -393,6 +427,29 @@ export function useThreeSelection(
         case 'intersect':
           intersectSelection(selectedIds, { skipGroupExpansion })
           break
+        case 'toggle': {
+          // Toggle: 对套索选中的每个物品逐个判断选中状态
+          const scheme = editorStore.activeScheme
+          const currentSelected = scheme?.selectedItemIds.value
+          const toSelect: string[] = []
+          const toDeselect: string[] = []
+
+          for (const id of selectedIds) {
+            if (currentSelected?.has(id)) {
+              toDeselect.push(id)
+            } else {
+              toSelect.push(id)
+            }
+          }
+
+          if (toDeselect.length > 0) {
+            deselectItems(toDeselect, { skipGroupExpansion })
+          }
+          if (toSelect.length > 0) {
+            updateSelection(toSelect, true, { skipGroupExpansion })
+          }
+          break
+        }
         case 'new':
         default:
           updateSelection(selectedIds, false, { skipGroupExpansion })

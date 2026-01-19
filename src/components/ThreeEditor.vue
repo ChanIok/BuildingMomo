@@ -24,6 +24,7 @@ import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useThreeBackground } from '@/composables/useThreeBackground'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
+import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import {
   useMagicKeys,
   useElementSize,
@@ -40,6 +41,9 @@ const editorStore = useEditorStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
+
+// 相机输入配置（统一管理）
+const cameraInput = useCameraInputConfig()
 
 // 开发环境标志
 const isDev = import.meta.env.DEV
@@ -111,9 +115,8 @@ const canvasClearColor = computed(() => {
 })
 
 // 监听按键状态
-const { Ctrl, Space } = useMagicKeys()
+const { Ctrl } = useMagicKeys()
 const isCtrlPressed = computed(() => Ctrl?.value ?? false)
-const isSpacePressed = computed(() => Space?.value ?? false)
 
 // 调试面板状态
 const showCameraDebug = ref(false)
@@ -179,8 +182,19 @@ const {
 
 // 计算 OrbitControls 的鼠标按钮映射
 const orbitMouseButtons = computed(() => {
+  // Alt+左键：启用相机控制（需要在设置中启用，且仅 Alt 按下）
+  if (cameraInput.isAltCameraActive.value) {
+    if (cameraInput.isOrthographic.value) {
+      // 正交：Alt+左键平移
+      return { LEFT: MOUSE.PAN, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.PAN }
+    } else {
+      // 透视：Alt+左键旋转
+      return { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.PAN }
+    }
+  }
+
   // 如果在正交视图下按住空格键，左键临时用于平移
-  if (isOrthographic.value && isSpacePressed.value) {
+  if (cameraInput.isOrthographic.value && cameraInput.isSpacePressed.value) {
     return {
       LEFT: MOUSE.PAN,
       MIDDLE: MOUSE.PAN,
@@ -189,8 +203,8 @@ const orbitMouseButtons = computed(() => {
   }
 
   // 如果是手形工具，左键用于平移（正交）或旋转（透视）
-  if (editorStore.currentTool === 'hand') {
-    if (isOrthographic.value) {
+  if (cameraInput.currentTool.value === 'hand') {
+    if (cameraInput.isOrthographic.value) {
       return {
         LEFT: MOUSE.PAN,
         MIDDLE: MOUSE.ROTATE, // 保持中键习惯
@@ -205,8 +219,18 @@ const orbitMouseButtons = computed(() => {
     }
   }
 
-  // 默认模式（选择工具）：左键留给框选，中键操作相机
-  return isOrthographic.value ? { MIDDLE: MOUSE.PAN } : { MIDDLE: MOUSE.ROTATE }
+  // 默认模式（选择工具）：左键留给框选，根据配置操作相机
+  if (cameraInput.isOrthographic.value) {
+    // 正交视图：始终使用平移
+    return cameraInput.orbitRotateButton.value === 'right'
+      ? { RIGHT: MOUSE.PAN }
+      : { MIDDLE: MOUSE.PAN }
+  } else {
+    // 透视视图：根据配置使用旋转
+    return cameraInput.orbitRotateButton.value === 'right'
+      ? { RIGHT: MOUSE.ROTATE }
+      : { MIDDLE: MOUSE.ROTATE }
+  }
 })
 
 // 当前活动的相机（根据视图类型动态切换）
@@ -396,8 +420,8 @@ const {
 )
 
 function handlePointerMoveWithTooltip(evt: PointerEvent) {
-  // 如果是手形工具或正交视图按住空格，跳过选择逻辑
-  if (editorStore.currentTool === 'hand' || (isOrthographic.value && isSpacePressed.value)) {
+  // 如果应该禁用框选，跳过选择逻辑
+  if (cameraInput.shouldDisableSelection.value) {
     hideTooltip()
     return
   }
@@ -428,6 +452,15 @@ function handleContainerWheel(evt: WheelEvent) {
 // 右键菜单状态
 const contextMenuState = ref({ open: false, x: 0, y: 0 })
 
+// 右键拖拽检测状态
+const rightClickState = ref<{
+  startX: number
+  startY: number
+  wasDragged: boolean
+} | null>(null)
+
+const DRAG_THRESHOLD = 5 // px
+
 // 容器级指针事件：先交给导航，再交给选择/tooltip
 function handleContainerPointerDown(evt: PointerEvent) {
   // 捕获指针，确保移出画布后仍能响应事件
@@ -438,24 +471,44 @@ function handleContainerPointerDown(evt: PointerEvent) {
     contextMenuState.value.open = false
   }
 
+  // 右键处理：始终初始化拖拽检测，以支持右键菜单
+  if (evt.button === 2) {
+    rightClickState.value = {
+      startX: evt.clientX,
+      startY: evt.clientY,
+      wasDragged: false,
+    }
+    // 注意：不在这里 preventDefault，而是在 contextmenu 事件统一阻止浏览器右键菜单
+  }
+
   handleNavPointerDown(evt)
 
-  // 手形工具或正交视图按住空格下禁用框选/点击选择
-  if (editorStore.currentTool !== 'hand' && !(isOrthographic.value && isSpacePressed.value)) {
+  // 禁用框选的条件由 cameraInput.shouldDisableSelection 统一判断
+  if (!cameraInput.shouldDisableSelection.value) {
     handlePointerDown(evt)
   }
 }
 
 function handleContainerPointerMove(evt: PointerEvent) {
+  // 检测右键拖拽
+  if (rightClickState.value && evt.buttons === 2) {
+    const dx = evt.clientX - rightClickState.value.startX
+    const dy = evt.clientY - rightClickState.value.startY
+    if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      rightClickState.value.wasDragged = true
+    }
+  }
+
   handleNavPointerMove(evt)
   handlePointerMoveWithTooltip(evt)
 }
 
 function handleContainerPointerUp(evt: PointerEvent) {
   ;(evt.target as HTMLElement).releasePointerCapture(evt.pointerId)
+
   handleNavPointerUp(evt)
 
-  if (editorStore.currentTool !== 'hand' && !(isOrthographic.value && isSpacePressed.value)) {
+  if (!cameraInput.shouldDisableSelection.value) {
     handlePointerUp(evt)
   }
 }
@@ -464,17 +517,25 @@ function handleContainerPointerLeave() {
   hideTooltip()
 }
 
-// 处理右键菜单（参考 Blender：右键不改变选中状态）
-function handleContextMenu(evt: PointerEvent) {
+// 处理原生 contextmenu 事件（参考 Blender：右键不改变选中状态）
+function handleNativeContextMenu(evt: MouseEvent) {
   evt.preventDefault()
   evt.stopPropagation()
 
-  // 更新菜单位置
+  // 如果发生了拖拽，不显示菜单
+  if (rightClickState.value?.wasDragged) {
+    rightClickState.value = null
+    return
+  }
+
+  // 显示自定义菜单
   contextMenuState.value = {
     open: true,
     x: evt.clientX,
     y: evt.clientY,
   }
+
+  rightClickState.value = null
 }
 
 // OrbitControls 变更时，同步内部状态（仅在 orbit 模式下）
@@ -628,7 +689,7 @@ onDeactivated(() => {
       @pointermove="handleContainerPointerMove"
       @pointerup="handleContainerPointerUp"
       @pointerleave="handleContainerPointerLeave"
-      @contextmenu="handleContextMenu"
+      @contextmenu="handleNativeContextMenu"
       @wheel="handleContainerWheel"
     >
       <TresCanvas :clear-color="canvasClearColor" @ready="handleTresReady" @loop="handleLoop">

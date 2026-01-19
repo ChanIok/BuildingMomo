@@ -4,6 +4,21 @@ import { ref } from 'vue'
 
 import type { Locale } from '../composables/useI18n'
 
+// 输入绑定配置接口
+export interface InputBindings {
+  camera: {
+    orbitRotate: 'middle' | 'right'
+    flightLook: 'middle' | 'right'
+    enableAltLeftClick: boolean
+  }
+  selection: {
+    add: 'shift' | 'ctrl' | 'alt'
+    subtract: 'alt' | 'ctrl' | 'shift'
+    toggleIndividual: string // 支持任意组合键
+    intersect: string // 支持任意组合键或 'none'
+  }
+}
+
 // 应用设置接口
 export interface AppSettings {
   // 显示设置
@@ -45,6 +60,9 @@ export interface AppSettings {
 
   // 语言设置
   language: Locale
+
+  // 输入绑定设置
+  inputBindings: InputBindings
 }
 
 // 默认设置
@@ -73,6 +91,19 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableSurfaceSnap: false,
   surfaceSnapThreshold: 20,
   language: 'zh',
+  inputBindings: {
+    camera: {
+      orbitRotate: 'middle',
+      flightLook: 'middle',
+      enableAltLeftClick: true,
+    },
+    selection: {
+      add: 'shift',
+      subtract: 'alt',
+      toggleIndividual: 'ctrl',
+      intersect: 'shift+alt',
+    },
+  },
 }
 
 const STORAGE_KEY = 'buildingmomo_settings'
@@ -92,6 +123,88 @@ export const useSettingsStore = defineStore('settings', () => {
   function resetSettings(): void {
     settings.value = { ...DEFAULT_SETTINGS }
     console.log('[SettingsStore] Settings reset to default')
+  }
+
+  /**
+   * 静默解决 InputBindings 冲突
+   * 当用户修改某个选择修饰键绑定时，自动清除冲突项
+   * @param field 修改的字段
+   * @param newValue 新值
+   */
+  function resolveSelectionBindingConflicts(
+    field: keyof InputBindings['selection'],
+    newValue: string
+  ): void {
+    const bindings = settings.value.inputBindings.selection
+
+    // 如果新值是 'none'，直接返回
+    if (newValue === 'none') return
+
+    // 提取新值的主键（去除组合键的 +）
+    const newParts = newValue.split('+')
+
+    // 遍历其他字段，清除使用相同键的配置
+    const fields: Array<keyof InputBindings['selection']> = [
+      'add',
+      'subtract',
+      'toggleIndividual',
+      'intersect',
+    ]
+
+    for (const otherField of fields) {
+      if (otherField === field) continue // 跳过自己
+
+      const otherValue = bindings[otherField]
+      if (otherValue === 'none') continue
+
+      const otherParts = otherValue.split('+')
+
+      // 检查是否完全相同（不区分顺序）
+      if (
+        newParts.length === otherParts.length &&
+        newParts.every((part) => otherParts.includes(part))
+      ) {
+        // 完全相同，清空旧的
+        ;(bindings[otherField] as any) = 'none'
+        console.log(
+          `[SettingsStore] Conflict resolved: ${otherField} cleared due to duplicate with ${field}`
+        )
+      }
+    }
+
+    // 检查与 Alt+左键相机控制的冲突
+    resolveAltCameraConflicts()
+  }
+
+  /**
+   * 解决 Alt+左键相机控制 与 选择修饰键的冲突
+   * 当启用 Alt+左键相机控制时，只禁用“单独的 alt”绑定，保留组合键（如 ctrl+alt、shift+alt）
+   */
+  function resolveAltCameraConflicts(): void {
+    const enableAlt = settings.value.inputBindings.camera.enableAltLeftClick
+    const bindings = settings.value.inputBindings.selection
+
+    if (enableAlt) {
+      // Alt+左键相机控制已启用：只禁用单独的 'alt'，保留组合键
+      const fields: Array<keyof InputBindings['selection']> = [
+        'add',
+        'subtract',
+        'toggleIndividual',
+        'intersect',
+      ]
+
+      for (const field of fields) {
+        const value = bindings[field]
+        // 只检查是否完全等于 'alt'（不包含组合键）
+        if (value === 'alt') {
+          ;(bindings[field] as any) = 'none'
+          console.log(
+            `[SettingsStore] Conflict resolved: ${field} cleared because Alt+Left Camera is enabled`
+          )
+        }
+      }
+    }
+    // 当相机控制禁用时，不需要任何操作（用户可以自由设置选择修饰键）
   }
 
   /**
@@ -161,6 +274,8 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     settings,
     resetSettings,
+    resolveSelectionBindingConflicts,
+    resolveAltCameraConflicts,
     // 认证相关
     isAuthenticated,
     isVerifying,

@@ -726,7 +726,7 @@ watch(
               <span class="text-xs">{{ t('watchMode.clickToStart') }}</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{{ t('watchMode.clickToStartTip') }}</TooltipContent>
+          <TooltipContent :side-offset="-6">{{ t('watchMode.clickToStartTip') }}</TooltipContent>
         </Tooltip>
 
         <!-- 已监控状态：显示历史 Popover -->
@@ -827,7 +827,7 @@ watch(
             <Settings class="h-4 w-4" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent v-if="isSettingsTooltipAllowed" :side-offset="-8">
+        <TooltipContent v-if="isSettingsTooltipAllowed" :side-offset="-6">
           {{ t('settings.title') }}
         </TooltipContent>
       </Tooltip>

@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef, triggerRef } from 'vue'
 
+// 选择动作类型
+export type SelectionAction = 'new' | 'add' | 'subtract' | 'intersect' | 'toggle'
+
 import type {
   AppItem,
   GameItem,
@@ -42,8 +45,8 @@ export const useEditorStore = defineStore('editor', () => {
   const currentTool = ref<'select' | 'hand'>('select')
   // 选择模式：方块/套索
   const selectionMode = ref<'box' | 'lasso'>('box')
-  // 选择行为：新选区/加选/减选/交叉
-  const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect'>('new')
+  // 选择行为：新选区/加选/减选/交叉/切换
+  const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect' | 'toggle'>('new')
   // Gizmo 模式：平移/旋转/不显示
   const gizmoMode = ref<'translate' | 'rotate' | null>('translate')
 

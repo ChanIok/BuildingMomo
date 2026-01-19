@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/composables/useI18n'
+import { useSettingsStore } from '@/stores/settingsStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
 import LoadingProgress from './LoadingProgress.vue'
 
@@ -109,6 +110,13 @@ const showCameraDebug = computed({
     emit('update:showDebug', val)
   },
 })
+
+const settingsStore = useSettingsStore()
+
+function getControlKeyName(key: 'orbitRotate' | 'flightLook') {
+  const binding = settingsStore.settings.inputBindings.camera[key]
+  return t(`settings.inputBindings.keysShort.${binding}`)
+}
 </script>
 
 <template>
@@ -284,11 +292,27 @@ const showCameraDebug = computed({
           </template>
         </div>
         <div class="mt-1 text-[10px] text-muted-foreground">
-          <template v-if="viewInfo.isOrthographic"> {{ t('editor.controls.ortho') }} </template>
-          <template v-else-if="viewInfo.controlMode === 'orbit'">
-            {{ t('editor.controls.orbit') }}
+          <template v-if="viewInfo.isOrthographic">
+            {{
+              t('editor.controls.ortho', {
+                pan: getControlKeyName('orbitRotate'),
+              })
+            }}
           </template>
-          <template v-else> {{ t('editor.controls.flight') }} </template>
+          <template v-else-if="viewInfo.controlMode === 'orbit'">
+            {{
+              t('editor.controls.orbit', {
+                rotate: getControlKeyName('orbitRotate'),
+              })
+            }}
+          </template>
+          <template v-else>
+            {{
+              t('editor.controls.flight', {
+                look: getControlKeyName('flightLook'),
+              })
+            }}
+          </template>
         </div>
       </div>
     </div>

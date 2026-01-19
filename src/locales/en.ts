@@ -238,8 +238,44 @@ export const enLocale = {
   settings: {
     title: 'Settings',
     description: 'Configure display options and editor settings',
+    menu: {
+      general: 'General',
+      shortcuts: 'Shortcuts',
+    },
     language: '语言 / Language',
     languageHint: 'Switch interface language',
+    inputBindings: {
+      title: 'Input Settings',
+      camera: {
+        label: 'Camera Controls',
+        orbitRotate: 'Orbit Rotate',
+        flightLook: 'Flight Look',
+        enableAltLeftClick: 'Alt+Left Click Control',
+        enableAltLeftClickHint:
+          'Hold Alt to rotate (perspective) / pan (orthographic) with left click',
+      },
+      selection: {
+        label: 'Selection Modifiers',
+        add: 'Add to Selection',
+        subtract: 'Subtract from Selection',
+        toggleIndividual: 'Toggle Selection',
+        toggleIndividualHint: 'Toggles selection state (no group expansion).',
+        intersect: 'Intersect Selection',
+        intersectHint: 'Select items in the intersection with current selection',
+      },
+      keys: {
+        shift: 'Shift',
+        ctrl: 'Ctrl',
+        alt: 'Alt',
+        middle: 'Middle Button',
+        right: 'Right Button',
+        disabled: 'Disabled',
+      },
+      keysShort: {
+        middle: 'Mid',
+        right: 'Right',
+      },
+    },
     theme: {
       label: 'Theme',
       hint: 'Switch between light and dark mode',
@@ -280,12 +316,20 @@ export const enLocale = {
 
   // Watch Mode
   watchMode: {
+    clickToStart: 'Link Game Folder',
+    clickToStartTip: 'Watch for updates',
     monitoring: 'Monitoring',
+    stop: 'Stop Watching',
     history: {
       title: 'History',
       loadLatest: 'Load Latest Scheme',
       noHistory: 'No history schemes',
       itemCount: '{n} items',
+      clear: 'Clear History',
+      justNow: 'Just now',
+      minutesAgo: '{n} minutes ago',
+      hoursAgo: '{n} hours ago',
+      daysAgo: '{n} days ago',
     },
   },
 
@@ -317,9 +361,9 @@ export const enLocale = {
       orbit: 'Orbit Mode',
     },
     controls: {
-      ortho: 'Left Select · Mid/Space Pan · Wheel Zoom',
-      orbit: 'Left Select · Mid Orbit · Wheel Zoom · F Focus',
-      flight: 'WASD Move · Space/Q Up/Down · Hold Mid Look · F Focus',
+      ortho: 'Left Select · {pan}/Space Pan · Wheel Zoom',
+      orbit: 'Left Select · {rotate} Orbit · Wheel Zoom · F Focus',
+      flight: 'WASD Move · Space/Q Up/Down · Hold {look} Look · F Focus',
       tabSwitch: 'Tab Switch',
     },
     sizeControl: {
@@ -430,10 +474,10 @@ export const enLocale = {
     },
     selectionMode: {
       label: 'Selection Mode',
-      new: 'New Selection (Default)',
-      add: 'Add to Selection (Shift)',
-      subtract: 'Subtract from Selection (Alt)',
-      intersect: 'Intersect Selection (Shift+Alt)',
+      new: 'New Selection',
+      add: 'Add to Selection',
+      subtract: 'Subtract from Selection',
+      intersect: 'Intersect Selection',
     },
     displayMode: {
       label: 'Display',
