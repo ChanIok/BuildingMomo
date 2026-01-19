@@ -3,11 +3,9 @@ import { Raycaster, Vector2, Vector3, type Camera } from 'three'
 import { coordinates3D } from '@/lib/coordinates'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorSelection } from './editor/useEditorSelection'
+import { useEditorGroups } from './editor/useEditorGroups'
 import { useEditorSelectionAction } from './useEditorSelectionAction'
-import { useI18n } from './useI18n'
-import { toast } from 'vue-sonner'
 import type { PickingConfig } from './renderer/types'
 
 interface SelectionRect {
@@ -31,8 +29,6 @@ export function useThreeSelection(
   const pointerNdc = markRaw(new Vector2())
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
-  const gameDataStore = useGameDataStore()
-  const { t, locale } = useI18n()
 
   const selectionRect = ref<SelectionRect | null>(null)
   const isSelecting = ref(false)
@@ -42,6 +38,8 @@ export function useThreeSelection(
 
   const { deselectItems, updateSelection, intersectSelection, clearSelection } =
     useEditorSelection()
+
+  const { setGroupOrigin } = useEditorGroups()
 
   // 计算当前有效的选择行为（结合 Store 设置和键盘修饰键）
   const { activeAction: effectiveAction, forceIndividualSelection } = useEditorSelectionAction()
@@ -150,9 +148,9 @@ export function useThreeSelection(
   }
 
   /**
-   * 处理参照物选择模式下的点击
+   * 处理组合原点选择模式下的点击
    */
-  function handleAlignmentPivotClick(evt: any) {
+  function handleGroupOriginClick(evt: any) {
     const camera = cameraRef.value
     const container = containerRef.value
     if (!camera || !container) return
@@ -171,51 +169,25 @@ export function useThreeSelection(
 
     if (hit) {
       const clickedItemId = hit.internalId
+      const groupId = uiStore.selectingForGroupId
 
-      // 检查是否在当前选区内
-      if (editorStore.activeScheme?.selectedItemIds.value.has(clickedItemId)) {
-        // 设置参照物
-        uiStore.setAlignmentPivotId(clickedItemId)
-        uiStore.setSelectingAlignmentPivot(false)
+      if (groupId !== null) {
+        // 设置组合原点
+        setGroupOrigin(groupId, clickedItemId)
 
-        // 显示友好提示
-        showPivotSetToast(clickedItemId)
-      } else {
-        // 不在选区内，提示错误
-        toast.warning(t('transform.pivotItemNotInSelection'))
+        // 退出选择模式
+        uiStore.setSelectingGroupOrigin(false)
       }
     } else {
-      // 点击空白处，退出选择模式
-      uiStore.setSelectingAlignmentPivot(false)
+      // 点击空白处,退出选择模式
+      uiStore.setSelectingGroupOrigin(false)
     }
-  }
-
-  /**
-   * 显示参照物设置成功的提示
-   */
-  function showPivotSetToast(itemId: string) {
-    const item = editorStore.itemsMap.get(itemId)
-    if (!item) return
-
-    const furnitureInfo = gameDataStore.getFurniture(item.gameId)
-    let name = ''
-
-    if (!furnitureInfo) {
-      name = t('sidebar.itemDefaultName', { id: item.gameId })
-    } else {
-      name =
-        locale.value === 'zh'
-          ? furnitureInfo.name_cn
-          : furnitureInfo.name_en || furnitureInfo.name_cn
-    }
-
-    toast.success(t('transform.pivotSet') + ': ' + name)
   }
 
   function performClickSelection(evt: any) {
-    // 🎯 参照物选择模式拦截
-    if (uiStore.isSelectingAlignmentPivot) {
-      handleAlignmentPivotClick(evt)
+    // 🎯 组合原点选择模式拦截
+    if (uiStore.isSelectingGroupOrigin) {
+      handleGroupOriginClick(evt)
       return // 提前返回，不执行正常选择逻辑
     }
 

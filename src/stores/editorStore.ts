@@ -7,6 +7,7 @@ import type {
   GameDataFile,
   HomeScheme,
   ClosedSchemeHistory,
+  ClipboardData,
 } from '../types/editor'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
@@ -28,7 +29,10 @@ export const useEditorStore = defineStore('editor', () => {
   const activeSchemeId = ref<string | null>(null)
 
   // 全局剪贴板（支持跨方案复制粘贴）- 使用 ShallowRef
-  const clipboardRef = shallowRef<AppItem[]>([])
+  const clipboardRef = shallowRef<ClipboardData>({
+    items: [],
+    groupOrigins: new Map(),
+  })
 
   // 关闭方案历史记录（最多保留10条）
   const MAX_CLOSED_HISTORY = 10
@@ -115,6 +119,7 @@ export const useEditorStore = defineStore('editor', () => {
       maxGroupId: ref(0), // 初始值，首个组将从 1 开始
       currentViewConfig: ref(undefined),
       viewState: ref(undefined),
+      groupOrigins: shallowRef(new Map()),
       history: shallowRef(undefined),
     }
 
@@ -195,6 +200,7 @@ export const useEditorStore = defineStore('editor', () => {
         lastModified: ref(fileLastModified),
         currentViewConfig: ref(undefined),
         viewState: ref(undefined),
+        groupOrigins: shallowRef(new Map()),
         history: shallowRef(undefined),
       }
 
@@ -327,7 +333,10 @@ export const useEditorStore = defineStore('editor', () => {
   function clearData() {
     schemes.value = []
     activeSchemeId.value = null
-    clipboardRef.value = []
+    clipboardRef.value = {
+      items: [],
+      groupOrigins: new Map(),
+    }
   }
 
   // 重新打开已关闭的方案

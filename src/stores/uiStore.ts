@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch, computed } from 'vue'
+import { ref, computed } from 'vue'
 import type { WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
 import {
@@ -57,9 +57,9 @@ export const useUIStore = defineStore('ui', () => {
   const customPivotEnabled = ref(false)
   const customPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
 
-  // 参照物选择模式（临时状态，不持久化）
-  const isSelectingAlignmentPivot = ref(false)
-  const alignmentPivotId = ref<string | null>(null)
+  // 组合原点选择模式（临时状态，不持久化）
+  const isSelectingGroupOrigin = ref(false)
+  const selectingForGroupId = ref<number | null>(null)
 
   // ========== 视图模式管理 ==========
 
@@ -206,18 +206,11 @@ export const useUIStore = defineStore('ui', () => {
     customPivotPosition.value = position
   }
 
-  // ========== 参照物选择管理 ==========
+  // ========== 组合原点选择管理 ==========
 
-  function setSelectingAlignmentPivot(selecting: boolean) {
-    isSelectingAlignmentPivot.value = selecting
-  }
-
-  function setAlignmentPivotId(id: string | null) {
-    alignmentPivotId.value = id
-  }
-
-  function clearAlignmentPivot() {
-    alignmentPivotId.value = null
+  function setSelectingGroupOrigin(selecting: boolean, groupId?: number) {
+    isSelectingGroupOrigin.value = selecting
+    selectingForGroupId.value = selecting && groupId !== undefined ? groupId : null
   }
 
   // ========== 坐标系统一管理 ==========
@@ -270,18 +263,6 @@ export const useUIStore = defineStore('ui', () => {
     return null
   }
 
-  // 监听方案切换，自动清除参照物
-  // 注意：这里使用延迟导入避免循环依赖
-  import('./editorStore').then(({ useEditorStore }) => {
-    const editorStore = useEditorStore()
-    watch(
-      () => editorStore.activeSchemeId,
-      () => {
-        alignmentPivotId.value = null
-      }
-    )
-  })
-
   return {
     // 状态
     viewMode,
@@ -290,8 +271,8 @@ export const useUIStore = defineStore('ui', () => {
     sidebarView,
     customPivotEnabled,
     customPivotPosition,
-    isSelectingAlignmentPivot,
-    alignmentPivotId,
+    isSelectingGroupOrigin,
+    selectingForGroupId,
 
     // 视图模式
     toggleViewMode,
@@ -316,9 +297,7 @@ export const useUIStore = defineStore('ui', () => {
     setCustomPivotEnabled,
     setCustomPivotPosition,
 
-    // 参照物选择
-    setSelectingAlignmentPivot,
-    setAlignmentPivotId,
-    clearAlignmentPivot,
+    // 组合原点选择
+    setSelectingGroupOrigin,
   }
 })

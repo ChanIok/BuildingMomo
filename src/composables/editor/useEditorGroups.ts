@@ -1,4 +1,5 @@
 import { storeToRefs } from 'pinia'
+import { triggerRef } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import type { AppItem } from '../../types/editor'
@@ -94,19 +95,34 @@ export function useEditorGroups() {
     // 保存历史（编辑操作）
     saveHistory('edit')
 
-    // 原地将所有选中物品的 GroupID 设为 0
+    // 收集要解散的组 ID，用于清除原点
+    const groupIdsToRemove = new Set<number>()
     const items = activeScheme.value.items.value
     const selected = activeScheme.value.selectedItemIds.value
 
+    // 原地将所有选中物品的 GroupID 设为 0
     let changed = false
     for (const item of items) {
-      if (selected.has(item.internalId)) {
+      if (selected.has(item.internalId) && item.groupId > 0) {
+        groupIdsToRemove.add(item.groupId)
         item.groupId = 0
         changed = true
       }
     }
 
     if (changed) {
+      // 清除这些组的原点设置
+      const scheme = activeScheme.value
+      groupIdsToRemove.forEach((groupId) => {
+        scheme.groupOrigins.value.delete(groupId)
+      })
+      if (groupIdsToRemove.size > 0) {
+        // 触发 groupOrigins 的响应式更新
+        import('vue').then(({ triggerRef }) => {
+          triggerRef(scheme.groupOrigins)
+        })
+      }
+
       store.triggerSceneUpdate()
     }
 
@@ -136,6 +152,40 @@ export function useEditorGroups() {
     return hslToRgba(hue, 70, 60, 0.8) // 直接返回带透明度的 RGBA
   }
 
+  // ========== 组合原点管理 ==========
+
+  /**
+   * 设置组的原点物品
+   */
+  function setGroupOrigin(groupId: number, itemId: string) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+
+    scheme.groupOrigins.value.set(groupId, itemId)
+    triggerRef(scheme.groupOrigins)
+  }
+
+  /**
+   * 清除组的原点设置
+   */
+  function clearGroupOrigin(groupId: number) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+
+    scheme.groupOrigins.value.delete(groupId)
+    triggerRef(scheme.groupOrigins)
+  }
+
+  /**
+   * 获取组的原点物品 ID
+   */
+  function getGroupOrigin(groupId: number): string | undefined {
+    const scheme = activeScheme.value
+    if (!scheme) return undefined
+
+    return scheme.groupOrigins.value.get(groupId)
+  }
+
   return {
     groupSelected,
     ungroupSelected,
@@ -143,5 +193,8 @@ export function useEditorGroups() {
     getItemGroupId,
     getAllGroupIds,
     getGroupColor,
+    setGroupOrigin,
+    clearGroupOrigin,
+    getGroupOrigin,
   }
 }

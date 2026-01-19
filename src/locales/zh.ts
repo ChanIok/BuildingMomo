@@ -418,6 +418,12 @@ export const zhLocale = {
     itemDefaultName: '物品 {id}',
     group: '成组',
     ungroup: '取消组合',
+    groupOrigin: '组合原点',
+    groupOriginHint: '设置组合的旋转和移动中心点，选择场景中的任意物品作为原点。',
+    selectItem: '选择物品',
+    cancelSelecting: '取消选择',
+    clearOrigin: '清除原点',
+    current: '当前',
     tools: {
       label: '工具',
       box: '方形选框 (V)',
@@ -502,15 +508,6 @@ export const zhLocale = {
     distributeHint: '在两端物品之间均匀分布',
     requireTwoItems: '需要至少选中 2 个物品',
     requireThreeItems: '需要至少选中 3 个物品',
-    pivotReference: '参照物',
-    pivotReferenceHint: '以此物品为基准，移动时其他物品跟随',
-    selectButton: '选择',
-    cancelSelectingPivot: '取消',
-    pivotLabel: '参照',
-    clearPivot: '清除参照物',
-    selectingPivot: '请在场景中点击参照物',
-    pivotItemNotInSelection: '请选择当前选区内的物品',
-    pivotSet: '参照物已设置',
   },
 
   // 家具背包

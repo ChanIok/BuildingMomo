@@ -29,7 +29,13 @@ export type CommandCategory = 'file' | 'edit' | 'view' | 'help' | 'tool'
 export const useCommandStore = defineStore('command', () => {
   const editorStore = useEditorStore()
   const { undo, redo, canUndo, canRedo } = useEditorHistory()
-  const { copy: copyCmd, cut: cutCmd, pasteItems, clipboard } = useClipboard()
+  const {
+    copy: copyCmd,
+    cut: cutCmd,
+    pasteItems,
+    clipboard,
+    buildClipboardDataFromSelection,
+  } = useClipboard()
   const { selectAll, clearSelection, invertSelection, selectSameType } = useEditorSelection()
   const { groupSelected, ungroupSelected } = useEditorGroups()
   const { deleteSelected } = useEditorManipulation()
@@ -310,18 +316,15 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 复制并粘贴 (E)')
-        // 获取当前选中的物品
         const scheme = editorStore.activeScheme
         if (!scheme || scheme.selectedItemIds.value.size === 0) return
 
-        const selectedIds = scheme.selectedItemIds.value
-        const selectedItems = scheme.items.value
-          .filter((item) => selectedIds.has(item.internalId))
-          .map((item) => ({ ...item }))
+        // 使用辅助函数构建包含组原点信息的临时剪贴板数据
+        const clipboardData = buildClipboardDataFromSelection()
 
-        // 原地粘贴（offset 0, 0），不影响剪贴板
-        if (selectedItems.length > 0) {
-          pasteItems(selectedItems, 0, 0)
+        // 原地粘贴（offset 0, 0），不影响全局剪贴板
+        if (clipboardData.items.length > 0) {
+          pasteItems(clipboardData, 0, 0)
         }
       },
     },
@@ -330,7 +333,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.paste'),
       shortcut: 'Ctrl+V',
       category: 'edit',
-      enabled: () => clipboard.value.length > 0,
+      enabled: () => clipboard.value.items.length > 0,
       execute: () => {
         console.log('[Command] 粘贴')
         pasteItems(clipboard.value, 0, 0)

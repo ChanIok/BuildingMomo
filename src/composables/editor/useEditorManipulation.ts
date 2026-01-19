@@ -68,12 +68,64 @@ export function useEditorManipulation() {
   }
 
   /**
-   * 获取旋转中心：如果启用了定点旋转，使用自定义中心，否则使用选区中心
+   * 检查当前选区是否完整选中了某个组的所有成员
+   * @param selectedIds 选中的物品 ID 集合
+   * @returns 组 ID，如果不是完整组选择则返回 null
+   */
+  function getGroupIdIfEntireGroupSelected(selectedIds: Set<string>): number | null {
+    if (selectedIds.size === 0) return null
+
+    // 收集选中物品的组 ID
+    const groupIds = new Set<number>()
+    selectedIds.forEach((id) => {
+      const item = store.itemsMap.get(id)
+      if (item && item.groupId > 0) {
+        groupIds.add(item.groupId)
+      }
+    })
+
+    // 必须所有选中物品都属于同一个组
+    if (groupIds.size !== 1) return null
+
+    const groupId = Array.from(groupIds)[0]!
+    const groupMemberIds = store.groupsMap.get(groupId)
+
+    // 检查是否选中了组的所有成员
+    if (!groupMemberIds || groupMemberIds.size !== selectedIds.size) return null
+
+    for (const memberId of groupMemberIds) {
+      if (!selectedIds.has(memberId)) return null
+    }
+
+    return groupId
+  }
+
+  /**
+   * 获取旋转中心：优先级：定点旋转 > 组合原点 > 几何中心
    */
   function getRotationCenter(): { x: number; y: number; z: number } | null {
+    // 优先级 1: 定点旋转
     if (uiStore.customPivotEnabled && uiStore.customPivotPosition) {
       return uiStore.customPivotPosition
     }
+
+    // 优先级 2: 组合原点
+    const scheme = activeScheme.value
+    if (scheme) {
+      const selectedIds = scheme.selectedItemIds.value
+      const groupId = getGroupIdIfEntireGroupSelected(selectedIds)
+      if (groupId !== null) {
+        const originItemId = scheme.groupOrigins.value.get(groupId)
+        if (originItemId) {
+          const originItem = store.itemsMap.get(originItemId)
+          if (originItem) {
+            return { x: originItem.x, y: originItem.y, z: originItem.z }
+          }
+        }
+      }
+    }
+
+    // 优先级 3: 几何中心
     return getSelectedItemsCenter()
   }
 
@@ -107,16 +159,8 @@ export function useEditorManipulation() {
     const center = getRotationCenter()
     if (!center) return
 
-    // 计算位置参考点（支持参照物）
-    let referencePoint = center
-    const pivotId = uiStore.alignmentPivotId
-    if (pivotId && mode === 'absolute' && position) {
-      // 如果有参照物，使用参照物的位置
-      const pivotItem = store.itemsMap.get(pivotId)
-      if (pivotItem && scheme.selectedItemIds.value.has(pivotId)) {
-        referencePoint = { x: pivotItem.x, y: pivotItem.y, z: pivotItem.z }
-      }
-    }
+    // 使用旋转中心作为位置参考点
+    const referencePoint = center
 
     // 计算位置偏移量
     let positionOffset = { x: 0, y: 0, z: 0 }
@@ -962,6 +1006,7 @@ export function useEditorManipulation() {
 
   return {
     getSelectedItemsCenter,
+    getRotationCenter,
     deleteSelected,
     updateSelectedItemsTransform,
     moveSelectedItems,

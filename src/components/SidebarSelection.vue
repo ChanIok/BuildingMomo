@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Ruler } from 'lucide-vue-next'
+import { Ruler, X } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
 import { useGameDataStore } from '../stores/gameDataStore'
+import { useUIStore } from '../stores/uiStore'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
 import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
-const { getGroupItems, groupSelected, ungroupSelected } = useEditorGroups()
+const uiStore = useUIStore()
+const { getGroupItems, groupSelected, ungroupSelected, clearGroupOrigin } = useEditorGroups()
 const { t, locale } = useI18n()
 
 // 辅助函数：根据语言获取名称
@@ -168,6 +171,69 @@ watch(
   { immediate: true }
 )
 
+// ========== 组合原点相关逻辑 ==========
+
+// 检查是否完整选中了一个组
+const isEntireGroupSelected = computed(() => {
+  if (!selectedGroupInfo.value || selectedGroupInfo.value.type !== 'single') return false
+  const info = selectedGroupInfo.value
+  return info.selectedCount === info.totalCount
+})
+
+// 当前选中组的 groupId
+const currentGroupId = computed(() => {
+  if (!isEntireGroupSelected.value || !selectedGroupInfo.value) return null
+  if (selectedGroupInfo.value.type !== 'single') return null
+  return selectedGroupInfo.value.groupId
+})
+
+// 当前原点物品
+const currentOriginItem = computed(() => {
+  const scheme = editorStore.activeScheme
+  const groupId = currentGroupId.value
+  if (!scheme || typeof groupId !== 'number') return null
+
+  const originItemId = scheme.groupOrigins.value.get(groupId)
+  if (!originItemId) return null
+
+  return editorStore.itemsMap.get(originItemId) || null
+})
+
+// 当前原点物品名称
+const currentOriginItemName = computed(() => {
+  const item = currentOriginItem.value
+  if (!item) return ''
+
+  const furniture = gameDataStore.getFurniture(item.gameId)
+  return getFurnitureName(furniture, item.gameId)
+})
+
+// 开始选择原点
+function startSelectingOrigin() {
+  const groupId = currentGroupId.value
+  if (groupId === null) return
+
+  uiStore.setSelectingGroupOrigin(true, groupId)
+}
+
+// 清除原点
+function clearOrigin() {
+  const groupId = currentGroupId.value
+  if (typeof groupId !== 'number') return
+
+  clearGroupOrigin(groupId)
+}
+
+// 监听方案切换，自动清除选择状态
+watch(
+  () => editorStore.activeSchemeId,
+  () => {
+    if (uiStore.isSelectingGroupOrigin) {
+      uiStore.setSelectingGroupOrigin(false)
+    }
+  }
+)
+
 // 计算组信息文本标签
 const groupBadgeText = computed(() => {
   const info = selectedGroupInfo.value
@@ -279,6 +345,72 @@ function handleIconError(e: Event) {
         </div>
         <ScrollBar orientation="vertical" class="!w-1.5" />
       </ScrollArea>
+    </div>
+
+    <!-- 组合原点设置（仅当完整选中一个组时显示） -->
+    <div v-if="isEntireGroupSelected" class="flex flex-col gap-2 pt-3 pr-2">
+      <div class="flex items-center justify-between gap-2">
+        <TooltipProvider>
+          <Tooltip :delay-duration="300">
+            <TooltipTrigger as-child>
+              <label class="cursor-help text-xs text-sidebar-foreground hover:text-foreground">
+                {{ t('sidebar.groupOrigin') }}
+              </label>
+            </TooltipTrigger>
+            <TooltipContent class="text-xs" variant="light">
+              {{ t('sidebar.groupOriginHint') }}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <div class="flex items-center gap-1.5">
+          <!-- 选择物品按钮 -->
+          <button
+            v-if="!uiStore.isSelectingGroupOrigin"
+            @click="startSelectingOrigin"
+            class="h-6 rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            {{ t('sidebar.selectItem') }}
+          </button>
+          <button
+            v-else
+            @click="uiStore.setSelectingGroupOrigin(false)"
+            class="h-6 rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {{ t('sidebar.cancelSelecting') }}
+          </button>
+
+          <!-- 清除按钮 -->
+          <button
+            v-if="currentOriginItem"
+            @click="clearOrigin"
+            class="flex h-6 w-6 items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            :title="t('sidebar.clearOrigin')"
+          >
+            <X :size="12" />
+          </button>
+        </div>
+      </div>
+
+      <!-- 当前原点显示 -->
+      <div
+        v-if="currentOriginItem"
+        class="flex items-center gap-2 rounded-md bg-primary/10 px-2 py-1.5"
+      >
+        <span class="text-[10px] text-muted-foreground">{{ t('sidebar.current') }}:</span>
+        <TooltipProvider>
+          <Tooltip :delay-duration="300">
+            <TooltipTrigger as-child>
+              <span class="flex-1 cursor-help truncate text-xs font-medium text-sidebar-foreground">
+                {{ currentOriginItemName }}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent class="text-xs" variant="light">
+              {{ currentOriginItemName }}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
     </div>
 
     <!-- 成组/取消组合按钮 -->

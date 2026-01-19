@@ -96,6 +96,10 @@ export interface HomeScheme {
   currentViewConfig: Ref<{ scale: number; x: number; y: number } | undefined>
   viewState: Ref<ThreeViewState | undefined>
 
+  // 组合原点配置 (ShallowRef)
+  // 存储每个组的原点物品 ID，用于移动和旋转操作
+  groupOrigins: ShallowRef<Map<number, string>> // groupId -> originItemId
+
   // 历史记录栈 (ShallowRef)
   history: ShallowRef<HistoryStack | undefined>
 }
@@ -185,4 +189,10 @@ export interface ClosedSchemeHistory {
   gameData: GameDataFile // 导出的游戏 JSON 数据
   lastModified?: number // 最后修改时间
   closedAt: number // 关闭时间戳
+}
+
+// 剪贴板数据（支持跨方案复制粘贴）
+export interface ClipboardData {
+  items: AppItem[] // 复制的物品列表
+  groupOrigins: Map<number, string> // 组原点映射 (groupId -> originItemId)
 }

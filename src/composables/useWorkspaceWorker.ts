@@ -70,6 +70,7 @@ export function useWorkspaceWorker() {
         selectedItemIds: toRaw(scheme.selectedItemIds.value),
         currentViewConfig: toRaw(scheme.currentViewConfig.value),
         viewState: toRaw(scheme.viewState.value),
+        groupOrigins: toRaw(scheme.groupOrigins.value),
       }
     }
 
@@ -280,6 +281,9 @@ export function useWorkspaceWorker() {
         maxGroupId: ref(maxGrpId),
         currentViewConfig: ref(s.currentViewConfig),
         viewState: ref(s.viewState),
+        groupOrigins: shallowRef(
+          s.groupOrigins instanceof Map ? s.groupOrigins : new Map(s.groupOrigins || [])
+        ), // 向后兼容：支持旧版本的数组格式
         history: shallowRef(undefined),
       }
     })
@@ -331,6 +335,7 @@ export function useWorkspaceWorker() {
       selectedItemIds: toRaw(scheme.selectedItemIds.value),
       currentViewConfig: toRaw(scheme.currentViewConfig.value),
       viewState: toRaw(scheme.viewState.value),
+      groupOrigins: toRaw(scheme.groupOrigins.value),
     }))
 
     return {

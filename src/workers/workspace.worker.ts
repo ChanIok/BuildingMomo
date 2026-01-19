@@ -314,6 +314,7 @@ const api = {
       selectedItemIds: any
       currentViewConfig: any
       viewState: any
+      groupOrigins: Map<number, string> // 组合原点映射: groupId -> originItemId
     }
     // 是否立即保存（跳过防抖）
     immediate?: boolean
@@ -343,6 +344,7 @@ const api = {
           selectedItemIds: [],
           currentViewConfig: undefined,
           viewState: undefined,
+          groupOrigins: new Map(), // 初始化组合原点映射
         })
       }
     }

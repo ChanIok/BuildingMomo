@@ -10,6 +10,7 @@ export interface HomeSchemeSnapshot {
   selectedItemIds: Set<string> // IDB supports Set
   currentViewConfig?: { scale: number; x: number; y: number }
   viewState?: ThreeViewState
+  groupOrigins: Map<number, string> // IDB supports Map: groupId -> originItemId
 }
 
 export interface WorkspaceSnapshot {

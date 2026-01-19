@@ -107,7 +107,7 @@ export function useThreeTransformGizmo(
   const settingsStore = useSettingsStore()
   const { saveHistory } = useEditorHistory()
   const { commitBatchedTransform, getSelectedItemsCenter } = useEditorManipulation()
-  const { pasteItems } = useClipboard()
+  const { pasteItems, buildClipboardDataFromSelection } = useClipboard()
 
   // 键盘状态
   const { Alt } = useMagicKeys()
@@ -129,6 +129,39 @@ export function useThreeTransformGizmo(
         z: 0,
       }
     )
+  }
+
+  /**
+   * 检查当前选区是否完整选中了某个组的所有成员
+   * @param selectedIds 选中的物品 ID 集合
+   * @returns 组 ID，如果不是完整组选择则返回 null
+   */
+  function getGroupIdIfEntireGroupSelected(selectedIds: Set<string>): number | null {
+    if (selectedIds.size === 0) return null
+
+    // 收集选中物品的组 ID
+    const groupIds = new Set<number>()
+    selectedIds.forEach((id) => {
+      const item = editorStore.itemsMap.get(id)
+      if (item && item.groupId > 0) {
+        groupIds.add(item.groupId)
+      }
+    })
+
+    // 必须所有选中物品都属于同一个组
+    if (groupIds.size !== 1) return null
+
+    const groupId = Array.from(groupIds)[0]!
+    const groupMemberIds = editorStore.groupsMap.get(groupId)
+
+    // 检查是否选中了组的所有成员
+    if (!groupMemberIds || groupMemberIds.size !== selectedIds.size) return null
+
+    for (const memberId of groupMemberIds) {
+      if (!selectedIds.has(memberId)) return null
+    }
+
+    return groupId
   }
 
   /**
@@ -241,22 +274,31 @@ export function useThreeTransformGizmo(
       return
     }
 
-    // 优先级：定点旋转 > 参照物 > 选区几何中心
+    // 优先级：定点旋转 > 组合原点 > 选区几何中心
     let center: { x: number; y: number; z: number } | null = null
+    const scheme = editorStore.activeScheme
+
+    // 优先级 1: 定点旋转
     if (uiStore.customPivotEnabled && uiStore.customPivotPosition) {
-      // 1. 定点旋转：使用自定义旋转中心
       center = uiStore.customPivotPosition
-    } else if (uiStore.alignmentPivotId) {
-      // 2. 参照物：使用参照物的位置
-      const pivotItem = editorStore.itemsMap.get(uiStore.alignmentPivotId)
-      if (pivotItem) {
-        center = { x: pivotItem.x, y: pivotItem.y, z: pivotItem.z }
-      } else {
-        // 理论上不会到这里（有自动清除机制），但保险起见回退到几何中心
-        center = getSelectedItemsCenter()
+    }
+    // 优先级 2: 组合原点
+    else if (scheme) {
+      const selectedIds = scheme.selectedItemIds.value
+      const groupId = getGroupIdIfEntireGroupSelected(selectedIds)
+      if (groupId !== null) {
+        const originItemId = scheme.groupOrigins.value.get(groupId)
+        if (originItemId) {
+          const originItem = editorStore.itemsMap.get(originItemId)
+          if (originItem) {
+            center = { x: originItem.x, y: originItem.y, z: originItem.z }
+          }
+        }
       }
-    } else {
-      // 3. 默认：使用选区几何中心
+    }
+
+    // 默认: 几何中心
+    if (!center) {
       center = getSelectedItemsCenter()
     }
 
@@ -887,17 +929,15 @@ export function useThreeTransformGizmo(
         // 执行复制
         const scheme = editorStore.activeScheme
         if (scheme && scheme.selectedItemIds.value.size > 0) {
-          const selectedIds = scheme.selectedItemIds.value
-          const selectedItems = scheme.items.value
-            .filter((item) => selectedIds.has(item.internalId))
-            .map((item) => ({ ...item }))
+          // 使用辅助函数构建包含组原点信息的临时剪贴板数据
+          const clipboardData = buildClipboardDataFromSelection()
 
-          if (selectedItems.length > 0) {
+          if (clipboardData.items.length > 0) {
             // 临时关闭拖拽标志，允许渲染器rebuild新物品
             isTransformDragging.value = false
 
             // 原地粘贴
-            pasteItems(selectedItems, 0, 0)
+            pasteItems(clipboardData, 0, 0)
 
             // 标记已执行
             altDragCopyExecuted.value = true

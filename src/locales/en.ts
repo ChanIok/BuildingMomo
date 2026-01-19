@@ -412,6 +412,13 @@ export const enLocale = {
     itemDefaultName: 'Item {id}',
     group: 'Group',
     ungroup: 'Ungroup',
+    groupOrigin: 'Group Origin',
+    groupOriginHint:
+      'Set the group rotation and movement center; select any item in the scene as the origin.',
+    selectItem: 'Select Item',
+    cancelSelecting: 'Cancel',
+    clearOrigin: 'Clear Origin',
+    current: 'Current',
     tools: {
       label: 'Tools',
       box: 'Box Select (V)',
@@ -498,15 +505,6 @@ export const enLocale = {
     distributeHint: 'Evenly distribute items between endpoints',
     requireTwoItems: 'Requires at least 2 selected items',
     requireThreeItems: 'Requires at least 3 selected items',
-    pivotReference: 'Reference',
-    pivotReferenceHint: 'Use as reference; others follow when moved',
-    selectButton: 'Select',
-    cancelSelectingPivot: 'Cancel',
-    pivotLabel: 'Pivot',
-    clearPivot: 'Clear Pivot',
-    selectingPivot: 'Click an item in the scene as pivot',
-    pivotItemNotInSelection: 'Please select an item from current selection',
-    pivotSet: 'Pivot set successfully',
   },
 
   // Furniture Library
