@@ -373,7 +373,17 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
-  // ========== 编辑操作 ==========\
+  // ========== 编辑操作 ==========
+
+  // Gizmo 模式切换（互斥逻辑）
+  function setGizmoMode(mode: 'translate' | 'rotate' | null) {
+    // 如果点击当前激活的模式，则关闭；否则切换到新模式
+    if (gizmoMode.value === mode) {
+      gizmoMode.value = null
+    } else {
+      gizmoMode.value = mode
+    }
+  }
 
   return {
     // 多方案状态
@@ -387,6 +397,7 @@ export const useEditorStore = defineStore('editor', () => {
     selectionMode,
     selectionAction,
     gizmoMode,
+    setGizmoMode,
 
     // 方案管理
     createScheme,

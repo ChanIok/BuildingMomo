@@ -126,6 +126,13 @@ export const zhLocale = {
       toggleRotate: '旋转模式',
       toggleFurnitureLibrary: '家具背包',
     },
+    selectionAction: {
+      new: '新选区',
+      add: '加选',
+      subtract: '减选',
+      intersect: '交叉选择',
+      toggle: '切换选择',
+    },
     help: {
       openDocs: '帮助文档',
     },
@@ -249,7 +256,7 @@ export const zhLocale = {
         label: '相机控制',
         orbitRotate: '轨道旋转视角',
         flightLook: '飞行视角控制',
-        enableAltLeftClick: 'Alt+左键相机控制',
+        enableAltLeftClick: 'Alt + 左键相机控制',
         enableAltLeftClickHint: '按住 Alt 时，左键可旋转(透视)/平移(正交)相机',
       },
       selection: {
@@ -459,22 +466,6 @@ export const zhLocale = {
     cancelSelecting: '取消选择',
     clearOrigin: '清除原点',
     current: '当前',
-    tools: {
-      label: '工具',
-      box: '方形选框 (V)',
-      lasso: '套索工具 (L)',
-      hand: '拖拽工具 (H)',
-      translate: '平移 (G)',
-      rotate: '旋转 (R)',
-      addFurniture: '家具背包 (B)',
-    },
-    selectionMode: {
-      label: '选择模式',
-      new: '新选区',
-      add: '加选',
-      subtract: '减选',
-      intersect: '交叉选择',
-    },
     displayMode: {
       label: '显示',
       box: '完整体积',

@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
 import {
-  Hand,
-  Move,
-  RotateCw,
   Box,
   Image as ImageIcon,
   Cuboid,
@@ -20,56 +16,15 @@ import {
   ChevronsLeft,
   ChevronRight,
   ChevronLeft,
-  SquareMousePointer,
-  Lasso,
-  Package,
 } from 'lucide-vue-next'
-import { useEditorSelectionAction } from '@/composables/useEditorSelectionAction'
-import IconSelectionNew from '@/components/icons/IconSelectionNew.vue'
-import IconSelectionAdd from '@/components/icons/IconSelectionAdd.vue'
-import IconSelectionSubtract from '@/components/icons/IconSelectionSubtract.vue'
-import IconSelectionIntersect from '@/components/icons/IconSelectionIntersect.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
 
-const editorStore = useEditorStore()
 const settingsStore = useSettingsStore()
 const commandStore = useCommandStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
 
-const { activeAction } = useEditorSelectionAction()
-
-// 背包面板状态（从 commandStore 获取）
-const showFurnitureLibrary = computed({
-  get: () => commandStore.showFurnitureLibrary,
-  set: (val) => {
-    commandStore.showFurnitureLibrary = val
-  },
-})
-
-// 工具切换
-const currentTool = computed({
-  get: () => editorStore.currentTool,
-  set: (val) => {
-    if (val) editorStore.currentTool = val as 'select' | 'hand'
-  },
-})
-
-// 选择行为切换
-const selectionAction = computed({
-  get: () => editorStore.selectionAction,
-  set: (val) => {
-    if (val) editorStore.selectionAction = val
-  },
-})
-
-// 选择模式切换
-const selectionMode = computed({
-  get: () => editorStore.selectionMode,
-  set: (val) => {
-    if (val) editorStore.selectionMode = val as 'box' | 'lasso'
-  },
-})
+// 工具和选择模式已迁移到 CanvasToolbar
 
 // 显示模式切换
 const displayMode = computed({
@@ -124,17 +79,6 @@ const viewPreset = computed({
 })
 
 // 配置数据
-const selectionActions = computed(() => [
-  { id: 'new', label: t('sidebar.selectionMode.new'), icon: IconSelectionNew },
-  { id: 'add', label: t('sidebar.selectionMode.add'), icon: IconSelectionAdd },
-  { id: 'subtract', label: t('sidebar.selectionMode.subtract'), icon: IconSelectionSubtract },
-  {
-    id: 'intersect',
-    label: t('sidebar.selectionMode.intersect'),
-    icon: IconSelectionIntersect,
-  },
-])
-
 const displayModes = computed(() => {
   const modes = [
     { id: 'box', label: t('sidebar.displayMode.box'), icon: Cuboid },
@@ -162,122 +106,7 @@ const viewPresets = computed(() => [
   <div
     class="flex flex-col gap-3 border-b border-sidebar-border bg-sidebar p-4 pr-2 text-sidebar-foreground"
   >
-    <!-- 工具栏第一行：主要工具 -->
-    <div class="flex items-start justify-between">
-      <!-- 左侧：选择/拖拽工具 -->
-      <div class="flex flex-col items-start gap-1">
-        <span class="text-[10px] font-medium text-muted-foreground select-none">{{
-          t('sidebar.tools.label')
-        }}</span>
-        <div class="flex items-center gap-0.5">
-          <SidebarToggleItem
-            :model-value="currentTool === 'select' && selectionMode === 'box'"
-            @update:model-value="
-              (v) => {
-                if (v) {
-                  currentTool = 'select'
-                  selectionMode = 'box'
-                }
-              }
-            "
-            :tooltip="t('sidebar.tools.box')"
-          >
-            <SquareMousePointer class="h-4 w-4" />
-          </SidebarToggleItem>
-          <SidebarToggleItem
-            :model-value="currentTool === 'select' && selectionMode === 'lasso'"
-            @update:model-value="
-              (v) => {
-                if (v) {
-                  currentTool = 'select'
-                  selectionMode = 'lasso'
-                }
-              }
-            "
-            :tooltip="t('sidebar.tools.lasso')"
-          >
-            <Lasso class="h-4 w-4" />
-          </SidebarToggleItem>
-          <SidebarToggleItem
-            :model-value="currentTool === 'hand'"
-            @update:model-value="
-              (v) => {
-                if (v) currentTool = 'hand'
-              }
-            "
-            :tooltip="t('sidebar.tools.hand')"
-          >
-            <Hand class="h-4 w-4" />
-          </SidebarToggleItem>
-
-          <!-- 平移 Gizmo -->
-          <SidebarToggleItem
-            :model-value="editorStore.gizmoMode === 'translate'"
-            @update:model-value="
-              (v) => {
-                editorStore.gizmoMode = v ? 'translate' : null
-              }
-            "
-            :tooltip="t('sidebar.tools.translate')"
-          >
-            <Move class="h-4 w-4" />
-          </SidebarToggleItem>
-
-          <!-- 旋转 Gizmo -->
-          <SidebarToggleItem
-            :model-value="editorStore.gizmoMode === 'rotate'"
-            @update:model-value="
-              (v) => {
-                editorStore.gizmoMode = v ? 'rotate' : null
-              }
-            "
-            :tooltip="t('sidebar.tools.rotate')"
-          >
-            <RotateCw class="h-4 w-4" />
-          </SidebarToggleItem>
-
-          <!-- 分隔线 -->
-          <div class="mx-1 h-4 w-px bg-sidebar-border"></div>
-
-          <!-- 背包面板 -->
-          <SidebarToggleItem
-            :model-value="showFurnitureLibrary"
-            @update:model-value="
-              (v) => {
-                showFurnitureLibrary = v
-              }
-            "
-            :tooltip="t('sidebar.tools.addFurniture')"
-          >
-            <Package class="h-4 w-4" />
-          </SidebarToggleItem>
-        </div>
-      </div>
-    </div>
-
-    <!-- 工具栏第二行：选择行为模式 -->
-    <div class="flex flex-col items-start gap-1">
-      <span class="text-[10px] font-medium text-muted-foreground select-none">{{
-        t('sidebar.selectionMode.label')
-      }}</span>
-      <div class="flex items-center gap-0.5">
-        <SidebarToggleItem
-          v-for="action in selectionActions"
-          :key="action.id"
-          :model-value="activeAction === action.id"
-          @update:model-value="
-            (v) => {
-              if (v) selectionAction = action.id as any
-            }
-          "
-          :tooltip="action.label"
-        >
-          <component :is="action.icon" class="h-4 w-4" />
-        </SidebarToggleItem>
-      </div>
-    </div>
-
-    <!-- 工具栏第三行：显示模式 -->
+    <!-- 工具栏第一行：显示模式 -->
     <div class="flex flex-col items-start gap-1">
       <span class="text-[10px] font-medium text-muted-foreground select-none">{{
         t('sidebar.displayMode.label')
@@ -299,7 +128,7 @@ const viewPresets = computed(() => [
       </div>
     </div>
 
-    <!-- 工具栏第四行：视图控制 -->
+    <!-- 工具栏第二行：视图控制 -->
     <div class="flex flex-col items-start gap-1">
       <span class="text-[10px] font-medium text-muted-foreground select-none">{{
         t('menu.view')

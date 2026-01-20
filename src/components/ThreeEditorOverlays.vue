@@ -14,6 +14,7 @@ import { useI18n } from '@/composables/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
 import LoadingProgress from './LoadingProgress.vue'
+import CanvasToolbar from './CanvasToolbar.vue'
 
 const { t } = useI18n()
 
@@ -122,6 +123,11 @@ function getControlKeyName(key: 'orbitRotate' | 'flightLook') {
 <template>
   <!-- 加载进度显示（右上角） -->
   <LoadingProgress class="absolute top-4 right-4" />
+
+  <!-- 画布工具栏（底部居中） -->
+  <div class="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
+    <CanvasToolbar />
+  </div>
 
   <!-- 右键菜单 -->
   <DropdownMenu v-model:open="contextMenuOpen" :modal="false">

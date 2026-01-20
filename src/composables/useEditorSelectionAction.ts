@@ -1,6 +1,7 @@
 import { computed } from 'vue'
 import { useMagicKeys } from '@vueuse/core'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useEditorStore } from '@/stores/editorStore'
 import type { SelectionAction } from '@/stores/editorStore'
 
 /**
@@ -9,6 +10,7 @@ import type { SelectionAction } from '@/stores/editorStore'
  */
 export function useEditorSelectionAction() {
   const settingsStore = useSettingsStore()
+  const editorStore = useEditorStore()
   const { shift, alt, ctrl } = useMagicKeys()
 
   // 当前按键状态
@@ -50,8 +52,8 @@ export function useEditorSelectionAction() {
     if (matchModifierKey(bindings.add, modifierState.value)) return 'add'
     if (matchModifierKey(bindings.subtract, modifierState.value)) return 'subtract'
 
-    // 4. 默认：新选区
-    return 'new'
+    // 4. 默认：回退到 Store 设置（工具栏选择的持久模式）
+    return editorStore.selectionAction
   })
 
   // 强制单选模式（不扩展到组）：只要 toggleIndividual 的键被按下就启用

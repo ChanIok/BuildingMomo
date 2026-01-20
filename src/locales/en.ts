@@ -126,6 +126,13 @@ export const enLocale = {
       toggleRotate: 'Rotate Mode',
       toggleFurnitureLibrary: 'Furniture Library',
     },
+    selectionAction: {
+      new: 'Set',
+      add: 'Extend',
+      subtract: 'Subtract',
+      intersect: 'Intersect',
+      toggle: 'Toggle',
+    },
     help: {
       openDocs: 'Documentation',
     },
@@ -250,7 +257,7 @@ export const enLocale = {
         label: 'Camera Controls',
         orbitRotate: 'Orbit Rotate',
         flightLook: 'Flight Look',
-        enableAltLeftClick: 'Alt+Left Click Control',
+        enableAltLeftClick: 'Alt + Left Click Control',
         enableAltLeftClickHint:
           'Hold Alt to rotate (perspective) / pan (orthographic) with left click',
       },
@@ -463,22 +470,6 @@ export const enLocale = {
     cancelSelecting: 'Cancel',
     clearOrigin: 'Clear Origin',
     current: 'Current',
-    tools: {
-      label: 'Tools',
-      box: 'Box Select (V)',
-      lasso: 'Lasso Tool (L)',
-      hand: 'Hand Tool (H)',
-      translate: 'Translate (G)',
-      rotate: 'Rotate (R)',
-      addFurniture: 'Furniture Library (B)',
-    },
-    selectionMode: {
-      label: 'Selection Mode',
-      new: 'New Selection',
-      add: 'Add to Selection',
-      subtract: 'Subtract from Selection',
-      intersect: 'Intersect Selection',
-    },
     displayMode: {
       label: 'Display',
       box: 'Full Volume',
