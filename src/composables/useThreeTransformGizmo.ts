@@ -1191,15 +1191,18 @@ export function useThreeTransformGizmo(
         () => uiStore.currentViewPreset, // 监听视图切换，修复切换视图时外观失效问题
       ],
       () => {
-        // 重新获取最新的 controls 引用（透视↔正交切换时实例可能重建）
-        const latestControls = transformRef.value?.instance || transformRef.value?.value
-        if (!latestControls) return
-
-        // 立即隐藏 Gizmo，避免用户看到未修改的初始状态
-        latestControls.visible = false
+        // 先隐藏当前的 Gizmo（如果存在），避免用户看到未修改的初始状态
+        const currentControls = transformRef.value?.instance || transformRef.value?.value
+        if (currentControls) {
+          currentControls.visible = false
+        }
 
         // 延迟执行：等待 TransformControls 完成内部 gizmo 重建后再应用自定义外观
         requestAnimationFrame(() => {
+          // ✅ 在 rAF 内部重新获取最新的 controls 引用（透视↔正交切换时实例可能重建）
+          const latestControls = transformRef.value?.instance || transformRef.value?.value
+          if (!latestControls) return
+
           // 应用所有外观设置
           updateGizmoAppearance(latestControls)
 
