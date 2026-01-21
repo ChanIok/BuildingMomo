@@ -5,6 +5,7 @@ import {
   Vector3,
   Euler,
   Matrix4,
+  Quaternion,
   Color,
   Plane,
   Raycaster,
@@ -794,6 +795,79 @@ export function useThreeTransformGizmo(
     return newWorldMatrices
   }
 
+  /**
+   * 对世界矩阵应用渲染层的缩放偏移补偿
+   * 这确保 Gizmo 拖拽时的视觉效果与静止渲染时一致
+   *
+   * @param matrices 原始世界矩阵映射
+   * @returns 应用了渲染补偿后的新矩阵映射
+   */
+  function applyRenderingCompensation(matrices: Map<string, Matrix4>): Map<string, Matrix4> {
+    const compensatedMatrices = new Map<string, Matrix4>()
+    const scheme = editorStore.activeScheme
+    if (!scheme) return matrices
+
+    const currentMode = settingsStore.settings.threeDisplayMode
+    const modelManager = getThreeModelManager()
+    const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+
+    for (const [id, matrix] of matrices) {
+      const item = scheme.items.value.find((i) => i.internalId === id)
+      if (!item) {
+        compensatedMatrices.set(id, matrix)
+        continue
+      }
+
+      // 获取 sizeX 用于补偿计算
+      let sizeX: number
+      const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+      const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+
+      if (currentMode === 'model' && hasValidModel) {
+        // Model 模式：从模型包围盒获取实际尺寸
+        const modelBox = modelManager.getModelBoundingBox(item.gameId)
+        if (modelBox) {
+          const size = new Vector3()
+          modelBox.getSize(size)
+          sizeX = size.x
+        } else {
+          sizeX = 100
+        }
+      } else {
+        // Box/Icon/SimpleBox 模式：从家具尺寸获取
+        const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+        sizeX = furnitureSize[0]
+      }
+
+      // 计算补偿量（与渲染层逻辑一致）
+      const Scale = item.extra.Scale
+      const compensationAmount = ((Scale?.Y ?? 1) - (Scale?.X ?? 1)) * 0.5 * sizeX
+
+      // 应用补偿到矩阵
+      const compensated = matrix.clone()
+
+      if (Math.abs(compensationAmount) > 0.001) {
+        // ✅ 修复：偏移应沿物品旋转后的局部 X 轴方向，而不是世界 X 轴
+        // 从矩阵中提取旋转
+        const pos = new Vector3()
+        const quat = new Quaternion()
+        const scale = new Vector3()
+        compensated.decompose(pos, quat, scale)
+
+        // 计算旋转后的局部 X 轴方向
+        const localXAxis = new Vector3(1, 0, 0).applyQuaternion(quat)
+
+        // 沿局部 X 轴方向施加偏移
+        pos.addScaledVector(localXAxis, compensationAmount)
+        compensated.setPosition(pos)
+      }
+
+      compensatedMatrices.set(id, compensated)
+    }
+
+    return compensatedMatrices
+  }
+
   async function handleGizmoChange(event?: any) {
     if (!isTransformDragging.value) return
 
@@ -904,11 +978,14 @@ export function useThreeTransformGizmo(
             hasStartedTransform.value = true
           }
 
-          // ✅ 缓存最后一次计算的矩阵，供 mouseUp 时使用
+          // ✅ 缓存最后一次计算的矩阵（无补偿），供 mouseUp 时使用
           lastRotationMatrices.value = newWorldMatrices
 
+          // ✅ 应用渲染补偿后更新视觉
+          const compensatedMatrices = applyRenderingCompensation(newWorldMatrices)
+
           // 更新视觉层（拖拽过程中跳过 BVH 重建以提升性能）
-          updateSelectedInstancesMatrix(newWorldMatrices, true)
+          updateSelectedInstancesMatrix(compensatedMatrices, true)
         }
       }
 
@@ -980,8 +1057,11 @@ export function useThreeTransformGizmo(
       hasStartedTransform.value = true
     }
 
+    // ✅ 应用渲染补偿，确保拖拽时的视觉效果与静止时一致
+    const compensatedMatrices = applyRenderingCompensation(newWorldMatrices)
+
     // 更新视觉层（拖拽过程中跳过 BVH 重建以提升性能）
-    updateSelectedInstancesMatrix(newWorldMatrices, true)
+    updateSelectedInstancesMatrix(compensatedMatrices, true)
   }
 
   function handleGizmoMouseUp() {

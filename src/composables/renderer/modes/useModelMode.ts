@@ -102,6 +102,11 @@ export function useModelMode() {
       // 位置
       coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
 
+      // 缩放参数和尺寸（先获取，用于后续的偏移补偿和缩放设置）
+      const Scale = item.extra.Scale
+      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+      const [sizeX, sizeY, sizeZ] = furnitureSize
+
       // 旋转
       const Rotation = item.rotation
       scratchEuler.set(
@@ -112,10 +117,20 @@ export function useModelMode() {
       )
       scratchQuaternion.setFromEuler(scratchEuler)
 
+      // ✅ 缩放偏移补偿：修正游戏引擎 bug 导致的位置偏移
+      // 游戏引擎存在缺陷，缩放会导致物品相对于原点产生偏移：
+      // - Scale.X 缩放导致 Three.js X 负方向偏移：偏移量 = (Scale.X - 1) × 0.5 × sizeX
+      // - Scale.Y 缩放导致 Three.js X 正方向偏移：偏移量 = (Scale.Y - 1) × 0.5 × sizeX
+      // 补偿公式（抵消偏移）：((Scale.Y - Scale.X) × 0.5 × sizeX)
+      // ✅ 修复：偏移应沿物品旋转后的局部 X 轴方向，而不是世界 X 轴
+      const compensationAmount = ((Scale.Y || 1) - (Scale.X || 1)) * 0.5 * sizeX
+      if (Math.abs(compensationAmount) > 0.001) {
+        // 计算旋转后的局部 X 轴方向
+        const localXAxis = new Vector3(1, 0, 0).applyQuaternion(scratchQuaternion)
+        scratchPosition.addScaledVector(localXAxis, compensationAmount)
+      }
+
       // 缩放（使用家具尺寸）
-      const Scale = item.extra.Scale
-      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-      const [sizeX, sizeY, sizeZ] = furnitureSize
       // 注意：游戏坐标系中 X/Y 与 Three.js 交换
       scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
 
@@ -281,6 +296,19 @@ export function useModelMode() {
         // 位置
         coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
 
+        // 缩放参数
+        const Scale = item.extra.Scale
+
+        // ✅ 模型模式：从包围盒获取实际尺寸用于偏移补偿
+        const modelBox = modelManager.getModelBoundingBox(item.gameId)
+        let sizeX = 100 // 默认值
+
+        if (modelBox) {
+          const size = new Vector3()
+          modelBox.getSize(size)
+          sizeX = size.x // Three.js X 方向的实际宽度
+        }
+
         // 旋转（与 Box 模式完全相同，模型已在导入时完成坐标系转换）
         const Rotation = item.rotation
         scratchEuler.set(
@@ -291,9 +319,21 @@ export function useModelMode() {
         )
         scratchQuaternion.setFromEuler(scratchEuler)
 
+        // ✅ 缩放偏移补偿：修正游戏引擎 bug 导致的位置偏移
+        // 游戏引擎存在缺陷，缩放会导致物品相对于原点产生偏移：
+        // - Scale.X 缩放导致 Three.js X 负方向偏移：偏移量 = (Scale.X - 1) × 0.5 × sizeX
+        // - Scale.Y 缩放导致 Three.js X 正方向偏移：偏移量 = (Scale.Y - 1) × 0.5 × sizeX
+        // 补偿公式（抵消偏移）：((Scale.Y - Scale.X) × 0.5 × sizeX)
+        // ✅ 修复：偏移应沿物品旋转后的局部 X 轴方向，而不是世界 X 轴
+        const compensationAmount = ((Scale.Y || 1) - (Scale.X || 1)) * 0.5 * sizeX
+        if (Math.abs(compensationAmount) > 0.001) {
+          // 计算旋转后的局部 X 轴方向
+          const localXAxis = new Vector3(1, 0, 0).applyQuaternion(scratchQuaternion)
+          scratchPosition.addScaledVector(localXAxis, compensationAmount)
+        }
+
         // 缩放：仅使用用户的 Scale 参数，不再使用 furnitureSize
         // 模型已包含实际尺寸，直接应用用户缩放即可
-        const Scale = item.extra.Scale
         // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X→Three.js Y，游戏Y→Three.js X）
         scratchScale.set(Scale.Y || 1, Scale.X || 1, Scale.Z || 1)
 
