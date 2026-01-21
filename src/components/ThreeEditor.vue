@@ -836,10 +836,6 @@ onDeactivated(() => {
       :tooltip="{ visible: tooltipVisible, data: tooltipData }"
       :selection="{ rect: selectionRect, lasso: lassoPoints }"
       :view-info="{ isOrthographic, controlMode, currentViewPreset }"
-      :symbol-scale="{
-        value: settingsStore.settings.threeSymbolScale,
-        show: shouldShowIconMesh || shouldShowSimpleBoxMesh,
-      }"
       :debug="
         isDev
           ? {
@@ -861,7 +857,6 @@ onDeactivated(() => {
       :is-dev="isDev"
       :command-store="commandStore"
       @update:context-menu="(v) => (contextMenuState = v)"
-      @update:symbol-scale="(v) => (settingsStore.settings.threeSymbolScale = v)"
       @update:show-debug="(v) => (showCameraDebug = v)"
     />
   </div>

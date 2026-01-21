@@ -493,7 +493,7 @@ watch(
     style="--accent: var(--header-accent); --accent-foreground: var(--header-accent-foreground)"
   >
     <!-- 左侧：Menubar 菜单栏 -->
-    <Menubar class="flex-none border-none bg-transparent shadow-none">
+    <Menubar class="flex-none border-none bg-transparent pr-0 shadow-none">
       <!-- 文件菜单 -->
       <MenubarMenu>
         <MenubarTrigger class="text-sm font-medium">{{ t('menu.file') }}</MenubarTrigger>
@@ -635,7 +635,7 @@ watch(
 
     <!-- 中间：标签栏（可滚动） -->
     <ScrollArea v-if="tabStore.tabs.length > 0" ref="scrollAreaRef" class="min-w-0 flex-1">
-      <TransitionGroup ref="tabsContainer" tag="div" name="tab-list" class="flex w-max gap-1">
+      <TransitionGroup ref="tabsContainer" tag="div" name="tab-list" class="flex w-max gap-1 pl-1">
         <div
           v-for="tab in tabStore.tabs"
           :key="tab.id"
@@ -656,7 +656,7 @@ watch(
               <button
                 :data-tab-active="tabStore.activeTabId === tab.id"
                 @click="switchTab(tab.id)"
-                class="group relative my-2 flex flex-none items-center gap-3 rounded-sm border py-1 pr-2 pl-3 text-sm font-medium shadow-sm transition-all"
+                class="group relative my-2 flex flex-none items-center gap-3 rounded-sm border py-1 pr-2 pl-3 text-sm font-medium shadow-xs transition-all"
                 :class="
                   tabStore.activeTabId === tab.id
                     ? 'border-border bg-background text-foreground'

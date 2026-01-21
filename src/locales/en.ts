@@ -370,12 +370,11 @@ export const enLocale = {
     controls: {
       ortho: 'Left Select · {pan}/Space Pan · Wheel Zoom',
       orbit: 'Left Select · {rotate} Orbit · Wheel Zoom · F Focus',
-      flight: 'WASD Move · Space/Q Up/Down · Hold {look} Look · F Focus',
+      flight: 'WASD Move · Space/Q Up/Down · Hold {look} Look',
       tabSwitch: 'Tab Switch',
     },
     sizeControl: {
-      box: 'Box Size',
-      icon: 'Icon Size',
+      label: 'Icon/Block Size',
       shortcut: 'Ctrl + Wheel to adjust',
     },
     debug: {
@@ -489,6 +488,7 @@ export const enLocale = {
     },
     display: {
       label: 'Display Settings',
+      iconSize: 'Icon/Block Size',
     },
     editAssist: {
       label: 'Editor Assistance',

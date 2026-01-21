@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useI18n } from '@/composables/useI18n'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
@@ -9,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -30,7 +32,44 @@ import IconSelectionToggle from '@/components/icons/IconSelectionToggle.vue'
 
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
+const settingsStore = useSettingsStore()
 const { t } = useI18n()
+
+/**
+ * 格式化修饰键字符串为显示格式
+ * @param key 键位定义（如 'shift', 'shift+alt'）
+ * @returns 格式化后的字符串（如 'Shift', 'Shift+Alt'），如果为 'none' 则返回 null
+ */
+function formatModifierKey(key: string): string | null {
+  if (key === 'none') return null
+  return key
+    .split('+')
+    .map((k) => k.charAt(0).toUpperCase() + k.slice(1))
+    .join('+')
+}
+
+/**
+ * 根据选择模式 ID 获取对应的快捷键
+ * @param actionId 选择模式 ID
+ * @returns 格式化后的快捷键字符串，如果没有则返回 null
+ */
+function getSelectionActionShortcut(actionId: string): string | null {
+  const bindings = settingsStore.settings.inputBindings.selection
+  switch (actionId) {
+    case 'new':
+      return null // 新选区没有快捷键
+    case 'add':
+      return formatModifierKey(bindings.add)
+    case 'subtract':
+      return formatModifierKey(bindings.subtract)
+    case 'intersect':
+      return formatModifierKey(bindings.intersect)
+    case 'toggle':
+      return formatModifierKey(bindings.toggleIndividual)
+    default:
+      return null
+  }
+}
 
 // 选择工具配置
 const selectionTools = computed(() => [
@@ -74,31 +113,31 @@ const selectionActions = computed(() => [
     id: 'new',
     icon: IconSelectionNew,
     label: t('command.selectionAction.new'),
-    shortcut: null,
+    shortcut: getSelectionActionShortcut('new'),
   },
   {
     id: 'add',
     icon: IconSelectionAdd,
     label: t('command.selectionAction.add'),
-    shortcut: null,
+    shortcut: getSelectionActionShortcut('add'),
   },
   {
     id: 'subtract',
     icon: IconSelectionSubtract,
     label: t('command.selectionAction.subtract'),
-    shortcut: null,
+    shortcut: getSelectionActionShortcut('subtract'),
   },
   {
     id: 'intersect',
     icon: IconSelectionIntersect,
     label: t('command.selectionAction.intersect'),
-    shortcut: null,
+    shortcut: getSelectionActionShortcut('intersect'),
   },
   {
     id: 'toggle',
     icon: IconSelectionToggle,
     label: t('command.selectionAction.toggle'),
-    shortcut: null,
+    shortcut: getSelectionActionShortcut('toggle'),
   },
 ])
 
@@ -155,6 +194,9 @@ const showFurnitureLibrary = computed({
               </TooltipTrigger>
               <TooltipContent side="top" class="text-xs">
                 {{ activeSelectionAction?.label }}
+                <Kbd v-if="activeSelectionAction?.shortcut" class="ml-1">{{
+                  activeSelectionAction.shortcut
+                }}</Kbd>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -171,6 +213,9 @@ const showFurnitureLibrary = computed({
             <component :is="action.icon" class="h-4 w-4" />
             <span>{{ action.label }}</span>
           </div>
+          <DropdownMenuShortcut v-if="action.shortcut">
+            {{ action.shortcut }}
+          </DropdownMenuShortcut>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Slider } from '@/components/ui/slider'
-import { Item, ItemContent, ItemTitle } from '@/components/ui/item'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,11 +45,6 @@ interface ViewInfo {
   currentViewPreset: string | null
 }
 
-interface SymbolScaleControl {
-  value: number
-  show: boolean
-}
-
 interface DebugInfo {
   show: boolean
   data: {
@@ -72,7 +65,6 @@ interface Props {
   tooltip: TooltipState
   selection: SelectionState
   viewInfo: ViewInfo
-  symbolScale: SymbolScaleControl
   debug?: DebugInfo | null
   isDev?: boolean
   commandStore: any
@@ -82,19 +74,8 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:contextMenu': [value: ContextMenuState]
-  'update:symbolScale': [value: number]
   'update:showDebug': [value: boolean]
 }>()
-
-// 滑块绑定的代理（Slider 组件使用数组）
-const symbolScaleProxy = computed({
-  get: () => [props.symbolScale.value],
-  set: (val) => {
-    if (val && val.length > 0 && typeof val[0] === 'number') {
-      emit('update:symbolScale', val[0])
-    }
-  },
-})
 
 // 控制右键菜单
 const contextMenuOpen = computed({
@@ -118,11 +99,70 @@ function getControlKeyName(key: 'orbitRotate' | 'flightLook') {
   const binding = settingsStore.settings.inputBindings.camera[key]
   return t(`settings.inputBindings.keysShort.${binding}`)
 }
+
+function handleViewInfoClick() {
+  if (props.viewInfo.isOrthographic) return
+  props.commandStore.executeCommand('view.toggleCameraMode')
+}
 </script>
 
 <template>
-  <!-- 加载进度显示（右上角） -->
-  <LoadingProgress class="absolute top-4 right-4" />
+  <!-- 右上角状态信息组 -->
+  <div class="absolute top-4 right-4 z-30 flex flex-col items-end gap-2">
+    <!-- 视图信息 -->
+    <div
+      class="flex items-baseline rounded-md border bg-background/90 px-3 py-2 text-xs shadow-xs backdrop-blur-sm"
+    >
+      <div class="flex items-baseline gap-2">
+        <div
+          class="font-medium transition-colors"
+          :class="{
+            'cursor-pointer hover:text-primary': !viewInfo.isOrthographic,
+            'cursor-default': viewInfo.isOrthographic,
+          }"
+          @click.stop="handleViewInfoClick"
+        >
+          <template v-if="viewInfo.isOrthographic">
+            {{ t('editor.viewMode.orthographic') }}
+          </template>
+          <template v-else>
+            {{
+              viewInfo.controlMode === 'flight'
+                ? t('editor.viewMode.flight')
+                : t('editor.viewMode.orbit')
+            }}
+            <span class="ml-1 text-[10px]">· {{ t('editor.controls.tabSwitch') }}</span>
+          </template>
+        </div>
+        <div class="text-[10px] text-muted-foreground">
+          <template v-if="viewInfo.isOrthographic">
+            {{
+              t('editor.controls.ortho', {
+                pan: getControlKeyName('orbitRotate'),
+              })
+            }}
+          </template>
+          <template v-else-if="viewInfo.controlMode === 'orbit'">
+            {{
+              t('editor.controls.orbit', {
+                rotate: getControlKeyName('orbitRotate'),
+              })
+            }}
+          </template>
+          <template v-else>
+            {{
+              t('editor.controls.flight', {
+                look: getControlKeyName('flightLook'),
+              })
+            }}
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- 加载进度显示（右上角） -->
+    <LoadingProgress />
+  </div>
 
   <!-- 画布工具栏（底部居中） -->
   <div class="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
@@ -276,78 +316,6 @@ function getControlKeyName(key: 'orbitRotate' | 'flightLook') {
         <span>INS: {{ tooltip.data.instanceId }}</span>
       </div>
     </div>
-  </div>
-
-  <!-- 视图信息 -->
-  <div class="absolute right-4 bottom-4">
-    <div
-      class="flex h-14 items-center rounded-md border bg-background/90 px-3 py-2 text-xs shadow-md backdrop-blur-sm"
-    >
-      <div>
-        <div class="font-medium">
-          <template v-if="viewInfo.isOrthographic">
-            {{ t('editor.viewMode.orthographic') }}
-          </template>
-          <template v-else>
-            {{
-              viewInfo.controlMode === 'flight'
-                ? t('editor.viewMode.flight')
-                : t('editor.viewMode.orbit')
-            }}
-            <span class="ml-1 text-[10px] opacity-60">· {{ t('editor.controls.tabSwitch') }}</span>
-          </template>
-        </div>
-        <div class="mt-1 text-[10px] text-muted-foreground">
-          <template v-if="viewInfo.isOrthographic">
-            {{
-              t('editor.controls.ortho', {
-                pan: getControlKeyName('orbitRotate'),
-              })
-            }}
-          </template>
-          <template v-else-if="viewInfo.controlMode === 'orbit'">
-            {{
-              t('editor.controls.orbit', {
-                rotate: getControlKeyName('orbitRotate'),
-              })
-            }}
-          </template>
-          <template v-else>
-            {{
-              t('editor.controls.flight', {
-                look: getControlKeyName('flightLook'),
-              })
-            }}
-          </template>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 图标/方块大小控制 (仅在图标或简化方块模式显示) -->
-  <div v-if="symbolScale.show" class="absolute bottom-4 left-4">
-    <Item
-      variant="muted"
-      size="sm"
-      class="h-14 rounded-md bg-background/90 px-3 py-2 shadow-md backdrop-blur-sm"
-    >
-      <ItemContent>
-        <div class="mb-2 flex items-center justify-between">
-          <div class="flex items-baseline gap-2 pr-4">
-            <ItemTitle class="text-xs font-medium">
-              {{ t('editor.sizeControl.icon') }}
-            </ItemTitle>
-            <span class="text-[10px] text-muted-foreground">{{
-              t('editor.sizeControl.shortcut')
-            }}</span>
-          </div>
-          <span class="w-8 text-right text-xs text-muted-foreground"
-            >{{ Math.round(symbolScale.value * 100) }}%</span
-          >
-        </div>
-        <Slider v-model="symbolScaleProxy" :max="3" :min="0.1" :step="0.1" variant="thin" />
-      </ItemContent>
-    </Item>
   </div>
 
   <!-- 相机状态调试面板 (开发模式) -->

@@ -368,12 +368,11 @@ export const zhLocale = {
     controls: {
       ortho: '左键选择 · {pan}/空格平移 · 滚轮缩放',
       orbit: '左键选择 · {rotate}环绕 · 滚轮缩放 · F 聚焦选中',
-      flight: 'WASD 平移 · Space/Q 升降 · 按住{look}转向 · F 聚焦选中',
+      flight: 'WASD 平移 · Space/Q 升降 · 按住{look}转向',
       tabSwitch: 'Tab 切换',
     },
     sizeControl: {
-      box: '方块大小',
-      icon: '图标大小',
+      label: '图标/方块大小',
       shortcut: 'Ctrl + 滚轮快速调整',
     },
     debug: {
@@ -485,6 +484,7 @@ export const zhLocale = {
     },
     display: {
       label: '显示设置',
+      iconSize: '图标/方块大小',
     },
     editAssist: {
       label: '编辑辅助',

@@ -52,6 +52,11 @@ function updateCameraZoomSpeed(value: number[] | undefined) {
   settingsStore.settings.cameraZoomSpeed = value[0]!
 }
 
+function updateThreeSymbolScale(value: number[] | undefined) {
+  if (!value) return
+  settingsStore.settings.threeSymbolScale = value[0]!
+}
+
 // 步进预设档位
 const TRANSLATION_SNAP_PRESETS = [0, 1, 5, 10, 50, 100, 500, 1000]
 const ROTATION_SNAP_PRESETS = [0, 1, 5, 15, 30, 45, 90] // 角度
@@ -445,6 +450,30 @@ const fmt = (n: number, decimals: number = 0) => {
               </p>
             </div>
             <Switch v-model="settingsStore.settings.showBackground" />
+          </div>
+
+          <!-- 图标/方块大小控制 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.display.iconSize') }}
+              </Label>
+              <span class="shrink-0 text-xs font-medium text-sidebar-foreground">
+                {{ Math.round(settingsStore.settings.threeSymbolScale * 100) }}%
+              </span>
+            </div>
+            <Slider
+              :model-value="[settingsStore.settings.threeSymbolScale]"
+              @update:model-value="updateThreeSymbolScale"
+              :min="0.1"
+              :max="3"
+              :step="0.1"
+              variant="thin"
+              class="w-full"
+            />
+            <p class="text-[10px] text-muted-foreground">
+              {{ t('editor.sizeControl.shortcut') }}
+            </p>
           </div>
         </div>
 

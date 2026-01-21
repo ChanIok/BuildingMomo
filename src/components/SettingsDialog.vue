@@ -226,7 +226,7 @@ async function handleVerify() {
                     t('settings.inputBindings.camera.orbitRotate')
                   }}</Label>
                   <Select v-model="settingsStore.settings.inputBindings.camera.orbitRotate">
-                    <SelectTrigger class="w-32">
+                    <SelectTrigger :class="locale === 'en' ? 'w-40' : 'w-32'">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -243,7 +243,7 @@ async function handleVerify() {
                 <div class="flex items-center justify-between">
                   <Label class="text-sm">{{ t('settings.inputBindings.camera.flightLook') }}</Label>
                   <Select v-model="settingsStore.settings.inputBindings.camera.flightLook">
-                    <SelectTrigger class="w-32">
+                    <SelectTrigger :class="locale === 'en' ? 'w-40' : 'w-32'">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

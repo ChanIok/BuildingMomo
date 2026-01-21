@@ -40,7 +40,7 @@ const showComplete = computed(() => {
   <Transition name="fade">
     <div
       v-if="shouldShow"
-      class="flex min-w-64 flex-col gap-2 rounded-md border bg-background/95 px-3 py-2 text-xs shadow-lg backdrop-blur-sm"
+      class="flex min-w-64 flex-col gap-2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-xs backdrop-blur-sm"
     >
       <!-- 标题行 -->
       <div class="flex items-center justify-between gap-3">
