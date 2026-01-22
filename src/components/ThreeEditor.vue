@@ -25,6 +25,7 @@ import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useThreeBackground } from '@/composables/useThreeBackground'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
+import { useThreeEnvironment } from '@/composables/useThreeEnvironment'
 import {
   useMagicKeys,
   useElementSize,
@@ -44,6 +45,8 @@ const uiStore = useUIStore()
 
 // 相机输入配置（统一管理）
 const cameraInput = useCameraInputConfig()
+// IBL 环境光管理
+const { setupEnvironment } = useThreeEnvironment()
 
 // 开发环境标志
 const isDev = import.meta.env.DEV
@@ -364,8 +367,26 @@ onMounted(() => {
 })
 
 // 从 TresCanvas ready 事件初始化
-function handleTresReady() {
+function handleTresReady(context: any) {
   console.log('[ThreeEditor] TresCanvas ready')
+
+  // 配置渲染器
+  const renderer = context.renderer?.instance
+  const scene = context.scene?.value || context.scene
+
+  if (renderer && scene) {
+    // 1. 初始化 IBL 环境光 (为哑光材质提供关键的漫反射填充)
+    // 参数 3：强度。觉得暗就调高 (例如 1.2, 1.5)，觉得亮就调低 (0.8)
+    setupEnvironment(renderer, scene, 0.3)
+
+    // 2. 色调映射
+    renderer.toneMapping = 3
+    renderer.toneMappingExposure = 0.8
+
+    // 确保输出色彩空间正确
+    renderer.outputColorSpace = 'srgb'
+    renderer.shadowMap.enabled = true
+  }
 }
 
 // 相机模式切换包装函数（仅在透视模式下生效）
@@ -738,13 +759,24 @@ onDeactivated(() => {
           @change="handleOrbitChange"
         />
 
-        <!-- 光照: 明亮风格 -->
-        <TresAmbientLight :intensity="0.75" />
+        <!-- 简约光照系统：IBL + 辅助光 -->
+
+        <!-- 半球光：有了 IBL 后，这个可以作为微弱的补光 -->
+        <TresHemisphereLight :sky-color="0xffffff" :ground-color="0x888888" :intensity="2" />
+
+        <!-- 主光源：产生阴影 -->
         <TresDirectionalLight
-          :position="[1000, 1000, 2000]"
-          :intensity="1.0"
+          :position="[1500, 2000, 3000]"
+          :intensity="2.0"
           :color="0xfff4e6"
           :cast-shadow="true"
+          :shadow-mapSize-width="2048"
+          :shadow-mapSize-height="2048"
+          :shadow-camera-left="-3000"
+          :shadow-camera-right="3000"
+          :shadow-camera-top="3000"
+          :shadow-camera-bottom="-3000"
+          :shadow-bias="-0.0005"
         />
 
         <!-- 场景内容容器：Y轴翻转以实现左手坐标系视觉（Y轴朝南） -->

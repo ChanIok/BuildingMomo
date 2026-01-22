@@ -1,6 +1,12 @@
 import type { Ref, ShallowRef } from 'vue'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
+// ColorMap 混合格式类型定义
+// 游戏中 ColorMap 有两种格式：
+// 1. 对象格式：{ "0": 0 } 或 { "0": 1 }
+// 2. 数组格式：[10, 20] 或 [null, 22]
+export type GameColorMap = Record<string, number> | (number | null)[]
+
 // 游戏内物品原始数据结构（对应JSON格式）
 export interface GameItem {
   ItemID: number
@@ -22,7 +28,7 @@ export interface GameItem {
   }
   GroupID: number
   AttachID: number
-  ColorMap?: Record<string, number>
+  ColorMap?: GameColorMap
   TempInfo?: Record<string, any>
 }
 

@@ -243,29 +243,37 @@ async function processGeometryForItem(
   // 3.5. 单位转换：米 → 厘米（x100）
   geometry.scale(100, 100, 100)
 
-  // 优化材质：保留原始纹理，轻微增亮
+  // 优化材质：保留原始纹理，增强对比度
   let material: Material | Material[]
   if (materials.length > 0) {
     // 对每个材质进行优化
     for (const mat of materials) {
       if ((mat as any).isMeshStandardMaterial) {
         const stdMat = mat as MeshStandardMaterial
-        stdMat.roughness = Math.min(stdMat.roughness, 0.6)
-        stdMat.metalness = Math.min(stdMat.metalness, 0.2)
-        if (!stdMat.emissive || stdMat.emissive.getHex() === 0) {
-          stdMat.emissive = new Color(0x222222)
-        }
-        stdMat.emissiveIntensity = Math.max(stdMat.emissiveIntensity, 0.15)
+
+        // --- 极简材质配置 ---
+        // 既然没有法线和PBR贴图，就完全放弃模拟真实质感
+        // 目标：干净、哑光、清晰还原 _D 贴图颜色
+
+        stdMat.roughness = 0.8
+        stdMat.metalness = 0.1
+
+        // 自发光
+        stdMat.emissive = new Color(0x222222)
+        ;((stdMat.emissiveIntensity = 0.03),
+          // 确保使用最终渲染颜色
+          (stdMat.needsUpdate = true))
       }
     }
+
     // 返回材质数组（如果只有一个材质，也保持数组形式以支持材质分组）
     material = materials.length > 1 ? materials : materials[0]!
   } else {
     material = new MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0x222222,
-      emissiveIntensity: 0.15,
-      roughness: 0.6,
+      emissiveIntensity: 0.03,
+      roughness: 0.8,
       metalness: 0.2,
     })
   }
@@ -350,7 +358,7 @@ export function useThreeModelManager() {
 
       // 容量不足，需要扩容（销毁旧的，下面会创建新的）
       console.log(
-        `[ModelManager] 容量不足 itemId=${itemId}: 需 ${instanceCount}, 当前 ${currentCapacity} -> 重建`
+        `[ModelManager] 容量不足 ${itemId}: 需 ${instanceCount}, 当前 ${currentCapacity} -> 重建`
       )
       disposeMesh(itemId)
     }
@@ -366,7 +374,7 @@ export function useThreeModelManager() {
         return null
       }
 
-      // 使用共享函数处理几何体
+      // 使用共享函数处理几何体（包括染色）
       const result = await processGeometryForItem(itemId, config, gltfLoader, MODEL_BASE_URL)
       if (!result) {
         return null
@@ -410,7 +418,7 @@ export function useThreeModelManager() {
     instancedMesh.instanceMatrix.setUsage(DynamicDrawUsage)
     instancedMesh.count = 0 // 初始不显示任何实例
 
-    // 缓存
+    // 缓存（使用 cacheKey）
     meshMap.set(itemId, instancedMesh)
 
     return instancedMesh
