@@ -95,7 +95,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     camera: {
       orbitRotate: 'middle',
       flightLook: 'middle',
-      enableAltLeftClick: true,
+      enableAltLeftClick: false,
     },
     selection: {
       add: 'shift',
