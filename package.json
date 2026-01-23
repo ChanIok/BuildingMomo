@@ -13,7 +13,8 @@
     "prebuild": "npm run fetch-data",
     "prebuild:secure": "npm run fetch-data",
     "prepare": "husky",
-    "deploy:cloudflare": "npm run build:secure && wrangler pages deploy dist --project-name buildingmomo-lab"
+    "deploy:cloudflare": "npm run build:secure && wrangler pages deploy dist --project-name buildingmomo-lab",
+    "deploy:netlify": "netlify deploy --prod"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
@@ -48,8 +49,7 @@
     "typescript": "~5.9.3",
     "vite": "npm:rolldown-vite@7.1.14",
     "vite-plugin-pwa": "^1.2.0",
-    "vue-tsc": "^3.1.0",
-    "wrangler": "^4.54.0"
+    "vue-tsc": "^3.1.0"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.1.14"

@@ -63,7 +63,6 @@ export default defineConfig(() => {
               options: {
                 cacheName: 'images',
                 expiration: {
-                  maxEntries: 500,
                   maxAgeSeconds: 60 * 60 * 24 * 30, // 30 天
                 },
               },
@@ -75,7 +74,6 @@ export default defineConfig(() => {
               options: {
                 cacheName: '3d-models',
                 expiration: {
-                  maxEntries: 300,
                   maxAgeSeconds: 60 * 60 * 24 * 30, // 30 天
                 },
               },
