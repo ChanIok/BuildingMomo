@@ -141,12 +141,20 @@ const selectionInfo = computed(() => {
     editorStore.itemsMap
   )
 
-  // 如果有有效的坐标系，将中心点转换到该坐标系
+  // 关键：由于 Gizmo 的 Y 轴箭头几何体被翻转了（setupGizmoAppearance），
+  // 视觉上向上的箭头实际对应数据空间的 +Y（向下）
+  // 所以侧边栏应该直接显示数据空间的值，与 Gizmo 视觉方向一致
+  // 数据空间 -> 世界空间：Y 轴翻转
+  const worldCenter = { x: center.x, y: -center.y, z: center.z }
+
+  // 如果有有效的坐标系，将世界空间坐标转换到工作坐标系
   if (effectiveCoordRotation) {
-    // 转换为数据空间（与工作坐标系处理一致）
-    const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveCoordRotation)
-    center = convertPositionGlobalToWorking(center, dataSpaceRotation)
+    // 工作坐标系输出的是世界空间语义的坐标
+    const workingCenter = convertPositionGlobalToWorking(worldCenter, effectiveCoordRotation)
+    // 世界空间 -> 数据空间：Y 轴翻转回来，与 Gizmo 视觉一致
+    center = { x: workingCenter.x, y: -workingCenter.y, z: workingCenter.z }
   }
+  // 没有工作坐标系时，直接使用数据空间的值（center 本身就是）
 
   // 旋转角度（用于绝对模式显示）
   let rotation = { x: 0, y: 0, z: 0 }
@@ -160,9 +168,8 @@ const selectionInfo = computed(() => {
       })
       // 如果有有效的坐标系，将全局旋转转换为相对旋转（使用四元数精确转换）
       if (effectiveCoordRotation) {
-        // 转换为数据空间（与工作坐标系处理一致）
-        const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveCoordRotation)
-        rotation = convertRotationGlobalToWorking(rotation, dataSpaceRotation)
+        // 直接使用视觉空间的旋转值，与 Gizmo 一致
+        rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
       }
     }
   } else {
@@ -292,9 +299,13 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
 
     // 如果有有效的坐标系，将增量向量转换到全局坐标系
     if (effectiveRotation) {
-      // 转换为数据空间（与工作坐标系处理一致）
-      const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveRotation)
-      posArgs = convertPositionWorkingToGlobal(posArgs, dataSpaceRotation)
+      // 用户输入的 Y 值需要取反，因为 Gizmo 的 Y 轴视觉上被翻转了
+      // 用户看到的“向上”实际对应世界空间的 -Y
+      const visualPosArgs = { x: posArgs.x, y: -posArgs.y, z: posArgs.z }
+      // 工作坐标系 -> 世界空间
+      const worldDelta = convertPositionWorkingToGlobal(visualPosArgs, effectiveRotation)
+      // 世界空间 -> 数据空间：Y 轴翻转
+      posArgs = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
     }
 
     updateSelectedItemsTransform({
@@ -319,9 +330,10 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     )
     let newGlobalPos = newEffectivePos
     if (effectiveRotation) {
-      // 转换为数据空间（与工作坐标系处理一致）
-      const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveRotation)
-      newGlobalPos = convertPositionWorkingToGlobal(newEffectivePos, dataSpaceRotation)
+      // 工作坐标系 -> 世界空间
+      const worldPos = convertPositionWorkingToGlobal(newEffectivePos, effectiveRotation)
+      // 世界空间 -> 数据空间：Y 轴翻转
+      newGlobalPos = { x: worldPos.x, y: -worldPos.y, z: worldPos.z }
     }
 
     updateSelectedItemsTransform({
@@ -367,9 +379,8 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
       )
       let globalRotation = effectiveRotation
       if (coordRotation) {
-        // 转换为数据空间（与工作坐标系处理一致）
-        const dataSpaceRotation = matrixTransform.visualRotationToUI(coordRotation)
-        globalRotation = convertRotationWorkingToGlobal(effectiveRotation, dataSpaceRotation)
+        // 直接使用视觉空间的旋转值，与 Gizmo 一致
+        globalRotation = convertRotationWorkingToGlobal(effectiveRotation, coordRotation)
       }
 
       // 传递完整的三轴旋转，而非仅单轴

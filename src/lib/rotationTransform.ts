@@ -58,7 +58,8 @@ export function rotateItemsInWorkingCoordinate(
     localRotationMatrix.makeRotationY(angleRad)
   } else {
     // axis === 'z'
-    localRotationMatrix.makeRotationZ(angleRad)
+    // Z 轴旋转角度取反，与 Gizmo 的约定一致
+    localRotationMatrix.makeRotationZ(-angleRad)
   }
 
   // 3. 转换到世界空间：worldRotation = W × L × W⁻¹

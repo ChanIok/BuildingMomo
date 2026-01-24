@@ -24,24 +24,27 @@ export interface Position {
 // ========== 位置转换（矩阵版本） ==========
 
 /**
- * 位置转换：工作坐标系 -> 全局坐标系
+ * 位置转换：工作坐标系 -> 全局坐标系（世界空间）
  *
- * @param point 工作坐标系中的点
- * @param workingRotation 工作坐标系的旋转角度（度）
- * @returns 全局坐标系中的点
+ * @param point 工作坐标系中的点（世界空间语义）
+ * @param workingRotation 工作坐标系的旋转角度（视觉空间，度）
+ * @returns 全局坐标系中的点（世界空间）
  */
 export function convertPositionWorkingToGlobal(
   point: Position,
   workingRotation: Rotation
 ): Position {
+  const vec = new Vector3(point.x, point.y, point.z)
+
+  // 构建 Gizmo 的旋转矩阵（与 useThreeTransformGizmo 完全一致）
   const euler = new Euler(
     (workingRotation.x * Math.PI) / 180,
     (workingRotation.y * Math.PI) / 180,
-    (workingRotation.z * Math.PI) / 180,
+    -(workingRotation.z * Math.PI) / 180, // Z 轴取反
     'ZYX'
   )
   const matrix = new Matrix4().makeRotationFromEuler(euler)
-  const vec = new Vector3(point.x, point.y, point.z)
+
   vec.applyMatrix4(matrix)
 
   return {
@@ -52,31 +55,34 @@ export function convertPositionWorkingToGlobal(
 }
 
 /**
- * 位置转换：全局坐标系 -> 工作坐标系
+ * 位置转换：全局坐标系（世界空间）-> 工作坐标系
  *
- * @param point 全局坐标系中的点
- * @param workingRotation 工作坐标系的旋转角度（度）
- * @returns 工作坐标系中的点
+ * @param point 全局坐标系中的点（世界空间）
+ * @param workingRotation 工作坐标系的旋转角度（视觉空间，度）
+ * @returns 工作坐标系中的点（世界空间语义，与 Gizmo 方向一致）
  */
 export function convertPositionGlobalToWorking(
   point: Position,
   workingRotation: Rotation
 ): Position {
+  const worldVec = new Vector3(point.x, point.y, point.z)
+
+  // 构建 Gizmo 旋转矩阵的逆矩阵
   const euler = new Euler(
     (workingRotation.x * Math.PI) / 180,
     (workingRotation.y * Math.PI) / 180,
-    (workingRotation.z * Math.PI) / 180,
+    -(workingRotation.z * Math.PI) / 180,
     'ZYX'
   )
   const matrix = new Matrix4().makeRotationFromEuler(euler)
-  matrix.invert() // 逆矩阵
-  const vec = new Vector3(point.x, point.y, point.z)
-  vec.applyMatrix4(matrix)
+  matrix.invert()
+
+  worldVec.applyMatrix4(matrix)
 
   return {
-    x: vec.x,
-    y: vec.y,
-    z: vec.z,
+    x: worldVec.x,
+    y: worldVec.y,
+    z: worldVec.z,
   }
 }
 
@@ -98,19 +104,21 @@ export function convertRotationWorkingToGlobal(
   workingRotation: Rotation
 ): Rotation {
   // 1. 工作坐标系的旋转 -> 四元数
+  // 注意：Z 轴取反，与 Gizmo 的旋转约定一致
   const workingEuler = new Euler(
     (workingRotation.x * Math.PI) / 180,
     (workingRotation.y * Math.PI) / 180,
-    (workingRotation.z * Math.PI) / 180,
+    -(workingRotation.z * Math.PI) / 180,
     'ZYX'
   )
   const workingQuat = new Quaternion().setFromEuler(workingEuler)
 
   // 2. 相对旋转 -> 四元数
+  // 注意：Z 轴取反，与 Gizmo 的旋转约定一致
   const relativeEuler = new Euler(
     (relativeRotation.x * Math.PI) / 180,
     (relativeRotation.y * Math.PI) / 180,
-    (relativeRotation.z * Math.PI) / 180,
+    -(relativeRotation.z * Math.PI) / 180,
     'ZYX'
   )
   const relativeQuat = new Quaternion().setFromEuler(relativeEuler)
@@ -121,10 +129,11 @@ export function convertRotationWorkingToGlobal(
   // 4. 转回欧拉角
   const globalEuler = new Euler().setFromQuaternion(globalQuat, 'ZYX')
 
+  // 输出时 Z 轴取反回来，保持与输入一致的语义
   return {
     x: (globalEuler.x * 180) / Math.PI,
     y: (globalEuler.y * 180) / Math.PI,
-    z: (globalEuler.z * 180) / Math.PI,
+    z: -(globalEuler.z * 180) / Math.PI,
   }
 }
 
@@ -144,19 +153,21 @@ export function convertRotationGlobalToWorking(
   workingRotation: Rotation
 ): Rotation {
   // 1. 工作坐标系的旋转 -> 四元数（逆）
+  // 注意：Z 轴取反，与 Gizmo 的旋转约定一致
   const workingEuler = new Euler(
     (workingRotation.x * Math.PI) / 180,
     (workingRotation.y * Math.PI) / 180,
-    (workingRotation.z * Math.PI) / 180,
+    -(workingRotation.z * Math.PI) / 180,
     'ZYX'
   )
   const workingQuatInv = new Quaternion().setFromEuler(workingEuler).invert()
 
   // 2. 全局旋转 -> 四元数
+  // 注意：Z 轴取反，与 Gizmo 的旋转约定一致
   const globalEuler = new Euler(
     (globalRotation.x * Math.PI) / 180,
     (globalRotation.y * Math.PI) / 180,
-    (globalRotation.z * Math.PI) / 180,
+    -(globalRotation.z * Math.PI) / 180,
     'ZYX'
   )
   const globalQuat = new Quaternion().setFromEuler(globalEuler)
@@ -167,9 +178,10 @@ export function convertRotationGlobalToWorking(
   // 4. 转回欧拉角
   const relativeEuler = new Euler().setFromQuaternion(relativeQuat, 'ZYX')
 
+  // 输出时 Z 轴取反回来，保持与输入一致的语义
   return {
     x: (relativeEuler.x * 180) / Math.PI,
     y: (relativeEuler.y * 180) / Math.PI,
-    z: (relativeEuler.z * 180) / Math.PI,
+    z: -(relativeEuler.z * 180) / Math.PI,
   }
 }

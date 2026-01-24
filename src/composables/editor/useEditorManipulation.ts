@@ -302,8 +302,8 @@ export function useEditorManipulation() {
             store.itemsMap
           ) || { x: 0, y: 0, z: 0 }
 
-          // 转换为数据空间（与工作坐标系处理一致）
-          const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveWorkingRotation)
+          // 直接使用视觉空间的旋转值
+          // rotateItemsInWorkingCoordinate 内部已经对 Z 轴做了正确的取反处理（与 Gizmo 一致）
 
           // 使用新的工作坐标系旋转函数（单物品情况）
           // 注意：这里临时使用单物品数组调用，后续会在外层优化为批量处理
@@ -312,7 +312,7 @@ export function useEditorManipulation() {
             rotationInfo.axis,
             rotationInfo.angle,
             center,
-            dataSpaceRotation, // 使用数据空间的旋转值
+            effectiveWorkingRotation, // 直接使用视觉空间的旋转值
             false // 暂不使用模型缩放（box 模式）
           )
           const rotatedItem = rotatedItems[0]
@@ -417,11 +417,14 @@ export function useEditorManipulation() {
       store.itemsMap
     ) || { x: 0, y: 0, z: 0 }
 
-    // 转换为数据空间（与工作坐标系处理一致）
-    const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveWorkingRotation)
+    // 直接使用视觉空间的旋转值
+    // convertPosition* 和 convertRotation* 函数内部已经对 Z 轴做了正确的取反处理（与 Gizmo 一致）
 
-    // 转换到有效坐标系
-    const workingCenter = convertPositionGlobalToWorking(globalCenter, dataSpaceRotation)
+    // 关键：数据空间 -> 世界空间（Y 轴翻转）
+    const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
+
+    // 转换到工作坐标系
+    const workingCenter = convertPositionGlobalToWorking(worldCenter, effectiveWorkingRotation)
 
     // 更新每个选中物品
     activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
@@ -430,17 +433,20 @@ export function useEditorManipulation() {
       }
 
       // === 1. 位置镜像 ===
-      // 转换到有效坐标系
-      const workingPos = convertPositionGlobalToWorking(
-        { x: item.x, y: item.y, z: item.z },
-        dataSpaceRotation
-      )
+      // 数据空间 -> 世界空间（Y 轴翻转）
+      const worldPos = { x: item.x, y: -item.y, z: item.z }
+
+      // 转换到工作坐标系
+      const workingPos = convertPositionGlobalToWorking(worldPos, effectiveWorkingRotation)
 
       // 沿指定轴镜像
       workingPos[axis] = 2 * workingCenter[axis] - workingPos[axis]
 
-      // 转换回全局坐标系
-      const newPos = convertPositionWorkingToGlobal(workingPos, dataSpaceRotation)
+      // 转换回世界空间
+      const newWorldPos = convertPositionWorkingToGlobal(workingPos, effectiveWorkingRotation)
+
+      // 世界空间 -> 数据空间（Y 轴翻转回来）
+      const newPos = { x: newWorldPos.x, y: -newWorldPos.y, z: newWorldPos.z }
 
       // === 2. 旋转镜像（支持完整三轴）===
       let newRotation = { ...item.rotation }
@@ -453,14 +459,32 @@ export function useEditorManipulation() {
           effectiveWorkingRotation.z !== 0
 
         if (hasEffectiveRotation) {
-          // 转换到工作坐标系
-          const workingRotation = convertRotationGlobalToWorking(item.rotation, dataSpaceRotation)
+          // 1. 数据空间 → 视觉空间（convert* 函数期望视觉空间输入）
+          const visualRotation = matrixTransform.dataRotationToVisual(item.rotation)
 
-          // 在工作坐标系中执行镜像
-          const mirroredWorking = mirrorRotationInWorkingCoord(workingRotation, axis)
+          // 2. 视觉空间/全局 → 视觉空间/工作坐标系
+          const workingVisual = convertRotationGlobalToWorking(
+            visualRotation,
+            effectiveWorkingRotation
+          )
 
-          // 转回全局坐标系
-          newRotation = convertRotationWorkingToGlobal(mirroredWorking, dataSpaceRotation)
+          // 3. 视觉空间 → 数据空间（mirrorRotationInWorkingCoord 在数据空间工作）
+          const workingData = matrixTransform.visualRotationToData(workingVisual)
+
+          // 4. 在数据空间执行镜像
+          const mirroredData = mirrorRotationInWorkingCoord(workingData, axis)
+
+          // 5. 数据空间 → 视觉空间（convert* 函数期望视觉空间输入）
+          const mirroredVisual = matrixTransform.dataRotationToVisual(mirroredData)
+
+          // 6. 视觉空间/工作坐标系 → 视觉空间/全局
+          const globalVisual = convertRotationWorkingToGlobal(
+            mirroredVisual,
+            effectiveWorkingRotation
+          )
+
+          // 7. 视觉空间 → 数据空间（存储到 item.rotation）
+          newRotation = matrixTransform.visualRotationToData(globalVisual)
         } else {
           // 未启用工作坐标系，直接在全局坐标系中镜像
           newRotation = mirrorRotationInWorkingCoord(item.rotation, axis)
