@@ -141,8 +141,10 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     )
     let newGlobalPos = newEffectivePos
     if (effectiveRotation) {
+      // 先将数据空间语义转换为世界空间语义（与相对模式一致）
+      const visualNewPos = { x: newEffectivePos.x, y: -newEffectivePos.y, z: newEffectivePos.z }
       // 工作坐标系 -> 世界空间
-      const worldPos = convertPositionWorkingToGlobal(newEffectivePos, effectiveRotation)
+      const worldPos = convertPositionWorkingToGlobal(visualNewPos, effectiveRotation)
       // 世界空间 -> 数据空间：Y 轴翻转
       newGlobalPos = { x: worldPos.x, y: -worldPos.y, z: worldPos.z }
     }
