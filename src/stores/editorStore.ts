@@ -385,6 +385,41 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  // ========== 组合工具函数 ==========
+
+  /**
+   * 检查当前选区是否完整选中了某个组的所有成员
+   * @param selectedIds 选中的物品 ID 集合
+   * @returns 组 ID，如果不是完整组选择则返回 null
+   */
+  function getGroupIdIfEntireGroupSelected(selectedIds: Set<string>): number | null {
+    if (selectedIds.size === 0) return null
+
+    // 收集选中物品的组 ID
+    const groupIds = new Set<number>()
+    selectedIds.forEach((id) => {
+      const item = itemsMap.value.get(id)
+      if (item && item.groupId > 0) {
+        groupIds.add(item.groupId)
+      }
+    })
+
+    // 必须所有选中物品都属于同一个组
+    if (groupIds.size !== 1) return null
+
+    const groupId = Array.from(groupIds)[0]!
+    const groupMemberIds = groupsMap.value.get(groupId)
+
+    // 检查是否选中了组的所有成员
+    if (!groupMemberIds || groupMemberIds.size !== selectedIds.size) return null
+
+    for (const memberId of groupMemberIds) {
+      if (!selectedIds.has(memberId)) return null
+    }
+
+    return groupId
+  }
+
   return {
     // 多方案状态
     schemes,
@@ -419,5 +454,8 @@ export const useEditorStore = defineStore('editor', () => {
     selectionVersion,
     triggerSceneUpdate,
     triggerSelectionUpdate,
+
+    // 组合工具函数
+    getGroupIdIfEntireGroupSelected,
   }
 })

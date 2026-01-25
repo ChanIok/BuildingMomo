@@ -66,39 +66,6 @@ export function useEditorManipulation() {
   }
 
   /**
-   * 检查当前选区是否完整选中了某个组的所有成员
-   * @param selectedIds 选中的物品 ID 集合
-   * @returns 组 ID，如果不是完整组选择则返回 null
-   */
-  function getGroupIdIfEntireGroupSelected(selectedIds: Set<string>): number | null {
-    if (selectedIds.size === 0) return null
-
-    // 收集选中物品的组 ID
-    const groupIds = new Set<number>()
-    selectedIds.forEach((id) => {
-      const item = store.itemsMap.get(id)
-      if (item && item.groupId > 0) {
-        groupIds.add(item.groupId)
-      }
-    })
-
-    // 必须所有选中物品都属于同一个组
-    if (groupIds.size !== 1) return null
-
-    const groupId = Array.from(groupIds)[0]!
-    const groupMemberIds = store.groupsMap.get(groupId)
-
-    // 检查是否选中了组的所有成员
-    if (!groupMemberIds || groupMemberIds.size !== selectedIds.size) return null
-
-    for (const memberId of groupMemberIds) {
-      if (!selectedIds.has(memberId)) return null
-    }
-
-    return groupId
-  }
-
-  /**
    * 获取旋转中心：优先级：定点旋转 > 组合原点 > 几何中心
    */
   function getRotationCenter(): { x: number; y: number; z: number } | null {
@@ -111,7 +78,7 @@ export function useEditorManipulation() {
     const scheme = activeScheme.value
     if (scheme) {
       const selectedIds = scheme.selectedItemIds.value
-      const groupId = getGroupIdIfEntireGroupSelected(selectedIds)
+      const groupId = store.getGroupIdIfEntireGroupSelected(selectedIds)
       if (groupId !== null) {
         const originItemId = scheme.groupOrigins.value.get(groupId)
         if (originItemId) {
@@ -1322,6 +1289,169 @@ export function useEditorManipulation() {
     store.triggerSceneUpdate()
   }
 
+  /**
+   * 以原点物品为基准旋转组合（绝对模式）
+   *
+   * - 原点物品：直接设置为目标绝对旋转
+   * - 其他物品：以原点位置为中心，应用原点物品的实际旋转变换
+   *
+   * 算法：使用四元数计算原点物品从当前旋转到目标旋转的实际变换，
+   * 而不是简单的欧拉角差值（欧拉角差值 ≠ 实际旋转增量）
+   *
+   * @param originItemId 原点物品 ID
+   * @param axis 旋转轴
+   * @param absoluteValue 目标绝对值（工作坐标系下）
+   */
+  function rotateSelectionAroundOrigin(
+    originItemId: string,
+    axis: 'x' | 'y' | 'z',
+    absoluteValue: number
+  ) {
+    if (!activeScheme.value) return
+
+    const scheme = activeScheme.value
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return
+
+    // 获取原点物品
+    const originItem = store.itemsMap.get(originItemId)
+    if (!originItem) return
+
+    saveHistory('edit')
+
+    // 获取有效的工作坐标系旋转
+    const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
+      selectedIds,
+      store.itemsMap
+    ) || { x: 0, y: 0, z: 0 }
+
+    // 获取原点物品当前旋转（视觉空间）
+    const originVisualRotation = matrixTransform.dataRotationToVisual({
+      x: originItem.rotation.x,
+      y: originItem.rotation.y,
+      z: originItem.rotation.z,
+    })
+
+    // 转换到工作坐标系
+    const originWorkingRotation = convertRotationGlobalToWorking(
+      originVisualRotation,
+      effectiveWorkingRotation
+    )
+
+    // 检查是否有变化
+    const deltaAngle = absoluteValue - originWorkingRotation[axis]
+    if (Math.abs(deltaAngle) < 0.0001) return // 无变化
+
+    // 构建原点物品的目标旋转（工作坐标系下）
+    const targetWorkingRotation = { ...originWorkingRotation }
+    targetWorkingRotation[axis] = absoluteValue
+
+    // 转换为全局旋转（视觉空间）
+    const targetGlobalRotation = convertRotationWorkingToGlobal(
+      targetWorkingRotation,
+      effectiveWorkingRotation
+    )
+
+    // 转换为数据空间
+    const targetDataRotation = matrixTransform.visualRotationToData(targetGlobalRotation)
+
+    // === 使用四元数计算实际旋转变换 ===
+    // 原点物品当前旋转的四元数（从世界矩阵提取，确保与渲染一致）
+    const currentMatrix = matrixTransform.buildWorldMatrixFromItem(originItem, false)
+    const currentQuat = new Quaternion()
+    currentMatrix.decompose(new Vector3(), currentQuat, new Vector3())
+
+    // 原点物品目标旋转的四元数
+    // 构建一个临时物品来获取目标世界矩阵
+    const targetItem = { ...originItem, rotation: targetDataRotation }
+    const targetMatrix = matrixTransform.buildWorldMatrixFromItem(targetItem, false)
+    const targetQuat = new Quaternion()
+    targetMatrix.decompose(new Vector3(), targetQuat, new Vector3())
+
+    // 计算增量旋转：Q_delta = Q_target * Q_current^(-1)
+    const deltaQuat = targetQuat.clone().multiply(currentQuat.clone().invert())
+
+    // 原点物品的位置（作为旋转中心，世界空间）
+    const centerWorld = matrixTransform.dataPositionToWorld({
+      x: originItem.x,
+      y: originItem.y,
+      z: originItem.z,
+    })
+    const centerVec = new Vector3(centerWorld.x, centerWorld.y, centerWorld.z)
+
+    // 构建增量旋转矩阵
+    const deltaRotationMatrix = new Matrix4().makeRotationFromQuaternion(deltaQuat)
+
+    // 分离原点物品和其他物品
+    const otherItems = scheme.items.value.filter(
+      (item) => selectedIds.has(item.internalId) && item.internalId !== originItemId
+    )
+
+    // 对其他物品应用四元数旋转变换（以原点为中心）
+    const rotatedOtherItems = otherItems.map((item) => {
+      // 获取物品当前的世界矩阵
+      const itemMatrix = matrixTransform.buildWorldMatrixFromItem(item, false)
+
+      // 提取当前位置
+      const itemPos = new Vector3().setFromMatrixPosition(itemMatrix)
+
+      // 计算相对于旋转中心的位置
+      const relativePos = itemPos.clone().sub(centerVec)
+
+      // 旋转相对位置（公转）
+      relativePos.applyMatrix4(deltaRotationMatrix)
+
+      // 计算新位置
+      const newPos = centerVec.clone().add(relativePos)
+
+      // 应用旋转到物品本身（自转）
+      const newMatrix = deltaRotationMatrix.clone().multiply(itemMatrix)
+      newMatrix.setPosition(newPos)
+
+      // 还原为游戏数据
+      const newData = matrixTransform.extractItemDataFromWorldMatrix(newMatrix)
+
+      return {
+        ...item,
+        x: newData.x,
+        y: newData.y,
+        z: newData.z,
+        rotation: newData.rotation,
+      }
+    })
+
+    // 构建更新后的物品映射
+    const updatedItemsMap = new Map<string, AppItem>()
+    for (const item of rotatedOtherItems) {
+      updatedItemsMap.set(item.internalId, item)
+    }
+
+    // 更新所有物品
+    scheme.items.value = scheme.items.value.map((item) => {
+      if (!selectedIds.has(item.internalId)) {
+        return item
+      }
+
+      if (item.internalId === originItemId) {
+        // 原点物品：直接设置绝对旋转
+        return {
+          ...item,
+          rotation: targetDataRotation,
+        }
+      }
+
+      // 其他物品：使用旋转后的结果
+      const rotatedItem = updatedItemsMap.get(item.internalId)
+      if (rotatedItem) {
+        return rotatedItem
+      }
+
+      return item
+    })
+
+    store.triggerSceneUpdate()
+  }
+
   return {
     getSelectedItemsCenter,
     getRotationCenter,
@@ -1331,6 +1461,7 @@ export function useEditorManipulation() {
     mirrorSelectedItems,
     alignSelectedItems,
     distributeSelectedItems,
+    rotateSelectionAroundOrigin,
     commitBatchedTransform,
   }
 

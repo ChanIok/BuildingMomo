@@ -27,6 +27,8 @@ export interface SelectionInfo {
     min: { x: number; y: number; z: number }
     max: { x: number; y: number; z: number }
   } | null
+  /** 原点物品 ID（仅当完整选中一个有原点设置的组时有值） */
+  originItemId: string | null
 }
 
 /**
@@ -64,6 +66,23 @@ export function useTransformSelection() {
     if (ids.size === 0) return null
     const selected = scheme.items.value.filter((item) => ids.has(item.internalId))
 
+    // 检测原点物品
+    let originItemId: string | null = null
+    let originItem: (typeof selected)[0] | null = null
+
+    if (selected.length > 1) {
+      const groupId = editorStore.getGroupIdIfEntireGroupSelected(ids)
+      if (groupId !== null) {
+        const originId = scheme.groupOrigins.value.get(groupId)
+        if (originId) {
+          originItem = editorStore.itemsMap.get(originId) || null
+          if (originItem) {
+            originItemId = originId
+          }
+        }
+      }
+    }
+
     // 位置中心点（用于绝对模式显示）
     // 使用 getRotationCenter 获取有效中心（包含定点旋转、组合原点优先级的处理）
     const dataCenter = getRotationCenter() || { x: 0, y: 0, z: 0 }
@@ -79,22 +98,23 @@ export function useTransformSelection() {
 
     // 旋转角度（用于绝对模式显示）
     let rotation = { x: 0, y: 0, z: 0 }
-    if (selected.length === 1) {
-      const item = selected[0]
-      if (item) {
-        rotation = matrixTransform.dataRotationToVisual({
-          x: item.rotation.x,
-          y: item.rotation.y,
-          z: item.rotation.z,
-        })
-        // 如果有有效的坐标系，将全局旋转转换为相对旋转（使用四元数精确转换）
-        if (effectiveCoordRotation) {
-          // 直接使用视觉空间的旋转值，与 Gizmo 一致
-          rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
-        }
+
+    // 确定旋转显示的来源物品：单选使用该物品，多选有原点使用原点物品
+    const rotationSourceItem = selected.length === 1 ? selected[0] : originItem
+
+    if (rotationSourceItem) {
+      rotation = matrixTransform.dataRotationToVisual({
+        x: rotationSourceItem.rotation.x,
+        y: rotationSourceItem.rotation.y,
+        z: rotationSourceItem.rotation.z,
+      })
+      // 如果有有效的坐标系，将全局旋转转换为相对旋转（使用四元数精确转换）
+      if (effectiveCoordRotation) {
+        // 直接使用视觉空间的旋转值，与 Gizmo 一致
+        rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
       }
     }
-    // 多选绝对模式显示 0（相对模式会单独处理）
+    // 多选无原点时绝对模式显示 0（相对模式会单独处理）
 
     // 缩放（不受工作坐标系影响）
     let scale = { x: 1, y: 1, z: 1 }
@@ -199,6 +219,7 @@ export function useTransformSelection() {
       scale,
       bounds,
       bboxBounds,
+      originItemId,
     }
   })
 

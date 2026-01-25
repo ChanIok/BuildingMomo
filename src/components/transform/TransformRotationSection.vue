@@ -26,7 +26,7 @@ const customPivotEnabled = defineModel<boolean>('customPivotEnabled', { default:
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { updateSelectedItemsTransform } = useEditorManipulation()
+const { updateSelectedItemsTransform, rotateSelectionAroundOrigin } = useEditorManipulation()
 
 // 旋转默认为相对模式 (true)
 const isRotationRelative = ref(false)
@@ -40,14 +40,9 @@ const customPivotWorkingZ = ref<number | null>(null)
 // Tabs 绑定的计算属性
 const rotationMode = computed({
   get: () => {
-    // 多选强制相对，单选遵循用户偏好
-    if (props.selectionInfo?.count && props.selectionInfo.count > 1) {
-      return 'relative'
-    }
     return isRotationRelative.value ? 'relative' : 'absolute'
   },
   set: (val) => {
-    // 只更新用户偏好
     isRotationRelative.value = val === 'relative'
   },
 })
@@ -129,12 +124,11 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     rotationState.value[axis] = 0
   } else {
     // 绝对模式
-    // 此时肯定是单选，因为多选强制为 relative
-    if (props.selectionInfo.count === 1) {
-      // 单选绝对模式：将有效坐标系下的输入值转换为全局旋转
+    const { count, originItemId, rotation: currentRotation } = props.selectionInfo
 
-      // 构建完整的有效坐标系旋转（用户输入 + 其他轴的当前值）
-      const effectiveRotation = { ...props.selectionInfo.rotation }
+    if (count === 1) {
+      // 单选：将有效坐标系下的输入值转换为全局旋转
+      const effectiveRotation = { ...currentRotation }
       effectiveRotation[axis] = value
 
       // 转换为全局旋转（使用四元数精确转换）
@@ -144,15 +138,31 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
       )
       let globalRotation = effectiveRotation
       if (coordRotation) {
-        // 直接使用视觉空间的旋转值，与 Gizmo 一致
         globalRotation = convertRotationWorkingToGlobal(effectiveRotation, coordRotation)
       }
 
-      // 传递完整的三轴旋转，而非仅单轴
       updateSelectedItemsTransform({
         mode: 'absolute',
         rotation: matrixTransform.visualRotationToData(globalRotation),
       })
+    } else if (originItemId) {
+      // 多选有原点：以原点物品为基准旋转
+      rotateSelectionAroundOrigin(originItemId, axis, value)
+    } else {
+      // 多选无原点：绝对模式等于相对模式
+      const delta = value
+      if (delta === 0) return
+
+      const rotationArgs: any = {}
+      rotationArgs[axis] = delta
+
+      updateSelectedItemsTransform({
+        mode: 'relative',
+        rotation: rotationArgs,
+      })
+
+      // 重置输入为0
+      rotationState.value[axis] = 0
     }
   }
 }
@@ -232,7 +242,6 @@ const rotationValue = computed(() => {
         <TabsList class="h-6 p-0.5">
           <TabsTrigger
             value="absolute"
-            :disabled="selectionInfo?.count > 1"
             class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             {{ t('transform.absolute') }}
