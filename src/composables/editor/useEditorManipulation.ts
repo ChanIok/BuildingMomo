@@ -9,7 +9,11 @@ import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
 import { matrixTransform } from '../../lib/matrixTransform'
-import { transformOBBByMatrix, getOBBFromMatrixAndModelBox } from '../../lib/collision'
+import {
+  transformOBBByMatrix,
+  getOBBFromMatrix,
+  getOBBFromMatrixAndModelBox,
+} from '../../lib/collision'
 import { getThreeModelManager } from '../useThreeModelManager'
 import {
   rotateItemsInWorkingCoordinate,
@@ -807,7 +811,8 @@ export function useEditorManipulation() {
           }
         } else {
           // Box 模式 或 Model Fallback：matrix 已包含完整尺寸
-          obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+          // 注意：Box 模式的 Z 轴原点在底部，需要传入局部中心偏移 (0, 0, 0.5)
+          obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3(0, 0, 0.5))
         }
 
         obbs.push(obb)
@@ -1051,10 +1056,10 @@ export function useEditorManipulation() {
       if (modelBox) {
         refObb = getOBBFromMatrixAndModelBox(refMatrix, modelBox)
       } else {
-        refObb = transformOBBByMatrix(refMatrix, new Vector3(1, 1, 1), new Vector3())
+        refObb = transformOBBByMatrix(refMatrix, new Vector3(1, 1, 1), new Vector3(0, 0, 0.5))
       }
     } else {
-      refObb = transformOBBByMatrix(refMatrix, new Vector3(1, 1, 1), new Vector3())
+      refObb = getOBBFromMatrix(refMatrix, new Vector3(1, 1, 1))
     }
 
     // 计算参照物在对齐轴上的投影
@@ -1116,10 +1121,10 @@ export function useEditorManipulation() {
           if (modelBox) {
             obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
           } else {
-            obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+            obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3(0, 0, 0.5))
           }
         } else {
-          obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+          obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3(0, 0, 0.5))
         }
 
         obbs.push(obb)
