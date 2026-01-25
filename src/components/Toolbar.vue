@@ -634,7 +634,7 @@ watch(
     </Menubar>
 
     <!-- 中间：标签栏（可滚动） -->
-    <ScrollArea v-if="tabStore.tabs.length > 0" ref="scrollAreaRef" class="min-w-0 flex-1">
+    <ScrollArea v-show="tabStore.tabs.length > 0" ref="scrollAreaRef" class="min-w-0 flex-1">
       <TransitionGroup ref="tabsContainer" tag="div" name="tab-list" class="flex w-max gap-1 pl-1">
         <div
           v-for="tab in tabStore.tabs"
