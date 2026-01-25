@@ -184,7 +184,51 @@ export function useThreeSelection(
     }
   }
 
+  /**
+   * 处理定点旋转物品选择模式下的点击
+   */
+  function handlePivotItemClick(evt: any) {
+    const camera = cameraRef.value
+    const container = containerRef.value
+    if (!camera || !container) return
+
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+
+    const { rect, x, y } = pos
+    pointerNdc.x = (x / rect.width) * 2 - 1
+    pointerNdc.y = -(y / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointerNdc, camera)
+
+    // 使用统一的拾取接口
+    const config = selectionSources.pickingConfig.value
+    const hit = config.performRaycast(raycaster)
+
+    if (hit) {
+      const clickedItemId = hit.internalId
+      // 从 itemsMap 获取物品位置
+      const item = editorStore.itemsMap.get(clickedItemId)
+
+      if (item) {
+        // 将物品位置传递给 uiStore（数据空间坐标）
+        uiStore.setSelectedPivotPosition({ x: item.x, y: item.y, z: item.z })
+
+        // 退出选择模式
+        uiStore.setSelectingPivotItem(false)
+      }
+    } else {
+      // 点击空白处,退出选择模式
+      uiStore.setSelectingPivotItem(false)
+    }
+  }
+
   function performClickSelection(evt: any) {
+    // 🎯 定点旋转物品选择模式拦截
+    if (uiStore.isSelectingPivotItem) {
+      handlePivotItemClick(evt)
+      return // 提前返回，不执行正常选择逻辑
+    }
+
     // 🎯 组合原点选择模式拦截
     if (uiStore.isSelectingGroupOrigin) {
       handleGroupOriginClick(evt)

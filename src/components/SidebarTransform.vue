@@ -32,7 +32,7 @@ const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const gameDataStore = useGameDataStore()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const {
   updateSelectedItemsTransform,
 
@@ -467,6 +467,47 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
 
 // 数字格式化辅助函数
 const fmt = (n: number) => Math.round(n * 100) / 100
+
+// ========== 定点旋转物品选择 ==========
+
+// 开始选择物品
+function startSelectingPivotItem() {
+  uiStore.setSelectingPivotItem(true)
+}
+
+// 监听选择结果，填入坐标（工作坐标系下的值）
+watch(
+  () => uiStore.selectedPivotPosition,
+  (pos) => {
+    if (pos && customPivotEnabled.value) {
+      // 获取有效的坐标系旋转（视觉空间）
+      const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
+        editorStore.activeScheme?.selectedItemIds.value || new Set(),
+        editorStore.itemsMap
+      )
+
+      // 数据空间 -> 世界空间：Y 轴翻转
+      const worldPos = { x: pos.x, y: -pos.y, z: pos.z }
+
+      // 如果有有效的坐标系，将世界空间坐标转换到工作坐标系
+      let workingPos = pos // 默认使用数据空间值
+      if (effectiveRotation) {
+        // 世界空间 -> 工作坐标系
+        const working = convertPositionGlobalToWorking(worldPos, effectiveRotation)
+        // 世界空间 -> 数据空间：Y 轴翻转回来
+        workingPos = { x: working.x, y: -working.y, z: working.z }
+      }
+
+      // 填入工作坐标系下的值
+      customPivotWorkingX.value = workingPos.x
+      customPivotWorkingY.value = workingPos.y
+      customPivotWorkingZ.value = workingPos.z
+
+      // 清空临时状态
+      uiStore.setSelectedPivotPosition(null)
+    }
+  }
+)
 </script>
 
 <template>
@@ -662,27 +703,36 @@ const fmt = (n: number) => Math.round(n * 100) / 100
           <TooltipProvider>
             <Tooltip :delay-duration="300">
               <TooltipTrigger as-child>
-                <div class="flex items-center gap-1">
-                  <label
-                    for="custom-pivot-toggle"
-                    class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
-                  >
-                    {{ t('transform.customPivot') }}
-                  </label>
-                  <span
-                    v-if="uiStore.workingCoordinateSystem.enabled"
-                    class="cursor-help text-[10px] text-primary"
-                  >
-                    {{ t('transform.workingCoord') }}
-                  </span>
-                </div>
+                <label
+                  for="custom-pivot-toggle"
+                  class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
+                >
+                  {{ t('transform.customPivot') }}
+                </label>
               </TooltipTrigger>
               <TooltipContent class="text-xs" variant="light">
                 {{ t('transform.customPivotHint') }}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <Switch id="custom-pivot-toggle" v-model="customPivotEnabled" />
+          <div class="flex items-center gap-1.5">
+            <!-- 选择按钮 -->
+            <button
+              v-if="customPivotEnabled && !uiStore.isSelectingPivotItem"
+              @click="startSelectingPivotItem"
+              class="h-[18.5px] rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              {{ t('transform.selectPivotItem') }}
+            </button>
+            <button
+              v-else-if="customPivotEnabled && uiStore.isSelectingPivotItem"
+              @click="uiStore.setSelectingPivotItem(false)"
+              class="h-[18.5px] rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              {{ t('transform.cancelPivotSelect') }}
+            </button>
+            <Switch id="custom-pivot-toggle" v-model="customPivotEnabled" />
+          </div>
         </div>
         <div v-if="customPivotEnabled" class="grid grid-cols-3 gap-2">
           <div

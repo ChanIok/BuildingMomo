@@ -529,6 +529,8 @@ export const enLocale = {
       'When disabled, mirroring only adjusts position without changing item orientation',
     customPivot: 'Custom Pivot',
     customPivotHint: 'When enabled, you can specify a custom coordinate as the rotation center',
+    selectPivotItem: 'Select',
+    cancelPivotSelect: 'Cancel',
     alignAndDistribute: 'Align & Distribute',
     alignMin: 'Align to Min',
     alignCenter: 'Align to Center',

@@ -61,6 +61,10 @@ export const useUIStore = defineStore('ui', () => {
   const isSelectingGroupOrigin = ref(false)
   const selectingForGroupId = ref<number | null>(null)
 
+  // 定点旋转物品选择模式（临时状态，不持久化）
+  const isSelectingPivotItem = ref(false)
+  const selectedPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
+
   // ========== 视图模式管理 ==========
 
   function toggleViewMode() {
@@ -213,6 +217,19 @@ export const useUIStore = defineStore('ui', () => {
     selectingForGroupId.value = selecting && groupId !== undefined ? groupId : null
   }
 
+  // ========== 定点旋转物品选择管理 ==========
+
+  function setSelectingPivotItem(selecting: boolean) {
+    isSelectingPivotItem.value = selecting
+    if (!selecting) {
+      // 退出选择模式时不清空结果，等待外部消费后再清空
+    }
+  }
+
+  function setSelectedPivotPosition(position: { x: number; y: number; z: number } | null) {
+    selectedPivotPosition.value = position
+  }
+
   // ========== 坐标系统一管理 ==========
 
   /**
@@ -273,6 +290,8 @@ export const useUIStore = defineStore('ui', () => {
     customPivotPosition,
     isSelectingGroupOrigin,
     selectingForGroupId,
+    isSelectingPivotItem,
+    selectedPivotPosition,
 
     // 视图模式
     toggleViewMode,
@@ -299,5 +318,9 @@ export const useUIStore = defineStore('ui', () => {
 
     // 组合原点选择
     setSelectingGroupOrigin,
+
+    // 定点旋转物品选择
+    setSelectingPivotItem,
+    setSelectedPivotPosition,
   }
 })

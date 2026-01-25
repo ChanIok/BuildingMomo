@@ -523,6 +523,8 @@ export const zhLocale = {
     mirrorWithRotationHint: '关闭后，镜像操作仅调整位置，不改变物品朝向',
     customPivot: '定点旋转',
     customPivotHint: '启用后，可以指定一个自定义坐标作为旋转中心',
+    selectPivotItem: '选择',
+    cancelPivotSelect: '取消',
     alignAndDistribute: '对齐与分布',
     alignMin: '对齐到最小值',
     alignCenter: '对齐到中心',
