@@ -1,5 +1,5 @@
 import { computed } from 'vue'
-import { Euler, Matrix4, Vector3 } from 'three'
+import { Vector3 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -11,6 +11,8 @@ import {
   convertRotationGlobalToWorking,
 } from '../../lib/coordinateTransform'
 import { matrixTransform } from '../../lib/matrixTransform'
+import { getOBBFromMatrix, getOBBFromMatrixAndModelBox, type OBB } from '../../lib/collision'
+import { getThreeModelManager } from '../useThreeModelManager'
 
 /**
  * 选区信息接口
@@ -160,67 +162,51 @@ export function useTransformSelection() {
     }
 
     // 包围盒范围（考虑尺寸、旋转、缩放）
+    // 使用 collision.ts 的 OBB 工具，与 Gizmo 吸附功能保持一致
     let bboxBounds = null
     if (selected.length > 1) {
-      // 计算每个物品的 8 个包围盒角点
+      const modelManager = getThreeModelManager()
       const allCorners: { x: number; y: number; z: number }[] = []
 
       for (const item of selected) {
-        const furniture = gameDataStore.getFurniture(item.gameId)
-        const furnitureSize = furniture?.size ?? [100, 100, 150]
-        const [sizeX, sizeY, sizeZ] = furnitureSize
+        // 判断是否使用模型包围盒（只有 box 和 model 模式才有准确的体积信息）
+        const currentMode = settingsStore.settings.threeDisplayMode
+        const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+        const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+        const useModelScale = !!(currentMode === 'model' && hasValidModel)
 
-        // 获取缩放
-        const scaleX = item.extra?.Scale?.X ?? 1
-        const scaleY = item.extra?.Scale?.Y ?? 1
-        const scaleZ = item.extra?.Scale?.Z ?? 1
+        // 复用 matrixTransform 构建世界矩阵（封装了坐标系交换逻辑）
+        const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
 
-        // 计算实际尺寸（数据空间）
-        // 注意：游戏坐标系中 X/Y 与渲染空间交换
-        const halfX = (sizeY * scaleX) / 2 // 数据空间 X 使用 sizeY * scaleX
-        const halfY = (sizeX * scaleY) / 2 // 数据空间 Y 使用 sizeX * scaleY
-        const halfZ = (sizeZ * scaleZ) / 2
+        // 生成 OBB（封装了 8 角点计算）
+        let obb: OBB
+        if (useModelScale) {
+          const modelBox = modelManager.getModelBoundingBox(item.gameId)
+          if (modelBox) {
+            obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+          } else {
+            // Model 模式但模型未加载，fallback 到 box 模式
+            obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
+          }
+        } else {
+          // Box 模式或其他模式：使用单位立方体
+          obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
+        }
 
-        // 8 个角点（物品局部空间，中心为原点）
-        const localCorners = [
-          { x: -halfX, y: -halfY, z: -halfZ },
-          { x: +halfX, y: -halfY, z: -halfZ },
-          { x: -halfX, y: +halfY, z: -halfZ },
-          { x: +halfX, y: +halfY, z: -halfZ },
-          { x: -halfX, y: -halfY, z: +halfZ },
-          { x: +halfX, y: -halfY, z: +halfZ },
-          { x: -halfX, y: +halfY, z: +halfZ },
-          { x: +halfX, y: +halfY, z: +halfZ },
-        ]
+        // 获取 OBB 的 8 个角点
+        const corners = obb.getCorners()
 
-        // 旋转矩阵（数据空间）
-        const visualRot = matrixTransform.dataRotationToVisual(item.rotation)
-        const euler = new Euler(
-          (visualRot.x * Math.PI) / 180,
-          (visualRot.y * Math.PI) / 180,
-          -(visualRot.z * Math.PI) / 180,
-          'ZYX'
-        )
-        const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
-
-        // 变换到世界空间并加上物品位置
-        for (const corner of localCorners) {
-          const vec = new Vector3(corner.x, corner.y, corner.z)
-          vec.applyMatrix4(rotationMatrix)
-          vec.x += item.x
-          vec.y += item.y
-          vec.z += item.z
-
-          // 如果有工作坐标系，转换到工作坐标系
+        // 转换到工作坐标系（如果启用）
+        for (const corner of corners) {
           if (effectiveCoordRotation) {
-            // 数据空间 -> 世界空间：Y 轴翻转
-            const worldPos = { x: vec.x, y: -vec.y, z: vec.z }
-            // 世界空间 -> 工作坐标系
+            // OBB 角点已经在世界空间，直接转换到工作坐标系
+            const worldPos = { x: corner.x, y: corner.y, z: corner.z }
             const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
-            // 世界空间 -> 数据空间语义：Y 轴翻转回来
+            // 世界空间 -> 数据空间语义：Y 轴翻转
             allCorners.push({ x: workingPos.x, y: -workingPos.y, z: workingPos.z })
           } else {
-            allCorners.push({ x: vec.x, y: vec.y, z: vec.z })
+            // 世界空间 -> 数据空间：Y 轴翻转
+            allCorners.push({ x: corner.x, y: -corner.y, z: corner.z })
           }
         }
       }
