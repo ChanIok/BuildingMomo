@@ -7,7 +7,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -61,10 +60,25 @@ watch(
   }
 )
 
+// 实时同步局部坐标系开关到 uiStore
+watch(useLocalSpace, (value) => {
+  uiStore.gizmoSpace = value ? 'local' : 'world'
+})
+
 // 检查是否有单个选中物体
 const hasSelectedSingleItem = computed(() => {
   return editorStore.activeScheme?.selectedItemIds.value.size === 1
 })
+
+// 保存旋转到 uiStore
+function saveRotation() {
+  const allZero = rotationX.value === 0 && rotationY.value === 0 && rotationZ.value === 0
+  uiStore.setWorkingCoordinateSystem(!allZero, {
+    x: rotationX.value,
+    y: rotationY.value,
+    z: rotationZ.value,
+  })
+}
 
 // 从选中物体设置
 function setFromSelection() {
@@ -83,6 +97,8 @@ function setFromSelection() {
     rotationX.value = visualRot.x
     rotationY.value = visualRot.y
     rotationZ.value = visualRot.z
+    // 自动保存
+    saveRotation()
   }
 }
 
@@ -91,6 +107,8 @@ function resetRotation() {
   rotationX.value = 0
   rotationY.value = 0
   rotationZ.value = 0
+  // 自动保存
+  saveRotation()
 }
 
 // Input 输入处理
@@ -106,28 +124,9 @@ function handleRotationInput(axis: 'x' | 'y' | 'z', event: Event) {
   if (axis === 'x') rotationX.value = value
   else if (axis === 'y') rotationY.value = value
   else rotationZ.value = value
-}
 
-// 确认按钮处理
-function handleConfirm() {
-  // 保存 gizmoSpace
-  uiStore.gizmoSpace = useLocalSpace.value ? 'local' : 'world'
-
-  // 保存工作坐标系（全零时自动禁用）
-  const allZero = rotationX.value === 0 && rotationY.value === 0 && rotationZ.value === 0
-
-  uiStore.setWorkingCoordinateSystem(!allZero, {
-    x: rotationX.value,
-    y: rotationY.value,
-    z: rotationZ.value,
-  })
-
-  emit('update:open', false)
-}
-
-// 取消按钮处理
-function handleCancel() {
-  emit('update:open', false)
+  // 自动保存
+  saveRotation()
 }
 </script>
 
@@ -189,9 +188,10 @@ function handleCancel() {
             <Slider
               :model-value="[rotationX]"
               @update:model-value="(v) => (rotationX = v?.[0] ?? 0)"
+              @value-commit="saveRotation"
               :min="-180"
               :max="180"
-              :step="5"
+              :step="15"
               class="w-full"
             />
           </div>
@@ -213,9 +213,10 @@ function handleCancel() {
             <Slider
               :model-value="[rotationY]"
               @update:model-value="(v) => (rotationY = v?.[0] ?? 0)"
+              @value-commit="saveRotation"
               :min="-180"
               :max="180"
-              :step="5"
+              :step="15"
               class="w-full"
             />
           </div>
@@ -237,9 +238,10 @@ function handleCancel() {
             <Slider
               :model-value="[rotationZ]"
               @update:model-value="(v) => (rotationZ = v?.[0] ?? 0)"
+              @value-commit="saveRotation"
               :min="-180"
               :max="180"
-              :step="5"
+              :step="15"
               class="w-full"
             />
           </div>
@@ -257,11 +259,6 @@ function handleCancel() {
           <Kbd>Z</Kbd>
         </Button>
       </div>
-
-      <DialogFooter>
-        <Button variant="outline" @click="handleCancel">{{ t('common.cancel') }}</Button>
-        <Button @click="handleConfirm">{{ t('common.confirm') }}</Button>
-      </DialogFooter>
     </DialogContent>
   </Dialog>
 </template>
