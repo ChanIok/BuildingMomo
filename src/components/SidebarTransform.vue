@@ -974,73 +974,7 @@ watch(
           </div>
         </div>
       </div>
-      <!-- 镜像 -->
-      <div v-if="isScaleAllowed" class="flex flex-col items-stretch gap-2">
-        <div class="flex flex-wrap items-center justify-between gap-y-2">
-          <div class="flex items-center gap-1">
-            <label class="text-xs font-semibold text-sidebar-foreground">{{
-              t('transform.mirror')
-            }}</label>
-            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
-              <Tooltip :delay-duration="300">
-                <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] text-primary">{{
-                    t('transform.workingCoord')
-                  }}</span>
-                </TooltipTrigger>
-                <TooltipContent class="text-xs" variant="light">
-                  <div
-                    v-html="
-                      t('transform.workingCoordTip', {
-                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
-                      })
-                    "
-                  ></div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </div>
-        <!-- 镜像旋转开关 -->
-        <div class="flex items-center justify-between gap-2">
-          <TooltipProvider>
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <label
-                  for="mirror-rotation-toggle"
-                  class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
-                >
-                  {{ t('transform.mirrorWithRotation') }}
-                </label>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                {{ t('transform.mirrorWithRotationHint') }}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <Switch id="mirror-rotation-toggle" v-model="settingsStore.settings.mirrorWithRotation" />
-        </div>
-        <div class="grid grid-cols-3 gap-2">
-          <button
-            @click="mirrorSelectedItems('x')"
-            class="flex items-center justify-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <span class="text-[10px] font-bold text-red-500 dark:text-red-500/90">X</span>
-          </button>
-          <button
-            @click="mirrorSelectedItems('y')"
-            class="flex items-center justify-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <span class="text-[10px] font-bold text-green-500 dark:text-green-500/90">Y</span>
-          </button>
-          <button
-            @click="mirrorSelectedItems('z')"
-            class="flex items-center justify-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <span class="text-[10px] font-bold text-blue-500 dark:text-blue-500/90">Z</span>
-          </button>
-        </div>
-      </div>
+
       <!-- 对齐与分布 -->
       <div v-if="selectionInfo" class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">
@@ -1428,6 +1362,73 @@ watch(
               </TooltipProvider>
             </div>
           </div>
+        </div>
+      </div>
+      <!-- 镜像 -->
+      <div v-if="isScaleAllowed" class="flex flex-col items-stretch gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-y-2">
+          <div class="flex items-center gap-1">
+            <label class="text-xs font-semibold text-sidebar-foreground">{{
+              t('transform.mirror')
+            }}</label>
+            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] text-primary">{{
+                    t('transform.workingCoord')
+                  }}</span>
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  <div
+                    v-html="
+                      t('transform.workingCoordTip', {
+                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                      })
+                    "
+                  ></div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+        <!-- 镜像旋转开关 -->
+        <div class="flex items-center justify-between gap-2">
+          <TooltipProvider>
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <label
+                  for="mirror-rotation-toggle"
+                  class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
+                >
+                  {{ t('transform.mirrorWithRotation') }}
+                </label>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                {{ t('transform.mirrorWithRotationHint') }}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <Switch id="mirror-rotation-toggle" v-model="settingsStore.settings.mirrorWithRotation" />
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <button
+            @click="mirrorSelectedItems('x')"
+            class="flex items-center justify-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <span class="text-[10px] font-bold text-red-500 dark:text-red-500/90">X</span>
+          </button>
+          <button
+            @click="mirrorSelectedItems('y')"
+            class="flex items-center justify-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <span class="text-[10px] font-bold text-green-500 dark:text-green-500/90">Y</span>
+          </button>
+          <button
+            @click="mirrorSelectedItems('z')"
+            class="flex items-center justify-center gap-1.5 rounded-md bg-sidebar-accent px-3 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          >
+            <span class="text-[10px] font-bold text-blue-500 dark:text-blue-500/90">Z</span>
+          </button>
         </div>
       </div>
     </div>
