@@ -12,16 +12,17 @@ export interface Position3D {
 }
 
 /**
- * 3D 坐标系转换工具
- * 处理游戏坐标与 Three.js 世界坐标之间的转换
+ * @deprecated 此模块已废弃。
  *
- * 坐标系映射：
- * 游戏坐标 (x, y, z) = Three.js 世界坐标 (x, y, z)
- * - 现已将 Three.js 全局设置为 Z-up 坐标系，与游戏坐标完全一致
- * - 无需再进行轴交换
+ * 由于 Three.js 已设置为 Z-up 坐标系，与游戏坐标完全一致，
+ * 此模块中的所有函数均为恒等变换，无实际作用。
  *
- * 注意：由于坐标系已统一，大部分转换都是恒等变换
- * 保留这些方法主要是为了代码可读性和未来可能的坐标系调整
+ * 请使用 `matrixTransform.ts` 中的函数代替：
+ * - 数据空间 <-> 世界空间：`dataPositionToWorld` / `worldPositionToData`
+ * - 旋转转换：`dataRotationToVisual` / `visualRotationToData`
+ *
+ * 或者使用 `uiStore` 中的便捷 API：
+ * - `dataToWorking` / `workingToData` / `workingDeltaToData`
  */
 export const coordinates3D = {
   /**

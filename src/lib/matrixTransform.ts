@@ -192,4 +192,46 @@ export const matrixTransform = {
   } {
     return this.visualRotationToData(visualRotation)
   },
+
+  /**
+   * 位置空间转换：数据空间 -> 世界空间
+   *
+   * 数据空间：游戏存档坐标，Y 向下为正
+   * 世界空间：Three.js 渲染坐标，Y 向上为正（通过 Scale(1, -1, 1) 实现）
+   *
+   * @param dataPosition 数据空间的位置
+   * @returns 世界空间的位置
+   */
+  dataPositionToWorld(dataPosition: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    return {
+      x: dataPosition.x,
+      y: -dataPosition.y, // Y 轴翻转
+      z: dataPosition.z,
+    }
+  },
+
+  /**
+   * 位置空间转换：世界空间 -> 数据空间
+   *
+   * 世界空间：Three.js 渲染坐标，Y 向上为正
+   * 数据空间：游戏存档坐标，Y 向下为正
+   *
+   * @param worldPosition 世界空间的位置
+   * @returns 数据空间的位置
+   */
+  worldPositionToData(worldPosition: { x: number; y: number; z: number }): {
+    x: number
+    y: number
+    z: number
+  } {
+    return {
+      x: worldPosition.x,
+      y: -worldPosition.y, // Y 轴翻转（自逆变换）
+      z: worldPosition.z,
+    }
+  },
 }

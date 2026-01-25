@@ -5,10 +5,15 @@ import type { ViewPreset } from '../composables/useThreeCamera'
 import {
   convertPositionWorkingToGlobal,
   convertPositionGlobalToWorking,
-  convertRotationWorkingToGlobal,
-  convertRotationGlobalToWorking,
 } from '../lib/coordinateTransform'
 import { matrixTransform } from '../lib/matrixTransform'
+
+// 位置类型定义
+interface Position {
+  x: number
+  y: number
+  z: number
+}
 import { useSettingsStore } from './settingsStore'
 
 /**
@@ -117,82 +122,104 @@ export const useUIStore = defineStore('ui', () => {
     })
   }
 
-  // 工作坐标系坐标转换：工作坐标系 -> 全局坐标系
-  function workingToGlobal(point: { x: number; y: number; z: number }): {
-    x: number
-    y: number
-    z: number
-  } {
-    if (!workingCoordinateSystem.value.enabled) {
-      return point
-    }
-
-    return convertPositionWorkingToGlobal(point, workingCoordinateSystem.value.rotation)
-  }
-
-  // 工作坐标系坐标转换：全局坐标系 -> 工作坐标系
-  function globalToWorking(point: { x: number; y: number; z: number }): {
-    x: number
-    y: number
-    z: number
-  } {
-    if (!workingCoordinateSystem.value.enabled) {
-      return point
-    }
-
-    return convertPositionGlobalToWorking(point, workingCoordinateSystem.value.rotation)
-  }
-
-  // ========== 旋转转换（四元数版本，精确处理三轴旋转） ==========
-
   /**
-   * 工作坐标系旋转转换：工作坐标系 -> 全局坐标系
+   * 位置转换：工作坐标系 -> 世界空间
    *
-   * 使用四元数确保旋转组合的正确性，避免欧拉角的万向锁问题
-   *
-   * @param workingRotation 工作坐标系中的相对旋转（度）
-   * @returns 全局坐标系中的绝对旋转（度）
+   * @param workingPoint 工作坐标系下的点（世界空间语义，Y 向上为正）
+   * @returns 世界空间下的点
    */
-  function rotationWorkingToGlobal(workingRotation: { x: number; y: number; z: number }): {
+  function workingToWorld(workingPoint: { x: number; y: number; z: number }): {
     x: number
     y: number
     z: number
   } {
     if (!workingCoordinateSystem.value.enabled) {
-      return workingRotation
+      return workingPoint
     }
 
-    // 将工作坐标系旋转从视觉空间转换回数据空间
-    // workingCoordinateSystem.rotation 存储的是视觉空间的值（经过 dataRotationToVisual 转换）
-    const workingDataRotation = matrixTransform.visualRotationToUI(
-      workingCoordinateSystem.value.rotation
-    )
-    return convertRotationWorkingToGlobal(workingRotation, workingDataRotation)
+    return convertPositionWorkingToGlobal(workingPoint, workingCoordinateSystem.value.rotation)
   }
 
   /**
-   * 工作坐标系旋转转换：全局坐标系 -> 工作坐标系
+   * 位置转换：世界空间 -> 工作坐标系
    *
-   * 使用四元数确保旋转分解的正确性，避免欧拉角的万向锁问题
-   *
-   * @param globalRotation 全局坐标系中的绝对旋转（度）
-   * @returns 工作坐标系中的相对旋转（度）
+   * @param worldPoint 世界空间下的点
+   * @returns 工作坐标系下的点（世界空间语义，Y 向上为正）
    */
-  function rotationGlobalToWorking(globalRotation: { x: number; y: number; z: number }): {
-    x: number
-    y: number
-    z: number
-  } {
+  function worldToWorking(worldPoint: Position): Position {
     if (!workingCoordinateSystem.value.enabled) {
-      return globalRotation
+      return worldPoint
     }
 
-    // 将工作坐标系旋转从视觉空间转换回数据空间
-    // workingCoordinateSystem.rotation 存储的是视觉空间的值（经过 dataRotationToVisual 转换）
-    const workingDataRotation = matrixTransform.visualRotationToUI(
+    return convertPositionGlobalToWorking(worldPoint, workingCoordinateSystem.value.rotation)
+  }
+
+  // ========== 数据空间 <-> 工作坐标系 便捷 API ==========
+
+  /**
+   * 位置转换：数据空间 -> 工作坐标系（用于 UI 显示）
+   *
+   * 组合了：数据空间 -> 世界空间（Y 翻转）-> 工作坐标系
+   *
+   * @param dataPos 数据空间下的点（游戏存档坐标）
+   * @returns 工作坐标系下的点（用于 UI 显示）
+   */
+  function dataToWorking(dataPos: Position): Position {
+    if (!workingCoordinateSystem.value.enabled) {
+      return dataPos
+    }
+    const worldPos = matrixTransform.dataPositionToWorld(dataPos)
+    const workingPos = convertPositionGlobalToWorking(
+      worldPos,
       workingCoordinateSystem.value.rotation
     )
-    return convertRotationGlobalToWorking(globalRotation, workingDataRotation)
+    // 工作坐标系输出是世界空间语义，转回数据空间语义用于 UI 显示
+    return matrixTransform.worldPositionToData(workingPos)
+  }
+
+  /**
+   * 位置转换：工作坐标系 -> 数据空间（用于 UI 输入写回）
+   *
+   * 组合了：工作坐标系 -> 世界空间 -> 数据空间（Y 翻转）
+   *
+   * @param workingPos 工作坐标系下的点（来自 UI 输入）
+   * @returns 数据空间下的点（用于存储）
+   */
+  function workingToData(workingPos: Position): Position {
+    if (!workingCoordinateSystem.value.enabled) {
+      return workingPos
+    }
+    // UI 输入是数据空间语义，先转为世界空间语义
+    const worldSemanticInput = matrixTransform.dataPositionToWorld(workingPos)
+    const worldPos = convertPositionWorkingToGlobal(
+      worldSemanticInput,
+      workingCoordinateSystem.value.rotation
+    )
+    return matrixTransform.worldPositionToData(worldPos)
+  }
+
+  /**
+   * 位置增量转换：工作坐标系增量 -> 数据空间增量
+   *
+   * 用于将 UI 输入的相对位移转换为数据空间的位移
+   * 注意：增量转换不需要考虑原点，只需要旋转
+   *
+   * @param workingDelta 工作坐标系下的位移增量
+   * @returns 数据空间下的位移增量
+   */
+  function workingDeltaToData(workingDelta: Position): Position {
+    if (!workingCoordinateSystem.value.enabled) {
+      return workingDelta
+    }
+    // 增量转换：先将 UI 输入（数据空间语义）转为世界空间语义
+    const worldSemanticDelta = matrixTransform.dataPositionToWorld(workingDelta)
+    // 应用工作坐标系旋转
+    const worldDelta = convertPositionWorkingToGlobal(
+      worldSemanticDelta,
+      workingCoordinateSystem.value.rotation
+    )
+    // 转回数据空间
+    return matrixTransform.worldPositionToData(worldDelta)
   }
 
   // ========== 侧边栏管理 ==========
@@ -331,11 +358,14 @@ export const useUIStore = defineStore('ui', () => {
 
     // 工作坐标系
     setWorkingCoordinateSystem,
-    workingToGlobal,
-    globalToWorking,
-    rotationWorkingToGlobal,
-    rotationGlobalToWorking,
+    workingToWorld,
+    worldToWorking,
     getEffectiveCoordinateRotation,
+
+    // 数据空间 <-> 工作坐标系（推荐用于 UI）
+    dataToWorking,
+    workingToData,
+    workingDeltaToData,
 
     // 定点旋转
     setCustomPivotEnabled,

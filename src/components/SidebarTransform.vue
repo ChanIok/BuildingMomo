@@ -5,7 +5,6 @@ import { useEditorManipulation } from '../composables/editor/useEditorManipulati
 import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useI18n } from '../composables/useI18n'
-import { convertPositionWorkingToGlobal } from '../lib/coordinateTransform'
 import { useTransformSelection, fmt } from '../composables/transform/useTransformSelection'
 import TransformAxisInputs from './transform/TransformAxisInputs.vue'
 import TransformRotationSection from './transform/TransformRotationSection.vue'
@@ -99,59 +98,33 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     const delta = value
     if (delta === 0) return
 
-    let posArgs: any = { x: 0, y: 0, z: 0 }
-    posArgs[axis] = delta
+    // 构造工作坐标系下的增量向量
+    const workingDelta = { x: 0, y: 0, z: 0 }
+    workingDelta[axis] = delta
 
-    // 获取有效的坐标系旋转（视觉空间）
-    const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
-      editorStore.activeScheme.selectedItemIds.value,
-      editorStore.itemsMap
-    )
-
-    // 如果有有效的坐标系，将增量向量转换到全局坐标系
-    if (effectiveRotation) {
-      // 用户输入的 Y 值需要取反，因为 Gizmo 的 Y 轴视觉上被翻转了
-      // 用户看到的"向上"实际对应世界空间的 -Y
-      const visualPosArgs = { x: posArgs.x, y: -posArgs.y, z: posArgs.z }
-      // 工作坐标系 -> 世界空间
-      const worldDelta = convertPositionWorkingToGlobal(visualPosArgs, effectiveRotation)
-      // 世界空间 -> 数据空间：Y 轴翻转
-      posArgs = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
-    }
+    // 使用 uiStore 统一转换：工作坐标系增量 -> 数据空间增量
+    const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
     updateSelectedItemsTransform({
       mode: 'relative',
-      position: posArgs,
+      position: dataDelta,
     })
 
     // 重置输入为0
     positionState.value[axis] = 0
   } else {
     // 绝对模式
-    // 用户输入的是有效坐标系下的目标值
-    // 我们需要结合其他两个轴的当前值（有效坐标系下），构造完整的坐标点，然后转回全局
+    // 用户输入的是工作坐标系下的目标值
+    // 结合其他两个轴的当前值，构造完整的坐标点，然后转回数据空间
+    const currentWorking = selectionInfo.value.center
+    const newWorkingPos = { ...currentWorking, [axis]: value }
 
-    const currentEffective = selectionInfo.value.center // 这是已经在 computed 中转换过的
-    const newEffectivePos = { ...currentEffective, [axis]: value }
-
-    // 转换回全局
-    const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
-      editorStore.activeScheme.selectedItemIds.value,
-      editorStore.itemsMap
-    )
-    let newGlobalPos = newEffectivePos
-    if (effectiveRotation) {
-      // 先将数据空间语义转换为世界空间语义（与相对模式一致）
-      const visualNewPos = { x: newEffectivePos.x, y: -newEffectivePos.y, z: newEffectivePos.z }
-      // 工作坐标系 -> 世界空间
-      const worldPos = convertPositionWorkingToGlobal(visualNewPos, effectiveRotation)
-      // 世界空间 -> 数据空间：Y 轴翻转
-      newGlobalPos = { x: worldPos.x, y: -worldPos.y, z: worldPos.z }
-    }
+    // 使用 uiStore 统一转换：工作坐标系 -> 数据空间
+    const newDataPos = uiStore.workingToData(newWorkingPos)
 
     updateSelectedItemsTransform({
       mode: 'absolute',
-      position: newGlobalPos,
+      position: newDataPos,
     })
   }
 }
@@ -201,29 +174,16 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
 
   if (delta === 0) return
 
-  // 构造位移向量
-  let posArgs: any = { x: 0, y: 0, z: 0 }
-  posArgs[axis] = delta
+  // 构造工作坐标系下的位移向量
+  const workingDelta = { x: 0, y: 0, z: 0 }
+  workingDelta[axis] = delta
 
-  // 获取有效的坐标系旋转（视觉空间）
-  const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
-    editorStore.activeScheme.selectedItemIds.value,
-    editorStore.itemsMap
-  )
-
-  // 如果有有效的坐标系，将位移向量转换到全局坐标系
-  if (effectiveRotation) {
-    // 用户输入的 Y 值需要取反，因为 Gizmo 的 Y 轴视觉上被翻转了
-    const visualPosArgs = { x: posArgs.x, y: -posArgs.y, z: posArgs.z }
-    // 工作坐标系 -> 世界空间
-    const worldDelta = convertPositionWorkingToGlobal(visualPosArgs, effectiveRotation)
-    // 世界空间 -> 数据空间：Y 轴翻转
-    posArgs = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
-  }
+  // 使用 uiStore 统一转换：工作坐标系增量 -> 数据空间增量
+  const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
   updateSelectedItemsTransform({
     mode: 'relative',
-    position: posArgs,
+    position: dataDelta,
   })
 }
 </script>

@@ -6,10 +6,7 @@ import { useSettingsStore } from '../../stores/settingsStore'
 import { useGameDataStore } from '../../stores/gameDataStore'
 import { useEditorManipulation } from '../editor/useEditorManipulation'
 import { useI18n } from '../useI18n'
-import {
-  convertPositionGlobalToWorking,
-  convertRotationGlobalToWorking,
-} from '../../lib/coordinateTransform'
+import { convertRotationGlobalToWorking } from '../../lib/coordinateTransform'
 import { matrixTransform } from '../../lib/matrixTransform'
 import { getOBBFromMatrix, getOBBFromMatrixAndModelBox, type OBB } from '../../lib/collision'
 import { getThreeModelManager } from '../useThreeModelManager'
@@ -68,31 +65,17 @@ export function useTransformSelection() {
     const selected = scheme.items.value.filter((item) => ids.has(item.internalId))
 
     // 位置中心点（用于绝对模式显示）
-    let center = { x: 0, y: 0, z: 0 }
-
     // 使用 getRotationCenter 获取有效中心（包含定点旋转、组合原点优先级的处理）
-    center = getRotationCenter() || { x: 0, y: 0, z: 0 }
+    const dataCenter = getRotationCenter() || { x: 0, y: 0, z: 0 }
+
+    // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系（用于 UI 显示）
+    const center = uiStore.dataToWorking(dataCenter)
 
     // 使用 uiStore 的统一方法获取有效的坐标系旋转（视觉空间）
     const effectiveCoordRotation = uiStore.getEffectiveCoordinateRotation(
       scheme.selectedItemIds.value,
       editorStore.itemsMap
     )
-
-    // 关键：由于 Gizmo 的 Y 轴箭头几何体被翻转了（setupGizmoAppearance），
-    // 视觉上向上的箭头实际对应数据空间的 +Y（向下）
-    // 所以侧边栏应该直接显示数据空间的值，与 Gizmo 视觉方向一致
-    // 数据空间 -> 世界空间：Y 轴翻转
-    const worldCenter = { x: center.x, y: -center.y, z: center.z }
-
-    // 如果有有效的坐标系，将世界空间坐标转换到工作坐标系
-    if (effectiveCoordRotation) {
-      // 工作坐标系输出的是世界空间语义的坐标
-      const workingCenter = convertPositionGlobalToWorking(worldCenter, effectiveCoordRotation)
-      // 世界空间 -> 数据空间：Y 轴翻转回来，与 Gizmo 视觉一致
-      center = { x: workingCenter.x, y: -workingCenter.y, z: workingCenter.z }
-    }
-    // 没有工作坐标系时，直接使用数据空间的值（center 本身就是）
 
     // 旋转角度（用于绝对模式显示）
     let rotation = { x: 0, y: 0, z: 0 }
@@ -136,20 +119,10 @@ export function useTransformSelection() {
     // 边界（最小/最大值）- 轴点范围
     let bounds = null
     if (selected.length > 1) {
-      const points = selected.map((i) => ({ x: i.x, y: i.y, z: i.z }))
-
-      // 修复 BUG: 正确处理坐标空间转换
-      // 数据空间 -> 世界空间 -> 工作坐标系 -> 数据空间语义
-      const transformedPoints = effectiveCoordRotation
-        ? points.map((p) => {
-            // 数据空间 -> 世界空间：Y 轴翻转
-            const worldPos = { x: p.x, y: -p.y, z: p.z }
-            // 世界空间 -> 工作坐标系
-            const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
-            // 世界空间 -> 数据空间语义：Y 轴翻转回来
-            return { x: workingPos.x, y: -workingPos.y, z: workingPos.z }
-          })
-        : points
+      // 使用 uiStore 统一 API 转换每个点：数据空间 -> 工作坐标系
+      const transformedPoints = selected.map((i) =>
+        uiStore.dataToWorking({ x: i.x, y: i.y, z: i.z })
+      )
 
       const xs = transformedPoints.map((p) => p.x)
       const ys = transformedPoints.map((p) => p.y)
@@ -197,17 +170,12 @@ export function useTransformSelection() {
         const corners = obb.getCorners()
 
         // 转换到工作坐标系（如果启用）
+        // OBB 角点已经在世界空间，需要转换到数据空间语义后再转换到工作坐标系
         for (const corner of corners) {
-          if (effectiveCoordRotation) {
-            // OBB 角点已经在世界空间，直接转换到工作坐标系
-            const worldPos = { x: corner.x, y: corner.y, z: corner.z }
-            const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
-            // 世界空间 -> 数据空间语义：Y 轴翻转
-            allCorners.push({ x: workingPos.x, y: -workingPos.y, z: workingPos.z })
-          } else {
-            // 世界空间 -> 数据空间：Y 轴翻转
-            allCorners.push({ x: corner.x, y: -corner.y, z: corner.z })
-          }
+          // 世界空间 -> 数据空间
+          const dataPos = matrixTransform.worldPositionToData(corner)
+          // 数据空间 -> 工作坐标系
+          allCorners.push(uiStore.dataToWorking(dataPos))
         }
       }
 

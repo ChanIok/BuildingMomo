@@ -1,6 +1,7 @@
 import { Matrix4, Vector3, Euler } from 'three'
 import type { AppItem } from '@/types/editor'
 import { matrixTransform } from './matrixTransform'
+import type { Position } from './coordinateTransform'
 
 /**
  * 在工作坐标系下旋转物品
@@ -67,8 +68,9 @@ export function rotateItemsInWorkingCoordinate(
     .multiplyMatrices(gizmoRotationMatrix, localRotationMatrix)
     .multiply(gizmoRotationInverse)
 
-  // 4. 计算旋转中心的世界坐标（应用 Scale(1, -1, 1) 变换）
-  const centerWorld = new Vector3(center.x, -center.y, center.z)
+  // 4. 计算旋转中心的世界坐标
+  const centerData = matrixTransform.dataPositionToWorld(center as Position)
+  const centerWorld = new Vector3(centerData.x, centerData.y, centerData.z)
 
   // 5. 对每个物品应用旋转变换
   return items.map((item) => {

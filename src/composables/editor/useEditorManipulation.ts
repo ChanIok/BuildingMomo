@@ -16,8 +16,6 @@ import {
   extractSingleAxisRotation,
 } from '../../lib/rotationTransform'
 import {
-  convertPositionGlobalToWorking,
-  convertPositionWorkingToGlobal,
   convertRotationGlobalToWorking,
   convertRotationWorkingToGlobal,
 } from '../../lib/coordinateTransform'
@@ -420,11 +418,10 @@ export function useEditorManipulation() {
     // 直接使用视觉空间的旋转值
     // convertPosition* 和 convertRotation* 函数内部已经对 Z 轴做了正确的取反处理（与 Gizmo 一致）
 
-    // 关键：数据空间 -> 世界空间（Y 轴翻转）
-    const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
-
-    // 转换到工作坐标系
-    const workingCenter = convertPositionGlobalToWorking(worldCenter, effectiveWorkingRotation)
+    // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
+    // 注意：镜像需要世界空间语义的 workingCenter，所以这里手动处理
+    const worldCenter = matrixTransform.dataPositionToWorld(globalCenter)
+    const workingCenter = uiStore.worldToWorking(worldCenter)
 
     // 更新每个选中物品
     activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
@@ -433,20 +430,16 @@ export function useEditorManipulation() {
       }
 
       // === 1. 位置镜像 ===
-      // 数据空间 -> 世界空间（Y 轴翻转）
-      const worldPos = { x: item.x, y: -item.y, z: item.z }
-
-      // 转换到工作坐标系
-      const workingPos = convertPositionGlobalToWorking(worldPos, effectiveWorkingRotation)
+      // 数据空间 -> 世界空间 -> 工作坐标系
+      const worldPos = matrixTransform.dataPositionToWorld({ x: item.x, y: item.y, z: item.z })
+      const workingPos = uiStore.worldToWorking(worldPos)
 
       // 沿指定轴镜像
       workingPos[axis] = 2 * workingCenter[axis] - workingPos[axis]
 
-      // 转换回世界空间
-      const newWorldPos = convertPositionWorkingToGlobal(workingPos, effectiveWorkingRotation)
-
-      // 世界空间 -> 数据空间（Y 轴翻转回来）
-      const newPos = { x: newWorldPos.x, y: -newWorldPos.y, z: newWorldPos.z }
+      // 工作坐标系 -> 世界空间 -> 数据空间
+      const newWorldPos = uiStore.workingToWorld(workingPos)
+      const newPos = matrixTransform.worldPositionToData(newWorldPos)
 
       // === 2. 旋转镜像（支持完整三轴）===
       let newRotation = { ...item.rotation }
@@ -707,18 +700,14 @@ export function useEditorManipulation() {
         sum.z += item.z
       })
 
-      const globalCenter = {
+      const dataCenter = {
         x: sum.x / unit.items.length,
         y: sum.y / unit.items.length,
         z: sum.z / unit.items.length,
       }
 
-      // 数据空间 -> 世界空间（Y 轴翻转）-> 工作坐标系
-      let workingCenter = globalCenter
-      if (uiStore.workingCoordinateSystem.enabled) {
-        const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
-        workingCenter = uiStore.globalToWorking(worldCenter)
-      }
+      // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
+      const workingCenter = uiStore.dataToWorking(dataCenter)
 
       return { unit, workingCenter }
     })
@@ -749,13 +738,8 @@ export function useEditorManipulation() {
       const workingDelta = { x: 0, y: 0, z: 0 }
       workingDelta[axis] = delta
 
-      // 转换回全局坐标系（世界空间）-> 数据空间
-      let dataDelta = workingDelta
-      if (uiStore.workingCoordinateSystem.enabled) {
-        const worldDelta = uiStore.workingToGlobal(workingDelta)
-        // 世界空间 -> 数据空间（Y 轴翻转）
-        dataDelta = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
-      }
+      // 使用 uiStore 统一 API 转换：工作坐标系增量 -> 数据空间增量
+      const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
       unitDeltas.set(unit, dataDelta)
     })
@@ -978,12 +962,8 @@ export function useEditorManipulation() {
     const refItem = store.itemsMap.get(referenceItemId)
     if (!refItem) return
 
-    // 计算参照物的中心点（工作坐标系）
-    let refWorkingCenter = { x: refItem.x, y: refItem.y, z: refItem.z }
-    if (uiStore.workingCoordinateSystem.enabled) {
-      const worldCenter = { x: refItem.x, y: -refItem.y, z: refItem.z }
-      refWorkingCenter = uiStore.globalToWorking(worldCenter)
-    }
+    // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
+    const refWorkingCenter = uiStore.dataToWorking({ x: refItem.x, y: refItem.y, z: refItem.z })
 
     // 对于中心点模式，所有 mode 都映射到中心
     const targetValue = refWorkingCenter[axis]
@@ -1015,12 +995,8 @@ export function useEditorManipulation() {
         z: sum.z / unit.items.length,
       }
 
-      // 转换到工作坐标系
-      let workingCenter = globalCenter
-      if (uiStore.workingCoordinateSystem.enabled) {
-        const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
-        workingCenter = uiStore.globalToWorking(worldCenter)
-      }
+      // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
+      const workingCenter = uiStore.dataToWorking(globalCenter)
 
       // 计算位移
       const delta = targetValue - workingCenter[axis]
@@ -1029,12 +1005,8 @@ export function useEditorManipulation() {
       const workingDelta = { x: 0, y: 0, z: 0 }
       workingDelta[axis] = delta
 
-      // 转换回全局坐标系
-      let dataDelta = workingDelta
-      if (uiStore.workingCoordinateSystem.enabled) {
-        const worldDelta = uiStore.workingToGlobal(workingDelta)
-        dataDelta = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
-      }
+      // 使用 uiStore 统一 API 转换：工作坐标系增量 -> 数据空间增量
+      const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
       unitDeltas.set(unit, dataDelta)
     })
@@ -1227,12 +1199,12 @@ export function useEditorManipulation() {
       // 移动向量 = delta * alignAxisVector
       const moveVector = alignAxisVector.clone().multiplyScalar(delta)
 
-      // 转换到数据空间
-      const dataDelta = {
+      // 世界空间向量 -> 数据空间
+      const dataDelta = matrixTransform.worldPositionToData({
         x: moveVector.x,
-        y: -moveVector.y,
+        y: moveVector.y,
         z: moveVector.z,
-      }
+      })
 
       unitDeltas.set(proj.unit, dataDelta)
     }
@@ -1289,18 +1261,14 @@ export function useEditorManipulation() {
         sum.z += item.z
       })
 
-      const globalCenter = {
+      const dataCenter = {
         x: sum.x / unit.items.length,
         y: sum.y / unit.items.length,
         z: sum.z / unit.items.length,
       }
 
-      // 数据空间 -> 世界空间（Y 轴翻转）-> 工作坐标系
-      let workingCenter = globalCenter
-      if (uiStore.workingCoordinateSystem.enabled) {
-        const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
-        workingCenter = uiStore.globalToWorking(worldCenter)
-      }
+      // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
+      const workingCenter = uiStore.dataToWorking(dataCenter)
 
       return { unit, workingCenter }
     })
@@ -1328,13 +1296,8 @@ export function useEditorManipulation() {
       const workingDelta = { x: 0, y: 0, z: 0 }
       workingDelta[axis] = delta
 
-      // 转换回全局坐标系（世界空间）-> 数据空间
-      let dataDelta = workingDelta
-      if (uiStore.workingCoordinateSystem.enabled) {
-        const worldDelta = uiStore.workingToGlobal(workingDelta)
-        // 世界空间 -> 数据空间（Y 轴翻转）
-        dataDelta = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
-      }
+      // 使用 uiStore 统一 API 转换：工作坐标系增量 -> 数据空间增量
+      const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
       unitDeltas.set(unit, dataDelta)
     })

@@ -4,10 +4,7 @@ import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorManipulation } from '../../composables/editor/useEditorManipulation'
 import { useI18n } from '../../composables/useI18n'
-import {
-  convertPositionGlobalToWorking,
-  convertRotationWorkingToGlobal,
-} from '../../lib/coordinateTransform'
+import { convertRotationWorkingToGlobal } from '../../lib/coordinateTransform'
 import { matrixTransform } from '../../lib/matrixTransform'
 import type { SelectionInfo } from '../../composables/transform/useTransformSelection'
 import TransformAxisInputs from './TransformAxisInputs.vue'
@@ -78,9 +75,14 @@ watch(customPivotEnabled, (enabled) => {
 // 监听定点旋转坐标变化（工作坐标），转换成全局坐标同步到 uiStore
 watch([customPivotWorkingX, customPivotWorkingY, customPivotWorkingZ], ([x, y, z]) => {
   if (customPivotEnabled.value && x !== null && y !== null && z !== null) {
-    // 将工作坐标转换为全局坐标
-    const global = uiStore.workingToGlobal({ x, y, z })
-    uiStore.setCustomPivotPosition(global)
+    // 用户输入的是显示值（数据空间语义，Y 向下为正）
+    // 需要转换为世界空间语义（Y 向上为正）
+    const worldSemanticInput = { x, y: -y, z }
+    // 工作坐标系 -> 世界空间
+    const worldPos = uiStore.workingToWorld(worldSemanticInput)
+    // 世界空间 -> 数据空间
+    const dataPos = { x: worldPos.x, y: -worldPos.y, z: worldPos.z }
+    uiStore.setCustomPivotPosition(dataPos)
   } else {
     uiStore.setCustomPivotPosition(null)
   }
@@ -91,23 +93,8 @@ watch(
   () => uiStore.selectedPivotPosition,
   (pos) => {
     if (pos && customPivotEnabled.value) {
-      // 获取有效的坐标系旋转（视觉空间）
-      const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
-        editorStore.activeScheme?.selectedItemIds.value || new Set(),
-        editorStore.itemsMap
-      )
-
-      // 数据空间 -> 世界空间：Y 轴翻转
-      const worldPos = { x: pos.x, y: -pos.y, z: pos.z }
-
-      // 如果有有效的坐标系，将世界空间坐标转换到工作坐标系
-      let workingPos = pos // 默认使用数据空间值
-      if (effectiveRotation) {
-        // 世界空间 -> 工作坐标系
-        const working = convertPositionGlobalToWorking(worldPos, effectiveRotation)
-        // 世界空间 -> 数据空间：Y 轴翻转回来
-        workingPos = { x: working.x, y: -working.y, z: working.z }
-      }
+      // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
+      const workingPos = uiStore.dataToWorking(pos)
 
       // 填入工作坐标系下的值
       customPivotWorkingX.value = workingPos.x
