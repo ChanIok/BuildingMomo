@@ -518,8 +518,10 @@ export const enLocale = {
     localCoord: '(Local Space)',
     localCoordTip:
       "Showing rotation in object's local coordinate system, relative to object's current orientation",
-    range: 'Range (Min ~ Max)',
+    range: 'Range',
     rangeTip: 'Range based on working coordinate system<br />Rotation: {angle}°',
+    rangeModePivot: 'Pivot',
+    rangeModeBBox: 'BBox',
     mirror: 'Mirror',
     mirrorX: 'Mirror along X axis',
     mirrorY: 'Mirror along Y axis',

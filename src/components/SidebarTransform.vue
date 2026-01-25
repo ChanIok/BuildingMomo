@@ -13,6 +13,7 @@ import {
   convertRotationWorkingToGlobal,
 } from '../lib/coordinateTransform'
 import { matrixTransform } from '../lib/matrixTransform'
+import { Euler, Matrix4, Vector3 } from 'three'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
@@ -48,6 +49,9 @@ const {
 const isPositionRelative = ref(false)
 const isRotationRelative = ref(false)
 const isScaleRelative = ref(false)
+
+// 范围模式：pivot（轴点范围）或 bbox（包围盒范围）
+const rangeMode = ref<'pivot' | 'bbox'>('pivot')
 
 // 旋转输入的临时状态
 const rotationState = ref({ x: 0, y: 0, z: 0 })
@@ -199,14 +203,22 @@ const selectionInfo = computed(() => {
     scale = { x: avgX, y: avgY, z: avgZ }
   }
 
-  // 边界（最小/最大值）
+  // 边界（最小/最大值）- 轴点范围
   let bounds = null
   if (selected.length > 1) {
     const points = selected.map((i) => ({ x: i.x, y: i.y, z: i.z }))
 
-    // 如果启用了工作坐标系，将所有点转换到工作坐标系
-    const transformedPoints = uiStore.workingCoordinateSystem.enabled
-      ? points.map((p) => uiStore.globalToWorking(p))
+    // 修复 BUG: 正确处理坐标空间转换
+    // 数据空间 -> 世界空间 -> 工作坐标系 -> 数据空间语义
+    const transformedPoints = effectiveCoordRotation
+      ? points.map((p) => {
+          // 数据空间 -> 世界空间：Y 轴翻转
+          const worldPos = { x: p.x, y: -p.y, z: p.z }
+          // 世界空间 -> 工作坐标系
+          const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
+          // 世界空间 -> 数据空间语义：Y 轴翻转回来
+          return { x: workingPos.x, y: -workingPos.y, z: workingPos.z }
+        })
       : points
 
     const xs = transformedPoints.map((p) => p.x)
@@ -219,12 +231,92 @@ const selectionInfo = computed(() => {
     }
   }
 
+  // 包围盒范围（考虑尺寸、旋转、缩放）
+  let bboxBounds = null
+  if (selected.length > 1) {
+    // 计算每个物品的 8 个包围盒角点
+    const allCorners: { x: number; y: number; z: number }[] = []
+
+    for (const item of selected) {
+      const furniture = gameDataStore.getFurniture(item.gameId)
+      const furnitureSize = furniture?.size ?? [100, 100, 150]
+      const [sizeX, sizeY, sizeZ] = furnitureSize
+
+      // 获取缩放
+      const scaleX = item.extra?.Scale?.X ?? 1
+      const scaleY = item.extra?.Scale?.Y ?? 1
+      const scaleZ = item.extra?.Scale?.Z ?? 1
+
+      // 计算实际尺寸（数据空间）
+      // 注意：游戏坐标系中 X/Y 与渲染空间交换
+      const halfX = (sizeY * scaleX) / 2 // 数据空间 X 使用 sizeY * scaleX
+      const halfY = (sizeX * scaleY) / 2 // 数据空间 Y 使用 sizeX * scaleY
+      const halfZ = (sizeZ * scaleZ) / 2
+
+      // 8 个角点（物品局部空间，中心为原点）
+      const localCorners = [
+        { x: -halfX, y: -halfY, z: -halfZ },
+        { x: +halfX, y: -halfY, z: -halfZ },
+        { x: -halfX, y: +halfY, z: -halfZ },
+        { x: +halfX, y: +halfY, z: -halfZ },
+        { x: -halfX, y: -halfY, z: +halfZ },
+        { x: +halfX, y: -halfY, z: +halfZ },
+        { x: -halfX, y: +halfY, z: +halfZ },
+        { x: +halfX, y: +halfY, z: +halfZ },
+      ]
+
+      // 旋转矩阵（数据空间）
+      const visualRot = matrixTransform.dataRotationToVisual(item.rotation)
+      const euler = new Euler(
+        (visualRot.x * Math.PI) / 180,
+        (visualRot.y * Math.PI) / 180,
+        -(visualRot.z * Math.PI) / 180,
+        'ZYX'
+      )
+      const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
+
+      // 变换到世界空间并加上物品位置
+      for (const corner of localCorners) {
+        const vec = new Vector3(corner.x, corner.y, corner.z)
+        vec.applyMatrix4(rotationMatrix)
+        vec.x += item.x
+        vec.y += item.y
+        vec.z += item.z
+
+        // 如果有工作坐标系，转换到工作坐标系
+        if (effectiveCoordRotation) {
+          // 数据空间 -> 世界空间：Y 轴翻转
+          const worldPos = { x: vec.x, y: -vec.y, z: vec.z }
+          // 世界空间 -> 工作坐标系
+          const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
+          // 世界空间 -> 数据空间语义：Y 轴翻转回来
+          allCorners.push({ x: workingPos.x, y: -workingPos.y, z: workingPos.z })
+        } else {
+          allCorners.push({ x: vec.x, y: vec.y, z: vec.z })
+        }
+      }
+    }
+
+    // 计算 AABB
+    if (allCorners.length > 0) {
+      const xs = allCorners.map((p) => p.x)
+      const ys = allCorners.map((p) => p.y)
+      const zs = allCorners.map((p) => p.z)
+
+      bboxBounds = {
+        min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
+        max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
+      }
+    }
+  }
+
   return {
     count: selected.length,
     center,
     rotation,
     scale,
     bounds,
+    bboxBounds,
   }
 })
 
@@ -436,10 +528,14 @@ function updateScale(axis: 'x' | 'y' | 'z', value: number) {
 }
 
 function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number) {
-  if (!selectionInfo.value?.bounds) return
   if (!editorStore.activeScheme) return
 
-  const currentVal = selectionInfo.value.bounds[type][axis]
+  // 根据当前范围模式选择对应的 bounds
+  const currentBounds =
+    rangeMode.value === 'pivot' ? selectionInfo.value?.bounds : selectionInfo.value?.bboxBounds
+  if (!currentBounds) return
+
+  const currentVal = currentBounds[type][axis]
   const delta = value - currentVal
 
   if (delta === 0) return
@@ -456,9 +552,12 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
 
   // 如果有有效的坐标系，将位移向量转换到全局坐标系
   if (effectiveRotation) {
-    // 转换为数据空间（与工作坐标系处理一致）
-    const dataSpaceRotation = matrixTransform.visualRotationToUI(effectiveRotation)
-    posArgs = convertPositionWorkingToGlobal(posArgs, dataSpaceRotation)
+    // 用户输入的 Y 值需要取反，因为 Gizmo 的 Y 轴视觉上被翻转了
+    const visualPosArgs = { x: posArgs.x, y: -posArgs.y, z: posArgs.z }
+    // 工作坐标系 -> 世界空间
+    const worldDelta = convertPositionWorkingToGlobal(visualPosArgs, effectiveRotation)
+    // 世界空间 -> 数据空间：Y 轴翻转
+    posArgs = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
   }
 
   updateSelectedItemsTransform({
@@ -1440,25 +1539,44 @@ watch(
     >
       <div class="flex flex-col gap-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs text-secondary-foreground">{{ t('transform.range') }}</span>
-          <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <span class="cursor-help text-[10px] text-primary">{{
-                  t('transform.workingCoord')
-                }}</span>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                <div
-                  v-html="
-                    t('transform.rangeTip', {
-                      angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
-                    })
-                  "
-                ></div>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-secondary-foreground">{{ t('transform.range') }}</span>
+            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
+              <Tooltip :delay-duration="300">
+                <TooltipTrigger as-child>
+                  <span class="cursor-help text-[10px] text-primary">{{
+                    t('transform.workingCoord')
+                  }}</span>
+                </TooltipTrigger>
+                <TooltipContent class="text-xs" variant="light">
+                  <div
+                    v-html="
+                      t('transform.rangeTip', {
+                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                      })
+                    "
+                  ></div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Tabs v-model="rangeMode" class="w-auto">
+            <TabsList class="h-6 p-0.5">
+              <TabsTrigger
+                value="pivot"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                {{ t('transform.rangeModePivot') }}
+              </TabsTrigger>
+              <TabsTrigger
+                value="bbox"
+                :disabled="!selectionInfo.bboxBounds"
+                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                {{ t('transform.rangeModeBBox') }}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
 
         <!-- X Axis -->
@@ -1470,7 +1588,12 @@ watch(
             <input
               type="number"
               step="any"
-              :value="fmt(selectionInfo.bounds.min.x)"
+              :value="
+                fmt(
+                  (rangeMode === 'pivot' ? selectionInfo.bounds : selectionInfo.bboxBounds)?.min
+                    .x ?? 0
+                )
+              "
               @change="
                 (e) => updateBounds('x', 'min', Number((e.target as HTMLInputElement).value))
               "
@@ -1480,7 +1603,12 @@ watch(
             <input
               type="number"
               step="any"
-              :value="fmt(selectionInfo.bounds.max.x)"
+              :value="
+                fmt(
+                  (rangeMode === 'pivot' ? selectionInfo.bounds : selectionInfo.bboxBounds)?.max
+                    .x ?? 0
+                )
+              "
               @change="
                 (e) => updateBounds('x', 'max', Number((e.target as HTMLInputElement).value))
               "
@@ -1498,7 +1626,12 @@ watch(
             <input
               type="number"
               step="any"
-              :value="fmt(selectionInfo.bounds.min.y)"
+              :value="
+                fmt(
+                  (rangeMode === 'pivot' ? selectionInfo.bounds : selectionInfo.bboxBounds)?.min
+                    .y ?? 0
+                )
+              "
               @change="
                 (e) => updateBounds('y', 'min', Number((e.target as HTMLInputElement).value))
               "
@@ -1508,7 +1641,12 @@ watch(
             <input
               type="number"
               step="any"
-              :value="fmt(selectionInfo.bounds.max.y)"
+              :value="
+                fmt(
+                  (rangeMode === 'pivot' ? selectionInfo.bounds : selectionInfo.bboxBounds)?.max
+                    .y ?? 0
+                )
+              "
               @change="
                 (e) => updateBounds('y', 'max', Number((e.target as HTMLInputElement).value))
               "
@@ -1526,7 +1664,12 @@ watch(
             <input
               type="number"
               step="any"
-              :value="fmt(selectionInfo.bounds.min.z)"
+              :value="
+                fmt(
+                  (rangeMode === 'pivot' ? selectionInfo.bounds : selectionInfo.bboxBounds)?.min
+                    .z ?? 0
+                )
+              "
               @change="
                 (e) => updateBounds('z', 'min', Number((e.target as HTMLInputElement).value))
               "
@@ -1536,7 +1679,12 @@ watch(
             <input
               type="number"
               step="any"
-              :value="fmt(selectionInfo.bounds.max.z)"
+              :value="
+                fmt(
+                  (rangeMode === 'pivot' ? selectionInfo.bounds : selectionInfo.bboxBounds)?.max
+                    .z ?? 0
+                )
+              "
               @change="
                 (e) => updateBounds('z', 'max', Number((e.target as HTMLInputElement).value))
               "
