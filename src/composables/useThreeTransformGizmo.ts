@@ -412,8 +412,13 @@ export function useThreeTransformGizmo(
             localSize = new Vector3(...size)
             localCenter = new Vector3()
           }
+        } else if (currentMode === 'box') {
+          // Box 模式：使用单位立方体，几何原点在底部中心
+          // baseGeometry.translate(0, 0, 0.5) - 几何中心在 Z 轴 0.5 处
+          localSize = new Vector3(1, 1, 1)
+          localCenter = new Vector3(0, 0, 0.5)
         } else {
-          // Simple/Icon 模式：使用单位立方体
+          // Simple/Icon 模式：使用单位立方体，几何中心在原点
           localSize = new Vector3(1, 1, 1)
           localCenter = new Vector3()
         }
@@ -445,7 +450,12 @@ export function useThreeTransformGizmo(
             } else {
               obb = getOBBFromMatrix(matrix, new Vector3(...furnitureSize))
             }
+          } else if (currentMode === 'box') {
+            // Box 模式：使用单位立方体
+            // getOBBFromMatrix 内部通过 AABB 正确处理几何中心（Z 轴 0~1 范围）
+            obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
           } else {
+            // Simple/Icon 模式：使用单位立方体
             obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
           }
 
