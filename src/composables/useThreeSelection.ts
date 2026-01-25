@@ -222,6 +222,38 @@ export function useThreeSelection(
     }
   }
 
+  /**
+   * 处理对齐参照物选择模式下的点击
+   */
+  function handleAlignReferenceClick(evt: any) {
+    const camera = cameraRef.value
+    const container = containerRef.value
+    if (!camera || !container) return
+
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+
+    const { rect, x, y } = pos
+    pointerNdc.x = (x / rect.width) * 2 - 1
+    pointerNdc.y = -(y / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointerNdc, camera)
+
+    // 使用统一的拾取接口
+    const config = selectionSources.pickingConfig.value
+    const hit = config.performRaycast(raycaster)
+
+    if (hit) {
+      const clickedItemId = hit.internalId
+      // 设置参照物
+      uiStore.setAlignReferenceItem(clickedItemId)
+      // 退出选择模式
+      uiStore.setSelectingAlignReference(false)
+    } else {
+      // 点击空白处,退出选择模式
+      uiStore.setSelectingAlignReference(false)
+    }
+  }
+
   function performClickSelection(evt: any) {
     // 🎯 定点旋转物品选择模式拦截
     if (uiStore.isSelectingPivotItem) {
@@ -232,6 +264,12 @@ export function useThreeSelection(
     // 🎯 组合原点选择模式拦截
     if (uiStore.isSelectingGroupOrigin) {
       handleGroupOriginClick(evt)
+      return // 提前返回，不执行正常选择逻辑
+    }
+
+    // 🎯 对齐参照物选择模式拦截
+    if (uiStore.isSelectingAlignReference) {
+      handleAlignReferenceClick(evt)
       return // 提前返回，不执行正常选择逻辑
     }
 

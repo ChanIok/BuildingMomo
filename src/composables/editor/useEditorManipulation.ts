@@ -634,6 +634,7 @@ export function useEditorManipulation() {
    *
    * 支持工作坐标系：当工作坐标系启用时，在工作坐标系下进行对齐
    * 支持组合：选中的物品如果属于组，整个组作为一个单元参与对齐
+   * 支持参照物：如果设置了参照物，则对齐到参照物而非选区边界
    *
    * @param axis - 对齐轴 ('x' | 'y' | 'z')
    * @param mode - 对齐模式 ('min' | 'center' | 'max')
@@ -643,11 +644,34 @@ export function useEditorManipulation() {
 
     const scheme = activeScheme.value
     const selectedIds = scheme.selectedItemIds.value
-    if (selectedIds.size < 2) return // 至少需要2个物品
+
+    // 检查是否有参照物
+    const referenceItemId = uiStore.alignReferenceItemId
+
+    if (referenceItemId) {
+      // 对齐到参照物：单选也能用
+      if (selectedIds.size < 1) return
+    } else {
+      // 对齐到选区边界：至少需要2个物品
+      if (selectedIds.size < 2) return
+    }
 
     saveHistory('edit')
 
     const currentMode = settingsStore.settings.threeDisplayMode
+
+    // 如果有参照物，使用参照物对齐逻辑
+    if (referenceItemId) {
+      const targetMode = uiStore.alignReferencePosition
+
+      if (currentMode === 'simple-box' || currentMode === 'icon') {
+        // 中心点模式：固定使用中心对中心对齐，不需要 mode 参数
+        alignToReferenceByCenterPoint(selectedIds, axis, referenceItemId)
+      } else {
+        alignToReferenceByBoundingBox(selectedIds, axis, mode, referenceItemId, targetMode)
+      }
+      return
+    }
 
     // 快速路径：simple-box / icon 模式使用中心点对齐
     if (currentMode === 'simple-box' || currentMode === 'icon') {
@@ -920,6 +944,304 @@ export function useEditorManipulation() {
     // 8. 应用位移到所有物品
     scheme.items.value = scheme.items.value.map((item) => {
       // 找到该物品所属的对齐单元
+      const unit = alignUnits.find((u) => u.items.some((i) => i.internalId === item.internalId))
+      if (!unit) return item
+
+      const delta = unitDeltas.get(unit)
+      if (!delta) return item
+
+      return {
+        ...item,
+        x: item.x + delta.x,
+        y: item.y + delta.y,
+        z: item.z + delta.z,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
+  /**
+   * 使用中心点对齐到参照物（用于 simple-box / icon 模式）
+   *
+   * 中心点模式固定使用中心对中心对齐，无需 min/max/center 模式选择
+   */
+  function alignToReferenceByCenterPoint(
+    selectedIds: Set<string>,
+    axis: 'x' | 'y' | 'z',
+    referenceItemId: string
+  ) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+
+    // 获取参照物
+    const refItem = store.itemsMap.get(referenceItemId)
+    if (!refItem) return
+
+    // 计算参照物的中心点（工作坐标系）
+    let refWorkingCenter = { x: refItem.x, y: refItem.y, z: refItem.z }
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const worldCenter = { x: refItem.x, y: -refItem.y, z: refItem.z }
+      refWorkingCenter = uiStore.globalToWorking(worldCenter)
+    }
+
+    // 对于中心点模式，所有 mode 都映射到中心
+    const targetValue = refWorkingCenter[axis]
+
+    // 按组聚合选中物品
+    const alignUnits = buildAlignUnits(selectedIds)
+
+    // 为每个对齐单元计算位移增量
+    const unitDeltas = new Map<AlignUnit, { x: number; y: number; z: number }>()
+
+    alignUnits.forEach((unit) => {
+      // 跳过参照物自身
+      if (unit.items.some((item) => item.internalId === referenceItemId)) {
+        unitDeltas.set(unit, { x: 0, y: 0, z: 0 })
+        return
+      }
+
+      // 计算单元的中心
+      const sum = { x: 0, y: 0, z: 0 }
+      unit.items.forEach((item) => {
+        sum.x += item.x
+        sum.y += item.y
+        sum.z += item.z
+      })
+
+      const globalCenter = {
+        x: sum.x / unit.items.length,
+        y: sum.y / unit.items.length,
+        z: sum.z / unit.items.length,
+      }
+
+      // 转换到工作坐标系
+      let workingCenter = globalCenter
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
+        workingCenter = uiStore.globalToWorking(worldCenter)
+      }
+
+      // 计算位移
+      const delta = targetValue - workingCenter[axis]
+
+      // 构造工作坐标系下的位移向量
+      const workingDelta = { x: 0, y: 0, z: 0 }
+      workingDelta[axis] = delta
+
+      // 转换回全局坐标系
+      let dataDelta = workingDelta
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const worldDelta = uiStore.workingToGlobal(workingDelta)
+        dataDelta = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
+      }
+
+      unitDeltas.set(unit, dataDelta)
+    })
+
+    // 应用位移到所有物品
+    scheme.items.value = scheme.items.value.map((item) => {
+      const unit = alignUnits.find((u) => u.items.some((i) => i.internalId === item.internalId))
+      if (!unit) return item
+
+      const delta = unitDeltas.get(unit)
+      if (!delta) return item
+
+      return {
+        ...item,
+        x: item.x + delta.x,
+        y: item.y + delta.y,
+        z: item.z + delta.z,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
+  /**
+   * 使用包围盒对齐到参照物（用于 box / model 模式）
+   */
+  function alignToReferenceByBoundingBox(
+    selectedIds: Set<string>,
+    axis: 'x' | 'y' | 'z',
+    sourceMode: 'min' | 'center' | 'max',
+    referenceItemId: string,
+    targetMode: 'min' | 'center' | 'max'
+  ) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+
+    const currentMode = settingsStore.settings.threeDisplayMode
+    const modelManager = getThreeModelManager()
+
+    // 获取参照物
+    const refItem = store.itemsMap.get(referenceItemId)
+    if (!refItem) return
+
+    // 计算对齐轴在世界空间中的方向向量
+    const alignAxisVector = new Vector3()
+    if (axis === 'x') {
+      alignAxisVector.set(1, 0, 0)
+    } else if (axis === 'y') {
+      alignAxisVector.set(0, 1, 0)
+    } else {
+      alignAxisVector.set(0, 0, 1)
+    }
+
+    // 如果启用了工作坐标系，旋转对齐轴向量
+    if (uiStore.workingCoordinateSystem.enabled) {
+      const euler = new Euler(
+        (uiStore.workingCoordinateSystem.rotation.x * Math.PI) / 180,
+        (uiStore.workingCoordinateSystem.rotation.y * Math.PI) / 180,
+        -(uiStore.workingCoordinateSystem.rotation.z * Math.PI) / 180,
+        'ZYX'
+      )
+      alignAxisVector.applyEuler(euler)
+    }
+
+    // 计算参照物的包围盒投影
+    const modelConfig = gameDataStore.getFurnitureModelConfig(refItem.gameId)
+    const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+    const useModelScale = !!(currentMode === 'model' && hasValidModel)
+
+    const refMatrix = matrixTransform.buildWorldMatrixFromItem(refItem, useModelScale)
+
+    let refObb
+    if (useModelScale) {
+      const modelBox = modelManager.getModelBoundingBox(refItem.gameId)
+      if (modelBox) {
+        refObb = getOBBFromMatrixAndModelBox(refMatrix, modelBox)
+      } else {
+        refObb = transformOBBByMatrix(refMatrix, new Vector3(1, 1, 1), new Vector3())
+      }
+    } else {
+      refObb = transformOBBByMatrix(refMatrix, new Vector3(1, 1, 1), new Vector3())
+    }
+
+    // 计算参照物在对齐轴上的投影
+    let refProjMin = Infinity
+    let refProjMax = -Infinity
+    const refCorners = refObb.getCorners()
+    for (const corner of refCorners) {
+      const projection = corner.dot(alignAxisVector)
+      refProjMin = Math.min(refProjMin, projection)
+      refProjMax = Math.max(refProjMax, projection)
+    }
+    const refProjCenter = (refProjMin + refProjMax) / 2
+
+    // 根据 targetMode 确定目标值
+    const shouldInvert = axis === 'y'
+    let targetValue: number
+
+    if (targetMode === 'min') {
+      targetValue = shouldInvert ? refProjMax : refProjMin
+    } else if (targetMode === 'center') {
+      targetValue = refProjCenter
+    } else {
+      // max
+      targetValue = shouldInvert ? refProjMin : refProjMax
+    }
+
+    // 按组聚合选中物品
+    const alignUnits = buildAlignUnits(selectedIds)
+
+    // 为每个对齐单元计算包围盒投影
+    interface UnitProjection {
+      unit: AlignUnit
+      projMin: number
+      projMax: number
+      projCenter: number
+    }
+
+    const unitProjections: UnitProjection[] = []
+
+    for (const unit of alignUnits) {
+      // 跳过参照物自身
+      if (unit.items.some((item) => item.internalId === referenceItemId)) {
+        continue
+      }
+
+      // 收集单元内所有物品的 OBB
+      const obbs: any[] = []
+
+      for (const item of unit.items) {
+        const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+        const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+        const useModelScale = !!(currentMode === 'model' && hasValidModel)
+
+        const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
+
+        let obb
+        if (useModelScale) {
+          const modelBox = modelManager.getModelBoundingBox(item.gameId)
+          if (modelBox) {
+            obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+          } else {
+            obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+          }
+        } else {
+          obb = transformOBBByMatrix(matrix, new Vector3(1, 1, 1), new Vector3())
+        }
+
+        obbs.push(obb)
+      }
+
+      // 合并单元内所有 OBB 的角点
+      let projMin = Infinity
+      let projMax = -Infinity
+
+      for (const obb of obbs) {
+        const corners = obb.getCorners()
+        for (const corner of corners) {
+          const projection = corner.dot(alignAxisVector)
+          projMin = Math.min(projMin, projection)
+          projMax = Math.max(projMax, projection)
+        }
+      }
+
+      const projCenter = (projMin + projMax) / 2
+
+      unitProjections.push({
+        unit,
+        projMin,
+        projMax,
+        projCenter,
+      })
+    }
+
+    // 为每个单元计算位移增量
+    const unitDeltas = new Map<AlignUnit, { x: number; y: number; z: number }>()
+
+    for (const proj of unitProjections) {
+      // 根据 sourceMode 计算需要移动的距离
+      let delta: number
+      if (sourceMode === 'min') {
+        delta = shouldInvert ? targetValue - proj.projMax : targetValue - proj.projMin
+      } else if (sourceMode === 'center') {
+        delta = targetValue - proj.projCenter
+      } else {
+        // max
+        delta = shouldInvert ? targetValue - proj.projMin : targetValue - proj.projMax
+      }
+
+      // 移动向量 = delta * alignAxisVector
+      const moveVector = alignAxisVector.clone().multiplyScalar(delta)
+
+      // 转换到数据空间
+      const dataDelta = {
+        x: moveVector.x,
+        y: -moveVector.y,
+        z: moveVector.z,
+      }
+
+      unitDeltas.set(proj.unit, dataDelta)
+    }
+
+    // 应用位移到所有物品
+    scheme.items.value = scheme.items.value.map((item) => {
+      // 跳过参照物自身
+      if (item.internalId === referenceItemId) return item
+
       const unit = alignUnits.find((u) => u.items.some((i) => i.internalId === item.internalId))
       if (!unit) return item
 

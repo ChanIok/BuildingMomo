@@ -539,9 +539,23 @@ export const enLocale = {
     alignMinHint: 'Align selected items to minimum bounds',
     alignCenterHint: 'Align selected items to center',
     alignMaxHint: 'Align selected items to maximum bounds',
+    alignMinHintReference: "Align selected items' min to reference target",
+    alignCenterHintReference: "Align selected items' center to reference target",
+    alignMaxHintReference: "Align selected items' max to reference target",
     distributeHint: 'Evenly distribute items between endpoints',
     requireTwoItems: 'Requires at least 2 selected items',
     requireThreeItems: 'Requires at least 3 selected items',
+    alignToReference: 'Align to Reference',
+    referenceObject: 'Reference',
+    select: 'Select',
+    selectReference: 'Select Reference',
+    clearReference: 'Clear Reference',
+    targetPosition: 'Target Position',
+    targetMin: 'Min',
+    targetCenter: 'Center',
+    targetMax: 'Max',
+    alignToReferenceHint:
+      'Select a reference object, then click align buttons to align selected items to it',
   },
 
   // Furniture Library

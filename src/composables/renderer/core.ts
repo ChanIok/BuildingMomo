@@ -3,6 +3,7 @@ import type { Matrix4, Raycaster, InstancedMesh } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useThrottleFn } from '@vueuse/core'
 import type { ViewPreset } from '../useThreeCamera'
 import { useBoxMode } from './modes/useBoxMode'
@@ -31,6 +32,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
+  const uiStore = useUIStore()
 
   // 初始化 BVH 加速（仅执行一次）
   if (!bvhInitialized) {
@@ -126,7 +128,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           meshTarget,
           iconMeshTarget,
           simpleBoxMeshTarget,
-          modelMode.indexToIdMap.value
+          modelMode.indexToIdMap.value,
+          modelMode.meshMap.value,
+          modelMode.internalIdToMeshInfo.value
         )
 
         return
@@ -221,10 +225,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     const currentIdToIndexMap = mode === 'model' ? modelMode.idToIndexMap.value : idToIndexMap.value
 
     if (mode === 'model') {
-      // Model 模式：更新 colorManager 的内部状态（用于抑制逻辑）
+      // Model 模式：hover 不影响颜色（由描边系统处理），只需更新 mask
+      // 注意：参照物颜色由 rebuild/参照物变化 watcher 负责更新，hover 不改变
       colorManager.hoveredItemId.value = id
 
-      // 更新 mask
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
       selectionOutline.updateMasks(
         selectedItemIds,
@@ -234,7 +238,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         modelMode.fallbackMesh.value
       )
     } else {
-      // 原有逻辑（Box/Icon/SimpleBox 模式）
+      // Box/Icon/SimpleBox 模式：使用颜色系统处理 hover 高亮
       colorManager.setHoveredItemId(
         id,
         mode,
@@ -506,8 +510,78 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         meshTarget,
         iconMeshTarget,
         simpleBoxMeshTarget,
-        currentIndexToIdMap
+        currentIndexToIdMap,
+        mode === 'model' ? modelMode.meshMap.value : undefined,
+        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
       )
+    }
+  )
+
+  // 监听参照物变化，刷新颜色
+  watch(
+    () => uiStore.alignReferenceItemId,
+    (newId, oldId) => {
+      if (isTransformDragging?.value) {
+        return
+      }
+
+      const mode = settingsStore.settings.threeDisplayMode
+      const meshTarget = boxMode.mesh.value
+      const iconMeshTarget = iconMode.mesh.value
+      const simpleBoxMeshTarget = simpleBoxMode.mesh.value
+
+      // Model 模式使用独立的索引映射
+      const currentIdToIndexMap =
+        mode === 'model' ? modelMode.idToIndexMap.value : idToIndexMap.value
+
+      // 更新旧参照物的颜色（恢复原色）
+      if (oldId) {
+        if (mode === 'model') {
+          // Model 模式：更新 mask（虽然参照物不走 mask，但确保颜色更新）
+          const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+          selectionOutline.updateMasks(
+            selectedItemIds,
+            colorManager.hoveredItemId.value,
+            modelMode.meshMap.value,
+            modelMode.internalIdToMeshInfo.value,
+            modelMode.fallbackMesh.value
+          )
+        }
+        colorManager.updateInstanceColorById(
+          oldId,
+          mode,
+          meshTarget,
+          iconMeshTarget,
+          simpleBoxMeshTarget,
+          currentIdToIndexMap,
+          mode === 'model' ? modelMode.meshMap.value : undefined,
+          mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+        )
+      }
+
+      // 更新新参照物的颜色（高亮）
+      if (newId) {
+        if (mode === 'model') {
+          const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+          selectionOutline.updateMasks(
+            selectedItemIds,
+            colorManager.hoveredItemId.value,
+            modelMode.meshMap.value,
+            modelMode.internalIdToMeshInfo.value,
+            modelMode.fallbackMesh.value
+          )
+        }
+        colorManager.updateInstanceColorById(
+          newId,
+          mode,
+          meshTarget,
+          iconMeshTarget,
+          simpleBoxMeshTarget,
+          currentIdToIndexMap,
+          mode === 'model' ? modelMode.meshMap.value : undefined,
+          mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+        )
+      }
     }
   )
 

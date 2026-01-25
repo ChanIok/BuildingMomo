@@ -65,6 +65,11 @@ export const useUIStore = defineStore('ui', () => {
   const isSelectingPivotItem = ref(false)
   const selectedPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
 
+  // 对齐到参照物模式（临时状态，不持久化）
+  const isSelectingAlignReference = ref(false)
+  const alignReferenceItemId = ref<string | null>(null)
+  const alignReferencePosition = ref<'min' | 'center' | 'max'>('max')
+
   // ========== 视图模式管理 ==========
 
   function toggleViewMode() {
@@ -230,6 +235,23 @@ export const useUIStore = defineStore('ui', () => {
     selectedPivotPosition.value = position
   }
 
+  // ========== 对齐到参照物管理 ==========
+
+  function setSelectingAlignReference(selecting: boolean) {
+    isSelectingAlignReference.value = selecting
+    if (!selecting) {
+      // 退出选择模式时不清空参照物，保持用户已选的参照物
+    }
+  }
+
+  function setAlignReferenceItem(itemId: string | null) {
+    alignReferenceItemId.value = itemId
+  }
+
+  function setAlignReferencePosition(position: 'min' | 'center' | 'max') {
+    alignReferencePosition.value = position
+  }
+
   // ========== 坐标系统一管理 ==========
 
   /**
@@ -292,6 +314,9 @@ export const useUIStore = defineStore('ui', () => {
     selectingForGroupId,
     isSelectingPivotItem,
     selectedPivotPosition,
+    isSelectingAlignReference,
+    alignReferenceItemId,
+    alignReferencePosition,
 
     // 视图模式
     toggleViewMode,
@@ -322,5 +347,10 @@ export const useUIStore = defineStore('ui', () => {
     // 定点旋转物品选择
     setSelectingPivotItem,
     setSelectedPivotPosition,
+
+    // 对齐到参照物
+    setSelectingAlignReference,
+    setAlignReferenceItem,
+    setAlignReferencePosition,
   }
 })

@@ -16,6 +16,7 @@ import { matrixTransform } from '../lib/matrixTransform'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
+import { Toggle } from '@/components/ui/toggle'
 
 import {
   AlignStartHorizontal,
@@ -26,6 +27,7 @@ import {
   AlignCenterVertical,
   AlignEndVertical,
   AlignVerticalSpaceBetween,
+  X,
 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
@@ -474,6 +476,32 @@ const fmt = (n: number) => Math.round(n * 100) / 100
 function startSelectingPivotItem() {
   uiStore.setSelectingPivotItem(true)
 }
+
+// ========== 对齐参照物选择 ==========
+
+// 开始选择参照物
+function startSelectingAlignReference() {
+  uiStore.setSelectingAlignReference(true)
+}
+
+// 清除参照物
+function clearAlignReference() {
+  uiStore.setAlignReferenceItem(null)
+}
+
+// 获取参照物名称
+const alignReferenceItemName = computed(() => {
+  const itemId = uiStore.alignReferenceItemId
+  if (!itemId) return ''
+
+  const item = editorStore.itemsMap.get(itemId)
+  if (!item) return ''
+
+  const furniture = gameDataStore.getFurniture(item.gameId)
+  if (!furniture) return t('sidebar.itemDefaultName', { id: item.gameId })
+  if (locale.value === 'zh') return furniture.name_cn
+  return furniture.name_en || furniture.name_cn
+})
 
 // 监听选择结果，填入坐标（工作坐标系下的值）
 watch(
@@ -1014,7 +1042,7 @@ watch(
         </div>
       </div>
       <!-- 对齐与分布 -->
-      <div v-if="selectionInfo.count > 1" class="flex flex-col items-stretch gap-2">
+      <div v-if="selectionInfo" class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">
           <div class="flex items-center gap-1">
             <label class="text-xs font-semibold text-sidebar-foreground">{{
@@ -1040,6 +1068,110 @@ watch(
             </TooltipProvider>
           </div>
         </div>
+        <!-- 参照物 -->
+        <div v-if="selectionInfo" class="flex items-center justify-between gap-2">
+          <TooltipProvider>
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <label class="cursor-help text-xs text-sidebar-foreground hover:text-foreground">
+                  {{ t('transform.referenceObject') }}
+                </label>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                {{ t('transform.alignToReferenceHint') }}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <div class="flex items-center gap-1.5">
+            <!-- 选择按钮 -->
+            <button
+              v-if="!uiStore.isSelectingAlignReference"
+              @click="startSelectingAlignReference"
+              class="h-[18.5px] rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              {{ t('transform.select') }}
+            </button>
+            <button
+              v-else
+              @click="uiStore.setSelectingAlignReference(false)"
+              class="h-[18.5px] rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              {{ t('sidebar.cancelSelecting') }}
+            </button>
+            <!-- 清除按钮 -->
+            <button
+              v-if="uiStore.alignReferenceItemId"
+              @click="clearAlignReference"
+              class="flex h-[18.5px] w-[18.5px] items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              :title="t('transform.clearReference')"
+            >
+              <X :size="12" />
+            </button>
+          </div>
+        </div>
+        <!-- 当前参照物显示 -->
+        <div
+          v-if="uiStore.alignReferenceItemId"
+          class="flex items-center gap-2 rounded-md bg-primary/10 px-2 py-1.5"
+        >
+          <span class="text-[10px] text-muted-foreground">{{ t('sidebar.current') }}:</span>
+          <TooltipProvider>
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <span
+                  class="flex-1 cursor-help truncate text-xs font-medium text-sidebar-foreground"
+                >
+                  {{ alignReferenceItemName }}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                {{ alignReferenceItemName }}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <!-- 目标位置 toggle -->
+        <div v-if="uiStore.alignReferenceItemId" class="flex items-center gap-2">
+          <label class="text-xs text-sidebar-foreground">{{ t('transform.targetPosition') }}</label>
+          <div class="flex flex-1 items-center gap-1">
+            <Toggle
+              size="sm"
+              :model-value="uiStore.alignReferencePosition === 'min'"
+              @update:model-value="
+                (v) => {
+                  if (v) uiStore.setAlignReferencePosition('min')
+                }
+              "
+              class="h-7.5 flex-1"
+            >
+              <span class="text-xs">{{ t('transform.targetMin') }}</span>
+            </Toggle>
+            <Toggle
+              size="sm"
+              :model-value="uiStore.alignReferencePosition === 'center'"
+              @update:model-value="
+                (v) => {
+                  if (v) uiStore.setAlignReferencePosition('center')
+                }
+              "
+              class="h-7.5 flex-1"
+            >
+              <span class="text-xs">{{ t('transform.targetCenter') }}</span>
+            </Toggle>
+            <Toggle
+              size="sm"
+              :model-value="uiStore.alignReferencePosition === 'max'"
+              @update:model-value="
+                (v) => {
+                  if (v) uiStore.setAlignReferencePosition('max')
+                }
+              "
+              class="h-7.5 flex-1"
+            >
+              <span class="text-xs">{{ t('transform.targetMax') }}</span>
+            </Toggle>
+          </div>
+        </div>
         <div class="flex flex-col gap-2">
           <!-- X轴 -->
           <div class="flex items-center gap-2">
@@ -1052,14 +1184,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('x', 'min')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignStartVertical :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignMinHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignMinHintReference')
+                        : t('transform.alignMinHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1068,14 +1204,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('x', 'center')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignCenterVertical :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignCenterHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignCenterHintReference')
+                        : t('transform.alignCenterHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1084,14 +1224,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('x', 'max')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignEndVertical :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignMaxHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignMaxHintReference')
+                        : t('transform.alignMaxHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1126,14 +1270,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('y', 'min')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignStartHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignMinHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignMinHintReference')
+                        : t('transform.alignMinHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1142,14 +1290,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('y', 'center')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignCenterHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignCenterHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignCenterHintReference')
+                        : t('transform.alignCenterHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1158,14 +1310,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('y', 'max')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignEndHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignMaxHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignMaxHintReference')
+                        : t('transform.alignMaxHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1199,14 +1355,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('z', 'min')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignEndHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignMinHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignMinHintReference')
+                        : t('transform.alignMinHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1215,14 +1375,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('z', 'center')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignCenterHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignCenterHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignCenterHintReference')
+                        : t('transform.alignCenterHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -1231,14 +1395,18 @@ watch(
                   <TooltipTrigger as-child>
                     <button
                       @click="alignSelectedItems('z', 'max')"
-                      :disabled="selectionInfo.count < 2"
+                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
                       class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <AlignStartHorizontal :size="14" class="shrink-0" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.alignMaxHint') }}
+                    {{
+                      uiStore.alignReferenceItemId
+                        ? t('transform.alignMaxHintReference')
+                        : t('transform.alignMaxHint')
+                    }}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
