@@ -689,9 +689,12 @@ export function useEditorManipulation() {
         z: sum.z / unit.items.length,
       }
 
-      const workingCenter = uiStore.workingCoordinateSystem.enabled
-        ? uiStore.globalToWorking(globalCenter)
-        : globalCenter
+      // 数据空间 -> 世界空间（Y 轴翻转）-> 工作坐标系
+      let workingCenter = globalCenter
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
+        workingCenter = uiStore.globalToWorking(worldCenter)
+      }
 
       return { unit, workingCenter }
     })
@@ -722,12 +725,15 @@ export function useEditorManipulation() {
       const workingDelta = { x: 0, y: 0, z: 0 }
       workingDelta[axis] = delta
 
-      // 转换回全局坐标系
-      const globalDelta = uiStore.workingCoordinateSystem.enabled
-        ? uiStore.workingToGlobal(workingDelta)
-        : workingDelta
+      // 转换回全局坐标系（世界空间）-> 数据空间
+      let dataDelta = workingDelta
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const worldDelta = uiStore.workingToGlobal(workingDelta)
+        // 世界空间 -> 数据空间（Y 轴翻转）
+        dataDelta = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
+      }
 
-      unitDeltas.set(unit, globalDelta)
+      unitDeltas.set(unit, dataDelta)
     })
 
     // 应用位移到所有物品
@@ -779,14 +785,11 @@ export function useEditorManipulation() {
 
     // 如果启用了工作坐标系，旋转对齐轴向量（支持完整三轴）
     if (uiStore.workingCoordinateSystem.enabled) {
-      // 将工作坐标系旋转从视觉空间转换回数据空间
-      const workingDataRotation = matrixTransform.visualRotationToUI(
-        uiStore.workingCoordinateSystem.rotation
-      )
+      // 直接使用视觉空间的旋转值，与 coordinateTransform 一致
       const euler = new Euler(
-        (workingDataRotation.x * Math.PI) / 180,
-        (workingDataRotation.y * Math.PI) / 180,
-        -(workingDataRotation.z * Math.PI) / 180, // 与 coordinateTransform 一致
+        (uiStore.workingCoordinateSystem.rotation.x * Math.PI) / 180,
+        (uiStore.workingCoordinateSystem.rotation.y * Math.PI) / 180,
+        -(uiStore.workingCoordinateSystem.rotation.z * Math.PI) / 180, // Z 轴取反
         'ZYX'
       )
       alignAxisVector.applyEuler(euler)
@@ -970,9 +973,12 @@ export function useEditorManipulation() {
         z: sum.z / unit.items.length,
       }
 
-      const workingCenter = uiStore.workingCoordinateSystem.enabled
-        ? uiStore.globalToWorking(globalCenter)
-        : globalCenter
+      // 数据空间 -> 世界空间（Y 轴翻转）-> 工作坐标系
+      let workingCenter = globalCenter
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const worldCenter = { x: globalCenter.x, y: -globalCenter.y, z: globalCenter.z }
+        workingCenter = uiStore.globalToWorking(worldCenter)
+      }
 
       return { unit, workingCenter }
     })
@@ -1000,12 +1006,15 @@ export function useEditorManipulation() {
       const workingDelta = { x: 0, y: 0, z: 0 }
       workingDelta[axis] = delta
 
-      // 转换回全局坐标系
-      const globalDelta = uiStore.workingCoordinateSystem.enabled
-        ? uiStore.workingToGlobal(workingDelta)
-        : workingDelta
+      // 转换回全局坐标系（世界空间）-> 数据空间
+      let dataDelta = workingDelta
+      if (uiStore.workingCoordinateSystem.enabled) {
+        const worldDelta = uiStore.workingToGlobal(workingDelta)
+        // 世界空间 -> 数据空间（Y 轴翻转）
+        dataDelta = { x: worldDelta.x, y: -worldDelta.y, z: worldDelta.z }
+      }
 
-      unitDeltas.set(unit, globalDelta)
+      unitDeltas.set(unit, dataDelta)
     })
 
     // 应用位移到所有物品
