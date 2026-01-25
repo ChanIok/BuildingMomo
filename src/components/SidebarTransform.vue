@@ -4,87 +4,51 @@ import { useEditorStore } from '../stores/editorStore'
 import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
 import { useUIStore } from '../stores/uiStore'
 import { useSettingsStore } from '../stores/settingsStore'
-import { useGameDataStore } from '../stores/gameDataStore'
 import { useI18n } from '../composables/useI18n'
-import {
-  convertPositionGlobalToWorking,
-  convertRotationGlobalToWorking,
-  convertPositionWorkingToGlobal,
-  convertRotationWorkingToGlobal,
-} from '../lib/coordinateTransform'
-import { matrixTransform } from '../lib/matrixTransform'
-import { Euler, Matrix4, Vector3 } from 'three'
+import { convertPositionWorkingToGlobal } from '../lib/coordinateTransform'
+import { useTransformSelection, fmt } from '../composables/transform/useTransformSelection'
+import TransformAxisInputs from './transform/TransformAxisInputs.vue'
+import TransformRotationSection from './transform/TransformRotationSection.vue'
+import TransformAlignSection from './transform/TransformAlignSection.vue'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
-import { Toggle } from '@/components/ui/toggle'
-
-import {
-  AlignStartHorizontal,
-  AlignCenterHorizontal,
-  AlignEndHorizontal,
-  AlignHorizontalSpaceBetween,
-  AlignStartVertical,
-  AlignCenterVertical,
-  AlignEndVertical,
-  AlignVerticalSpaceBetween,
-  X,
-} from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
-const gameDataStore = useGameDataStore()
-const { t, locale } = useI18n()
+const { t } = useI18n()
+const { updateSelectedItemsTransform, mirrorSelectedItems } = useEditorManipulation()
+
+// 使用抽取的 composable
 const {
-  updateSelectedItemsTransform,
+  selectionInfo,
+  isScaleAllowed,
+  alignReferenceItemName,
+  isRotationXAllowed,
+  isRotationYAllowed,
+} = useTransformSelection()
 
-  getRotationCenter,
-  mirrorSelectedItems,
-  alignSelectedItems,
-  distributeSelectedItems,
-} = useEditorManipulation()
-
-// 位置和缩放默认为绝对模式 (false)，旋转默认为相对模式 (true)
+// 位置和缩放默认为绝对模式 (false)
 const isPositionRelative = ref(false)
-const isRotationRelative = ref(false)
 const isScaleRelative = ref(false)
 
 // 范围模式：pivot（轴点范围）或 bbox（包围盒范围）
 const rangeMode = ref<'pivot' | 'bbox'>('pivot')
 
-// 旋转输入的临时状态
-const rotationState = ref({ x: 0, y: 0, z: 0 })
+// 定点旋转状态（提升到父组件，防止子组件卸载时丢失）
+const customPivotEnabled = ref(false)
+
 // 位置相对输入的临时状态
 const positionState = ref({ x: 0, y: 0, z: 0 })
 // 缩放输入的临时状态（相对模式默认为 1，因为是乘法）
 const scaleState = ref({ x: 1, y: 1, z: 1 })
-
-// 定点旋转状态（存储工作坐标系的值，即用户直接输入的值）
-const customPivotEnabled = ref(false)
-const customPivotWorkingX = ref<number | null>(null)
-const customPivotWorkingY = ref<number | null>(null)
-const customPivotWorkingZ = ref<number | null>(null)
 
 // Tabs 绑定的计算属性
 const positionMode = computed({
   get: () => (isPositionRelative.value ? 'relative' : 'absolute'),
   set: (val) => {
     isPositionRelative.value = val === 'relative'
-  },
-})
-
-const rotationMode = computed({
-  get: () => {
-    // 多选强制相对，单选遵循用户偏好
-    if (selectionInfo.value?.count && selectionInfo.value.count > 1) {
-      return 'relative'
-    }
-    return isRotationRelative.value ? 'relative' : 'absolute'
-  },
-  set: (val) => {
-    // 只更新用户偏好
-    isRotationRelative.value = val === 'relative'
   },
 })
 
@@ -99,280 +63,33 @@ const scaleMode = computed({
 watch(
   () => editorStore.activeScheme?.selectedItemIds.value,
   () => {
-    rotationState.value = { x: 0, y: 0, z: 0 }
     positionState.value = { x: 0, y: 0, z: 0 }
     scaleState.value = { x: 1, y: 1, z: 1 }
   },
   { deep: true }
 )
 
-// 监听定点旋转开关，同步到 uiStore
-watch(customPivotEnabled, (enabled) => {
-  uiStore.setCustomPivotEnabled(enabled)
-  if (!enabled) {
-    // 清空工作坐标
-    customPivotWorkingX.value = null
-    customPivotWorkingY.value = null
-    customPivotWorkingZ.value = null
-  }
-})
-
-// 监听定点旋转坐标变化（工作坐标），转换成全局坐标同步到 uiStore
-watch([customPivotWorkingX, customPivotWorkingY, customPivotWorkingZ], ([x, y, z]) => {
-  if (customPivotEnabled.value && x !== null && y !== null && z !== null) {
-    // 将工作坐标转换为全局坐标
-    const global = uiStore.workingToGlobal({ x, y, z })
-    uiStore.setCustomPivotPosition(global)
+// 位置值（根据模式）
+const positionValue = computed(() => {
+  if (!selectionInfo.value) return { x: 0, y: 0, z: 0 }
+  if (isPositionRelative.value) {
+    return positionState.value
   } else {
-    uiStore.setCustomPivotPosition(null)
+    return selectionInfo.value.center
   }
 })
 
-const selectionInfo = computed(() => {
-  const scheme = editorStore.activeScheme
-  if (!scheme) return null
-  const ids = scheme.selectedItemIds.value
-  if (ids.size === 0) return null
-  const selected = scheme.items.value.filter((item) => ids.has(item.internalId))
-
-  // 位置中心点（用于绝对模式显示）
-  let center = { x: 0, y: 0, z: 0 }
-
-  // 使用 getRotationCenter 获取有效中心（包含定点旋转、组合原点优先级的处理）
-  center = getRotationCenter() || { x: 0, y: 0, z: 0 }
-
-  // 使用 uiStore 的统一方法获取有效的坐标系旋转（视觉空间）
-  const effectiveCoordRotation = uiStore.getEffectiveCoordinateRotation(
-    scheme.selectedItemIds.value,
-    editorStore.itemsMap
-  )
-
-  // 关键：由于 Gizmo 的 Y 轴箭头几何体被翻转了（setupGizmoAppearance），
-  // 视觉上向上的箭头实际对应数据空间的 +Y（向下）
-  // 所以侧边栏应该直接显示数据空间的值，与 Gizmo 视觉方向一致
-  // 数据空间 -> 世界空间：Y 轴翻转
-  const worldCenter = { x: center.x, y: -center.y, z: center.z }
-
-  // 如果有有效的坐标系，将世界空间坐标转换到工作坐标系
-  if (effectiveCoordRotation) {
-    // 工作坐标系输出的是世界空间语义的坐标
-    const workingCenter = convertPositionGlobalToWorking(worldCenter, effectiveCoordRotation)
-    // 世界空间 -> 数据空间：Y 轴翻转回来，与 Gizmo 视觉一致
-    center = { x: workingCenter.x, y: -workingCenter.y, z: workingCenter.z }
-  }
-  // 没有工作坐标系时，直接使用数据空间的值（center 本身就是）
-
-  // 旋转角度（用于绝对模式显示）
-  let rotation = { x: 0, y: 0, z: 0 }
-  if (selected.length === 1) {
-    const item = selected[0]
-    if (item) {
-      rotation = matrixTransform.dataRotationToVisual({
-        x: item.rotation.x,
-        y: item.rotation.y,
-        z: item.rotation.z,
-      })
-      // 如果有有效的坐标系，将全局旋转转换为相对旋转（使用四元数精确转换）
-      if (effectiveCoordRotation) {
-        // 直接使用视觉空间的旋转值，与 Gizmo 一致
-        rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
-      }
-    }
+// 缩放值（根据模式）
+const scaleValue = computed(() => {
+  if (!selectionInfo.value) return { x: 1, y: 1, z: 1 }
+  if (isScaleRelative.value) {
+    return scaleState.value
   } else {
-    // 多选绝对模式显示，显示0或保持最后已知值
-    rotation = rotationState.value
-  }
-
-  // 缩放（不受工作坐标系影响）
-  let scale = { x: 1, y: 1, z: 1 }
-  if (selected.length === 1) {
-    const item = selected[0]
-    if (item && item.extra.Scale) {
-      scale = {
-        x: item.extra.Scale.X,
-        y: item.extra.Scale.Y,
-        z: item.extra.Scale.Z,
-      }
-    }
-  } else if (selected.length > 1) {
-    // 多选时计算平均缩放
-    const scales = selected.map((item) => item.extra.Scale || { X: 1, Y: 1, Z: 1 })
-    const avgX = scales.reduce((sum, s) => sum + s.X, 0) / scales.length
-    const avgY = scales.reduce((sum, s) => sum + s.Y, 0) / scales.length
-    const avgZ = scales.reduce((sum, s) => sum + s.Z, 0) / scales.length
-    scale = { x: avgX, y: avgY, z: avgZ }
-  }
-
-  // 边界（最小/最大值）- 轴点范围
-  let bounds = null
-  if (selected.length > 1) {
-    const points = selected.map((i) => ({ x: i.x, y: i.y, z: i.z }))
-
-    // 修复 BUG: 正确处理坐标空间转换
-    // 数据空间 -> 世界空间 -> 工作坐标系 -> 数据空间语义
-    const transformedPoints = effectiveCoordRotation
-      ? points.map((p) => {
-          // 数据空间 -> 世界空间：Y 轴翻转
-          const worldPos = { x: p.x, y: -p.y, z: p.z }
-          // 世界空间 -> 工作坐标系
-          const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
-          // 世界空间 -> 数据空间语义：Y 轴翻转回来
-          return { x: workingPos.x, y: -workingPos.y, z: workingPos.z }
-        })
-      : points
-
-    const xs = transformedPoints.map((p) => p.x)
-    const ys = transformedPoints.map((p) => p.y)
-    const zs = transformedPoints.map((p) => p.z)
-
-    bounds = {
-      min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
-      max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
-    }
-  }
-
-  // 包围盒范围（考虑尺寸、旋转、缩放）
-  let bboxBounds = null
-  if (selected.length > 1) {
-    // 计算每个物品的 8 个包围盒角点
-    const allCorners: { x: number; y: number; z: number }[] = []
-
-    for (const item of selected) {
-      const furniture = gameDataStore.getFurniture(item.gameId)
-      const furnitureSize = furniture?.size ?? [100, 100, 150]
-      const [sizeX, sizeY, sizeZ] = furnitureSize
-
-      // 获取缩放
-      const scaleX = item.extra?.Scale?.X ?? 1
-      const scaleY = item.extra?.Scale?.Y ?? 1
-      const scaleZ = item.extra?.Scale?.Z ?? 1
-
-      // 计算实际尺寸（数据空间）
-      // 注意：游戏坐标系中 X/Y 与渲染空间交换
-      const halfX = (sizeY * scaleX) / 2 // 数据空间 X 使用 sizeY * scaleX
-      const halfY = (sizeX * scaleY) / 2 // 数据空间 Y 使用 sizeX * scaleY
-      const halfZ = (sizeZ * scaleZ) / 2
-
-      // 8 个角点（物品局部空间，中心为原点）
-      const localCorners = [
-        { x: -halfX, y: -halfY, z: -halfZ },
-        { x: +halfX, y: -halfY, z: -halfZ },
-        { x: -halfX, y: +halfY, z: -halfZ },
-        { x: +halfX, y: +halfY, z: -halfZ },
-        { x: -halfX, y: -halfY, z: +halfZ },
-        { x: +halfX, y: -halfY, z: +halfZ },
-        { x: -halfX, y: +halfY, z: +halfZ },
-        { x: +halfX, y: +halfY, z: +halfZ },
-      ]
-
-      // 旋转矩阵（数据空间）
-      const visualRot = matrixTransform.dataRotationToVisual(item.rotation)
-      const euler = new Euler(
-        (visualRot.x * Math.PI) / 180,
-        (visualRot.y * Math.PI) / 180,
-        -(visualRot.z * Math.PI) / 180,
-        'ZYX'
-      )
-      const rotationMatrix = new Matrix4().makeRotationFromEuler(euler)
-
-      // 变换到世界空间并加上物品位置
-      for (const corner of localCorners) {
-        const vec = new Vector3(corner.x, corner.y, corner.z)
-        vec.applyMatrix4(rotationMatrix)
-        vec.x += item.x
-        vec.y += item.y
-        vec.z += item.z
-
-        // 如果有工作坐标系，转换到工作坐标系
-        if (effectiveCoordRotation) {
-          // 数据空间 -> 世界空间：Y 轴翻转
-          const worldPos = { x: vec.x, y: -vec.y, z: vec.z }
-          // 世界空间 -> 工作坐标系
-          const workingPos = convertPositionGlobalToWorking(worldPos, effectiveCoordRotation)
-          // 世界空间 -> 数据空间语义：Y 轴翻转回来
-          allCorners.push({ x: workingPos.x, y: -workingPos.y, z: workingPos.z })
-        } else {
-          allCorners.push({ x: vec.x, y: vec.y, z: vec.z })
-        }
-      }
-    }
-
-    // 计算 AABB
-    if (allCorners.length > 0) {
-      const xs = allCorners.map((p) => p.x)
-      const ys = allCorners.map((p) => p.y)
-      const zs = allCorners.map((p) => p.z)
-
-      bboxBounds = {
-        min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
-        max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
-      }
-    }
-  }
-
-  return {
-    count: selected.length,
-    center,
-    rotation,
-    scale,
-    bounds,
-    bboxBounds,
+    return selectionInfo.value.scale
   }
 })
 
-// 获取当前选中物品的变换约束信息
-const transformConstraints = computed(() => {
-  if (!selectionInfo.value) return null
-
-  const scheme = editorStore.activeScheme
-  if (!scheme) return null
-
-  const selected = scheme.items.value.filter((item) =>
-    scheme.selectedItemIds.value.has(item.internalId)
-  )
-
-  if (selected.length === 0) return null
-
-  // 多选时取交集（最严格限制）
-  let scaleMin = 0
-  let scaleMax = Infinity
-  let canRotateX = true
-  let canRotateY = true
-
-  for (const item of selected) {
-    const furniture = gameDataStore.getFurniture(item.gameId)
-    if (furniture) {
-      scaleMin = Math.max(scaleMin, furniture.scaleRange[0])
-      scaleMax = Math.min(scaleMax, furniture.scaleRange[1])
-      canRotateX &&= furniture.rotationAllowed.x
-      canRotateY &&= furniture.rotationAllowed.y
-    }
-  }
-
-  return {
-    scaleRange: [scaleMin, scaleMax] as [number, number],
-    rotationAllowed: { x: canRotateX, y: canRotateY, z: true },
-    isScaleLocked: scaleMin >= scaleMax,
-  }
-})
-
-// 计算各个控制的可用性
-const isRotationXAllowed = computed(() => {
-  if (!settingsStore.settings.enableLimitDetection) return true
-  return transformConstraints.value?.rotationAllowed.x ?? false
-})
-
-const isRotationYAllowed = computed(() => {
-  if (!settingsStore.settings.enableLimitDetection) return true
-  return transformConstraints.value?.rotationAllowed.y ?? false
-})
-
-const isScaleAllowed = computed(() => {
-  if (!settingsStore.settings.enableLimitDetection) return true
-  return !(transformConstraints.value?.isScaleLocked ?? false)
-})
-
-// 更新处理函数
+// 更新位置
 function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
   if (!editorStore.activeScheme) return
@@ -394,7 +111,7 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     // 如果有有效的坐标系，将增量向量转换到全局坐标系
     if (effectiveRotation) {
       // 用户输入的 Y 值需要取反，因为 Gizmo 的 Y 轴视觉上被翻转了
-      // 用户看到的“向上”实际对应世界空间的 -Y
+      // 用户看到的"向上"实际对应世界空间的 -Y
       const visualPosArgs = { x: posArgs.x, y: -posArgs.y, z: posArgs.z }
       // 工作坐标系 -> 世界空间
       const worldDelta = convertPositionWorkingToGlobal(visualPosArgs, effectiveRotation)
@@ -437,72 +154,13 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
   }
 }
 
-function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
-  if (!selectionInfo.value) return
-  if (!editorStore.activeScheme) return
-
-  if (rotationMode.value === 'relative') {
-    // 相对模式
-    const delta = value
-    if (delta === 0) return
-
-    const rotationArgs: any = {}
-    rotationArgs[axis] = delta
-
-    updateSelectedItemsTransform({
-      mode: 'relative',
-      rotation: rotationArgs,
-    })
-
-    // 重置输入为0
-    rotationState.value[axis] = 0
-  } else {
-    // 绝对模式
-    // 此时肯定是单选，因为多选强制为 relative
-    if (selectionInfo.value.count === 1) {
-      // 单选绝对模式：将有效坐标系下的输入值转换为全局旋转
-
-      // 构建完整的有效坐标系旋转（用户输入 + 其他轴的当前值）
-      const effectiveRotation = { ...selectionInfo.value.rotation }
-      effectiveRotation[axis] = value
-
-      // 转换为全局旋转（使用四元数精确转换）
-      const coordRotation = uiStore.getEffectiveCoordinateRotation(
-        editorStore.activeScheme.selectedItemIds.value,
-        editorStore.itemsMap
-      )
-      let globalRotation = effectiveRotation
-      if (coordRotation) {
-        // 直接使用视觉空间的旋转值，与 Gizmo 一致
-        globalRotation = convertRotationWorkingToGlobal(effectiveRotation, coordRotation)
-      }
-
-      // 传递完整的三轴旋转，而非仅单轴
-      updateSelectedItemsTransform({
-        mode: 'absolute',
-        rotation: matrixTransform.visualRotationToData(globalRotation),
-      })
-    }
-  }
-}
-
+// 更新缩放
 function updateScale(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
 
-  // 应用范围限制（如果启用合规检测）
-  let clampedValue = value
-  if (settingsStore.settings.enableLimitDetection && transformConstraints.value) {
-    const [min, max] = transformConstraints.value.scaleRange
-    if (!isScaleRelative.value) {
-      // 绝对模式：只截断，不舍入（保持精确值，由逻辑层统一处理）
-      clampedValue = Math.max(min, Math.min(max, value))
-    }
-    // 相对模式：在 updateSelectedItemsTransform 内部处理
-  }
-
   if (isScaleRelative.value) {
     // 相对模式：值为乘数（例如 1.5 表示放大到 1.5 倍）
-    const multiplier = clampedValue
+    const multiplier = value
     if (multiplier === 1) return // 乘以 1 无变化
 
     const scaleArgs: any = {}
@@ -518,7 +176,7 @@ function updateScale(axis: 'x' | 'y' | 'z', value: number) {
   } else {
     // 绝对模式：直接设置缩放值
     const scaleArgs: any = {}
-    scaleArgs[axis] = clampedValue
+    scaleArgs[axis] = value
 
     updateSelectedItemsTransform({
       mode: 'absolute',
@@ -527,6 +185,7 @@ function updateScale(axis: 'x' | 'y' | 'z', value: number) {
   }
 }
 
+// 更新范围
 function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number) {
   if (!editorStore.activeScheme) return
 
@@ -565,76 +224,6 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
     position: posArgs,
   })
 }
-
-// 数字格式化辅助函数
-const fmt = (n: number) => Math.round(n * 100) / 100
-
-// ========== 定点旋转物品选择 ==========
-
-// 开始选择物品
-function startSelectingPivotItem() {
-  uiStore.setSelectingPivotItem(true)
-}
-
-// ========== 对齐参照物选择 ==========
-
-// 开始选择参照物
-function startSelectingAlignReference() {
-  uiStore.setSelectingAlignReference(true)
-}
-
-// 清除参照物
-function clearAlignReference() {
-  uiStore.setAlignReferenceItem(null)
-}
-
-// 获取参照物名称
-const alignReferenceItemName = computed(() => {
-  const itemId = uiStore.alignReferenceItemId
-  if (!itemId) return ''
-
-  const item = editorStore.itemsMap.get(itemId)
-  if (!item) return ''
-
-  const furniture = gameDataStore.getFurniture(item.gameId)
-  if (!furniture) return t('sidebar.itemDefaultName', { id: item.gameId })
-  if (locale.value === 'zh') return furniture.name_cn
-  return furniture.name_en || furniture.name_cn
-})
-
-// 监听选择结果，填入坐标（工作坐标系下的值）
-watch(
-  () => uiStore.selectedPivotPosition,
-  (pos) => {
-    if (pos && customPivotEnabled.value) {
-      // 获取有效的坐标系旋转（视觉空间）
-      const effectiveRotation = uiStore.getEffectiveCoordinateRotation(
-        editorStore.activeScheme?.selectedItemIds.value || new Set(),
-        editorStore.itemsMap
-      )
-
-      // 数据空间 -> 世界空间：Y 轴翻转
-      const worldPos = { x: pos.x, y: -pos.y, z: pos.z }
-
-      // 如果有有效的坐标系，将世界空间坐标转换到工作坐标系
-      let workingPos = pos // 默认使用数据空间值
-      if (effectiveRotation) {
-        // 世界空间 -> 工作坐标系
-        const working = convertPositionGlobalToWorking(worldPos, effectiveRotation)
-        // 世界空间 -> 数据空间：Y 轴翻转回来
-        workingPos = { x: working.x, y: -working.y, z: working.z }
-      }
-
-      // 填入工作坐标系下的值
-      customPivotWorkingX.value = workingPos.x
-      customPivotWorkingY.value = workingPos.y
-      customPivotWorkingZ.value = workingPos.z
-
-      // 清空临时状态
-      uiStore.setSelectedPivotPosition(null)
-    }
-  }
-)
 </script>
 
 <template>
@@ -698,289 +287,24 @@ watch(
           </Tabs>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
-              >X</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                isPositionRelative
-                  ? positionState.x === 0
-                    ? ''
-                    : positionState.x
-                  : fmt(selectionInfo.center.x)
-              "
-              @change="(e) => updatePosition('x', Number((e.target as HTMLInputElement).value))"
-              :placeholder="isPositionRelative ? '0' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
-              >Y</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                isPositionRelative
-                  ? positionState.y === 0
-                    ? ''
-                    : positionState.y
-                  : fmt(selectionInfo.center.y)
-              "
-              @change="(e) => updatePosition('y', Number((e.target as HTMLInputElement).value))"
-              :placeholder="isPositionRelative ? '0' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
-              >Z</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                isPositionRelative
-                  ? positionState.z === 0
-                    ? ''
-                    : positionState.z
-                  : fmt(selectionInfo.center.z)
-              "
-              @change="(e) => updatePosition('z', Number((e.target as HTMLInputElement).value))"
-              :placeholder="isPositionRelative ? '0' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-        </div>
+        <TransformAxisInputs
+          :model-value="positionValue"
+          :mode="positionMode"
+          :formatter="fmt"
+          @update:x="updatePosition('x', $event)"
+          @update:y="updatePosition('y', $event)"
+          @update:z="updatePosition('z', $event)"
+        />
       </div>
+
       <!-- 旋转 -->
-      <div class="flex flex-col items-stretch gap-2">
-        <div class="flex flex-wrap items-center justify-between gap-y-2">
-          <div class="flex items-center gap-1">
-            <label class="text-xs font-semibold text-sidebar-foreground">{{
-              t('transform.rotation')
-            }}</label>
-            <!-- Local 模式提示 (单选时显示) -->
-            <TooltipProvider v-if="uiStore.gizmoSpace === 'local' && selectionInfo?.count === 1">
-              <Tooltip :delay-duration="300">
-                <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] text-primary">{{
-                    t('transform.localCoord')
-                  }}</span>
-                </TooltipTrigger>
-                <TooltipContent class="text-xs" variant="light">
-                  {{ t('transform.localCoordTip') }}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <!-- 工作坐标系提示 -->
-            <TooltipProvider v-else-if="uiStore.workingCoordinateSystem.enabled">
-              <Tooltip :delay-duration="300">
-                <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] text-primary">{{
-                    t('transform.workingCoord')
-                  }}</span>
-                </TooltipTrigger>
-                <TooltipContent class="text-xs" variant="light">
-                  <div
-                    v-html="
-                      t('transform.workingCoordTip', {
-                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
-                      })
-                    "
-                  ></div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <Tabs v-model="rotationMode" class="w-auto">
-            <TabsList class="h-6 p-0.5">
-              <TabsTrigger
-                value="absolute"
-                :disabled="selectionInfo?.count > 1"
-                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                {{ t('transform.absolute') }}
-              </TabsTrigger>
-              <TabsTrigger
-                value="relative"
-                class="h-full px-2 text-[10px] data-[state=active]:bg-background data-[state=active]:shadow-sm"
-              >
-                {{ t('transform.relative') }}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-        <!-- 定点旋转 -->
-        <div class="flex items-center justify-between gap-2">
-          <TooltipProvider>
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <label
-                  for="custom-pivot-toggle"
-                  class="cursor-pointer text-xs text-sidebar-foreground hover:text-foreground"
-                >
-                  {{ t('transform.customPivot') }}
-                </label>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                {{ t('transform.customPivotHint') }}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <div class="flex items-center gap-1.5">
-            <!-- 选择按钮 -->
-            <button
-              v-if="customPivotEnabled && !uiStore.isSelectingPivotItem"
-              @click="startSelectingPivotItem"
-              class="h-[18.5px] rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              {{ t('transform.selectPivotItem') }}
-            </button>
-            <button
-              v-else-if="customPivotEnabled && uiStore.isSelectingPivotItem"
-              @click="uiStore.setSelectingPivotItem(false)"
-              class="h-[18.5px] rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              {{ t('transform.cancelPivotSelect') }}
-            </button>
-            <Switch id="custom-pivot-toggle" v-model="customPivotEnabled" />
-          </div>
-        </div>
-        <div v-if="customPivotEnabled" class="grid grid-cols-3 gap-2">
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span class="mr-1.5 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
-              >X</span
-            >
-            <input
-              type="number"
-              step="any"
-              v-model.number="customPivotWorkingX"
-              placeholder=""
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
-              >Y</span
-            >
-            <input
-              type="number"
-              step="any"
-              v-model.number="customPivotWorkingY"
-              placeholder=""
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
-              >Z</span
-            >
-            <input
-              type="number"
-              step="any"
-              v-model.number="customPivotWorkingZ"
-              placeholder=""
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <!-- Roll (X) -->
-          <div
-            v-if="isRotationXAllowed"
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
-              >X</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                rotationMode === 'relative'
-                  ? rotationState.x === 0
-                    ? ''
-                    : rotationState.x
-                  : fmt(selectionInfo.rotation.x)
-              "
-              @change="(e) => updateRotation('x', Number((e.target as HTMLInputElement).value))"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              :placeholder="rotationMode === 'relative' ? '0' : ''"
-            />
-          </div>
-          <!-- Pitch (Y) -->
-          <div
-            v-if="isRotationYAllowed"
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
-              >Y</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                rotationMode === 'relative'
-                  ? rotationState.y === 0
-                    ? ''
-                    : rotationState.y
-                  : fmt(selectionInfo.rotation.y)
-              "
-              @change="(e) => updateRotation('y', Number((e.target as HTMLInputElement).value))"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              :placeholder="rotationMode === 'relative' ? '0' : ''"
-            />
-          </div>
-          <!-- Yaw (Z) -->
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
-              >Z</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                rotationMode === 'relative'
-                  ? rotationState.z === 0
-                    ? ''
-                    : rotationState.z
-                  : fmt(selectionInfo.rotation.z)
-              "
-              @change="(e) => updateRotation('z', Number((e.target as HTMLInputElement).value))"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              :placeholder="rotationMode === 'relative' ? '0' : ''"
-            />
-          </div>
-        </div>
-      </div>
+      <TransformRotationSection
+        :selection-info="selectionInfo"
+        :is-rotation-x-allowed="isRotationXAllowed"
+        :is-rotation-y-allowed="isRotationYAllowed"
+        v-model:custom-pivot-enabled="customPivotEnabled"
+      />
+
       <!-- 缩放 -->
       <div v-if="isScaleAllowed" class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">
@@ -1004,465 +328,24 @@ watch(
             </TabsList>
           </Tabs>
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
-              >X</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                isScaleRelative
-                  ? scaleState.x === 1
-                    ? ''
-                    : scaleState.x
-                  : fmt(selectionInfo.scale.x)
-              "
-              @change="(e) => updateScale('x', Number((e.target as HTMLInputElement).value))"
-              :placeholder="isScaleRelative ? '1' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
-              >Y</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                isScaleRelative
-                  ? scaleState.y === 1
-                    ? ''
-                    : scaleState.y
-                  : fmt(selectionInfo.scale.y)
-              "
-              @change="(e) => updateScale('y', Number((e.target as HTMLInputElement).value))"
-              :placeholder="isScaleRelative ? '1' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-          <div
-            class="group relative flex items-center rounded-md bg-sidebar-accent px-2 py-1 ring-1 ring-transparent transition-all focus-within:bg-background focus-within:ring-ring hover:bg-accent"
-          >
-            <span
-              class="mr-1.5 cursor-ew-resize text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
-              >Z</span
-            >
-            <input
-              type="number"
-              step="any"
-              :value="
-                isScaleRelative
-                  ? scaleState.z === 1
-                    ? ''
-                    : scaleState.z
-                  : fmt(selectionInfo.scale.z)
-              "
-              @change="(e) => updateScale('z', Number((e.target as HTMLInputElement).value))"
-              :placeholder="isScaleRelative ? '1' : ''"
-              class="w-full min-w-0 [appearance:textfield] bg-transparent text-xs text-sidebar-foreground outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-        </div>
+
+        <TransformAxisInputs
+          :model-value="scaleValue"
+          :mode="scaleMode"
+          :default-value="1"
+          :formatter="fmt"
+          @update:x="updateScale('x', $event)"
+          @update:y="updateScale('y', $event)"
+          @update:z="updateScale('z', $event)"
+        />
       </div>
 
       <!-- 对齐与分布 -->
-      <div v-if="selectionInfo" class="flex flex-col items-stretch gap-2">
-        <div class="flex flex-wrap items-center justify-between gap-y-2">
-          <div class="flex items-center gap-1">
-            <label class="text-xs font-semibold text-sidebar-foreground">{{
-              t('transform.alignAndDistribute')
-            }}</label>
-            <TooltipProvider v-if="uiStore.workingCoordinateSystem.enabled">
-              <Tooltip :delay-duration="300">
-                <TooltipTrigger as-child>
-                  <span class="cursor-help text-[10px] text-primary">{{
-                    t('transform.workingCoord')
-                  }}</span>
-                </TooltipTrigger>
-                <TooltipContent class="text-xs" variant="light">
-                  <div
-                    v-html="
-                      t('transform.workingCoordTip', {
-                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
-                      })
-                    "
-                  ></div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </div>
-        <!-- 参照物 -->
-        <div v-if="selectionInfo" class="flex items-center justify-between gap-2">
-          <TooltipProvider>
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <label class="cursor-help text-xs text-sidebar-foreground hover:text-foreground">
-                  {{ t('transform.referenceObject') }}
-                </label>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                {{ t('transform.alignToReferenceHint') }}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <div class="flex items-center gap-1.5">
-            <!-- 选择按钮 -->
-            <button
-              v-if="!uiStore.isSelectingAlignReference"
-              @click="startSelectingAlignReference"
-              class="h-[18.5px] rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              {{ t('transform.select') }}
-            </button>
-            <button
-              v-else
-              @click="uiStore.setSelectingAlignReference(false)"
-              class="h-[18.5px] rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              {{ t('sidebar.cancelSelecting') }}
-            </button>
-            <!-- 清除按钮 -->
-            <button
-              v-if="uiStore.alignReferenceItemId"
-              @click="clearAlignReference"
-              class="flex h-[18.5px] w-[18.5px] items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-              :title="t('transform.clearReference')"
-            >
-              <X :size="12" />
-            </button>
-          </div>
-        </div>
-        <!-- 当前参照物显示 -->
-        <div
-          v-if="uiStore.alignReferenceItemId"
-          class="flex items-center gap-2 rounded-md bg-primary/10 px-2 py-1.5"
-        >
-          <span class="text-[10px] text-muted-foreground">{{ t('sidebar.current') }}:</span>
-          <TooltipProvider>
-            <Tooltip :delay-duration="300">
-              <TooltipTrigger as-child>
-                <span
-                  class="flex-1 cursor-help truncate text-xs font-medium text-sidebar-foreground"
-                >
-                  {{ alignReferenceItemName }}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent class="text-xs" variant="light">
-                {{ alignReferenceItemName }}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        <!-- 目标位置 toggle -->
-        <div v-if="uiStore.alignReferenceItemId" class="flex items-center gap-2">
-          <label class="text-xs text-sidebar-foreground">{{ t('transform.targetPosition') }}</label>
-          <div class="flex flex-1 items-center gap-1">
-            <Toggle
-              size="sm"
-              :model-value="uiStore.alignReferencePosition === 'min'"
-              @update:model-value="
-                (v) => {
-                  if (v) uiStore.setAlignReferencePosition('min')
-                }
-              "
-              class="h-7.5 flex-1"
-            >
-              <span class="text-xs">{{ t('transform.targetMin') }}</span>
-            </Toggle>
-            <Toggle
-              size="sm"
-              :model-value="uiStore.alignReferencePosition === 'center'"
-              @update:model-value="
-                (v) => {
-                  if (v) uiStore.setAlignReferencePosition('center')
-                }
-              "
-              class="h-7.5 flex-1"
-            >
-              <span class="text-xs">{{ t('transform.targetCenter') }}</span>
-            </Toggle>
-            <Toggle
-              size="sm"
-              :model-value="uiStore.alignReferencePosition === 'max'"
-              @update:model-value="
-                (v) => {
-                  if (v) uiStore.setAlignReferencePosition('max')
-                }
-              "
-              class="h-7.5 flex-1"
-            >
-              <span class="text-xs">{{ t('transform.targetMax') }}</span>
-            </Toggle>
-          </div>
-        </div>
-        <div class="flex flex-col gap-2">
-          <!-- X轴 -->
-          <div class="flex items-center gap-2">
-            <span class="w-4 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
-              >X</span
-            >
-            <div class="flex flex-1 gap-1.5">
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('x', 'min')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignStartVertical :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignMinHintReference')
-                        : t('transform.alignMinHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('x', 'center')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignCenterVertical :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignCenterHintReference')
-                        : t('transform.alignCenterHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('x', 'max')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignEndVertical :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignMaxHintReference')
-                        : t('transform.alignMaxHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="distributeSelectedItems('x')"
-                      :disabled="selectionInfo.count < 3"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignHorizontalSpaceBetween :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.distributeHint') }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
+      <TransformAlignSection
+        :selection-info="selectionInfo"
+        :align-reference-item-name="alignReferenceItemName"
+      />
 
-          <!-- Y轴 -->
-          <div class="flex items-center gap-2">
-            <span
-              class="w-4 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
-              >Y</span
-            >
-            <div class="flex flex-1 gap-1.5">
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('y', 'min')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignStartHorizontal :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignMinHintReference')
-                        : t('transform.alignMinHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('y', 'center')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignCenterHorizontal :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignCenterHintReference')
-                        : t('transform.alignCenterHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('y', 'max')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignEndHorizontal :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignMaxHintReference')
-                        : t('transform.alignMaxHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="distributeSelectedItems('y')"
-                      :disabled="selectionInfo.count < 3"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignVerticalSpaceBetween :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.distributeHint') }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
-
-          <!-- Z轴 -->
-          <div class="flex items-center gap-2">
-            <span class="w-4 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
-              >Z</span
-            >
-            <div class="flex flex-1 gap-1.5">
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('z', 'min')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignEndHorizontal :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignMinHintReference')
-                        : t('transform.alignMinHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('z', 'center')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignCenterHorizontal :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignCenterHintReference')
-                        : t('transform.alignCenterHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="alignSelectedItems('z', 'max')"
-                      :disabled="selectionInfo.count < 2 && !uiStore.alignReferenceItemId"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignStartHorizontal :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{
-                      uiStore.alignReferenceItemId
-                        ? t('transform.alignMaxHintReference')
-                        : t('transform.alignMaxHint')
-                    }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip :delay-duration="500">
-                  <TooltipTrigger as-child>
-                    <button
-                      @click="distributeSelectedItems('z')"
-                      :disabled="selectionInfo.count < 3"
-                      class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <AlignVerticalSpaceBetween :size="14" class="shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs" variant="light">
-                    {{ t('transform.distributeHint') }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
-        </div>
-      </div>
       <!-- 镜像 -->
       <div v-if="isScaleAllowed" class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">
