@@ -13,6 +13,9 @@ import {
   DynamicDrawUsage,
   Sphere,
   Vector3,
+  CustomBlending,
+  MaxEquation,
+  OneFactor,
   type WebGLRenderer,
   type Camera,
 } from 'three'
@@ -21,6 +24,9 @@ import { scratchColor } from './scratchObjects'
 // 颜色配置
 const SELECTED_COLOR = new Color(0x60a5fa) // 蓝色
 const HOVER_COLOR = new Color(0xf59e0b) // 琥珀色
+
+// 用于读取颜色的临时对象
+const tempColor = new Color()
 
 /**
  * 选中描边管理器（屏幕空间）
@@ -44,6 +50,7 @@ export function useSelectionOutline() {
 
   // 共享材质：使用自定义 shader 支持通过 instanceColor 控制实例可见性
   // depthTest=false 实现强穿透，fragment shader 通过 discard 排除未选中的实例
+  // 双通道编码：R=选中状态，G=hover状态
   const maskMaterial = markRaw(
     new ShaderMaterial({
       vertexShader: `
@@ -57,17 +64,23 @@ export function useSelectionOutline() {
       fragmentShader: `
         varying vec3 vInstanceColor;
         void main() {
-          // 颜色为 (0,0,0) 表示未选中，discard 不渲染
-          if (vInstanceColor.r < 0.001) {
+          // R和G通道都为0表示不渲染
+          if (vInstanceColor.r < 0.001 && vInstanceColor.g < 0.001) {
             discard;
           }
-          // 输出颜色用于后处理（r 通道编码选中/hover 状态）
+          // 输出RG通道用于后处理（R=选中，G=hover）
           gl_FragColor = vec4(vInstanceColor, 1.0);
         }
       `,
       side: DoubleSide,
       depthTest: false,
       depthWrite: false,
+      // MAX 混合模式：防止后渲染的实例覆盖先渲染实例的颜色通道
+      // 解决选中物品覆盖 hover 物品 G 通道导致描边残缺的问题
+      blending: CustomBlending,
+      blendEquation: MaxEquation,
+      blendSrc: OneFactor,
+      blendDst: OneFactor,
     })
   )
 
@@ -85,7 +98,7 @@ export function useSelectionOutline() {
         uResolution: { value: [1, 1] },
         uSelectedColor: { value: SELECTED_COLOR },
         uHoverColor: { value: HOVER_COLOR },
-        uOutlineWidth: { value: 5.0 }, // 描边总宽度
+        uOutlineWidth: { value: 5.0 }, // 描边统一宽度
         uCoreWidth: { value: 2.5 }, // 核心实线宽度
       },
       vertexShader: `
@@ -110,60 +123,90 @@ export function useSelectionOutline() {
       void main() {
         vec2 texel = 1.0 / uResolution;
         
-        // 中心点（物体本身）
-        float centerMask = texture2D(uMask, vUv).r;
+        // 中心点状态（RG双通道）
+        vec2 centerMask = texture2D(uMask, vUv).rg;
+        bool isInSelected = centerMask.r > 0.5;
+        bool isInHovered = centerMask.g > 0.5;
         
-        if (centerMask > 0.001) {
+        // 在 hover 物体内部 → 不画描边（外描边方案）
+        if (isInHovered) {
           discard;
         }
         
-        float maxVal = 0.0;
-        float minDist = 1000.0;
+        float selectedDist = 1000.0;
+        float hoverDist = 1000.0;
+        bool hasSelected = false;
+        bool hasHover = false;
         
         // 采样范围
-        int w = int(ceil(uOutlineWidth));
+        int maxW = int(ceil(uOutlineWidth));
         
-        for (int x = -w; x <= w; x++) {
-          for (int y = -w; y <= w; y++) {
+        for (int x = -maxW; x <= maxW; x++) {
+          for (int y = -maxW; y <= maxW; y++) {
             if (x == 0 && y == 0) continue;
             
             vec2 offset = vec2(float(x), float(y)) * texel;
-            float val = texture2D(uMask, vUv + offset).r;
+            vec2 val = texture2D(uMask, vUv + offset).rg;
+            float dist = length(vec2(float(x), float(y)));
             
-            if (val > 0.001) {
-              float dist = length(vec2(float(x), float(y)));
-              
-              if (dist <= uOutlineWidth) {
-                if (dist < minDist) {
-                  minDist = dist;
-                  maxVal = max(maxVal, val);
-                }
+            // 检测 hover 边缘（G通道）- 始终检测，即使在选中物体内部
+            if (val.g > 0.5 && dist <= uOutlineWidth && dist < hoverDist) {
+              hoverDist = dist;
+              hasHover = true;
+            }
+            
+            // 检测选中边缘（R通道）- 仅在物体外部时检测
+            if (!isInSelected) {
+              if (val.r > 0.5 && dist <= uOutlineWidth && dist < selectedDist) {
+                selectedDist = dist;
+                hasSelected = true;
               }
             }
           }
         }
         
-        if (maxVal < 0.001) {
+        // 如果在选中物体内部且没有检测到 hover 边缘 → discard
+        if (isInSelected && !hasHover) {
           discard;
         }
         
-        // 双层描边：核心完全不透明，外围柔和衰减
-        float alpha;
-        if (minDist <= uCoreWidth) {
-          // 核心区域：完全不透明
-          alpha = 1.0;
-        } else {
-          // 外围区域：从核心边界到总宽度之间平滑衰减
-          float edgeRange = uOutlineWidth - uCoreWidth;
-          float edgeDist = minDist - uCoreWidth;
-          float edgeIntensity = 1.0 - (edgeDist / edgeRange);
-          edgeIntensity = clamp(edgeIntensity, 0.0, 1.0);
-          alpha = pow(edgeIntensity, 3.0); // 适度的衰减曲线
+        if (!hasSelected && !hasHover) {
+          discard;
         }
-
-        vec3 col = (maxVal > 0.75) ? uSelectedColor : uHoverColor;
         
-        gl_FragColor = vec4(col, alpha);
+        vec3 finalColor = vec3(0.0);
+        float finalAlpha = 0.0;
+        
+        // 选中描边（底层）
+        if (hasSelected) {
+          float selectedAlpha;
+          if (selectedDist <= uCoreWidth) {
+            selectedAlpha = 1.0;
+          } else {
+            float range = uOutlineWidth - uCoreWidth;
+            float d = selectedDist - uCoreWidth;
+            selectedAlpha = pow(clamp(1.0 - d / range, 0.0, 1.0), 2.0);
+          }
+          finalColor = uSelectedColor;
+          finalAlpha = selectedAlpha;
+        }
+        
+        // hover 描边（顶层，覆盖选中描边）
+        if (hasHover) {
+          float hoverAlpha;
+          if (hoverDist <= uCoreWidth) {
+            hoverAlpha = 1.0;
+          } else {
+            float range = uOutlineWidth - uCoreWidth;
+            float d = hoverDist - uCoreWidth;
+            hoverAlpha = pow(clamp(1.0 - d / range, 0.0, 1.0), 2.0);
+          }
+          // hover 描边覆盖选中描边
+          finalColor = uHoverColor;
+          finalAlpha = max(finalAlpha, hoverAlpha);
+        }
+        
+        gl_FragColor = vec4(finalColor, finalAlpha);
       }
     `,
       transparent: true,
@@ -219,6 +262,11 @@ export function useSelectionOutline() {
 
   /**
    * 更新 mask 状态
+   *
+   * 双通道编码：
+   * - R通道 = 选中状态
+   * - G通道 = hover状态
+   * 两者可叠加，支持"选中且hover"的视觉反馈
    */
   function updateMasks(
     selectedIds: Set<string>,
@@ -250,17 +298,17 @@ export function useSelectionOutline() {
       maskMesh.instanceMatrix = originalMesh.instanceMatrix
 
       // ✅ 关键修复：maskMesh 的 count 应该等于主 mesh 的 count
-      // 然后通过颜色的 alpha=0 来隐藏未选中的实例
+      // 然后通过颜色来控制可见性
       maskMesh.count = originalMesh.count
 
-      // 先将所有实例的颜色设为透明（alpha=0）
+      // 先将所有实例的颜色重置为 (0,0,0)
       for (let i = 0; i < originalMesh.count; i++) {
-        scratchColor.setRGB(0, 0, 0) // alpha=0 表示不显示
+        scratchColor.setRGB(0, 0, 0)
         maskMesh.setColorAt(i, scratchColor)
       }
     }
 
-    // 为选中的实例设置颜色
+    // 为选中的实例设置 R通道 = 1
     for (const id of selectedIds) {
       const meshInfo = internalIdToMeshInfo.get(id)
       if (!meshInfo) continue
@@ -269,23 +317,24 @@ export function useSelectionOutline() {
       const maskMesh = maskMeshMap.value.get(itemId)
       if (!maskMesh) continue
 
-      // 设置选中状态（r=1.0 表示 selected）
-      scratchColor.setRGB(1.0, 1.0, 1.0)
+      // R=1 表示选中
+      scratchColor.setRGB(1.0, 0.0, 0.0)
       maskMesh.setColorAt(localIndex, scratchColor)
 
       hasContent = true
     }
 
-    // hover 且不在选中列表中
-    if (hoveredId && !selectedIds.has(hoveredId)) {
+    // hover状态 → G通道 = 1（可叠加在选中之上）
+    if (hoveredId) {
       const meshInfo = internalIdToMeshInfo.get(hoveredId)
       if (meshInfo) {
         const { itemId, localIndex } = meshInfo
         const maskMesh = maskMeshMap.value.get(itemId)
         if (maskMesh) {
-          // 设置 hover 状态（r=0.5 表示 hover）
-          scratchColor.setRGB(0.5, 0.5, 0.5)
-          maskMesh.setColorAt(localIndex, scratchColor)
+          // 读取当前颜色，保留R通道，设置G通道
+          maskMesh.getColorAt(localIndex, tempColor)
+          tempColor.g = 1.0 // 叠加hover标记
+          maskMesh.setColorAt(localIndex, tempColor)
           hasContent = true
         }
       }
@@ -308,13 +357,23 @@ export function useSelectionOutline() {
    *
    * @param renderer - WebGLRenderer
    * @param camera - 当前相机
-   * @param width - canvas 宽度
-   * @param height - canvas 高度
+   * @param canvasWidth - canvas CSS宽度
+   * @param canvasHeight - canvas CSS高度
    */
-  function renderMaskPass(renderer: WebGLRenderer, camera: Camera, width: number, height: number) {
+  function renderMaskPass(
+    renderer: WebGLRenderer,
+    camera: Camera,
+    canvasWidth: number,
+    canvasHeight: number
+  ) {
     if (!hasMaskContent.value) {
       return false
     }
+
+    // ✅ DPI修复：考虑 devicePixelRatio，确保与实际渲染分辨率一致
+    const pixelRatio = renderer.getPixelRatio()
+    const width = Math.floor(canvasWidth * pixelRatio)
+    const height = Math.floor(canvasHeight * pixelRatio)
 
     // 调整 RT 分辨率
     if (maskRT.width !== width || maskRT.height !== height) {

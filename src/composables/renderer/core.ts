@@ -225,6 +225,18 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     if (mode === 'model') {
       // Model 模式：hover 不影响颜色（由描边系统处理），只需更新 mask
       // 注意：参照物颜色由 rebuild/参照物变化 watcher 负责更新，hover 不改变
+
+      // ✅ 新增：hover 抑制逻辑（与 Box 模式保持一致）
+      // 如果当前有被抑制的 hover ID，且传入的 ID 依然是它，则忽略（保持选中状态的描边）
+      if (colorManager.suppressedHoverId.value && id === colorManager.suppressedHoverId.value) {
+        return
+      }
+
+      // 如果鼠标移到了其他物体或空处，解除抑制
+      if (colorManager.suppressedHoverId.value && id !== colorManager.suppressedHoverId.value) {
+        colorManager.suppressedHoverId.value = null
+      }
+
       colorManager.hoveredItemId.value = id
 
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
