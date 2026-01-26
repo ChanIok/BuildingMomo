@@ -164,6 +164,7 @@ const {
   handleNavPointerDown,
   handleNavPointerMove,
   handleNavPointerUp,
+  handleFlightWheel,
   setPoseFromLookAt,
   setZoom,
   toggleCameraMode,
@@ -410,8 +411,15 @@ function handlePointerMoveWithTooltip(evt: PointerEvent) {
   handleTooltipPointerMove(evt, isSelecting)
 }
 
-// 处理容器滚轮事件（用于 Ctrl+滚轮 缩放图标/方块）
+// 处理容器滚轮事件
 function handleContainerWheel(evt: WheelEvent) {
+  // 飞行模式下：滚轮前进后退
+  if (controlMode.value === 'flight') {
+    evt.preventDefault()
+    handleFlightWheel(evt.deltaY)
+    return
+  }
+
   // 仅在图标或简化方块模式下且按下 Ctrl 键时生效
   if ((shouldShowIconMesh.value || shouldShowSimpleBoxMesh.value) && evt.ctrlKey) {
     evt.preventDefault()

@@ -81,6 +81,7 @@ export interface CameraControllerResult {
   handleNavPointerDown: (evt: PointerEvent) => void
   handleNavPointerMove: (evt: PointerEvent) => void
   handleNavPointerUp: (evt: PointerEvent) => void
+  handleFlightWheel: (deltaY: number) => void
   setPoseFromLookAt: (position: Vec3, target: Vec3) => void
   lookAtTarget: (target: Vec3) => void
   toggleCameraMode: () => void
@@ -518,6 +519,35 @@ export function useThreeCamera(
     }
   }
 
+  // Flight 模式下的滚轮前进/后退
+  function handleFlightWheel(deltaY: number) {
+    if (controlMode.value !== 'flight') return
+    if (!isViewFocused.value || deps.isTransformDragging?.value) return
+
+    // 获取移动向量（尊重 lockHorizontalMovement 设置）
+    const { forward } = getMovementVectors(settingsStore.settings.cameraLockHorizontalMovement)
+
+    // 方向：deltaY > 0 (向下滚) = 后退, deltaY < 0 (向上滚) = 前进
+    const direction = deltaY > 0 ? -1 : 1
+
+    // 固定步长 × 滚轮速度设置
+    const stepDistance = 200 * settingsStore.settings.cameraZoomSpeed
+
+    const newPos: Vec3 = [
+      state.value.position[0] + forward[0] * stepDistance * direction,
+      state.value.position[1] + forward[1] * stepDistance * direction,
+      state.value.position[2] + forward[2] * stepDistance * direction,
+    ]
+
+    // 高度限制 (Z axis)
+    if (newPos[2] < minHeight.value) {
+      newPos[2] = minHeight.value
+    }
+
+    state.value.position = newPos
+    updateLookAtFromYawPitch()
+  }
+
   // ============================================================
   // 🔌 Public API (Internal Implementation)
   // ============================================================
@@ -899,6 +929,7 @@ export function useThreeCamera(
     handleNavPointerDown,
     handleNavPointerMove,
     handleNavPointerUp,
+    handleFlightWheel,
 
     // 命令
     setPoseFromLookAt,
