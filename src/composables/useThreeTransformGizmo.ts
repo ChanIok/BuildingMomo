@@ -359,7 +359,8 @@ export function useThreeTransformGizmo(
       const obbInfoList: SelectedItemOBBInfo[] = []
 
       for (const id of scheme.selectedItemIds.value) {
-        const item = scheme.items.value.find((i) => i.internalId === id)
+        // 🚀 性能优化：使用 Map O(1) 查找，替代 .find() O(n) 遍历
+        const item = editorStore.itemsMap.get(id)
         if (!item) continue
 
         let localSize: Vector3
@@ -395,55 +396,57 @@ export function useThreeTransformGizmo(
 
       selectedItemsOBBInfo.value = obbInfoList
 
-      // 5. 构建静止物品的预计算碰撞数据
-      // 🚀 核心优化：一次性计算所有昂贵的 OBB、包围球和角点，避免在拖拽循环中重复计算
-      const staticMatrices = new Map<string, StaticCollisionData>()
+      // 5. 构建静止物品的预计算碰撞数据（仅在启用吸附时）
+      // 🚀 性能优化：禁用吸附时跳过，避免遍历数万个静止物品
+      if (settingsStore.settings.enableSurfaceSnap) {
+        const staticMatrices = new Map<string, StaticCollisionData>()
 
-      for (const item of scheme.items.value) {
-        if (!scheme.selectedItemIds.value.has(item.internalId)) {
-          const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
-          const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
-          const useModelScale = !!(currentMode === 'model' && hasValidModel)
-          const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
-          const furnitureSize =
-            gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+        for (const item of scheme.items.value) {
+          if (!scheme.selectedItemIds.value.has(item.internalId)) {
+            const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+            const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+            const useModelScale = !!(currentMode === 'model' && hasValidModel)
+            const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
+            const furnitureSize =
+              gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
 
-          // 预计算 OBB
-          let obb: OBB
-          if (currentMode === 'model') {
-            const modelBox = modelManager.getModelBoundingBox(item.gameId)
-            if (modelBox) {
-              obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+            // 预计算 OBB
+            let obb: OBB
+            if (currentMode === 'model') {
+              const modelBox = modelManager.getModelBoundingBox(item.gameId)
+              if (modelBox) {
+                obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
+              } else {
+                obb = getOBBFromMatrix(matrix, new Vector3(...furnitureSize))
+              }
+            } else if (currentMode === 'box') {
+              // Box 模式：使用单位立方体
+              // getOBBFromMatrix 内部通过 AABB 正确处理几何中心（Z 轴 0~1 范围）
+              obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
             } else {
-              obb = getOBBFromMatrix(matrix, new Vector3(...furnitureSize))
+              // Simple/Icon 模式：使用单位立方体
+              obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
             }
-          } else if (currentMode === 'box') {
-            // Box 模式：使用单位立方体
-            // getOBBFromMatrix 内部通过 AABB 正确处理几何中心（Z 轴 0~1 范围）
-            obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
-          } else {
-            // Simple/Icon 模式：使用单位立方体
-            obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
+
+            // 🚀 预计算角点：这是性能优化的关键！
+            // 每个静止物品的角点在拖拽过程中是不变的，一次性计算可以避免每帧数百次的重复计算
+            const corners = obb.getCorners()
+
+            // 预计算包围球用于快速剔除
+            // 使用 OBB 的半对角线长度作为半径
+            const radius = obb.halfExtents.length()
+
+            staticMatrices.set(item.internalId, {
+              matrix,
+              obb,
+              corners,
+              center: obb.center.clone(),
+              radius,
+            })
           }
-
-          // 🚀 预计算角点：这是性能优化的关键！
-          // 每个静止物品的角点在拖拽过程中是不变的，一次性计算可以避免每帧数百次的重复计算
-          const corners = obb.getCorners()
-
-          // 预计算包围球用于快速剔除
-          // 使用 OBB 的半对角线长度作为半径
-          const radius = obb.halfExtents.length()
-
-          staticMatrices.set(item.internalId, {
-            matrix,
-            obb,
-            corners,
-            center: obb.center.clone(),
-            radius,
-          })
         }
+        staticWorldMatrices.value = staticMatrices
       }
-      staticWorldMatrices.value = staticMatrices
     }
 
     setOrbitControlsEnabled(false)
