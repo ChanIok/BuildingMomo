@@ -54,7 +54,7 @@ export function useTransformSelection() {
   const settingsStore = useSettingsStore()
   const gameDataStore = useGameDataStore()
   const { t, locale } = useI18n()
-  const { getRotationCenter } = useEditorManipulation()
+  const { getSelectedItemsCenter } = useEditorManipulation()
 
   /**
    * 选区信息 computed
@@ -84,8 +84,8 @@ export function useTransformSelection() {
     }
 
     // 位置中心点（用于绝对模式显示）
-    // 使用 getRotationCenter 获取有效中心（包含定点旋转、组合原点优先级的处理）
-    const dataCenter = getRotationCenter() || { x: 0, y: 0, z: 0 }
+    // 与定点旋转解耦：使用选区几何中心
+    const dataCenter = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
 
     // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系（用于 UI 显示）
     const center = uiStore.dataToWorking(dataCenter)

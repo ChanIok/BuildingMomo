@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorManipulation } from '../../composables/editor/useEditorManipulation'
@@ -26,16 +26,14 @@ const customPivotEnabled = defineModel<boolean>('customPivotEnabled', { default:
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { updateSelectedItemsTransform, rotateSelectionAroundOrigin } = useEditorManipulation()
+const { updateSelectedItemsTransform, rotateSelectionAroundOrigin, getRotationCenter } =
+  useEditorManipulation()
 
 // 旋转默认为相对模式 (true)
 const isRotationRelative = ref(false)
 
 // 旋转输入的临时状态
 const rotationState = ref({ x: 0, y: 0, z: 0 })
-const customPivotWorkingX = ref<number | null>(null)
-const customPivotWorkingY = ref<number | null>(null)
-const customPivotWorkingZ = ref<number | null>(null)
 
 // Tabs 绑定的计算属性
 const rotationMode = computed({
@@ -59,27 +57,15 @@ watch(
 // 监听定点旋转开关，同步到 uiStore
 watch(customPivotEnabled, (enabled) => {
   uiStore.setCustomPivotEnabled(enabled)
-  if (!enabled) {
-    // 清空工作坐标
-    customPivotWorkingX.value = null
-    customPivotWorkingY.value = null
-    customPivotWorkingZ.value = null
-  }
 })
 
-// 监听定点旋转坐标变化（工作坐标），转换成全局坐标同步到 uiStore
-watch([customPivotWorkingX, customPivotWorkingY, customPivotWorkingZ], ([x, y, z]) => {
-  if (customPivotEnabled.value && x !== null && y !== null && z !== null) {
-    // 用户输入的是显示值（数据空间语义，Y 向下为正）
-    // 需要转换为世界空间语义（Y 向上为正）
-    const worldSemanticInput = { x, y: -y, z }
-    // 工作坐标系 -> 世界空间
-    const worldPos = uiStore.workingToWorld(worldSemanticInput)
-    // 世界空间 -> 数据空间
-    const dataPos = { x: worldPos.x, y: -worldPos.y, z: worldPos.z }
-    uiStore.setCustomPivotPosition(dataPos)
-  } else {
-    uiStore.setCustomPivotPosition(null)
+// 启用时确保有定点坐标（始终显示当前坐标）
+watchEffect(() => {
+  if (!customPivotEnabled.value) return
+  if (uiStore.customPivotPosition) return
+  const center = getRotationCenter()
+  if (center) {
+    uiStore.setCustomPivotPosition(center)
   }
 })
 
@@ -88,14 +74,7 @@ watch(
   () => uiStore.selectedPivotPosition,
   (pos) => {
     if (pos && customPivotEnabled.value) {
-      // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
-      const workingPos = uiStore.dataToWorking(pos)
-
-      // 填入工作坐标系下的值
-      customPivotWorkingX.value = workingPos.x
-      customPivotWorkingY.value = workingPos.y
-      customPivotWorkingZ.value = workingPos.z
-
+      uiStore.setCustomPivotPosition(pos)
       // 清空临时状态
       uiStore.setSelectedPivotPosition(null)
     }
@@ -172,12 +151,23 @@ function startSelectingPivotItem() {
   uiStore.setSelectingPivotItem(true)
 }
 
-// 定点旋转坐标值（用于显示）
-const customPivotValue = computed(() => ({
-  x: customPivotWorkingX.value ?? 0,
-  y: customPivotWorkingY.value ?? 0,
-  z: customPivotWorkingZ.value ?? 0,
-}))
+// 定点旋转坐标值（用于显示，工作坐标系下）
+const customPivotValue = computed(() => {
+  const dataPos =
+    uiStore.customPivotPosition ?? (customPivotEnabled.value ? getRotationCenter() : null)
+  if (!dataPos) {
+    return { x: 0, y: 0, z: 0 }
+  }
+  return uiStore.dataToWorking(dataPos)
+})
+
+function updateCustomPivot(axis: 'x' | 'y' | 'z', value: number) {
+  if (!customPivotEnabled.value) return
+  const currentWorking = customPivotValue.value
+  const nextWorking = { ...currentWorking, [axis]: value }
+  const dataPos = uiStore.workingToData(nextWorking)
+  uiStore.setCustomPivotPosition(dataPos)
+}
 
 // 可见轴（根据约束）
 const visibleAxes = computed(() => {
@@ -299,9 +289,9 @@ const rotationValue = computed(() => {
       :model-value="customPivotValue"
       mode="absolute"
       :cols="3"
-      @update:x="customPivotWorkingX = $event"
-      @update:y="customPivotWorkingY = $event"
-      @update:z="customPivotWorkingZ = $event"
+      @update:x="updateCustomPivot('x', $event)"
+      @update:y="updateCustomPivot('y', $event)"
+      @update:z="updateCustomPivot('z', $event)"
     />
 
     <!-- 旋转输入 -->

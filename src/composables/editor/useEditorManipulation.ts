@@ -119,11 +119,11 @@ export function useEditorManipulation() {
     if (ids.size === 0) return
 
     // 计算旋转中心（支持定点旋转）
-    const center = getRotationCenter()
-    if (!center) return
+    const rotationCenter = getRotationCenter()
+    if (!rotationCenter) return
 
-    // 使用旋转中心作为位置参考点
-    const referencePoint = center
+    // 位置参考点与定点旋转解耦，避免位置面板被定点旋转影响
+    const positionReferencePoint = getSelectedItemsCenter() || rotationCenter
 
     // 计算位置偏移量
     let positionOffset = { x: 0, y: 0, z: 0 }
@@ -131,9 +131,9 @@ export function useEditorManipulation() {
     if (mode === 'absolute' && position) {
       // 绝对模式：移动到指定坐标
       positionOffset = {
-        x: (position.x ?? referencePoint.x) - referencePoint.x,
-        y: (position.y ?? referencePoint.y) - referencePoint.y,
-        z: (position.z ?? referencePoint.z) - referencePoint.z,
+        x: (position.x ?? positionReferencePoint.x) - positionReferencePoint.x,
+        y: (position.y ?? positionReferencePoint.y) - positionReferencePoint.y,
+        z: (position.z ?? positionReferencePoint.z) - positionReferencePoint.z,
       }
     } else if (mode === 'relative' && position) {
       // 相对模式：偏移指定距离
@@ -203,9 +203,9 @@ export function useEditorManipulation() {
 
           // 多选时：实现整体缩放，同步调整物品相对于中心的位置
           if (ids.size > 1) {
-            const relativeX = item.x - center.x
-            const relativeY = item.y - center.y
-            const relativeZ = item.z - center.z
+            const relativeX = item.x - rotationCenter.x
+            const relativeY = item.y - rotationCenter.y
+            const relativeZ = item.z - rotationCenter.z
 
             // 注意：游戏坐标系映射（Scale.X 实际控制南北，Scale.Y 实际控制东西）
             scalePositionOffset = {
@@ -274,7 +274,7 @@ export function useEditorManipulation() {
             [item],
             rotationInfo.axis,
             rotationInfo.angle,
-            center,
+            rotationCenter,
             effectiveWorkingRotation, // 直接使用视觉空间的旋转值
             false // 暂不使用模型缩放（box 模式）
           )
