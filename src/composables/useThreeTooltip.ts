@@ -5,6 +5,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from './useI18n'
 import type { PickingConfig } from './renderer/types'
+import { RAYCAST_SKIP_ITEM_THRESHOLD } from '@/types/constants'
 
 export interface ThreeTooltipData {
   name: string
@@ -31,7 +32,8 @@ export function useThreeTooltip(
   sources: ThreeTooltipSources,
   isEnabled: Ref<boolean>,
   isTransformDragging?: Ref<boolean>,
-  setHoveredItemId?: (id: string | null) => void
+  setHoveredItemId?: (id: string | null) => void,
+  isCameraMoving?: Ref<boolean>
 ) {
   const raycaster = markRaw(new Raycaster())
   const pointerNdc = markRaw(new Vector2())
@@ -157,6 +159,13 @@ export function useThreeTooltip(
 
     // 功能未启用或当前处于交互中（框选 / Gizmo / 任意按键按下）时隐藏 tooltip
     if (!isEnabled.value || isSelecting || isTransformDragging?.value || evt.buttons !== 0) {
+      hideTooltip()
+      return
+    }
+
+    // 性能优化：物品数超过阈值且相机正在移动时，跳过射线检测以避免卡顿
+    const itemCount = editorStore.activeScheme?.items.value.length ?? 0
+    if (itemCount > RAYCAST_SKIP_ITEM_THRESHOLD && isCameraMoving?.value) {
       hideTooltip()
       return
     }

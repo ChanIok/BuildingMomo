@@ -159,6 +159,7 @@ const {
   isOrthographic,
   isViewFocused,
   isNavKeyPressed,
+  isCameraMoving,
   cameraDistance,
   handleNavPointerDown,
   handleNavPointerMove,
@@ -392,7 +393,8 @@ const {
   { pickingConfig },
   toRef(settingsStore.settings, 'showFurnitureTooltip'),
   isTransformDragging,
-  setHoveredItemId
+  setHoveredItemId,
+  isCameraMoving
 )
 
 function handlePointerMoveWithTooltip(evt: PointerEvent) {

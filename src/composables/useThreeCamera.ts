@@ -73,6 +73,7 @@ export interface CameraControllerResult {
   cameraZoom: Ref<number>
   isViewFocused: Ref<boolean>
   isNavKeyPressed: Ref<boolean>
+  isCameraMoving: Ref<boolean>
   controlMode: Ref<ControlMode>
   isOrthographic: Ref<boolean>
   sceneCenter: Ref<Vec3>
@@ -143,6 +144,7 @@ export function useThreeCamera(
 
   const isViewFocused = ref(false)
   const isMouseLookActive = ref(false) // 重命名：是否正在进行鼠标视角拖拽
+  const isOrbitDragging = ref(false) // Orbit 模式下的鼠标拖拽状态
   let isActive = false
 
   // === 派生状态 (Computed) ===
@@ -366,6 +368,16 @@ export function useThreeCamera(
     return hasNavKeys()
   })
 
+  // 计算相机是否正在移动（用于性能优化：大量物品时跳过射线检测）
+  const isCameraMoving = computed(() => {
+    // Flight 模式：WASD 按下或鼠标视角拖拽
+    if (controlMode.value === 'flight') {
+      return isNavKeyPressed.value || isMouseLookActive.value
+    }
+    // Orbit 模式：鼠标拖拽或 WASD 平移
+    return isOrbitDragging.value || hasNavKeys()
+  })
+
   // Flight 模式更新
   function updateFlightMode(deltaSeconds: number) {
     if (!hasNavKeys() || !isViewFocused.value || deps.isTransformDragging?.value) {
@@ -468,6 +480,13 @@ export function useThreeCamera(
         evt.preventDefault()
       }
     }
+
+    // Orbit 模式下追踪鼠标拖拽（中键或右键）
+    if (controlMode.value === 'orbit') {
+      if (evt.button === 1 || evt.button === 2) {
+        isOrbitDragging.value = true
+      }
+    }
   }
 
   function handleNavPointerMove(evt: PointerEvent) {
@@ -489,6 +508,13 @@ export function useThreeCamera(
     // 检查是否是当前配置的按键
     if (cameraInput.shouldReleaseFlightLook(evt.button)) {
       isMouseLookActive.value = false
+    }
+
+    // Orbit 模式下释放拖拽状态
+    if (controlMode.value === 'orbit') {
+      if (evt.button === 1 || evt.button === 2) {
+        isOrbitDragging.value = false
+      }
     }
   }
 
@@ -863,6 +889,7 @@ export function useThreeCamera(
     cameraZoom: computed(() => state.value.zoom),
     isViewFocused,
     isNavKeyPressed,
+    isCameraMoving,
     controlMode,
     isOrthographic,
     sceneCenter,
