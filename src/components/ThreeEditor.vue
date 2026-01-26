@@ -26,13 +26,8 @@ import { useThreeBackground } from '@/composables/useThreeBackground'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import { useThreeEnvironment } from '@/composables/useThreeEnvironment'
-import {
-  useMagicKeys,
-  useElementSize,
-  useResizeObserver,
-  watchOnce,
-  useThrottleFn,
-} from '@vueuse/core'
+import { useNearbyObjectsCheck } from '@/composables/useNearbyObjectsCheck'
+import { useMagicKeys, useElementSize, useResizeObserver, watchOnce } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
 
 // 设置 Three.js 全局 Z 轴向上
@@ -259,51 +254,11 @@ watch(
 // 动态 near 平面：根据相机周边物体自动调整
 // ============================================================
 
-// 检测相机周围是否有物体（节流 200ms）
-const hasNearbyObjects = ref(false)
-
-// 核心检测逻辑（可直接调用或通过节流调用）
-function performNearbyCheck() {
-  const items = editorStore.activeScheme?.items.value
-  if (!items) {
-    hasNearbyObjects.value = false
-    return
-  }
-
-  const camPos = cameraPosition.value
-  const THRESHOLD_SQ = 1000 * 1000 // 1000 单位的平方
-
-  // 提前终止优化：找到第一个近处物体立即返回
-  for (const item of items) {
-    const dx = item.x - camPos[0]
-    const dy = item.y - -camPos[1] // Y 轴取反（Three.js 坐标系）
-    const dz = item.z - camPos[2]
-
-    if (dx * dx + dy * dy + dz * dz < THRESHOLD_SQ) {
-      hasNearbyObjects.value = true
-      return
-    }
-  }
-
-  hasNearbyObjects.value = false
-}
-
-// 节流版本（用于频繁触发的场景）
-const checkNearbyObjects = useThrottleFn(performNearbyCheck, 200)
-
-// 监听相机位置变化（节流）
-watch(cameraPosition, checkNearbyObjects)
-
-// 监听场景变化（物品增删，节流）
-watch(() => editorStore.sceneVersion, checkNearbyObjects)
-
-// 监听方案切换（立即执行，不节流）
-watch(
-  () => editorStore.activeSchemeId,
-  () => {
-    performNearbyCheck() // 直接调用，立即执行
-  }
-)
+// 使用时间切片检测相机周围是否有物体（避免阻塞主线程）
+const { hasNearbyObjects } = useNearbyObjectsCheck(cameraPosition, {
+  threshold: 1000,
+  throttleMs: 200,
+})
 
 // 动态 near 平面：有近处物体时用 10，无近处物体时用 100
 const dynamicNear = computed(() => {
