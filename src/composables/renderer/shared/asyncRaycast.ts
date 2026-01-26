@@ -71,13 +71,15 @@ export function cancelTask(task: RaycastTask | null): void {
  * @param raycaster - Three.js Raycaster 实例
  * @param task - 任务对象，用于检查是否被取消
  * @param localIndexMap - 局部索引映射（instanceId -> internalId）
+ * @param instancesPerCheck - 每隔多少个实例检查一次时间（默认 500）
  * @returns 最近的命中结果，或 null（无命中/被取消）
  */
 export async function raycastInstancedMeshAsync(
   mesh: InstancedMesh,
   raycaster: Raycaster,
   task: RaycastTask,
-  localIndexMap: Map<number, string>
+  localIndexMap: Map<number, string>,
+  instancesPerCheck: number = INSTANCES_PER_CHECK
 ): Promise<RaycastHit | null> {
   if (!mesh || mesh.count === 0) return null
 
@@ -113,7 +115,7 @@ export async function raycastInstancedMeshAsync(
     if (task.cancelled) return null
 
     // 每 N 个实例检查一次时间
-    if (instanceId % INSTANCES_PER_CHECK === 0 && instanceId > 0) {
+    if (instanceId % instancesPerCheck === 0 && instanceId > 0) {
       if (performance.now() - frameStart > BUDGET_MS) {
         await yieldToMain()
         if (task.cancelled) return null
@@ -162,13 +164,15 @@ export async function raycastInstancedMeshAsync(
  * @param raycaster - Three.js Raycaster 实例
  * @param task - 任务对象
  * @param getMeshLocalIndexMap - 获取 mesh 对应的局部索引映射
+ * @param instancesPerCheck - 每隔多少个实例检查一次时间（默认 500）
  * @returns 最近的命中结果，或 null
  */
 export async function raycastMultipleMeshesAsync(
   meshes: InstancedMesh[],
   raycaster: Raycaster,
   task: RaycastTask,
-  getMeshLocalIndexMap: (mesh: InstancedMesh) => Map<number, string> | undefined
+  getMeshLocalIndexMap: (mesh: InstancedMesh) => Map<number, string> | undefined,
+  instancesPerCheck: number = INSTANCES_PER_CHECK
 ): Promise<RaycastHit | null> {
   let closestHit: RaycastHit | null = null
 
@@ -178,7 +182,13 @@ export async function raycastMultipleMeshesAsync(
     const localIndexMap = getMeshLocalIndexMap(mesh)
     if (!localIndexMap) continue
 
-    const hit = await raycastInstancedMeshAsync(mesh, raycaster, task, localIndexMap)
+    const hit = await raycastInstancedMeshAsync(
+      mesh,
+      raycaster,
+      task,
+      localIndexMap,
+      instancesPerCheck
+    )
 
     if (hit && (!closestHit || hit.distance < closestHit.distance)) {
       closestHit = hit

@@ -432,6 +432,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         const task = createRaycastTask()
         activeRaycastTask = task
 
+        // 根据模式决定检查频率：模型模式由于几何体复杂，更频繁地检查时间预算
+        const instancesPerCheck = mode === 'model' ? 200 : 500
+
         if (mode === 'model') {
           // Model 模式：使用可中断的实例级射线检测
           const meshesToTest: InstancedMesh[] = []
@@ -446,8 +449,12 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           }
 
           // 使用新的可中断射线检测（在实例级别 yield）
-          return await raycastMultipleMeshesAsync(meshesToTest, raycaster, task, (mesh) =>
-            modelMode.meshToLocalIndexMap.value.get(mesh)
+          return await raycastMultipleMeshesAsync(
+            meshesToTest,
+            raycaster,
+            task,
+            (mesh) => modelMode.meshToLocalIndexMap.value.get(mesh),
+            instancesPerCheck
           )
         } else {
           // Box/Icon/SimpleBox 模式：单 mesh，使用可中断检测
@@ -460,7 +467,13 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           if (!targetMesh || targetMesh.count === 0) return null
 
           // 对于单 mesh，也使用可中断检测（实例数多时也会卡）
-          return await raycastInstancedMeshAsync(targetMesh, raycaster, task, indexToIdMap.value)
+          return await raycastInstancedMeshAsync(
+            targetMesh,
+            raycaster,
+            task,
+            indexToIdMap.value,
+            instancesPerCheck
+          )
         }
       },
 
