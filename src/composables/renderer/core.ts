@@ -13,18 +13,16 @@ import { useModelMode } from './modes/useModelMode'
 import { useInstanceColor } from './shared/useInstanceColor'
 import { useInstanceMatrix } from './shared/useInstanceMatrix'
 import { useSelectionOutline } from './shared/useSelectionOutline'
-import type { PickingConfig } from './types'
+import {
+  createRaycastTask,
+  cancelTask,
+  raycastMultipleMeshesAsync,
+  raycastInstancedMeshAsync,
+} from './shared/asyncRaycast'
+import type { PickingConfig, RaycastTask } from './types'
 import { initBVH } from './bvh'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 
-/**
- * Three.js 实例化渲染器
- *
- * 协调四种渲染模式：box, icon, simple-box, model
- * 管理全局索引映射、颜色状态、矩阵更新和生命周期
- *
- * @param isTransformDragging - 可选，指示是否正在拖拽 Transform Gizmo
- */
 // 全局 BVH 初始化标志（确保只初始化一次）
 let bvhInitialized = false
 
@@ -345,6 +343,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     )
   }
 
+  // 当前活动的异步射线检测任务（用于取消）
+  let activeRaycastTask: RaycastTask | null = null
+
   /**
    * 获取当前模式的拾取配置（统一拾取接口）
    */
@@ -352,6 +353,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     const mode = settingsStore.settings.threeDisplayMode
 
     return {
+      // 同步射线检测（用于框选等需要立即结果的场景）
       performRaycast: (raycaster: Raycaster) => {
         if (mode === 'model') {
           // Model 模式：遍历所有 mesh，返回最近的交点
@@ -420,6 +422,52 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
           return null
         }
+      },
+
+      // 异步时间切片射线检测（用于 tooltip 等可接受延迟的场景）
+      performRaycastAsync: async (raycaster: Raycaster) => {
+        // 取消上一次未完成的检测
+        cancelTask(activeRaycastTask)
+
+        const task = createRaycastTask()
+        activeRaycastTask = task
+
+        if (mode === 'model') {
+          // Model 模式：使用可中断的实例级射线检测
+          const meshesToTest: InstancedMesh[] = []
+          for (const [, mesh] of modelMode.meshMap.value.entries()) {
+            if (mesh && mesh.count > 0) {
+              meshesToTest.push(mesh)
+            }
+          }
+          const fallbackMesh = modelMode.fallbackMesh.value
+          if (fallbackMesh && fallbackMesh.count > 0) {
+            meshesToTest.push(fallbackMesh)
+          }
+
+          // 使用新的可中断射线检测（在实例级别 yield）
+          return await raycastMultipleMeshesAsync(meshesToTest, raycaster, task, (mesh) =>
+            modelMode.meshToLocalIndexMap.value.get(mesh)
+          )
+        } else {
+          // Box/Icon/SimpleBox 模式：单 mesh，使用可中断检测
+          let targetMesh: InstancedMesh | null = null
+
+          if (mode === 'icon') targetMesh = iconMode.mesh.value
+          else if (mode === 'simple-box') targetMesh = simpleBoxMode.mesh.value
+          else targetMesh = boxMode.mesh.value
+
+          if (!targetMesh || targetMesh.count === 0) return null
+
+          // 对于单 mesh，也使用可中断检测（实例数多时也会卡）
+          return await raycastInstancedMeshAsync(targetMesh, raycaster, task, indexToIdMap.value)
+        }
+      },
+
+      // 取消当前进行中的异步检测
+      cancelRaycast: () => {
+        cancelTask(activeRaycastTask)
+        activeRaycastTask = null
       },
 
       // 动态返回当前模式的索引映射

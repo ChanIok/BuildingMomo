@@ -16,19 +16,44 @@ export interface RenderModeResult {
 }
 
 /**
+ * 射线检测结果
+ */
+export interface RaycastHit {
+  instanceId: number
+  internalId: string
+  distance: number
+}
+
+/**
+ * 异步射线检测任务（用于取消）
+ */
+export interface RaycastTask {
+  cancelled: boolean
+}
+
+/**
  * 统一的拾取配置（对外暴露）
  */
 export interface PickingConfig {
   /**
-   * 执行射线检测的函数
+   * 同步射线检测（用于框选等需要立即结果的场景）
    * @param raycaster - Three.js Raycaster 实例
    * @returns 拾取结果（最近的交点）或 null
    */
-  performRaycast: (raycaster: Raycaster) => {
-    instanceId: number
-    internalId: string
-    distance: number
-  } | null
+  performRaycast: (raycaster: Raycaster) => RaycastHit | null
+
+  /**
+   * 异步时间切片射线检测（用于 tooltip 等可接受延迟的场景）
+   * 会自动取消上一次未完成的检测
+   * @param raycaster - Three.js Raycaster 实例
+   * @returns Promise，返回拾取结果或 null（被取消时也返回 null）
+   */
+  performRaycastAsync: (raycaster: Raycaster) => Promise<RaycastHit | null>
+
+  /**
+   * 取消当前进行中的异步检测
+   */
+  cancelRaycast: () => void
 
   /**
    * 当前模式的索引映射（只读）

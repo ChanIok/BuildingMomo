@@ -292,7 +292,7 @@ function performNearbyCheck() {
 const checkNearbyObjects = useThrottleFn(performNearbyCheck, 200)
 
 // 监听相机位置变化（节流）
-watch(cameraPosition, checkNearbyObjects, { deep: true })
+watch(cameraPosition, checkNearbyObjects)
 
 // 监听场景变化（物品增删，节流）
 watch(() => editorStore.sceneVersion, checkNearbyObjects)
