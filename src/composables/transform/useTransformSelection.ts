@@ -144,13 +144,25 @@ export function useTransformSelection() {
         uiStore.dataToWorking({ x: i.x, y: i.y, z: i.z })
       )
 
-      const xs = transformedPoints.map((p) => p.x)
-      const ys = transformedPoints.map((p) => p.y)
-      const zs = transformedPoints.map((p) => p.z)
+      // 使用 reduce 代替 spread 避免大数组栈溢出
+      let minX = Infinity,
+        minY = Infinity,
+        minZ = Infinity
+      let maxX = -Infinity,
+        maxY = -Infinity,
+        maxZ = -Infinity
+      for (const p of transformedPoints) {
+        if (p.x < minX) minX = p.x
+        if (p.y < minY) minY = p.y
+        if (p.z < minZ) minZ = p.z
+        if (p.x > maxX) maxX = p.x
+        if (p.y > maxY) maxY = p.y
+        if (p.z > maxZ) maxZ = p.z
+      }
 
       bounds = {
-        min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
-        max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
+        min: { x: minX, y: minY, z: minZ },
+        max: { x: maxX, y: maxY, z: maxZ },
       }
     }
 
@@ -199,15 +211,26 @@ export function useTransformSelection() {
         }
       }
 
-      // 计算 AABB
+      // 计算 AABB（使用循环代替 spread 避免大数组栈溢出）
       if (allCorners.length > 0) {
-        const xs = allCorners.map((p) => p.x)
-        const ys = allCorners.map((p) => p.y)
-        const zs = allCorners.map((p) => p.z)
+        let minX = Infinity,
+          minY = Infinity,
+          minZ = Infinity
+        let maxX = -Infinity,
+          maxY = -Infinity,
+          maxZ = -Infinity
+        for (const p of allCorners) {
+          if (p.x < minX) minX = p.x
+          if (p.y < minY) minY = p.y
+          if (p.z < minZ) minZ = p.z
+          if (p.x > maxX) maxX = p.x
+          if (p.y > maxY) maxY = p.y
+          if (p.z > maxZ) maxZ = p.z
+        }
 
         bboxBounds = {
-          min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
-          max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
+          min: { x: minX, y: minY, z: minZ },
+          max: { x: maxX, y: maxY, z: maxZ },
         }
       }
     }
