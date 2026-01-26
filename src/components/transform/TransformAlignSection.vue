@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useUIStore } from '../../stores/uiStore'
-import { useEditorManipulation } from '../../composables/editor/useEditorManipulation'
+import { useEditorAlignment } from '../../composables/editor/useEditorAlignment'
 import { useI18n } from '../../composables/useI18n'
 import type { SelectionInfo } from '../../composables/transform/useTransformSelection'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -26,7 +26,7 @@ defineProps<Props>()
 
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { alignSelectedItems, distributeSelectedItems } = useEditorManipulation()
+const { alignSelectedItems, distributeSelectedItems } = useEditorAlignment()
 
 // 开始选择参照物
 function startSelectingAlignReference() {
