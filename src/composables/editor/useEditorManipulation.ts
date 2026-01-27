@@ -122,8 +122,25 @@ export function useEditorManipulation() {
     const rotationCenter = getRotationCenter()
     if (!rotationCenter) return
 
-    // 位置参考点与定点旋转解耦，避免位置面板被定点旋转影响
-    const positionReferencePoint = getSelectedItemsCenter() || rotationCenter
+    // 位置参考点：组合原点 > 几何中心（与显示端保持一致，但不受定点旋转影响）
+    let positionReferencePoint: { x: number; y: number; z: number } | null = null
+
+    // 优先级 1: 组合原点
+    const groupId = store.getGroupIdIfEntireGroupSelected(ids)
+    if (groupId !== null) {
+      const originItemId = scheme.groupOrigins.value.get(groupId)
+      if (originItemId) {
+        const originItem = store.itemsMap.get(originItemId)
+        if (originItem) {
+          positionReferencePoint = { x: originItem.x, y: originItem.y, z: originItem.z }
+        }
+      }
+    }
+
+    // 优先级 2: 几何中心
+    if (!positionReferencePoint) {
+      positionReferencePoint = getSelectedItemsCenter() || rotationCenter
+    }
 
     // 计算位置偏移量
     let positionOffset = { x: 0, y: 0, z: 0 }

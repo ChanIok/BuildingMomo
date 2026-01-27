@@ -84,8 +84,18 @@ export function useTransformSelection() {
     }
 
     // 位置中心点（用于绝对模式显示）
-    // 与定点旋转解耦：使用选区几何中心
-    const dataCenter = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
+    // 优先级：组合原点 > 选区几何中心（与 Gizmo 保持一致，但不受定点旋转影响）
+    let dataCenter: { x: number; y: number; z: number } | null = null
+
+    // 优先级 1: 组合原点
+    if (originItem) {
+      dataCenter = { x: originItem.x, y: originItem.y, z: originItem.z }
+    }
+
+    // 优先级 2: 几何中心
+    if (!dataCenter) {
+      dataCenter = getSelectedItemsCenter() || { x: 0, y: 0, z: 0 }
+    }
 
     // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系（用于 UI 显示）
     const center = uiStore.dataToWorking(dataCenter)
