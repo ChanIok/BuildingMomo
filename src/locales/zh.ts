@@ -16,7 +16,6 @@ export const zhLocale = {
     },
     toast: {
       nameRequired: '标签名称不能为空',
-      fileRequired: '文件名称不能为空',
       success: '方案信息已更新',
     },
   },

@@ -75,11 +75,6 @@ function handleConfirm() {
     return
   }
 
-  if (!formData.value.filePath.trim()) {
-    toast.error(t('scheme.toast.fileRequired'))
-    return
-  }
-
   editorStore.updateSchemeInfo(props.schemeId, {
     name: formData.value.name.trim(),
     filePath: formData.value.filePath.trim(),

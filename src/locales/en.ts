@@ -16,7 +16,6 @@ export const enLocale = {
     },
     toast: {
       nameRequired: 'Tab name cannot be empty',
-      fileRequired: 'File name cannot be empty',
       success: 'Scheme info updated',
     },
   },
