@@ -124,16 +124,21 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
   }
 
-  // 家具数据库加载
   async function loadFurnitureDB() {
     if (isFurnitureDBLoaded.value) return
 
     try {
       const response = await fetch(FURNITURE_DB_URL)
       if (!response.ok) throw new Error('Failed to load furniture database')
+
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        isFurnitureDBLoaded.value = true
+        return
+      }
+
       const data: FurnitureDB = await response.json()
 
-      // 构建 Map：原始ID + 1170000000 → 配置
       const map = new Map<number, FurnitureModelConfig>()
       for (const config of data.furniture) {
         const gameId = config.id + 1170000000
@@ -142,9 +147,10 @@ export const useGameDataStore = defineStore('gameData', () => {
 
       furnitureDB.value = map
       isFurnitureDBLoaded.value = true
-      console.log('[GameDataStore] Furniture database loaded:', map.size, 'entries')
     } catch (error) {
-      console.error('[GameDataStore] Failed to load furniture database:', error)
+      if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
+        console.error('[GameDataStore] Failed to load furniture database:', error)
+      }
     }
   }
 
