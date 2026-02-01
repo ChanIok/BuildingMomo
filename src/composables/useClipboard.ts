@@ -34,6 +34,14 @@ export function useClipboard() {
       .filter((item) => scheme.selectedItemIds.value.has(item.internalId))
       .map((item) => ({ ...item })) // 深拷贝
 
+    // 单物体复制时强制脱组：避免产生只有 1 个成员的组
+    if (copiedItems.length === 1) {
+      const singleItem = copiedItems[0]
+      if (singleItem && singleItem.groupId > 0) {
+        singleItem.groupId = 0
+      }
+    }
+
     // 收集这些物品涉及的所有组 ID
     const involvedGroupIds = new Set<number>()
     copiedItems.forEach((item: AppItem) => {
