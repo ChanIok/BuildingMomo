@@ -1115,12 +1115,26 @@ export function useThreeTransformGizmo(
         if (/^(X|XYZX)$/.test(obj.name)) color = AXIS_COLORS.x
         else if (/^(Y|XYZY)$/.test(obj.name)) {
           color = AXIS_COLORS.y
-          // 翻转 Y 轴几何体的顶点方向，使其在视觉上指向"下方"以匹配游戏数据坐标系
-          if (!obj.userData.hasFlippedY) {
+          // 翻转 Y 轴箭头（Mesh 类型）的朝向，使其指向"下方"以匹配游戏坐标系
+          // 只翻转箭头朝向，保持杆/线不变，这样杆在前方方便点击
+          if (obj.type === 'Mesh' && !obj.userData.hasFlippedY) {
             const posAttr = obj.geometry?.attributes?.position
             if (posAttr) {
+              // 1. 计算箭头几何体的 Y 坐标中心（用于绕自身翻转）
+              let minY = Infinity,
+                maxY = -Infinity
               for (let i = 0; i < posAttr.count; i++) {
-                posAttr.setY(i, -posAttr.getY(i))
+                const y = posAttr.getY(i)
+                if (y < minY) minY = y
+                if (y > maxY) maxY = y
+              }
+              const centerY = (minY + maxY) / 2
+
+              // 2. 相对于中心翻转（保持位置不变，只翻转朝向）
+              // 公式: newY = centerY - (y - centerY) = 2 * centerY - y
+              for (let i = 0; i < posAttr.count; i++) {
+                const y = posAttr.getY(i)
+                posAttr.setY(i, 2 * centerY - y)
               }
               posAttr.needsUpdate = true
 
