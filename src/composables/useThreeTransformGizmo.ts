@@ -1096,71 +1096,77 @@ export function useThreeTransformGizmo(
       }
 
       // 2. 颜色设置 & 收集需要移除的 'E' 和 'XYZE' 轴对象
-      const mainGizmo = controls.gizmo || controls.children?.[0]
-      if (!mainGizmo) return
+      const gizmoObj = controls._gizmo || controls.gizmo || controls.children?.[0]
+      if (!gizmoObj) return
 
       const objectsToRemove: any[] = []
+      const currentMode = editorStore.gizmoMode || 'translate'
 
-      mainGizmo.traverse((obj: any) => {
-        // 标记需要移除的辅助轴
-        if (obj.name === 'E' || obj.name === 'XYZE') {
-          objectsToRemove.push(obj)
-          return
-        }
-
-        // 设置轴颜色
-        if (!obj.material || !obj.name) return
-
-        let color
-        if (/^(X|XYZX)$/.test(obj.name)) color = AXIS_COLORS.x
-        else if (/^(Y|XYZY)$/.test(obj.name)) {
-          color = AXIS_COLORS.y
-          // 翻转 Y 轴箭头（Mesh 类型）的朝向，使其指向"下方"以匹配游戏坐标系
-          // 只翻转箭头朝向，保持杆/线不变，这样杆在前方方便点击
-          if (obj.type === 'Mesh' && !obj.userData.hasFlippedY) {
-            const posAttr = obj.geometry?.attributes?.position
-            if (posAttr) {
-              // 1. 计算箭头几何体的 Y 坐标中心（用于绕自身翻转）
-              let minY = Infinity,
-                maxY = -Infinity
-              for (let i = 0; i < posAttr.count; i++) {
-                const y = posAttr.getY(i)
-                if (y < minY) minY = y
-                if (y > maxY) maxY = y
-              }
-              const centerY = (minY + maxY) / 2
-
-              // 2. 相对于中心翻转（保持位置不变，只翻转朝向）
-              // 公式: newY = centerY - (y - centerY) = 2 * centerY - y
-              for (let i = 0; i < posAttr.count; i++) {
-                const y = posAttr.getY(i)
-                posAttr.setY(i, 2 * centerY - y)
-              }
-              posAttr.needsUpdate = true
-
-              // 重新计算包围盒，确保可以正确选中
-              const geo = obj.geometry
-              if (geo) {
-                geo.computeBoundingSphere()
-                geo.computeBoundingBox()
-              }
-
-              obj.userData.hasFlippedY = true
-            }
+      // 只遍历可视 gizmo 部分（不包括 picker）
+      const visualGizmo = gizmoObj.gizmo?.[currentMode]
+      if (visualGizmo) {
+        visualGizmo.traverse((obj: any) => {
+          // 标记需要移除的辅助轴
+          if (obj.name === 'E' || obj.name === 'XYZE') {
+            objectsToRemove.push(obj)
+            return
           }
-        } else if (/^(Z|XYZZ)$/.test(obj.name)) color = AXIS_COLORS.z
 
-        if (color) {
-          obj.material.color.set(color)
-          // 关键：覆盖 tempColor 防止颜色被重置
-          obj.material.tempColor = obj.material.tempColor || new Color()
-          obj.material.tempColor.set(color)
-        }
-      })
+          // 设置轴颜色
+          if (!obj.material || !obj.name) return
 
-      // 遍历 picker 结构 (用于点击检测的隐藏物体)
-      if (controls.picker) {
-        controls.picker.traverse((obj: any) => {
+          let color
+          if (/^(X|XYZX)$/.test(obj.name)) color = AXIS_COLORS.x
+          else if (/^(Y|XYZY)$/.test(obj.name)) {
+            color = AXIS_COLORS.y
+            // 翻转 Y 轴箭头（Mesh 类型）的朝向，使其指向"下方"以匹配游戏坐标系
+            // 注意：只翻转可视 gizmo，不翻转 picker（它们形状不同）
+            if (obj.type === 'Mesh' && !obj.userData.hasFlippedY) {
+              const posAttr = obj.geometry?.attributes?.position
+              if (posAttr) {
+                // 1. 计算箭头几何体的 Y 坐标中心（用于绕自身翻转）
+                let minY = Infinity,
+                  maxY = -Infinity
+                for (let i = 0; i < posAttr.count; i++) {
+                  const y = posAttr.getY(i)
+                  if (y < minY) minY = y
+                  if (y > maxY) maxY = y
+                }
+                const centerY = (minY + maxY) / 2
+
+                // 2. 相对于中心翻转（保持位置不变，只翻转朝向）
+                // 公式: newY = centerY - (y - centerY) = 2 * centerY - y
+                for (let i = 0; i < posAttr.count; i++) {
+                  const y = posAttr.getY(i)
+                  posAttr.setY(i, 2 * centerY - y)
+                }
+                posAttr.needsUpdate = true
+
+                // 重新计算包围盒，确保可以正确选中
+                const geo = obj.geometry
+                if (geo) {
+                  geo.computeBoundingSphere()
+                  geo.computeBoundingBox()
+                }
+
+                obj.userData.hasFlippedY = true
+              }
+            }
+          } else if (/^(Z|XYZZ)$/.test(obj.name)) color = AXIS_COLORS.z
+
+          if (color) {
+            obj.material.color.set(color)
+            // 关键：覆盖 tempColor 防止颜色被重置
+            obj.material.tempColor = obj.material.tempColor || new Color()
+            obj.material.tempColor.set(color)
+          }
+        })
+      }
+
+      // 遍历 picker 结构，移除 E/XYZE 轴
+      const pickerContainer = gizmoObj?.picker?.[currentMode]
+      if (pickerContainer) {
+        pickerContainer.traverse((obj: any) => {
           if (obj.name === 'E' || obj.name === 'XYZE') {
             objectsToRemove.push(obj)
           }
