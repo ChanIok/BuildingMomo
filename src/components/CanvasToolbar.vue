@@ -159,9 +159,9 @@ const showFurnitureLibrary = computed({
   <div
     class="canvas-toolbar flex h-11 items-center gap-2 rounded-lg border bg-background/90 px-2 shadow-md backdrop-blur-sm"
   >
-    <!-- 1. 选择工具 Toggle 组 -->
-    <TooltipProvider v-for="tool in selectionTools" :key="tool.id">
-      <Tooltip :delay-duration="1000">
+    <TooltipProvider :delay-duration="1000" :skip-delay-duration="300">
+      <!-- 1. 选择工具 Toggle 组 -->
+      <Tooltip v-for="tool in selectionTools" :key="tool.id">
         <TooltipTrigger as-child>
           <div class="inline-flex">
             <Toggle
@@ -178,14 +178,12 @@ const showFurnitureLibrary = computed({
           <Kbd v-if="tool.shortcut" class="ml-1">{{ tool.shortcut }}</Kbd>
         </TooltipContent>
       </Tooltip>
-    </TooltipProvider>
 
-    <!-- 2. 选择模式下拉菜单 -->
-    <DropdownMenu>
-      <DropdownMenuTrigger as-child>
-        <Button variant="ghost" size="sm" class="h-8 gap-1 px-1.5">
-          <TooltipProvider>
-            <Tooltip :delay-duration="1000">
+      <!-- 2. 选择模式下拉菜单 -->
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <Button variant="ghost" size="sm" class="h-8 gap-1 px-1.5">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <div class="flex items-center gap-1">
                   <component :is="activeSelectionAction?.icon" class="h-4 w-4" />
@@ -199,30 +197,28 @@ const showFurnitureLibrary = computed({
                 }}</Kbd>
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start">
-        <DropdownMenuItem
-          v-for="action in selectionActions"
-          :key="action.id"
-          @select="editorStore.selectionAction = action.id as any"
-          class="flex items-center justify-between gap-4"
-        >
-          <div class="flex items-center gap-2">
-            <component :is="action.icon" class="h-4 w-4" />
-            <span>{{ action.label }}</span>
-          </div>
-          <DropdownMenuShortcut v-if="action.shortcut">
-            {{ action.shortcut }}
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start">
+          <DropdownMenuItem
+            v-for="action in selectionActions"
+            :key="action.id"
+            @select="editorStore.selectionAction = action.id as any"
+            class="flex items-center justify-between gap-4"
+          >
+            <div class="flex items-center gap-2">
+              <component :is="action.icon" class="h-4 w-4" />
+              <span>{{ action.label }}</span>
+            </div>
+            <DropdownMenuShortcut v-if="action.shortcut">
+              {{ action.shortcut }}
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-    <!-- 3. 移动 Gizmo Toggle -->
-    <TooltipProvider>
-      <Tooltip :delay-duration="1000">
+      <!-- 3. 移动 Gizmo Toggle -->
+      <Tooltip>
         <TooltipTrigger as-child>
           <div class="inline-flex">
             <Toggle
@@ -243,11 +239,9 @@ const showFurnitureLibrary = computed({
           <Kbd class="ml-1">G</Kbd>
         </TooltipContent>
       </Tooltip>
-    </TooltipProvider>
 
-    <!-- 4. 旋转 Gizmo Toggle -->
-    <TooltipProvider>
-      <Tooltip :delay-duration="1000">
+      <!-- 4. 旋转 Gizmo Toggle -->
+      <Tooltip>
         <TooltipTrigger as-child>
           <div class="inline-flex">
             <Toggle
@@ -268,14 +262,12 @@ const showFurnitureLibrary = computed({
           <Kbd class="ml-1">R</Kbd>
         </TooltipContent>
       </Tooltip>
-    </TooltipProvider>
 
-    <!-- 分割线 -->
-    <div class="h-6 w-px bg-border"></div>
+      <!-- 分割线 -->
+      <div class="h-6 w-px bg-border"></div>
 
-    <!-- 5. 家具背包 Toggle -->
-    <TooltipProvider>
-      <Tooltip :delay-duration="1000">
+      <!-- 5. 家具背包 Toggle -->
+      <Tooltip>
         <TooltipTrigger as-child>
           <div class="inline-flex">
             <Toggle size="sm" v-model="showFurnitureLibrary">

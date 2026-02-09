@@ -172,16 +172,16 @@ function clearAlignReference() {
       </div>
     </div>
 
-    <!-- 对齐按钮 -->
-    <div class="flex flex-col gap-2">
-      <!-- X轴 -->
-      <div class="flex items-center gap-2">
-        <span class="w-4 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
-          >X</span
-        >
-        <div class="flex flex-1 gap-1.5">
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+    <!-- 对齐按钮：使用单一 TooltipProvider 统一控制延迟，避免快速扫过时 tooltip 频繁弹出 -->
+    <TooltipProvider :delay-duration="800" :skip-delay-duration="300">
+      <div class="flex flex-col gap-2">
+        <!-- X轴 -->
+        <div class="flex items-center gap-2">
+          <span class="w-4 text-[10px] font-bold text-red-500 select-none dark:text-red-500/90"
+            >X</span
+          >
+          <div class="flex flex-1 gap-1.5">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('x', 'min')"
@@ -199,9 +199,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('x', 'center')"
@@ -219,9 +217,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('x', 'max')"
@@ -239,9 +235,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="distributeSelectedItems('x')"
@@ -255,18 +249,16 @@ function clearAlignReference() {
                 {{ t('transform.distributeHint') }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </div>
         </div>
-      </div>
 
-      <!-- Y轴 -->
-      <div class="flex items-center gap-2">
-        <span class="w-4 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
-          >Y</span
-        >
-        <div class="flex flex-1 gap-1.5">
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+        <!-- Y轴 -->
+        <div class="flex items-center gap-2">
+          <span class="w-4 text-[10px] font-bold text-green-500 select-none dark:text-green-500/90"
+            >Y</span
+          >
+          <div class="flex flex-1 gap-1.5">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('y', 'min')"
@@ -284,9 +276,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('y', 'center')"
@@ -304,9 +294,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('y', 'max')"
@@ -324,9 +312,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="distributeSelectedItems('y')"
@@ -340,18 +326,16 @@ function clearAlignReference() {
                 {{ t('transform.distributeHint') }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </div>
         </div>
-      </div>
 
-      <!-- Z轴 -->
-      <div class="flex items-center gap-2">
-        <span class="w-4 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
-          >Z</span
-        >
-        <div class="flex flex-1 gap-1.5">
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+        <!-- Z轴 -->
+        <div class="flex items-center gap-2">
+          <span class="w-4 text-[10px] font-bold text-blue-500 select-none dark:text-blue-500/90"
+            >Z</span
+          >
+          <div class="flex flex-1 gap-1.5">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('z', 'min')"
@@ -369,9 +353,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('z', 'center')"
@@ -389,9 +371,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="alignSelectedItems('z', 'max')"
@@ -409,9 +389,7 @@ function clearAlignReference() {
                 }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip :delay-duration="500">
+            <Tooltip>
               <TooltipTrigger as-child>
                 <button
                   @click="distributeSelectedItems('z')"
@@ -425,9 +403,9 @@ function clearAlignReference() {
                 {{ t('transform.distributeHint') }}
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </div>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   </div>
 </template>
