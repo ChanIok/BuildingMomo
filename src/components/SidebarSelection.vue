@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Ruler, X } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
 import { useGameDataStore } from '../stores/gameDataStore'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
+import { useEditorSelection } from '../composables/editor/useEditorSelection'
 import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,34 @@ const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const uiStore = useUIStore()
 const { getGroupItems, groupSelected, ungroupSelected, clearGroupOrigin } = useEditorGroups()
+const { deselectItems } = useEditorSelection()
 const { t, locale } = useI18n()
+
+// 从选区中移除指定类型（gameId）的所有物品
+function removeTypeFromSelection(gameId: number, event: Event) {
+  event.stopPropagation()
+  const scheme = editorStore.activeScheme
+  if (!scheme) return
+  if (uiStore.sidebarHoveredGameId === gameId) {
+    uiStore.setSidebarHoveredGameId(null)
+  }
+  const toRemove = scheme.items.value
+    .filter((item) => scheme.selectedItemIds.value.has(item.internalId) && item.gameId === gameId)
+    .map((item) => item.internalId)
+  if (toRemove.length > 0) {
+    deselectItems(toRemove, { skipGroupExpansion: true })
+  }
+}
+
+function setHoveredType(gameId: number) {
+  uiStore.setSidebarHoveredGameId(gameId)
+}
+
+function clearHoveredType() {
+  if (uiStore.sidebarHoveredGameId !== null) {
+    uiStore.setSidebarHoveredGameId(null)
+  }
+}
 
 // 辅助函数：根据语言获取名称
 function getFurnitureName(furniture: any, fallbackId: number) {
@@ -151,6 +179,16 @@ watch(
     // 重置显示数量，确保首屏快速响应
     renderLimit.value = 30
 
+    // 清理无效的结构面板 hover 状态，防止画布残留高亮
+    if (newVal?.type !== 'multiple') {
+      clearHoveredType()
+    } else if (
+      uiStore.sidebarHoveredGameId !== null &&
+      !newVal.items.some((entry) => entry.itemId === uiStore.sidebarHoveredGameId)
+    ) {
+      clearHoveredType()
+    }
+
     // 如果列表较长，启动分帧加载
     if (newVal?.type === 'multiple' && newVal.items.length > 30) {
       const animate = () => {
@@ -228,11 +266,16 @@ function clearOrigin() {
 watch(
   () => editorStore.activeSchemeId,
   () => {
+    clearHoveredType()
     if (uiStore.isSelectingGroupOrigin) {
       uiStore.setSelectingGroupOrigin(false)
     }
   }
 )
+
+onBeforeUnmount(() => {
+  clearHoveredType()
+})
 
 // 计算组信息文本标签
 const groupBadgeText = computed(() => {
@@ -322,7 +365,9 @@ function handleIconError(e: Event) {
             v-for="item in visibleItems"
             :key="item.itemId"
             variant="muted"
-            class="gap-2 bg-muted/50 p-2"
+            class="group gap-2 bg-muted/50 p-2"
+            @mouseenter="setHoveredType(item.itemId)"
+            @mouseleave="clearHoveredType"
           >
             <ItemMedia v-if="item.icon" variant="image" class="size-8 rounded border border-border">
               <img :src="item.icon" :alt="item.name" @error="handleIconError" />
@@ -337,9 +382,30 @@ function handleIconError(e: Event) {
               <ItemTitle class="text-sm font-medium text-foreground">{{ item.name }}</ItemTitle>
             </ItemContent>
             <ItemActions>
-              <span class="text-sm font-semibold text-blue-500 dark:text-blue-400/90"
-                >×{{ item.count }}</span
-              >
+              <div class="relative ml-auto flex items-center justify-end">
+                <span
+                  class="text-sm font-semibold text-blue-500 transition-opacity group-hover:opacity-0 dark:text-blue-400/90"
+                >
+                  ×{{ item.count }}
+                </span>
+                <TooltipProvider>
+                  <Tooltip :delay-duration="1000">
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        class="absolute right-0 h-5 w-5 cursor-pointer rounded-sm opacity-0 transition-all group-hover:opacity-100 hover:bg-accent"
+                        @click="removeTypeFromSelection(item.itemId, $event)"
+                      >
+                        <X class="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent class="text-xs" variant="light">
+                      {{ t('sidebar.removeFromSelection') }}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             </ItemActions>
           </Item>
         </div>

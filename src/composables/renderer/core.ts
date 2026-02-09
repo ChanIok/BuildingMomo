@@ -57,6 +57,38 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const indexToIdMap = ref(new Map<number, string>())
   const idToIndexMap = ref(new Map<string, number>())
 
+  function buildSidebarHoveredItemIds(): Set<string> | null {
+    const scheme = editorStore.activeScheme
+    const hoveredGameId = uiStore.sidebarHoveredGameId
+    if (!scheme || hoveredGameId === null) return null
+
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return null
+
+    const hoveredIds = new Set<string>()
+    for (const item of scheme.items.value) {
+      if (item.gameId === hoveredGameId && selectedIds.has(item.internalId)) {
+        hoveredIds.add(item.internalId)
+      }
+    }
+    return hoveredIds.size > 0 ? hoveredIds : null
+  }
+
+  function syncSidebarHoveredIds() {
+    colorManager.setSidebarHoveredItemIds(buildSidebarHoveredItemIds())
+  }
+
+  function getEffectiveHoveredIds(): Set<string> | null {
+    const sidebarHovered = colorManager.sidebarHoveredItemIds.value
+    if (sidebarHovered && sidebarHovered.size > 0) {
+      return sidebarHovered
+    }
+    if (colorManager.hoveredItemId.value) {
+      return new Set([colorManager.hoveredItemId.value])
+    }
+    return null
+  }
+
   /**
    * 主重建函数（路由到对应模式）
    */
@@ -65,6 +97,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
     const simpleBoxMeshTarget = simpleBoxMode.mesh.value
+    syncSidebarHoveredIds()
 
     // 隐藏其他模式的 mesh
     if (mode !== 'box' && meshTarget) {
@@ -114,7 +147,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
         selectionOutline.updateMasks(
           selectedItemIds,
-          colorManager.hoveredItemId.value,
+          getEffectiveHoveredIds(),
           modelMode.meshMap.value,
           modelMode.internalIdToMeshInfo.value,
           fallbackMesh
@@ -202,7 +235,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
       selectionOutline.updateMasks(
         selectedItemIds,
-        colorManager.hoveredItemId.value,
+        getEffectiveHoveredIds(),
         modelMode.meshMap.value,
         modelMode.internalIdToMeshInfo.value,
         modelMode.fallbackMesh.value
@@ -242,7 +275,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
       selectionOutline.updateMasks(
         selectedItemIds,
-        id,
+        getEffectiveHoveredIds(),
         modelMode.meshMap.value,
         modelMode.internalIdToMeshInfo.value,
         modelMode.fallbackMesh.value
@@ -528,6 +561,46 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
+  // 监听结构面板 hover 类型变化，联动画布高亮
+  watch(
+    () => uiStore.sidebarHoveredGameId,
+    () => {
+      if (isTransformDragging?.value) {
+        return
+      }
+
+      syncSidebarHoveredIds()
+
+      const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
+      const mode = settingsStore.settings.threeDisplayMode
+      const meshTarget = boxMode.mesh.value
+      const iconMeshTarget = iconMode.mesh.value
+      const simpleBoxMeshTarget = simpleBoxMode.mesh.value
+      const currentIndexToIdMap =
+        mode === 'model' ? modelMode.indexToIdMap.value : indexToIdMap.value
+
+      if (mode === 'model') {
+        selectionOutline.updateMasks(
+          selectedItemIds,
+          getEffectiveHoveredIds(),
+          modelMode.meshMap.value,
+          modelMode.internalIdToMeshInfo.value,
+          modelMode.fallbackMesh.value
+        )
+      }
+
+      colorManager.updateInstancesColor(
+        mode,
+        meshTarget,
+        iconMeshTarget,
+        simpleBoxMeshTarget,
+        currentIndexToIdMap,
+        mode === 'model' ? modelMode.meshMap.value : undefined,
+        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+      )
+    }
+  )
+
   // 监听选中状态变化，刷新颜色
   watch(
     [
@@ -557,6 +630,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       ) {
         colorManager.suppressedHoverId.value = null
       }
+      syncSidebarHoveredIds()
 
       const mode = settingsStore.settings.threeDisplayMode
       const meshTarget = boxMode.mesh.value
@@ -571,7 +645,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         // Model 模式：更新 mask
         selectionOutline.updateMasks(
           selectedItemIds,
-          colorManager.hoveredItemId.value,
+          getEffectiveHoveredIds(),
           modelMode.meshMap.value,
           modelMode.internalIdToMeshInfo.value,
           modelMode.fallbackMesh.value
@@ -614,7 +688,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
           selectionOutline.updateMasks(
             selectedItemIds,
-            colorManager.hoveredItemId.value,
+            getEffectiveHoveredIds(),
             modelMode.meshMap.value,
             modelMode.internalIdToMeshInfo.value,
             modelMode.fallbackMesh.value
@@ -638,7 +712,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
           selectionOutline.updateMasks(
             selectedItemIds,
-            colorManager.hoveredItemId.value,
+            getEffectiveHoveredIds(),
             modelMode.meshMap.value,
             modelMode.internalIdToMeshInfo.value,
             modelMode.fallbackMesh.value

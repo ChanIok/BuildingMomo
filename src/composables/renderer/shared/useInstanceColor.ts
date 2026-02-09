@@ -18,8 +18,18 @@ export function useInstanceColor() {
 
   // 当前 hover 的物品（仅 3D 视图内部使用，不改变全局选中状态）
   const hoveredItemId = ref<string | null>(null)
+  // 来自结构面板的 hover 集合（优先级高于画布单点 hover）
+  const sidebarHoveredItemIds = ref<Set<string> | null>(null)
   // 被抑制 hover 的物品 ID（用于在选中瞬间暂时屏蔽 hover 效果，直到鼠标移出）
   const suppressedHoverId = ref<string | null>(null)
+
+  function isItemHovered(internalId: string): boolean {
+    const sidebarHovered = sidebarHoveredItemIds.value
+    if (sidebarHovered && sidebarHovered.size > 0) {
+      return sidebarHovered.has(internalId)
+    }
+    return hoveredItemId.value === internalId
+  }
 
   /**
    * 将 CSS 颜色字符串转换为十六进制数值
@@ -54,7 +64,7 @@ export function useInstanceColor() {
 
     // 以下是 Box/Icon/SimpleBox 模式的原有逻辑
     // hover 高亮优先级最高（即使物品已被选中，hover 时也显示为琥珀色）
-    if (hoveredItemId.value === item.internalId) {
+    if (isItemHovered(item.internalId)) {
       return type === 'icon' ? 0xf59e0b : 0xf59e0b // Icon & Box/SimpleBox: amber-400
     }
 
@@ -247,13 +257,23 @@ export function useInstanceColor() {
     }
   }
 
+  function setSidebarHoveredItemIds(ids: Set<string> | null) {
+    if (!ids || ids.size === 0) {
+      sidebarHoveredItemIds.value = null
+      return
+    }
+    sidebarHoveredItemIds.value = new Set(ids)
+  }
+
   return {
     hoveredItemId,
+    sidebarHoveredItemIds,
     suppressedHoverId,
     convertColorToHex,
     getItemColor,
     updateInstancesColor,
     updateInstanceColorById,
     setHoveredItemId,
+    setSidebarHoveredItemIds,
   }
 }

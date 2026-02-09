@@ -464,6 +464,7 @@ export const zhLocale = {
     cancelSelecting: '取消选择',
     clearOrigin: '清除原点',
     current: '当前',
+    removeFromSelection: '从选区中移除此类型',
     displayMode: {
       label: '显示',
       box: '完整体积',

@@ -31,6 +31,8 @@ export const useUIStore = defineStore('ui', () => {
 
   // 侧边栏视图状态
   const sidebarView = ref<'structure' | 'transform' | 'editorSettings'>('structure')
+  // 结构面板 hover 的物品类型（gameId），用于联动画布高亮
+  const sidebarHoveredGameId = ref<number | null>(null)
 
   // Three.js 容器的布局信息（用于性能优化，避免频繁调用 getBoundingClientRect）
   const editorContainerRect = ref<{ left: number; top: number; width: number; height: number }>({
@@ -229,6 +231,10 @@ export const useUIStore = defineStore('ui', () => {
     console.log('[UIStore] Sidebar view set to:', view)
   }
 
+  function setSidebarHoveredGameId(gameId: number | null) {
+    sidebarHoveredGameId.value = gameId
+  }
+
   // ========== 定点旋转管理 ==========
 
   function setCustomPivotEnabled(enabled: boolean) {
@@ -335,6 +341,7 @@ export const useUIStore = defineStore('ui', () => {
     workingCoordinateSystem,
     gizmoSpace,
     sidebarView,
+    sidebarHoveredGameId,
     customPivotEnabled,
     customPivotPosition,
     isSelectingGroupOrigin,
@@ -355,6 +362,7 @@ export const useUIStore = defineStore('ui', () => {
 
     // 侧边栏
     setSidebarView,
+    setSidebarHoveredGameId,
 
     // 工作坐标系
     setWorkingCoordinateSystem,

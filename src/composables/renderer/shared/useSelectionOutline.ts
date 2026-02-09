@@ -270,7 +270,7 @@ export function useSelectionOutline() {
    */
   function updateMasks(
     selectedIds: Set<string>,
-    hoveredId: string | null,
+    hoveredIds: Set<string> | null,
     meshMap: Map<number, InstancedMesh>,
     internalIdToMeshInfo: Map<string, { itemId: number; localIndex: number }>,
     fallbackMesh: InstancedMesh | null
@@ -325,18 +325,20 @@ export function useSelectionOutline() {
     }
 
     // hover状态 → G通道 = 1（可叠加在选中之上）
-    if (hoveredId) {
-      const meshInfo = internalIdToMeshInfo.get(hoveredId)
-      if (meshInfo) {
+    if (hoveredIds && hoveredIds.size > 0) {
+      for (const hoveredId of hoveredIds) {
+        const meshInfo = internalIdToMeshInfo.get(hoveredId)
+        if (!meshInfo) continue
+
         const { itemId, localIndex } = meshInfo
         const maskMesh = maskMeshMap.value.get(itemId)
-        if (maskMesh) {
-          // 读取当前颜色，保留R通道，设置G通道
-          maskMesh.getColorAt(localIndex, tempColor)
-          tempColor.g = 1.0 // 叠加hover标记
-          maskMesh.setColorAt(localIndex, tempColor)
-          hasContent = true
-        }
+        if (!maskMesh) continue
+
+        // 读取当前颜色，保留R通道，设置G通道
+        maskMesh.getColorAt(localIndex, tempColor)
+        tempColor.g = 1.0 // 叠加hover标记
+        maskMesh.setColorAt(localIndex, tempColor)
+        hasContent = true
       }
     }
 

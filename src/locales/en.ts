@@ -468,6 +468,7 @@ export const enLocale = {
     cancelSelecting: 'Cancel',
     clearOrigin: 'Clear Origin',
     current: 'Current',
+    removeFromSelection: 'Remove this type from selection',
     displayMode: {
       label: 'Display',
       box: 'Full Volume',
