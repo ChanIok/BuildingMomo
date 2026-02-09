@@ -290,7 +290,7 @@ function handleViewInfoClick() {
   <!-- 3D Tooltip -->
   <div
     v-if="tooltip.visible && tooltip.data"
-    class="pointer-events-none absolute z-50 rounded border bg-background/90 p-1 shadow-xl backdrop-blur-sm"
+    class="pointer-events-none absolute z-50 min-w-max rounded border bg-background/90 p-1 shadow-xl backdrop-blur-sm"
     :style="{
       left: `${tooltip.data.position.x + 12}px`,
       top: `${tooltip.data.position.y - 10}px`,
