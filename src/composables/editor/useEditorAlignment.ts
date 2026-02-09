@@ -26,6 +26,11 @@ interface AlignUnit {
   items: AppItem[] // 单个物品或组内所有成员
 }
 
+interface GroupOriginContext {
+  groupId: number
+  originItem: AppItem
+}
+
 /**
  * 编辑器对齐/分布功能
  *
@@ -43,6 +48,82 @@ export function useEditorAlignment() {
   const gameDataStore = useGameDataStore()
   const { activeScheme } = storeToRefs(store)
   const { saveHistory } = useEditorHistory()
+
+  /**
+   * 获取当前选区可用的组合原点上下文
+   *
+   * 仅在“完整选中单一组合”时返回，行为与移动逻辑保持一致。
+   */
+  function getGroupOriginContext(selectedIds: Set<string>): GroupOriginContext | null {
+    const scheme = activeScheme.value
+    if (!scheme) return null
+
+    const entireGroupId = store.getGroupIdIfEntireGroupSelected(selectedIds)
+    if (entireGroupId === null) return null
+
+    const originItemId = scheme.groupOrigins.value.get(entireGroupId)
+    if (!originItemId) return null
+
+    const originItem = store.itemsMap.get(originItemId)
+    if (!originItem) return null
+
+    return {
+      groupId: entireGroupId,
+      originItem,
+    }
+  }
+
+  /**
+   * 计算对齐单元中心（数据空间）
+   *
+   * 当完整选中一个有组合原点的组时，使用组合原点作为中心；
+   * 其他情况回退到“所有成员平均位置”。
+   */
+  function getUnitCenterDataPosition(
+    unit: AlignUnit,
+    groupOriginContext: GroupOriginContext | null
+  ): { x: number; y: number; z: number } {
+    if (
+      groupOriginContext &&
+      unit.type === 'group' &&
+      unit.groupId !== null &&
+      unit.groupId === groupOriginContext.groupId
+    ) {
+      return {
+        x: groupOriginContext.originItem.x,
+        y: groupOriginContext.originItem.y,
+        z: groupOriginContext.originItem.z,
+      }
+    }
+
+    const sum = { x: 0, y: 0, z: 0 }
+    unit.items.forEach((item) => {
+      sum.x += item.x
+      sum.y += item.y
+      sum.z += item.z
+    })
+
+    return {
+      x: sum.x / unit.items.length,
+      y: sum.y / unit.items.length,
+      z: sum.z / unit.items.length,
+    }
+  }
+
+  /**
+   * 将数据空间坐标投影到世界空间轴向量上
+   */
+  function projectDataPositionToAxis(
+    dataPosition: { x: number; y: number; z: number },
+    axisVector: { x: number; y: number; z: number }
+  ): number {
+    const worldPosition = matrixTransform.dataPositionToWorld(dataPosition)
+    return (
+      worldPosition.x * axisVector.x +
+      worldPosition.y * axisVector.y +
+      worldPosition.z * axisVector.z
+    )
+  }
 
   /**
    * 按组聚合选中物品，构建对齐单元
@@ -166,22 +247,11 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
+    const groupOriginContext = getGroupOriginContext(selectedIds)
 
     // 为每个对齐单元计算中心点（工作坐标系）
     const unitCenters = alignUnits.map((unit) => {
-      // 计算单元的中心（所有成员的平均位置）
-      const sum = { x: 0, y: 0, z: 0 }
-      unit.items.forEach((item) => {
-        sum.x += item.x
-        sum.y += item.y
-        sum.z += item.z
-      })
-
-      const dataCenter = {
-        x: sum.x / unit.items.length,
-        y: sum.y / unit.items.length,
-        z: sum.z / unit.items.length,
-      }
+      const dataCenter = getUnitCenterDataPosition(unit, groupOriginContext)
 
       // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
       const workingCenter = uiStore.dataToWorking(dataCenter)
@@ -257,6 +327,7 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
+    const groupOriginContext = getGroupOriginContext(selectedIds)
 
     // 使用辅助函数计算对齐轴在世界空间中的方向向量
     const workingRotation = uiStore.workingCoordinateSystem.enabled
@@ -290,7 +361,24 @@ export function useEditorAlignment() {
         }
       }
 
-      const projCenter = (projMin + projMax) / 2
+      let projCenter = (projMin + projMax) / 2
+
+      // 特殊中心：仅在完整选中单一组合时，center 使用组合原点
+      if (
+        groupOriginContext &&
+        unit.type === 'group' &&
+        unit.groupId !== null &&
+        unit.groupId === groupOriginContext.groupId
+      ) {
+        projCenter = projectDataPositionToAxis(
+          {
+            x: groupOriginContext.originItem.x,
+            y: groupOriginContext.originItem.y,
+            z: groupOriginContext.originItem.z,
+          },
+          alignAxisVector
+        )
+      }
 
       unitProjections.push({
         unit,
@@ -370,6 +458,7 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
+    const groupOriginContext = getGroupOriginContext(selectedIds)
 
     // 为每个对齐单元计算位移增量
     const unitDeltas = new Map<AlignUnit, { x: number; y: number; z: number }>()
@@ -381,19 +470,7 @@ export function useEditorAlignment() {
         return
       }
 
-      // 计算单元的中心
-      const sum = { x: 0, y: 0, z: 0 }
-      unit.items.forEach((item) => {
-        sum.x += item.x
-        sum.y += item.y
-        sum.z += item.z
-      })
-
-      const globalCenter = {
-        x: sum.x / unit.items.length,
-        y: sum.y / unit.items.length,
-        z: sum.z / unit.items.length,
-      }
+      const globalCenter = getUnitCenterDataPosition(unit, groupOriginContext)
 
       // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
       const workingCenter = uiStore.dataToWorking(globalCenter)
@@ -485,6 +562,7 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
+    const groupOriginContext = getGroupOriginContext(selectedIds)
 
     // 为每个对齐单元计算包围盒投影
     const unitProjections: (UnitProjection & { unit: AlignUnit })[] = []
@@ -517,7 +595,24 @@ export function useEditorAlignment() {
         }
       }
 
-      const projCenter = (projMin + projMax) / 2
+      let projCenter = (projMin + projMax) / 2
+
+      // 特殊中心：仅在完整选中单一组合时，center 使用组合原点
+      if (
+        groupOriginContext &&
+        unit.type === 'group' &&
+        unit.groupId !== null &&
+        unit.groupId === groupOriginContext.groupId
+      ) {
+        projCenter = projectDataPositionToAxis(
+          {
+            x: groupOriginContext.originItem.x,
+            y: groupOriginContext.originItem.y,
+            z: groupOriginContext.originItem.z,
+          },
+          alignAxisVector
+        )
+      }
 
       unitProjections.push({
         unit,
