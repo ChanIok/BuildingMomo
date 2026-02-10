@@ -375,7 +375,7 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'edit.invertSelection',
       label: t('command.edit.invertSelection'),
-      // 移除快捷键以避免与 selectSameType 冲突
+      shortcut: 'Ctrl+Shift+I',
       category: 'edit',
       enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
