@@ -129,6 +129,9 @@ const showCameraDebug = ref(false)
 // 创建共享的 isTransformDragging ref
 const isTransformDragging = ref(false)
 
+// Gizmo hover 状态（用于在 Gizmo 上时屏蔽物品 hover 拾取）
+const isPointerOverGizmo = ref(false)
+
 // 从 UI Store 获取当前视图预设
 const currentViewPreset = computed(() => uiStore.currentViewPreset)
 
@@ -415,6 +418,25 @@ function handlePointerMoveWithTooltip(evt: PointerEvent) {
   handlePointerMove(evt)
   // 3D 中没有拖动选框以外的拖拽逻辑，这里直接用 selectionRect 是否存在来判断是否在框选
   const isSelecting = !!selectionRect.value || lassoPoints.value.length > 0
+  // 仅在 Gizmo 显示时，使用 TransformControls 自身的 axis 状态判断是否 hover 在 Gizmo 上
+  if (shouldShowGizmo.value) {
+    // TresJS 组件通常通过 .instance 或 .value 暴露底层 Three 对象，这里统一做一次兼容处理
+    const controls: any =
+      (transformRef.value && (transformRef.value.instance || transformRef.value.value)) ||
+      transformRef.value
+
+    // TransformControls 在 hover 某个轴/平面时会将 axis 设置为对应字符串；未 hover 时为 null
+    isPointerOverGizmo.value = !!controls?.axis
+  } else {
+    isPointerOverGizmo.value = false
+  }
+
+  if (isPointerOverGizmo.value) {
+    // 在 Gizmo 上时：隐藏 Tooltip，并保持物品 hover 为空（冻结）
+    hideTooltip()
+    return
+  }
+
   handleTooltipPointerMove(evt, isSelecting)
 }
 
@@ -508,6 +530,7 @@ function handleContainerPointerUp(evt: PointerEvent) {
 
 function handleContainerPointerLeave() {
   hideTooltip()
+  isPointerOverGizmo.value = false
 }
 
 // 处理原生 contextmenu 事件（参考 Blender：右键不改变选中状态）
