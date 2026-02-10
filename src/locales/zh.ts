@@ -335,6 +335,7 @@ export const zhLocale = {
       minutesAgo: '{n} 分钟前',
       hoursAgo: '{n} 小时前',
       daysAgo: '{n} 天前',
+      tooltipMonitoringButton: '导入和历史',
     },
   },
 

@@ -337,6 +337,7 @@ export const enLocale = {
       minutesAgo: '{n} minutes ago',
       hoursAgo: '{n} hours ago',
       daysAgo: '{n} days ago',
+      tooltipMonitoringButton: 'Import & History',
     },
   },
 

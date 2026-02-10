@@ -114,6 +114,9 @@ const watchHistory = computed(() => commandStore.fileOps.getWatchHistory())
 const showWatchButton = computed(() => !!editorStore.activeScheme || watchState.value.isActive)
 const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
 
+// 监控中按钮的简单悬浮提示（自定义实现，避免影响 Popover）
+const isWatchTooltipVisible = ref(false)
+
 // 标签容器引用
 const tabsContainer = ref<HTMLElement | null>(null)
 const scrollAreaRef = ref<HTMLElement | null>(null)
@@ -733,7 +736,9 @@ watch(
         <Popover v-else v-model:open="watchHistoryOpen">
           <PopoverTrigger as-child>
             <button
-              class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
+              class="relative flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
+              @mouseenter="isWatchTooltipVisible = true"
+              @mouseleave="isWatchTooltipVisible = false"
             >
               <div class="h-2 w-2 animate-pulse rounded-full bg-green-500 dark:bg-green-300"></div>
               <span class="text-xs text-green-600 dark:text-green-300">
@@ -742,6 +747,16 @@ watch(
               <span class="text-xs text-green-600 dark:text-green-300">{{
                 watchState.dirPath
               }}</span>
+
+              <!-- 自定义简单 Tooltip：仅在 hover 时显示，不依赖 Reka Tooltip/Popover -->
+              <Transition name="watch-tooltip">
+                <div
+                  v-if="isWatchTooltipVisible && !watchHistoryOpen"
+                  class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
+                >
+                  导入和历史
+                </div>
+              </Transition>
             </button>
           </PopoverTrigger>
           <PopoverContent class="w-64 p-0" align="end" :side-offset="10">
@@ -856,5 +871,21 @@ watch(
 /* 正在被拖拽的元素不应该有过渡动画，否则会感觉迟滞 */
 .tab-list-move.cursor-grabbing {
   transition: none;
+}
+
+/* 自定义监控按钮 Tooltip 过渡动画（模仿 TooltipContent 的淡入缩放） */
+.watch-tooltip-enter-active,
+.watch-tooltip-leave-active {
+  transition: opacity 150ms ease-out;
+}
+
+.watch-tooltip-enter-from,
+.watch-tooltip-leave-to {
+  opacity: 0;
+}
+
+.watch-tooltip-enter-to,
+.watch-tooltip-leave-from {
+  opacity: 1;
 }
 </style>
