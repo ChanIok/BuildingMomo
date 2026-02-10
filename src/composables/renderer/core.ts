@@ -22,6 +22,7 @@ import {
 import type { PickingConfig, RaycastTask } from './types'
 import { initBVH } from './bvh'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
+import { invalidateScene } from '@/composables/useSceneInvalidate'
 
 // 全局 BVH 初始化标志（确保只初始化一次）
 let bvhInitialized = false
@@ -164,6 +165,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           modelMode.internalIdToMeshInfo.value
         )
 
+        invalidateScene()
         return
     }
 
@@ -194,6 +196,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       simpleBoxMode.mesh.value,
       map
     )
+
+    invalidateScene()
   }
 
   /**
@@ -241,6 +245,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         modelMode.fallbackMesh.value
       )
     }
+
+    invalidateScene()
   }
 
   /**
@@ -291,6 +297,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         currentIdToIndexMap
       )
     }
+
+    invalidateScene()
   }
 
   /**
@@ -298,6 +306,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
    */
   function updateIconFacing(normal: [number, number, number], up?: [number, number, number]) {
     iconMode.updateFacing(normal, up)
+    invalidateScene()
   }
 
   /**
@@ -598,6 +607,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         mode === 'model' ? modelMode.meshMap.value : undefined,
         mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
       )
+
+      invalidateScene()
     }
   )
 
@@ -661,6 +672,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         mode === 'model' ? modelMode.meshMap.value : undefined,
         mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
       )
+
+      invalidateScene()
     }
   )
 
@@ -729,6 +742,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
         )
       }
+
+      invalidateScene()
     }
   )
 

@@ -26,6 +26,7 @@ import { useThreeBackground } from '@/composables/useThreeBackground'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import { useThreeEnvironment } from '@/composables/useThreeEnvironment'
+import { setSceneInvalidate } from '@/composables/useSceneInvalidate'
 import { useNearbyObjectsCheck } from '@/composables/useNearbyObjectsCheck'
 import { useMagicKeys, useElementSize, useResizeObserver, watchOnce } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
@@ -354,6 +355,11 @@ function handleTresReady(context: any) {
     renderer.outputColorSpace = 'srgb'
     renderer.shadowMap.enabled = true
   }
+
+  // 连接按需渲染的 invalidate 函数
+  if (context.renderer?.invalidate) {
+    setSceneInvalidate(context.renderer.invalidate)
+  }
 }
 
 // 相机模式切换包装函数（仅在透视模式下生效）
@@ -364,11 +370,10 @@ function handleToggleCameraMode() {
   }
 }
 
-// 渲染循环回调（每帧调用）
-function handleLoop(context: any) {
+// 渲染后回调（仅在 TresJS 实际渲染主场景后触发，on-demand 模式下空闲时不运行）
+function handlePostRender(context: any) {
   if (currentDisplayMode.value !== 'model') return
 
-  // TresJS loop context: renderer.instance 已经是 WebGLRenderer 实例
   const renderer = context.renderer?.instance as WebGLRenderer | undefined
   const camera = activeCameraRef.value
 
@@ -376,12 +381,10 @@ function handleLoop(context: any) {
 
   const size = renderer.getSize(new Vector2())
 
-  // 1. 在 TresJS 渲染主场景之前，先渲染 mask pass
+  // 1. 渲染 mask pass 到离屏 RT（主场景已由 TresJS 渲染完成）
   const hasMask = renderSelectionOutlineMaskPass(renderer, camera as Camera, size.x, size.y)
 
-  // 2. 让 TresJS 正常渲染主场景（自动发生）
-
-  // 3. 在 TresJS 渲染完成后，叠加 overlay
+  // 2. 叠加 outline overlay 到主帧缓冲
   if (hasMask) {
     queueMicrotask(() => {
       renderSelectionOutlineOverlay(renderer)
@@ -708,7 +711,12 @@ onDeactivated(() => {
       @contextmenu="handleNativeContextMenu"
       @wheel="handleContainerWheel"
     >
-      <TresCanvas :clear-color="canvasClearColor" @ready="handleTresReady" @loop="handleLoop">
+      <TresCanvas
+        render-mode="on-demand"
+        :clear-color="canvasClearColor"
+        @ready="handleTresReady"
+        @render="handlePostRender"
+      >
         <!-- 透视相机 - perspective 视图 -->
         <TresPerspectiveCamera
           v-if="!isOrthographic"
