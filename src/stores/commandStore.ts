@@ -239,10 +239,13 @@ export const useCommandStore = defineStore('command', () => {
       shortcut: 'C',
       category: 'tool',
       enabled: () => {
-        if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
-          const settingsStore = useSettingsStore()
-          if (!settingsStore.isAuthenticated) return false
+        if (import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true') {
+          return false
         }
+
+        const settingsStore = useSettingsStore()
+        if (!settingsStore.isAuthenticated) return false
+
         return editorStore.activeScheme !== null
       },
       execute: () => {

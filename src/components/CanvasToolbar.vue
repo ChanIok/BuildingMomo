@@ -297,7 +297,7 @@ const showDyePanel = computed({
       </Tooltip>
 
       <!-- 6. 染色面板 Toggle -->
-      <Tooltip v-if="!isSecureModeEnabled || settingsStore.isAuthenticated">
+      <Tooltip v-if="isSecureModeEnabled && settingsStore.isAuthenticated">
         <TooltipTrigger as-child>
           <div class="inline-flex">
             <Toggle size="sm" v-model="showDyePanel">
