@@ -45,8 +45,8 @@ export function useSelectionOutline() {
   // Mask Scene（只放 mask meshes，不放到主场景）
   const maskScene = markRaw(new Scene())
 
-  // itemId -> mask InstancedMesh
-  const maskMeshMap = ref(new Map<number, InstancedMesh>())
+  // meshKey -> mask InstancedMesh
+  const maskMeshMap = ref(new Map<string, InstancedMesh>())
 
   // 共享材质：使用自定义 shader 支持通过 instanceColor 控制实例可见性
   // depthTest=false 实现强穿透，fragment shader 通过 discard 排除未选中的实例
@@ -224,11 +224,11 @@ export function useSelectionOutline() {
    * 检测 originalMesh 是否变化（扩容、重建等），如果变化则重新创建 maskMesh
    */
   function initMaskMesh(
-    itemId: number,
+    meshKey: string,
     originalMesh: InstancedMesh,
     maxInstances: number
   ): InstancedMesh {
-    const existingMask = maskMeshMap.value.get(itemId)
+    const existingMask = maskMeshMap.value.get(meshKey)
 
     if (existingMask) {
       // 检查 geometry 是否匹配（mesh 重建会导致 geometry 引用变化）
@@ -242,7 +242,7 @@ export function useSelectionOutline() {
       }
 
       // geometry 或容量不匹配，需要重建
-      disposeMaskMesh(itemId)
+      disposeMaskMesh(meshKey)
     }
 
     // 创建新的 maskMesh
@@ -254,7 +254,7 @@ export function useSelectionOutline() {
     maskMesh.count = 0
 
     const raw = markRaw(maskMesh)
-    maskMeshMap.value.set(itemId, raw)
+    maskMeshMap.value.set(meshKey, raw)
     maskScene.add(raw)
 
     return raw
@@ -271,8 +271,8 @@ export function useSelectionOutline() {
   function updateMasks(
     selectedIds: Set<string>,
     hoveredIds: Set<string> | null,
-    meshMap: Map<number, InstancedMesh>,
-    internalIdToMeshInfo: Map<string, { itemId: number; localIndex: number }>,
+    meshMap: Map<string, InstancedMesh>,
+    internalIdToMeshInfo: Map<string, { meshKey: string; localIndex: number }>,
     fallbackMesh: InstancedMesh | null
   ) {
     // ✅ 关键优化：让 mask mesh 共享主 mesh 的 instanceMatrix 缓冲区
@@ -280,12 +280,12 @@ export function useSelectionOutline() {
 
     let hasContent = false
 
-    for (const [itemId, maskMesh] of maskMeshMap.value.entries()) {
+    for (const [meshKey, maskMesh] of maskMeshMap.value.entries()) {
       let originalMesh: InstancedMesh | null = null
-      if (itemId === -1 && fallbackMesh) {
+      if (meshKey === '-1' && fallbackMesh) {
         originalMesh = fallbackMesh
       } else {
-        originalMesh = meshMap.get(itemId) || null
+        originalMesh = meshMap.get(meshKey) || null
       }
 
       if (!originalMesh) {
@@ -313,8 +313,8 @@ export function useSelectionOutline() {
       const meshInfo = internalIdToMeshInfo.get(id)
       if (!meshInfo) continue
 
-      const { itemId, localIndex } = meshInfo
-      const maskMesh = maskMeshMap.value.get(itemId)
+      const { meshKey, localIndex } = meshInfo
+      const maskMesh = maskMeshMap.value.get(meshKey)
       if (!maskMesh) continue
 
       // R=1 表示选中
@@ -330,8 +330,8 @@ export function useSelectionOutline() {
         const meshInfo = internalIdToMeshInfo.get(hoveredId)
         if (!meshInfo) continue
 
-        const { itemId, localIndex } = meshInfo
-        const maskMesh = maskMeshMap.value.get(itemId)
+        const { meshKey, localIndex } = meshInfo
+        const maskMesh = maskMeshMap.value.get(meshKey)
         if (!maskMesh) continue
 
         // 读取当前颜色，保留R通道，设置G通道
@@ -423,19 +423,19 @@ export function useSelectionOutline() {
     maskScene.updateMatrixWorld(true)
   }
 
-  function disposeMaskMesh(itemId: number) {
-    const mesh = maskMeshMap.value.get(itemId)
+  function disposeMaskMesh(meshKey: string) {
+    const mesh = maskMeshMap.value.get(meshKey)
     if (mesh) {
       maskScene.remove(mesh)
       mesh.geometry = null as any
       mesh.material = null as any
-      maskMeshMap.value.delete(itemId)
+      maskMeshMap.value.delete(meshKey)
     }
   }
 
   function dispose() {
-    for (const [itemId] of maskMeshMap.value.entries()) {
-      disposeMaskMesh(itemId)
+    for (const [meshKey] of maskMeshMap.value.entries()) {
+      disposeMaskMesh(meshKey)
     }
     maskMeshMap.value.clear()
 

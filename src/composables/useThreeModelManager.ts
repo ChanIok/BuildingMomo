@@ -18,6 +18,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
+import { loadArrayTexture } from '@/lib/colorMap'
+import type { Texture } from 'three'
 
 /**
  * 标准化几何体属性，确保所有几何体具有兼容的属性集
@@ -144,7 +146,7 @@ async function loadGLBModel(
  * @param config 家具模型配置
  * @param gltfLoader GLTF加载器实例
  * @param MODEL_BASE_URL 模型基础路径
- * @returns {geometry, material, boundingBox} 或 undefined
+ * @returns {geometry, materials（含材质名）, boundingBox} 或 undefined
  */
 async function processGeometryForItem(
   itemId: number,
@@ -152,11 +154,17 @@ async function processGeometryForItem(
   gltfLoader: GLTFLoader,
   MODEL_BASE_URL: string
 ): Promise<
-  { geometry: BufferGeometry; material: Material | Material[]; boundingBox: Box3 } | undefined
+  | {
+      geometry: BufferGeometry
+      materials: { mat: Material; name: string }[]
+      mergedMaterial: Material | Material[]
+      boundingBox: Box3
+    }
+  | undefined
 > {
   // 加载所有 mesh 文件
   const allGeometries: BufferGeometry[] = []
-  const materials: Material[] = []
+  const materials: { mat: Material; name: string }[] = []
   const tempMatrix = new Matrix4()
   const tempQuat = new Quaternion()
   const tempScale = new Vector3()
@@ -207,8 +215,9 @@ async function processGeometryForItem(
 
         allGeometries.push(geom)
 
-        // 收集所有材质（每个 mesh 都可能有不同的材质）
-        materials.push(mesh.material as Material)
+        // 收集所有材质（保留材质名，用于染色匹配）
+        const mat = mesh.material as Material
+        materials.push({ mat, name: mat.name || '' })
       }
     })
   }
@@ -244,32 +253,24 @@ async function processGeometryForItem(
   geometry.scale(100, 100, 100)
 
   // 优化材质：保留原始纹理，增强对比度
-  let material: Material | Material[]
-  if (materials.length > 0) {
-    // 对每个材质进行优化
-    for (const mat of materials) {
-      if ((mat as any).isMeshStandardMaterial) {
-        const stdMat = mat as MeshStandardMaterial
-
-        // --- 极简材质配置 ---
-        // 既然没有法线和PBR贴图，就完全放弃模拟真实质感
-        // 目标：干净、哑光、清晰还原 _D 贴图颜色
-
-        stdMat.roughness = 0.8
-        stdMat.metalness = 0.1
-
-        // 自发光
-        stdMat.emissive = new Color(0x222222)
-        ;((stdMat.emissiveIntensity = 0.03),
-          // 确保使用最终渲染颜色
-          (stdMat.needsUpdate = true))
-      }
+  for (const { mat } of materials) {
+    if ((mat as any).isMeshStandardMaterial) {
+      const stdMat = mat as MeshStandardMaterial
+      stdMat.roughness = 0.8
+      stdMat.metalness = 0.1
+      stdMat.emissive = new Color(0x222222)
+      stdMat.emissiveIntensity = 0.03
+      stdMat.needsUpdate = true
     }
+  }
 
-    // 返回材质数组（如果只有一个材质，也保持数组形式以支持材质分组）
-    material = materials.length > 1 ? materials : materials[0]!
+  // 构建合并后的材质
+  let mergedMaterial: Material | Material[]
+  if (materials.length > 0) {
+    const mats = materials.map((m) => m.mat)
+    mergedMaterial = mats.length > 1 ? mats : mats[0]!
   } else {
-    material = new MeshStandardMaterial({
+    mergedMaterial = new MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0x222222,
       emissiveIntensity: 0.03,
@@ -297,7 +298,117 @@ async function processGeometryForItem(
   geometry.computeBoundingBox()
   const boundingBox = geometry.boundingBox!.clone() // 克隆避免共享引用
 
-  return { geometry, material, boundingBox }
+  return { geometry, materials, mergedMaterial, boundingBox }
+}
+
+/**
+ * 为材质注入 UV2 × tintMap 染色逻辑
+ *
+ * 通过 onBeforeCompile 修改 MeshStandardMaterial 的 shader：
+ * - 顶点着色器：传递 UV2（TEXCOORD_1）到片段着色器
+ * - 片段着色器：用 UV2 采样 tintMap，与 diffuseColor 相乘（正片叠底）
+ *
+ * @param material 要修改的材质（会被原地修改）
+ * @param tintTexture Array 贴图（调色板纹理）
+ */
+function applyTintShader(material: MeshStandardMaterial, tintTexture: Texture): void {
+  material.onBeforeCompile = (shader) => {
+    // 注入 tintMap uniform
+    shader.uniforms.tintMap = { value: tintTexture }
+
+    // === 顶点着色器 ===
+    // 声明 uv2 attribute 和 vTintUv varying
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>
+attribute vec2 uv2;
+varying vec2 vTintUv;`
+    )
+    // 在 begin_vertex 之后传递 UV2
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+vTintUv = uv2;`
+    )
+
+    // === 片段着色器 ===
+    // 声明 tintMap uniform 和 vTintUv varying
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <common>',
+      `#include <common>
+uniform sampler2D tintMap;
+varying vec2 vTintUv;`
+    )
+    // 在 map_fragment 之后，用 tintMap 采样结果乘以 diffuseColor
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <map_fragment>',
+      `#include <map_fragment>
+vec4 tintSample = texture2D( tintMap, vTintUv );
+diffuseColor.rgb *= tintSample.rgb;`
+    )
+  }
+
+  // 标记自定义 shader 的缓存键，避免不同 tintMap 的材质共享编译缓存
+  material.customProgramCacheKey = () => `tint_${tintTexture.id}`
+  material.needsUpdate = true
+}
+
+/**
+ * 为指定颜色索引创建染色材质
+ * 遍历模型的材质列表，查找在 variantMap 中有染色配置的材质，
+ * 克隆并通过 onBeforeCompile 注入 UV2 × tintMap 逻辑。
+ *
+ * @param materials 原始材质列表（含材质名）
+ * @param colorIndex 颜色索引
+ * @param gameDataStore gameDataStore 实例
+ * @returns 染色后的材质（单个或数组），如果不需要染色则返回 null
+ */
+async function createColoredMaterial(
+  materials: { mat: Material; name: string }[],
+  colorIndex: number,
+  gameDataStore: ReturnType<typeof useGameDataStore>
+): Promise<Material | Material[] | null> {
+  let hasVariant = false
+
+  // 先检查是否有任何材质需要染色
+  for (const { name } of materials) {
+    if (name && gameDataStore.getVariantTextures(name)) {
+      hasVariant = true
+      break
+    }
+  }
+
+  if (!hasVariant) return null
+
+  // 克隆材质并应用染色
+  const coloredMats: Material[] = []
+  for (const { mat, name } of materials) {
+    const textures = name ? gameDataStore.getVariantTextures(name) : null
+
+    if (textures && textures.length > 0) {
+      // 确定实际使用的颜色索引（越界则回退到 0）
+      const safeIndex = colorIndex < textures.length ? colorIndex : 0
+      const textureFile = textures[safeIndex]!
+
+      // 加载 Array 贴图为 Three.js Texture
+      const tintTexture = await loadArrayTexture(textureFile)
+
+      // 克隆材质
+      const cloned = mat.clone()
+
+      // 注入 UV2 × tintMap shader 逻辑
+      if (tintTexture && (cloned as any).isMeshStandardMaterial) {
+        applyTintShader(cloned as MeshStandardMaterial, tintTexture)
+      }
+
+      coloredMats.push(cloned)
+    } else {
+      // 不可染色的材质，直接复用原材质
+      coloredMats.push(mat)
+    }
+  }
+
+  return coloredMats.length > 1 ? coloredMats : coloredMats[0]!
 }
 
 /**
@@ -325,28 +436,40 @@ export function useThreeModelManager() {
   // 模型基础路径
   const MODEL_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-model/'
 
-  // itemId -> InstancedMesh 的映射
-  const meshMap = new Map<number, InstancedMesh>()
+  // cacheKey -> InstancedMesh 的映射（cacheKey = `${itemId}_${colorIndex}`）
+  const meshMap = new Map<string, InstancedMesh>()
 
-  // itemId -> 几何体和材质的缓存（用于创建 InstancedMesh）
+  // itemId -> 几何体和原始材质的缓存（几何体与颜色无关，按 itemId 缓存）
   const geometryCache = new Map<
     number,
-    { geometry: BufferGeometry; material: Material | Material[]; boundingBox: Box3 }
+    {
+      geometry: BufferGeometry
+      materials: { mat: Material; name: string }[]
+      mergedMaterial: Material | Material[]
+      boundingBox: Box3
+    }
   >()
 
+  // 染色材质缓存：`${itemId}_${colorIndex}` -> 已染色的材质
+  const coloredMaterialCache = new Map<string, Material | Material[]>()
+
   /**
-   * 为指定家具创建 InstancedMesh
+   * 为指定家具+颜色索引创建 InstancedMesh
    * @param itemId 家具 ItemID
+   * @param colorIndex 颜色索引（0=默认色）
    * @param instanceCount 实例数量
    * @returns Promise<InstancedMesh | null> 成功返回 InstancedMesh，失败返回 null
    */
   async function createInstancedMesh(
     itemId: number,
+    colorIndex: number,
     instanceCount: number
   ): Promise<InstancedMesh | null> {
+    const cacheKey = `${itemId}_${colorIndex}`
+
     // 检查是否已存在
-    if (meshMap.has(itemId)) {
-      const existingMesh = meshMap.get(itemId)!
+    if (meshMap.has(cacheKey)) {
+      const existingMesh = meshMap.get(cacheKey)!
 
       // 检查当前容量（instanceMatrix.count 是实际分配的 Buffer 大小）
       const currentCapacity = existingMesh.instanceMatrix.count
@@ -358,12 +481,12 @@ export function useThreeModelManager() {
 
       // 容量不足，需要扩容（销毁旧的，下面会创建新的）
       console.log(
-        `[ModelManager] 容量不足 ${itemId}: 需 ${instanceCount}, 当前 ${currentCapacity} -> 重建`
+        `[ModelManager] 容量不足 ${cacheKey}: 需 ${instanceCount}, 当前 ${currentCapacity} -> 重建`
       )
-      disposeMesh(itemId)
+      disposeMesh(cacheKey)
     }
 
-    // 尝试从缓存获取几何体和材质
+    // 尝试从缓存获取几何体
     let geometryData = geometryCache.get(itemId)
 
     if (!geometryData) {
@@ -374,20 +497,31 @@ export function useThreeModelManager() {
         return null
       }
 
-      // 使用共享函数处理几何体（包括染色）
+      // 使用共享函数处理几何体
       const result = await processGeometryForItem(itemId, config, gltfLoader, MODEL_BASE_URL)
       if (!result) {
         return null
       }
       geometryData = result
 
-      // 缓存几何体和材质
+      // 缓存几何体
       geometryCache.set(itemId, geometryData)
     }
 
+    // 确定使用的材质（所有可染色模型都需要应用 Array 贴图，包括 colorIndex=0）
+    let material: Material | Material[]
+    let coloredMat = coloredMaterialCache.get(cacheKey)
+    if (!coloredMat) {
+      coloredMat =
+        (await createColoredMaterial(geometryData.materials, colorIndex, gameDataStore)) ??
+        undefined
+      if (coloredMat) {
+        coloredMaterialCache.set(cacheKey, coloredMat)
+      }
+    }
+    material = coloredMat ?? geometryData.mergedMaterial
+
     // 计算分配容量（Headroom 策略：预留空间以减少频繁重建）
-    // 策略：实际需求 + 缓冲，且至少分配 32 个，或者按 1.5 倍增长
-    // 同时不超过最大限制
     const minCapacity = 32
     const growthFactor = 1.5
     const headRoom = 16
@@ -405,11 +539,7 @@ export function useThreeModelManager() {
     }
 
     // 创建 InstancedMesh
-    const instancedMesh = new InstancedMesh(
-      geometryData.geometry,
-      geometryData.material,
-      allocatedCapacity
-    )
+    const instancedMesh = new InstancedMesh(geometryData.geometry, material, allocatedCapacity)
 
     // 关闭视锥体剔除（与现有代码保持一致）
     instancedMesh.frustumCulled = false
@@ -418,19 +548,19 @@ export function useThreeModelManager() {
     instancedMesh.instanceMatrix.setUsage(DynamicDrawUsage)
     instancedMesh.count = 0 // 初始不显示任何实例
 
-    // 缓存（使用 cacheKey）
-    meshMap.set(itemId, instancedMesh)
+    // 缓存
+    meshMap.set(cacheKey, instancedMesh)
 
     return instancedMesh
   }
 
   /**
    * 获取指定家具的 InstancedMesh
-   * @param itemId 家具 ItemID
+   * @param cacheKey 缓存键（`${itemId}_${colorIndex}`）
    * @returns InstancedMesh | null
    */
-  function getMesh(itemId: number): InstancedMesh | null {
-    return meshMap.get(itemId) || null
+  function getMesh(cacheKey: string): InstancedMesh | null {
+    return meshMap.get(cacheKey) || null
   }
 
   /**
@@ -442,7 +572,7 @@ export function useThreeModelManager() {
   }
 
   /**
-   * 获取未加载的模型列表
+   * 获取未加载的模型列表（基于几何体缓存）
    * @param itemIds 家具 ItemID 列表
    * @returns 未加载的家具 ItemID 列表
    */
@@ -527,14 +657,14 @@ export function useThreeModelManager() {
   }
 
   /**
-   * 销毁指定家具的 InstancedMesh
-   * @param itemId 家具 ItemID
+   * 销毁指定的 InstancedMesh
+   * @param cacheKey 缓存键（`${itemId}_${colorIndex}`）
    */
-  function disposeMesh(itemId: number): void {
-    const mesh = meshMap.get(itemId)
+  function disposeMesh(cacheKey: string): void {
+    const mesh = meshMap.get(cacheKey)
     if (mesh) {
-      // 注意：不销毁几何体和材质（它们在 geometryCache 中被复用）
-      meshMap.delete(itemId)
+      // 注意：不销毁几何体和材质（它们在缓存中被复用）
+      meshMap.delete(cacheKey)
     }
   }
 
@@ -544,19 +674,29 @@ export function useThreeModelManager() {
   function dispose(): void {
     console.log('[ModelManager] Disposing resources...')
 
-    // 清空 InstancedMesh 映射（不销毁几何体和材质）
+    // 清空 InstancedMesh 映射
     meshMap.clear()
 
-    // 销毁几何体和材质缓存
-    for (const [, { geometry, material }] of geometryCache.entries()) {
+    // 销毁几何体缓存
+    for (const [, { geometry, mergedMaterial }] of geometryCache.entries()) {
       geometry.dispose()
-      if (Array.isArray(material)) {
-        material.forEach((m) => m.dispose())
+      if (Array.isArray(mergedMaterial)) {
+        mergedMaterial.forEach((m) => m.dispose())
       } else {
-        material.dispose()
+        mergedMaterial.dispose()
       }
     }
     geometryCache.clear()
+
+    // 销毁染色材质缓存
+    for (const [, mat] of coloredMaterialCache.entries()) {
+      if (Array.isArray(mat)) {
+        mat.forEach((m) => m.dispose())
+      } else {
+        mat.dispose()
+      }
+    }
+    coloredMaterialCache.clear()
 
     console.log('[ModelManager] Resources disposed')
   }
@@ -568,6 +708,7 @@ export function useThreeModelManager() {
     return {
       activeMeshes: meshMap.size,
       cachedGeometries: geometryCache.size,
+      cachedColoredMaterials: coloredMaterialCache.size,
     }
   }
 

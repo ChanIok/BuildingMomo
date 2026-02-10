@@ -6,6 +6,7 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { coordinates3D } from '@/lib/coordinates'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
+import { parseColorIndex } from '@/lib/colorMap'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -23,7 +24,7 @@ const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 /**
  * Model 渲染模式
  *
- * 3D 模型实例化渲染（按 itemId 分组管理多个 InstancedMesh）
+ * 3D 模型实例化渲染（按 (gameId, colorIndex) 分组管理多个 InstancedMesh）
  * 对无模型或加载失败的物品自动回退到 Box 渲染
  */
 export function useModelMode() {
@@ -35,8 +36,8 @@ export function useModelMode() {
   // 追踪上一次的 scheme 引用，用于检测方案切换
   let lastSchemeRef: any = null
 
-  // 模型 InstancedMesh 映射：itemId -> InstancedMesh
-  const modelMeshMap = ref(new Map<number, InstancedMesh>())
+  // 模型 InstancedMesh 映射：meshKey -> InstancedMesh（meshKey = `${gameId}_${colorIndex}`）
+  const modelMeshMap = ref(new Map<string, InstancedMesh>())
 
   // 模型索引映射：用于拾取和选择（跨所有模型 mesh 的全局索引）
   const modelIndexToIdMap = ref(new Map<number, string>())
@@ -45,8 +46,8 @@ export function useModelMode() {
   // 局部索引映射：用于射线检测（Mesh -> 局部索引 -> internalId）
   const meshToLocalIndexMap = ref(new Map<InstancedMesh, Map<number, string>>())
 
-  // 反向索引映射：用于描边高亮（internalId -> { itemId, localIndex }）
-  const internalIdToMeshInfo = ref(new Map<string, { itemId: number; localIndex: number }>())
+  // 反向索引映射：用于描边高亮（internalId -> { meshKey, localIndex }）
+  const internalIdToMeshInfo = ref(new Map<string, { meshKey: string; localIndex: number }>())
 
   // 回退渲染用的 Box mesh（专门用于 Model 模式的回退）
   // 🔧 修复：markRaw + shallowRef 组合，保持响应式同时避免深度代理
@@ -171,18 +172,33 @@ export function useModelMode() {
       }
     }
 
-    // 1. 按 itemId 分组（包含回退项）
-    const groups = new Map<number, AppItem[]>()
-    const fallbackKey = -1 // 特殊键，用于存放没有模型或加载失败的物品
+    // 1. 按 (gameId, colorIndex) 分组（包含回退项）
+    const groups = new Map<string, AppItem[]>()
+    const groupMeta = new Map<string, { gameId: number; colorIndex: number }>()
+    const fallbackKey = '-1' // 特殊键，用于存放没有模型或加载失败的物品
 
     for (let i = 0; i < instanceCount; i++) {
       const item = items[i]
       if (!item) continue
 
       const config = gameDataStore.getFurnitureModelConfig(item.gameId)
-      // 检查 config 是否存在且有有效的 meshes
       const hasValidConfig = config && config.meshes && config.meshes.length > 0
-      const key = hasValidConfig ? item.gameId : fallbackKey
+
+      let key: string
+      if (hasValidConfig) {
+        const ci = parseColorIndex(item.extra.ColorMap)
+        if (ci === null) {
+          // 多槽染色暂不支持，回退到 fallback
+          key = fallbackKey
+        } else {
+          key = `${item.gameId}_${ci}`
+          if (!groupMeta.has(key)) {
+            groupMeta.set(key, { gameId: item.gameId, colorIndex: ci })
+          }
+        }
+      } else {
+        key = fallbackKey
+      }
 
       if (!groups.has(key)) {
         groups.set(key, [])
@@ -191,7 +207,7 @@ export function useModelMode() {
     }
 
     // 2. 预加载所有模型（并发加载，提升性能）
-    const modelItemIds = Array.from(groups.keys()).filter((k) => k !== fallbackKey)
+    const modelItemIds = Array.from(new Set(Array.from(groupMeta.values()).map((m) => m.gameId)))
     if (modelItemIds.length > 0) {
       // 先过滤出未加载的模型，避免进度条数量不匹配
       const unloadedIds = modelManager.getUnloadedModels(modelItemIds)
@@ -224,12 +240,12 @@ export function useModelMode() {
     }
 
     // 3. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
-    const activeItemIds = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
-    for (const [itemId] of modelMeshMap.value.entries()) {
-      if (!activeItemIds.has(itemId)) {
+    const activeMeshKeys = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
+    for (const [meshKey] of modelMeshMap.value.entries()) {
+      if (!activeMeshKeys.has(meshKey)) {
         // 模型不再需要，清理
-        modelManager.disposeMesh(itemId)
-        modelMeshMap.value.delete(itemId)
+        modelManager.disposeMesh(meshKey)
+        modelMeshMap.value.delete(meshKey)
       }
     }
 
@@ -241,7 +257,7 @@ export function useModelMode() {
     const newIndexToIdMap = new Map<number, string>()
     const newIdToIndexMap = new Map<string, number>()
     const newMeshToLocalIndexMap = new Map<InstancedMesh, Map<number, string>>()
-    const newInternalIdToMeshInfo = new Map<string, { itemId: number; localIndex: number }>()
+    const newInternalIdToMeshInfo = new Map<string, { meshKey: string; localIndex: number }>()
 
     // 收集所有需要回退的 items
     let allFallbackItems: AppItem[] = []
@@ -250,23 +266,29 @@ export function useModelMode() {
     }
 
     // 遍历处理正常模型组
-    for (const [itemId, itemsOfModel] of groups.entries()) {
-      if (itemId === fallbackKey) continue
+    for (const [meshKey, itemsOfModel] of groups.entries()) {
+      if (meshKey === fallbackKey) continue
+
+      const meta = groupMeta.get(meshKey)!
 
       // 创建或获取 InstancedMesh
-      const existingMesh = modelMeshMap.value.get(itemId)
-      const mesh = await modelManager.createInstancedMesh(itemId, itemsOfModel.length)
+      const existingMesh = modelMeshMap.value.get(meshKey)
+      const mesh = await modelManager.createInstancedMesh(
+        meta.gameId,
+        meta.colorIndex,
+        itemsOfModel.length
+      )
 
       if (!mesh) {
         // 加载失败，加入回退列表
-        console.warn(`[ModelMode] Failed to create mesh for itemId ${itemId}, using fallback`)
+        console.warn(`[ModelMode] Failed to create mesh for ${meshKey}, using fallback`)
         allFallbackItems.push(...itemsOfModel)
         continue
       }
 
       // 更新引用（createInstancedMesh 可能会返回新的实例）
       if (existingMesh !== mesh) {
-        modelMeshMap.value.set(itemId, markRaw(mesh))
+        modelMeshMap.value.set(meshKey, markRaw(mesh))
       }
 
       // 更新实例数量
@@ -317,7 +339,7 @@ export function useModelMode() {
         localIndexMap.set(i, item.internalId)
 
         // 反向索引映射（用于描边高亮）
-        newInternalIdToMeshInfo.set(item.internalId, { itemId, localIndex: i })
+        newInternalIdToMeshInfo.set(item.internalId, { meshKey, localIndex: i })
       }
 
       // 将当前 mesh 的局部索引映射存储起来
@@ -353,7 +375,7 @@ export function useModelMode() {
         for (let i = 0; i < allFallbackItems.length; i++) {
           const item = allFallbackItems[i]
           if (!item) continue
-          newInternalIdToMeshInfo.set(item.internalId, { itemId: -1, localIndex: i })
+          newInternalIdToMeshInfo.set(item.internalId, { meshKey: '-1', localIndex: i })
         }
       }
     } else if (fallbackMesh.value) {
