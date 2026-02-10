@@ -124,6 +124,7 @@ export const enLocale = {
       toggleTranslate: 'Translate Mode',
       toggleRotate: 'Rotate Mode',
       toggleFurnitureLibrary: 'Furniture Library',
+      toggleDyePanel: 'Dye Panel',
     },
     selectionAction: {
       new: 'Set',
@@ -567,5 +568,16 @@ export const enLocale = {
     searchPlaceholder: 'Search furniture...',
     noResults: 'No matching furniture found',
     stats: '{showing} of {total} items',
+  },
+
+  // Dye Panel
+  dyePanel: {
+    title: 'Dye',
+    noSelection: 'Select at least one item',
+    unsupported: 'The selected item does not support dye',
+    resetAll: 'Reset all dye',
+    group: 'Area {group}',
+    disable: 'Disable',
+    mixed: 'Mixed',
   },
 }

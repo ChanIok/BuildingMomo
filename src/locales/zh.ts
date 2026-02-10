@@ -124,6 +124,7 @@ export const zhLocale = {
       toggleTranslate: '平移模式',
       toggleRotate: '旋转模式',
       toggleFurnitureLibrary: '家具背包',
+      toggleDyePanel: '染色面板',
     },
     selectionAction: {
       new: '新选区',
@@ -560,5 +561,16 @@ export const zhLocale = {
     searchPlaceholder: '搜索家具...',
     noResults: '未找到匹配的家具',
     stats: '共 {total} 个，显示 {showing} 个',
+  },
+
+  // 染色面板
+  dyePanel: {
+    title: '染色',
+    noSelection: '请先选中物品',
+    unsupported: '当前选中物品不支持染色',
+    resetAll: '重置全部染色',
+    group: '区域{group}',
+    disable: '禁用',
+    mixed: '混合',
   },
 }

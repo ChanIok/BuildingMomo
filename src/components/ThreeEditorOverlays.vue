@@ -13,6 +13,8 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
 import LoadingProgress from './LoadingProgress.vue'
 import CanvasToolbar from './CanvasToolbar.vue'
+import FurnitureLibrary from './FurnitureLibrary.vue'
+import DyePanel from './DyePanel.vue'
 
 const { t } = useI18n()
 
@@ -168,6 +170,10 @@ function handleViewInfoClick() {
   <div class="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
     <CanvasToolbar />
   </div>
+
+  <!-- 左侧面板 -->
+  <FurnitureLibrary v-model:open="commandStore.showFurnitureLibrary" />
+  <DyePanel v-model:open="commandStore.showDyePanel" />
 
   <!-- 右键菜单 -->
   <DropdownMenu v-model:open="contextMenuOpen" :modal="false">

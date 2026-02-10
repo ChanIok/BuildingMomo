@@ -12,7 +12,6 @@ import WelcomeScreen from './components/WelcomeScreen.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
 import DocsViewer from './components/DocsViewer.vue'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
-import FurnitureLibrary from './components/FurnitureLibrary.vue'
 import { Toaster } from '@/components/ui/sonner'
 import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -25,7 +24,7 @@ const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
 const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorkspaceWorker()
 
-// 导入 commandStore 用于对话框控制和背包面板
+// 导入 commandStore 用于全局命令状态
 import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
 
@@ -122,12 +121,6 @@ onMounted(async () => {
                   key="docs-viewer"
                 />
               </KeepAlive>
-
-              <!-- 背包面板（悬浮在画布上方，仅方案类型显示） -->
-              <FurnitureLibrary
-                v-if="tabStore.activeTab?.type === 'scheme'"
-                v-model:open="commandStore.showFurnitureLibrary"
-              />
             </template>
           </div>
 

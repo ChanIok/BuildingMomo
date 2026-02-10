@@ -58,6 +58,8 @@ export const useCommandStore = defineStore('command', () => {
 
   // 背包面板显示状态
   const showFurnitureLibrary = ref(false)
+  // 染色面板显示状态
+  const showDyePanel = ref(false)
 
   // 剪贴板和文件操作
   const fileOps = useFileOperations(editorStore)
@@ -224,7 +226,32 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.activeScheme !== null,
       execute: () => {
         console.log('[Command] 切换家具背包')
-        showFurnitureLibrary.value = !showFurnitureLibrary.value
+        const shouldOpen = !showFurnitureLibrary.value
+        showFurnitureLibrary.value = shouldOpen
+        if (shouldOpen) {
+          showDyePanel.value = false
+        }
+      },
+    },
+    {
+      id: 'tool.toggleDyePanel',
+      label: t('command.tool.toggleDyePanel'),
+      shortcut: 'C',
+      category: 'tool',
+      enabled: () => {
+        if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
+          const settingsStore = useSettingsStore()
+          if (!settingsStore.isAuthenticated) return false
+        }
+        return editorStore.activeScheme !== null
+      },
+      execute: () => {
+        console.log('[Command] 切换染色面板')
+        const shouldOpen = !showDyePanel.value
+        showDyePanel.value = shouldOpen
+        if (shouldOpen) {
+          showFurnitureLibrary.value = false
+        }
       },
     },
 
@@ -694,5 +721,6 @@ export const useCommandStore = defineStore('command', () => {
     setToggleCameraModeFunction,
     showCoordinateDialog,
     showFurnitureLibrary,
+    showDyePanel,
   }
 })

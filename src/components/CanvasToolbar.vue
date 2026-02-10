@@ -23,6 +23,7 @@ import {
   RotateCw,
   ChevronDown,
   Package,
+  Palette,
 } from 'lucide-vue-next'
 import IconSelectionNew from '@/components/icons/IconSelectionNew.vue'
 import IconSelectionAdd from '@/components/icons/IconSelectionAdd.vue'
@@ -34,6 +35,8 @@ const editorStore = useEditorStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
+
+const isSecureModeEnabled = import.meta.env.VITE_ENABLE_SECURE_MODE === 'true'
 
 /**
  * 格式化修饰键字符串为显示格式
@@ -150,7 +153,19 @@ const activeSelectionAction = computed(() => {
 const showFurnitureLibrary = computed({
   get: () => commandStore.showFurnitureLibrary,
   set: (val) => {
-    commandStore.showFurnitureLibrary = val
+    if (val !== commandStore.showFurnitureLibrary) {
+      commandStore.executeCommand('tool.toggleFurnitureLibrary')
+    }
+  },
+})
+
+// 染色面板状态
+const showDyePanel = computed({
+  get: () => commandStore.showDyePanel,
+  set: (val) => {
+    if (val !== commandStore.showDyePanel) {
+      commandStore.executeCommand('tool.toggleDyePanel')
+    }
   },
 })
 </script>
@@ -278,6 +293,21 @@ const showFurnitureLibrary = computed({
         <TooltipContent side="top" class="text-xs">
           {{ t('command.tool.toggleFurnitureLibrary') }}
           <Kbd class="ml-1">B</Kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <!-- 6. 染色面板 Toggle -->
+      <Tooltip v-if="!isSecureModeEnabled || settingsStore.isAuthenticated">
+        <TooltipTrigger as-child>
+          <div class="inline-flex">
+            <Toggle size="sm" v-model="showDyePanel">
+              <Palette class="h-4 w-4" />
+            </Toggle>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" class="text-xs">
+          {{ t('command.tool.toggleDyePanel') }}
+          <Kbd class="ml-1">C</Kbd>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

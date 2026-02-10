@@ -72,6 +72,9 @@ export interface FurnitureMeshConfig {
   mats?: Array<{ name: string }>
 }
 
+/** 染色配置：groupId -> (colorIndex -> iconId) */
+export type FurnitureColorConfig = Record<string, Record<string, number>>
+
 /** 家具模型配置 */
 export interface FurnitureModelConfig {
   id: number
@@ -81,6 +84,7 @@ export interface FurnitureModelConfig {
   root_offset: { x: number; y: number; z: number }
   scale_range?: [number, number]
   rotate_axis?: [boolean, boolean]
+  colors?: FurnitureColorConfig
   price?: number
 }
 
