@@ -112,9 +112,16 @@ const canvasClearColor = computed(() => {
   return isDark ? '#1F1F1F' : '#FFFFFF'
 })
 
-// 监听按键状态
-const { Ctrl } = useMagicKeys()
+// 监听按键状态（Ctrl/Cmd 用于临时关闭吸附，与 PS/Figma 一致）
+const { Ctrl, Meta } = useMagicKeys()
 const isCtrlPressed = computed(() => Ctrl?.value ?? false)
+const snapTemporarilyDisabled = computed(() => (Ctrl?.value ?? false) || (Meta?.value ?? false))
+const effectiveTranslationSnap = computed(() =>
+  snapTemporarilyDisabled.value ? undefined : settingsStore.settings.translationSnap || undefined
+)
+const effectiveRotationSnap = computed(() =>
+  snapTemporarilyDisabled.value ? undefined : settingsStore.settings.rotationSnap || undefined
+)
 
 // 调试面板状态
 const showCameraDebug = ref(false)
@@ -817,8 +824,8 @@ onDeactivated(() => {
           :camera="activeCameraRef"
           :mode="editorStore.gizmoMode || 'translate'"
           :space="transformSpace"
-          :translationSnap="settingsStore.settings.translationSnap || undefined"
-          :rotationSnap="settingsStore.settings.rotationSnap || undefined"
+          :translationSnap="effectiveTranslationSnap"
+          :rotationSnap="effectiveRotationSnap"
           @dragging="handleGizmoDragging"
           @mouseDown="handleGizmoMouseDown"
           @mouseUp="handleGizmoMouseUp"

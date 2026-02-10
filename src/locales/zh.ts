@@ -491,6 +491,7 @@ export const zhLocale = {
     },
     snap: {
       label: '吸附与步进',
+      holdCtrlToDisableSnap: '拖拽时按住 Ctrl 可临时关闭吸附',
       translationStep: '移动步进',
       translationStepHint: '拖拽时吸附到网格点（此值的倍数坐标）',
       rotationStep: '旋转步进',

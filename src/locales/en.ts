@@ -495,6 +495,7 @@ export const enLocale = {
     },
     snap: {
       label: 'Snap & Step',
+      holdCtrlToDisableSnap: 'Hold Ctrl while dragging to temporarily disable snap',
       translationStep: 'Movement Snap',
       translationStepHint: 'Snap to grid points (multiples of this value)',
       rotationStep: 'Rotation Step',

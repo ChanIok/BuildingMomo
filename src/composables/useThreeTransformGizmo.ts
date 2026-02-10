@@ -109,8 +109,8 @@ export function useThreeTransformGizmo(
   const { commitBatchedTransform, getSelectedItemsCenter } = useEditorManipulation()
   const { pasteItems, buildClipboardDataFromSelection } = useClipboard()
 
-  // 键盘状态
-  const { Alt } = useMagicKeys()
+  // 键盘状态（Alt 用于复制；Control/Meta 用于临时关闭吸附，与 PS/Figma/Blender 一致）
+  const { Alt, Control, Meta } = useMagicKeys()
 
   /**
    * 获取当前应该使用的 Gizmo 旋转（三轴旋转角度，度）
@@ -510,8 +510,9 @@ export function useThreeTransformGizmo(
    * 4. 只在当前 Gizmo 拖动的轴上进行吸附
    */
   function applyCollisionSnap(newWorldMatrices: Map<string, Matrix4>): Map<string, Matrix4> {
-    // 1. 检查是否启用
-    if (!settingsStore.settings.enableSurfaceSnap) {
+    // 1. 检查是否启用；按住 Ctrl/Cmd 时临时关闭表面吸附（与 PS/Figma 一致）
+    const ctrlOrCmdHeld = (Control?.value ?? false) || (Meta?.value ?? false)
+    if (!settingsStore.settings.enableSurfaceSnap || ctrlOrCmdHeld) {
       return newWorldMatrices
     }
 
@@ -827,8 +828,13 @@ export function useThreeTransformGizmo(
             deltaAngle += 2 * Math.PI
           }
 
-          // 应用旋转吸附（如果启用）
-          if (settingsStore.settings.rotationSnap && settingsStore.settings.rotationSnap > 0) {
+          // 应用旋转吸附（如果启用）；按住 Ctrl/Cmd 时临时关闭
+          const ctrlOrCmdHeld = (Control?.value ?? false) || (Meta?.value ?? false)
+          if (
+            settingsStore.settings.rotationSnap &&
+            settingsStore.settings.rotationSnap > 0 &&
+            !ctrlOrCmdHeld
+          ) {
             const snapRad = settingsStore.settings.rotationSnap // 已经是弧度值
             deltaAngle = Math.round(deltaAngle / snapRad) * snapRad
           }

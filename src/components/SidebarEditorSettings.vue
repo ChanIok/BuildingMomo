@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
@@ -176,9 +177,18 @@ const fmt = (n: number, decimals: number = 0) => {
       <div class="flex flex-col gap-4 pr-4">
         <!-- 步进设置 -->
         <div class="flex flex-col gap-4">
-          <h3 class="text-xs font-semibold text-sidebar-foreground">
-            {{ t('sidebar.snap.label') }}
-          </h3>
+          <TooltipProvider>
+            <Tooltip :delay-duration="300">
+              <TooltipTrigger as-child>
+                <h3 class="w-fit cursor-default text-xs font-semibold text-sidebar-foreground">
+                  {{ t('sidebar.snap.label') }}
+                </h3>
+              </TooltipTrigger>
+              <TooltipContent class="text-xs" variant="light">
+                {{ t('sidebar.snap.holdCtrlToDisableSnap') }}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <!-- 平移步进滑块 -->
           <div class="flex flex-col gap-2">

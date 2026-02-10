@@ -384,7 +384,7 @@ function handleIconError(e: Event) {
             <ItemActions>
               <div class="relative ml-auto flex items-center justify-end">
                 <span
-                  class="text-sm font-semibold text-blue-500 transition-opacity group-hover:opacity-0 dark:text-blue-400/90"
+                  class="pr-1 text-sm font-semibold text-blue-500 transition-opacity group-hover:opacity-0 dark:text-blue-400/90"
                 >
                   ×{{ item.count }}
                 </span>
