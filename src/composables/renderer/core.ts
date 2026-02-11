@@ -570,6 +570,30 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
+  // 监听符号缩放变化：在当前模式下更新实例并触发重渲染
+  watch(
+    () => settingsStore.settings.threeSymbolScale,
+    () => {
+      const mode = settingsStore.settings.threeDisplayMode
+
+      // 仅在会受 threeSymbolScale 影响的模式下处理
+      if (mode === 'icon') {
+        // Icon 模式：复用当前朝向信息，重新应用缩放
+        iconMode.updateFacing(
+          iconMode.currentIconNormal.value,
+          iconMode.currentIconUp.value || undefined
+        )
+      } else if (mode === 'simple-box') {
+        // Simple-box 模式：更新所有实例缩放
+        simpleBoxMode.updateScale()
+      } else {
+        return
+      }
+
+      invalidateScene()
+    }
+  )
+
   // 监听结构面板 hover 类型变化，联动画布高亮
   watch(
     () => uiStore.sidebarHoveredGameId,

@@ -363,14 +363,6 @@ export function useIconMode() {
     iconMeshTarget.instanceMatrix.needsUpdate = true
   }
 
-  // 监听符号缩放变化
-  watch(
-    () => settingsStore.settings.threeSymbolScale,
-    () => {
-      updateFacing(currentIconNormal.value, currentIconUp.value || undefined)
-    }
-  )
-
   /**
    * 清理资源
    */

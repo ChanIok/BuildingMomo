@@ -107,14 +107,6 @@ export function useSimpleBoxMode() {
     mesh.instanceMatrix.needsUpdate = true
   }
 
-  // 监听符号缩放变化
-  watch(
-    () => settingsStore.settings.threeSymbolScale,
-    () => {
-      updateScale()
-    }
-  )
-
   /**
    * 清理资源
    */
@@ -134,6 +126,7 @@ export function useSimpleBoxMode() {
   return {
     mesh: simpleBoxInstancedMesh,
     rebuild,
+    updateScale,
     dispose,
   }
 }
