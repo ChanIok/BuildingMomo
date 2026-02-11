@@ -98,8 +98,8 @@ export function useInstanceColor() {
     simpleBoxMeshTarget: InstancedMesh | null,
     indexToIdMap: Map<number, string>,
     // Model 模式额外参数
-    modelMeshMap?: Map<number, InstancedMesh>,
-    modelInternalIdToMeshInfo?: Map<string, { itemId: number; localIndex: number }>
+    modelMeshMap?: Map<string, InstancedMesh>,
+    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>
   ) {
     const items = editorStore.activeScheme?.items.value ?? []
     if (!indexToIdMap || indexToIdMap.size === 0) return
@@ -143,7 +143,7 @@ export function useInstanceColor() {
         const meshInfo = modelInternalIdToMeshInfo.get(id)
         if (!meshInfo) continue
 
-        const mesh = modelMeshMap.get(meshInfo.itemId)
+        const mesh = modelMeshMap.get(meshInfo.meshKey)
         if (!mesh) continue
 
         scratchColor.setHex(getItemColor(item, 'box', mode))
@@ -164,8 +164,8 @@ export function useInstanceColor() {
     simpleBoxMeshTarget: InstancedMesh | null,
     idToIndexMap: Map<string, number>,
     // Model 模式额外参数
-    modelMeshMap?: Map<number, InstancedMesh>,
-    modelInternalIdToMeshInfo?: Map<string, { itemId: number; localIndex: number }>
+    modelMeshMap?: Map<string, InstancedMesh>,
+    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>
   ) {
     const item = editorStore.activeScheme?.items.value.find((it) => it.internalId === id)
     if (!item) return
@@ -193,7 +193,7 @@ export function useInstanceColor() {
       const meshInfo = modelInternalIdToMeshInfo.get(id)
       if (!meshInfo) return
 
-      const mesh = modelMeshMap.get(meshInfo.itemId)
+      const mesh = modelMeshMap.get(meshInfo.meshKey)
       if (!mesh) return
 
       scratchColor.setHex(getItemColor(item, 'box', mode))
@@ -213,8 +213,8 @@ export function useInstanceColor() {
     simpleBoxMeshTarget: InstancedMesh | null,
     idToIndexMap: Map<string, number>,
     // Model 模式额外参数
-    modelMeshMap?: Map<number, InstancedMesh>,
-    modelInternalIdToMeshInfo?: Map<string, { itemId: number; localIndex: number }>
+    modelMeshMap?: Map<string, InstancedMesh>,
+    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>
   ) {
     // 如果当前有被抑制的 hover ID，且传入的 ID 依然是它，则忽略（保持选中状态的颜色）
     if (suppressedHoverId.value && id === suppressedHoverId.value) {

@@ -14,6 +14,9 @@ const FURNITURE_DATA_URL = import.meta.env.BASE_URL + 'assets/data/building-momo
 const BUILDABLE_AREA_URL = import.meta.env.BASE_URL + 'assets/data/home-buildable-area.json'
 // 家具模型数据库（替代 id_to_model.json）
 const FURNITURE_DB_URL = import.meta.env.BASE_URL + 'assets/data/furniture_db.json'
+// 家具染色变体映射表
+const VARIANT_MAP_URL =
+  import.meta.env.BASE_URL + 'assets/furniture-model/furniture_variant_map.json'
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 
@@ -30,6 +33,11 @@ export const useGameDataStore = defineStore('gameData', () => {
   // ========== 状态 (Furniture DB) ==========
   const furnitureDB = ref<Map<number, FurnitureModelConfig>>(new Map())
   const isFurnitureDBLoaded = ref(false)
+
+  // ========== 状态 (Variant Map) ==========
+  // 材质实例名 → Array 贴图文件名列表
+  const variantMap = ref<Record<string, string[]>>({})
+  const isVariantMapLoaded = ref(false)
 
   // ========== 数据加载 (Furniture) ==========
 
@@ -154,11 +162,37 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
   }
 
+  // ========== 数据加载 (Variant Map) ==========
+
+  async function loadVariantMap() {
+    if (isVariantMapLoaded.value) return
+
+    try {
+      const response = await fetch(VARIANT_MAP_URL)
+      if (!response.ok) throw new Error('Failed to load variant map')
+      variantMap.value = await response.json()
+      isVariantMapLoaded.value = true
+      console.log(
+        '[GameDataStore] Variant map loaded:',
+        Object.keys(variantMap.value).length,
+        'materials'
+      )
+    } catch (error) {
+      console.error('[GameDataStore] Failed to load variant map:', error)
+      isVariantMapLoaded.value = true // 标记为已加载，避免重试阻塞
+    }
+  }
+
   // ========== 全局初始化 ==========
 
   // 初始化（应用启动时调用）
   async function initialize(): Promise<void> {
-    if (isFurnitureInitialized.value && isBuildableAreaLoaded.value && isFurnitureDBLoaded.value) {
+    if (
+      isFurnitureInitialized.value &&
+      isBuildableAreaLoaded.value &&
+      isFurnitureDBLoaded.value &&
+      isVariantMapLoaded.value
+    ) {
       return
     }
 
@@ -167,6 +201,7 @@ export const useGameDataStore = defineStore('gameData', () => {
       !isFurnitureInitialized.value ? updateFurnitureData() : Promise.resolve(),
       !isBuildableAreaLoaded.value ? loadBuildableAreaData() : Promise.resolve(),
       !isFurnitureDBLoaded.value ? loadFurnitureDB() : Promise.resolve(),
+      !isVariantMapLoaded.value ? loadVariantMap() : Promise.resolve(),
     ])
   }
 
@@ -229,6 +264,15 @@ export const useGameDataStore = defineStore('gameData', () => {
     return map
   }
 
+  /**
+   * 根据材质实例名获取染色变体贴图列表
+   * @param materialName 材质实例名（如 "MI_NHFurn_Chair_07"）
+   * @returns Array 贴图文件名列表，如果不存在返回 null
+   */
+  function getVariantTextures(materialName: string): string[] | null {
+    return variantMap.value[materialName] ?? null
+  }
+
   // 清除缓存 (仅重置状态)
   async function clearCache(): Promise<void> {
     console.log('[GameDataStore] Clearing state...')
@@ -239,6 +283,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     isBuildableAreaLoaded.value = false
     furnitureDB.value.clear()
     isFurnitureDBLoaded.value = false
+    variantMap.value = {}
+    isVariantMapLoaded.value = false
     console.log('[GameDataStore] State cleared')
   }
 
@@ -262,6 +308,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     getFurnitureSize,
     getIconUrl,
     getFurnitureModelConfig,
+    getVariantTextures,
     getFurnitureConstraintsMap,
     clearCache,
   }

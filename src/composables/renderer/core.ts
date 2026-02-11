@@ -141,7 +141,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         // 为 fallbackMesh 创建 mask mesh
         const fallbackMesh = modelMode.fallbackMesh.value
         if (fallbackMesh && fallbackMesh.count > 0) {
-          selectionOutline.initMaskMesh(-1, fallbackMesh, MAX_RENDER_INSTANCES)
+          selectionOutline.initMaskMesh('-1', fallbackMesh, MAX_RENDER_INSTANCES)
         }
 
         // 更新 mask 状态

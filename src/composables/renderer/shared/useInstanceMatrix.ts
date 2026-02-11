@@ -35,8 +35,8 @@ export function useInstanceMatrix() {
     currentIconNormal: [number, number, number],
     currentIconUp: [number, number, number] | null,
     // Model 模式额外参数
-    modelMeshMap?: Map<number, InstancedMesh>,
-    internalIdToMeshInfo?: Map<string, { itemId: number; localIndex: number }>,
+    modelMeshMap?: Map<string, InstancedMesh>,
+    internalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>,
     fallbackMesh?: InstancedMesh | null,
     // 性能优化参数
     skipBVHRefit: boolean = false
@@ -53,14 +53,14 @@ export function useInstanceMatrix() {
         const meshInfo = internalIdToMeshInfo?.get(id)
         if (!meshInfo) continue
 
-        const { itemId, localIndex: idx } = meshInfo
+        const { meshKey, localIndex: idx } = meshInfo
         localIndex = idx
 
-        // 根据 itemId 获取对应的 mesh（-1 表示 fallback）
-        if (itemId === -1) {
+        // 根据 meshKey 获取对应的 mesh（'-1' 表示 fallback）
+        if (meshKey === '-1') {
           mesh = fallbackMesh || null
         } else {
-          mesh = modelMeshMap?.get(itemId) || null
+          mesh = modelMeshMap?.get(meshKey) || null
         }
 
         if (!mesh) continue
