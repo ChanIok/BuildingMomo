@@ -301,18 +301,16 @@ async function processGeometryForItem(
   return { geometry, materials, mergedMaterial, boundingBox }
 }
 
-// 极简染色参数：显色优先（保持实现简单）
+// 染色参数
 const TINT_BLEND_STRENGTH = 0.9
-const TINT_GAMMA_LIFT = 1.0
-const TINT_SATURATION_BOOST = 1.6
-const TINT_OUTPUT_SATURATION_BOOST = 1.25
+const TINT_REFERENCE_GRAY = 0.214 // sRGB 0.5 对应的线性值，作为“精确还原 tint”的基准灰度
 
 /**
- * 为材质注入 UV2 × tintMap 染色逻辑
+ * 为材质注入 UV2 × tintMap 染色逻辑（亮度保持方案）
  *
  * 通过 onBeforeCompile 修改 MeshStandardMaterial 的 shader：
  * - 顶点着色器：传递 UV2（TEXCOORD_1）到片段着色器
- * - 片段着色器：对 tint 做轻度提亮和轻量增饱和，再与底色按强度混合
+ * - 片段着色器：提取底色亮度，将 tint 颜色等比缩放到该亮度，保留色相和纹理细节
  *
  * @param material 要修改的材质（会被原地修改）
  * @param tintTexture Array 贴图（调色板纹理）
@@ -347,32 +345,22 @@ uniform sampler2D tintMap;
 uniform float tintStrength;
 varying vec2 vTintUv;`
     )
-    // 在 map_fragment 之后，执行“极简染色”：调色板增饱和 + 结果增饱和 + 强度混合
+    // 在 map_fragment 之后，执行亮度保持染色：
+    // 提取底色亮度（纹理细节），将 tint 颜色等比缩放到该亮度，保留色相
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
-vec4 tintSample = texture2D( tintMap, vTintUv );
-vec3 tintColor = pow( clamp( tintSample.rgb, 0.0, 1.0 ), vec3(${TINT_GAMMA_LIFT}) );
-float tintLuma = dot( tintColor, vec3(0.2126, 0.7152, 0.0722) );
-vec3 tintSaturated = clamp(
-  vec3(tintLuma) + (tintColor - vec3(tintLuma)) * ${TINT_SATURATION_BOOST},
-  0.0,
-  1.0
-);
-vec3 tintedColor = diffuseColor.rgb * tintSaturated;
-float outputLuma = dot( tintedColor, vec3(0.2126, 0.7152, 0.0722) );
-tintedColor = clamp(
-  vec3(outputLuma) + (tintedColor - vec3(outputLuma)) * ${TINT_OUTPUT_SATURATION_BOOST},
-  0.0,
-  1.0
-);
+vec3 tintColor = texture2D( tintMap, vTintUv ).rgb;
+float baseLuma = dot( diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722) );
+float detail = baseLuma / ${TINT_REFERENCE_GRAY};
+vec3 tintedColor = min( tintColor * detail, vec3(1.0) );
 diffuseColor.rgb = mix( diffuseColor.rgb, tintedColor, tintStrength );`
     )
   }
 
   // 标记自定义 shader 的缓存键，避免不同 tintMap 的材质共享编译缓存
   material.customProgramCacheKey = () =>
-    `tint_${tintTexture.id}_${TINT_GAMMA_LIFT}_${TINT_BLEND_STRENGTH}_${TINT_SATURATION_BOOST}_${TINT_OUTPUT_SATURATION_BOOST}`
+    `tint_${tintTexture.id}_${TINT_BLEND_STRENGTH}_${TINT_REFERENCE_GRAY}`
   material.needsUpdate = true
 }
 
