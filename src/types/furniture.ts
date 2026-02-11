@@ -69,7 +69,6 @@ export interface FurnitureMeshConfig {
   rotation: { x: number; y: number; z: number; w: number }
   trans: { x: number; y: number; z: number }
   scale: { x: number; y: number; z: number }
-  mats?: Array<{ name: string }>
 }
 
 /** 染色配置：groupId -> (colorIndex -> iconId) */

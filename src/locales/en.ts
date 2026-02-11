@@ -379,9 +379,9 @@ export const enLocale = {
       shortcut: 'Ctrl + Wheel to adjust',
     },
     debug: {
-      show: 'Show Camera Debug',
-      hide: 'Hide Camera Debug',
-      title: '📷 Camera Status',
+      show: 'Show Debug',
+      hide: 'Hide Debug',
+      title: 'Camera Status',
       mode: 'Mode',
       view: 'View',
       projection: 'Projection',

@@ -377,9 +377,9 @@ export const zhLocale = {
       shortcut: 'Ctrl + 滚轮快速调整',
     },
     debug: {
-      show: '显示相机调试',
-      hide: '隐藏相机调试',
-      title: '📷 相机状态',
+      show: '显示调试',
+      hide: '隐藏调试',
+      title: '相机状态',
       mode: '模式',
       view: '视图',
       projection: '投影',

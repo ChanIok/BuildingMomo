@@ -124,9 +124,6 @@ const effectiveRotationSnap = computed(() =>
   snapTemporarilyDisabled.value ? undefined : settingsStore.settings.rotationSnap || undefined
 )
 
-// 调试面板状态
-const showCameraDebug = ref(false)
-
 // 创建共享的 isTransformDragging ref
 const isTransformDragging = ref(false)
 
@@ -871,28 +868,24 @@ onDeactivated(() => {
       :tooltip="{ visible: tooltipVisible, data: tooltipData }"
       :selection="{ rect: selectionRect, lasso: lassoPoints }"
       :view-info="{ isOrthographic, controlMode, currentViewPreset }"
-      :debug="
+      :camera-debug-data="
         isDev
           ? {
-              show: showCameraDebug,
-              data: {
-                cameraPosition,
-                cameraLookAt,
-                orbitTarget,
-                controlMode,
-                currentViewPreset,
-                isOrthographic,
-                isViewFocused,
-                isNavKeyPressed,
-                cameraZoom,
-              },
+              cameraPosition,
+              cameraLookAt,
+              orbitTarget,
+              controlMode,
+              currentViewPreset,
+              isOrthographic,
+              isViewFocused,
+              isNavKeyPressed,
+              cameraZoom,
             }
           : null
       "
       :is-dev="isDev"
       :command-store="commandStore"
       @update:context-menu="(v) => (contextMenuState = v)"
-      @update:show-debug="(v) => (showCameraDebug = v)"
     />
   </div>
 </template>

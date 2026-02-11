@@ -735,6 +735,42 @@ export function useThreeModelManager() {
     }
   }
 
+  /**
+   * 获取指定家具的模型调试信息（从 geometryCache 读取）
+   * @param itemId 家具 ItemID
+   * @returns 调试信息摘要，未缓存则返回 null
+   */
+  function getModelDebugInfo(itemId: number) {
+    const data = geometryCache.get(itemId)
+    if (!data) return null
+
+    const { geometry, materials, boundingBox } = data
+
+    const vertexCount = geometry.attributes.position?.count ?? 0
+    const indexCount = geometry.index?.count ?? 0
+    const triangleCount = Math.floor(indexCount > 0 ? indexCount / 3 : vertexCount / 3)
+    const attributes = Object.keys(geometry.attributes)
+
+    const sizeX = boundingBox.max.x - boundingBox.min.x
+    const sizeY = boundingBox.max.y - boundingBox.min.y
+    const sizeZ = boundingBox.max.z - boundingBox.min.z
+
+    return {
+      vertexCount,
+      triangleCount,
+      boundingBox: {
+        min: [boundingBox.min.x, boundingBox.min.y, boundingBox.min.z] as [number, number, number],
+        max: [boundingBox.max.x, boundingBox.max.y, boundingBox.max.z] as [number, number, number],
+        size: [sizeX, sizeY, sizeZ] as [number, number, number],
+      },
+      attributes,
+      materials: materials.map(({ name, mat }) => ({
+        name: name || '(unnamed)',
+        type: (mat as any).type || mat.constructor.name,
+      })),
+    }
+  }
+
   return {
     createInstancedMesh,
     getMesh,
@@ -745,6 +781,7 @@ export function useThreeModelManager() {
     disposeMesh,
     dispose,
     getStats,
+    getModelDebugInfo,
   }
 }
 

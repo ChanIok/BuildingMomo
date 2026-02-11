@@ -15,6 +15,7 @@ import LoadingProgress from './LoadingProgress.vue'
 import CanvasToolbar from './CanvasToolbar.vue'
 import FurnitureLibrary from './FurnitureLibrary.vue'
 import DyePanel from './DyePanel.vue'
+import DebugPanel from './DebugPanel.vue'
 
 const { t } = useI18n()
 
@@ -47,19 +48,16 @@ interface ViewInfo {
   currentViewPreset: string | null
 }
 
-interface DebugInfo {
-  show: boolean
-  data: {
-    cameraPosition: [number, number, number]
-    cameraLookAt: [number, number, number]
-    orbitTarget: [number, number, number]
-    controlMode: string
-    currentViewPreset: string | null
-    isOrthographic: boolean
-    isViewFocused: boolean
-    isNavKeyPressed: boolean
-    cameraZoom: number
-  }
+interface CameraDebugData {
+  cameraPosition: [number, number, number]
+  cameraLookAt: [number, number, number]
+  orbitTarget: [number, number, number]
+  controlMode: string
+  currentViewPreset: string | null
+  isOrthographic: boolean
+  isViewFocused: boolean
+  isNavKeyPressed: boolean
+  cameraZoom: number
 }
 
 interface Props {
@@ -67,7 +65,7 @@ interface Props {
   tooltip: TooltipState
   selection: SelectionState
   viewInfo: ViewInfo
-  debug?: DebugInfo | null
+  cameraDebugData?: CameraDebugData | null
   isDev?: boolean
   commandStore: any
 }
@@ -76,7 +74,6 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   'update:contextMenu': [value: ContextMenuState]
-  'update:showDebug': [value: boolean]
 }>()
 
 // 控制右键菜单
@@ -84,14 +81,6 @@ const contextMenuOpen = computed({
   get: () => props.contextMenu.open,
   set: (val) => {
     emit('update:contextMenu', { ...props.contextMenu, open: val })
-  },
-})
-
-// 控制调试面板
-const showCameraDebug = computed({
-  get: () => props.debug?.show ?? false,
-  set: (val) => {
-    emit('update:showDebug', val)
   },
 })
 
@@ -324,72 +313,6 @@ function handleViewInfoClick() {
     </div>
   </div>
 
-  <!-- 相机状态调试面板 (开发模式) -->
-  <div v-if="debug && isDev" class="absolute bottom-32 left-4">
-    <button
-      @click="showCameraDebug = !showCameraDebug"
-      class="rounded border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground shadow-sm hover:bg-secondary/80"
-    >
-      {{ showCameraDebug ? t('editor.debug.hide') : t('editor.debug.show') }}
-    </button>
-    <div
-      v-if="showCameraDebug"
-      class="mt-2 max-h-96 overflow-y-auto rounded border border-border bg-card/95 px-3 py-2 font-mono text-xs text-card-foreground shadow-xl backdrop-blur-sm"
-      style="max-width: 350px"
-    >
-      <div class="mb-1 font-bold text-primary">{{ t('editor.debug.title') }}</div>
-      <div class="space-y-0.5">
-        <div>
-          <span class="text-muted-foreground">{{ t('editor.debug.mode') }}:</span>
-          {{ debug.data.controlMode }}
-        </div>
-        <div>
-          <span class="text-muted-foreground">{{ t('editor.debug.view') }}:</span>
-          {{
-            !debug.data.isOrthographic
-              ? t('editor.viewMode.perspective')
-              : debug.data.currentViewPreset || t('editor.viewMode.orthographic')
-          }}
-        </div>
-        <div>
-          <span class="text-muted-foreground">{{ t('editor.debug.projection') }}:</span>
-          {{
-            debug.data.isOrthographic
-              ? t('editor.viewMode.orthographic')
-              : t('editor.viewMode.perspective')
-          }}
-        </div>
-        <div class="mt-1 text-muted-foreground">{{ t('editor.debug.position') }}:</div>
-        <div class="pl-2">
-          X: {{ debug.data.cameraPosition[0].toFixed(1) }}<br />
-          Y: {{ debug.data.cameraPosition[1].toFixed(1) }}<br />
-          Z: {{ debug.data.cameraPosition[2].toFixed(1) }}
-        </div>
-        <div class="mt-1 text-muted-foreground">{{ t('editor.debug.target') }}:</div>
-        <div class="pl-2">
-          X: {{ debug.data.cameraLookAt[0].toFixed(1) }}<br />
-          Y: {{ debug.data.cameraLookAt[1].toFixed(1) }}<br />
-          Z: {{ debug.data.cameraLookAt[2].toFixed(1) }}
-        </div>
-        <div class="mt-1 text-muted-foreground">{{ t('editor.debug.orbitCenter') }}:</div>
-        <div class="pl-2">
-          X: {{ debug.data.orbitTarget[0].toFixed(1) }}<br />
-          Y: {{ debug.data.orbitTarget[1].toFixed(1) }}<br />
-          Z: {{ debug.data.orbitTarget[2].toFixed(1) }}
-        </div>
-        <div class="mt-1">
-          <span class="text-muted-foreground">{{ t('editor.debug.viewFocused') }}:</span>
-          {{ debug.data.isViewFocused ? t('editor.debug.yes') : t('editor.debug.no') }}
-        </div>
-        <div>
-          <span class="text-muted-foreground">{{ t('editor.debug.navKey') }}:</span>
-          {{ debug.data.isNavKeyPressed ? t('editor.debug.active') : t('editor.debug.inactive') }}
-        </div>
-        <div>
-          <span class="text-muted-foreground">{{ t('editor.debug.zoom') }}:</span>
-          {{ debug.data.cameraZoom.toFixed(2) }}
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- 调试面板 (开发模式) -->
+  <DebugPanel v-if="isDev" :camera-data="cameraDebugData" />
 </template>
