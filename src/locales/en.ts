@@ -298,6 +298,10 @@ export const enLocale = {
       label: 'Background Image',
       hint: 'Show reference background',
     },
+    modelDye: {
+      label: 'Model Dye',
+      hint: 'Enable dye texture loading',
+    },
     editAssist: 'Editor Assistance',
     duplicateDetection: {
       label: 'Duplicate Detection',

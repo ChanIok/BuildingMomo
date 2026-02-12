@@ -653,7 +653,8 @@ export function useThreeModelManager() {
     instanceCount: number,
     dyeOptions:
       | { type: 'legacy'; colorIndex: number }
-      | { type: 'preset'; preset: DyePreset; slotValues: number[] }
+      | { type: 'preset'; preset: DyePreset; slotValues: number[] },
+    skipDye: boolean = false
   ): Promise<InstancedMesh | null> {
     // 检查是否已存在
     if (meshMap.has(cacheKey)) {
@@ -698,31 +699,36 @@ export function useThreeModelManager() {
 
     // 确定使用的材质
     let material: Material | Material[]
-    let coloredMat = coloredMaterialCache.get(cacheKey)
-    if (!coloredMat) {
-      if (dyeOptions.type === 'preset') {
-        // 新系统：多槽染色
-        coloredMat = await createPresetColoredMaterial(
-          itemId,
-          geometryData.materials,
-          geometryData.meshMaterialCounts,
-          dyeOptions.preset,
-          dyeOptions.slotValues
-        )
-      } else {
-        // 旧系统：单槽染色
-        coloredMat =
-          (await createColoredMaterial(
+    if (skipDye) {
+      // 跳过染色：直接使用原始材质
+      material = geometryData.mergedMaterial
+    } else {
+      let coloredMat = coloredMaterialCache.get(cacheKey)
+      if (!coloredMat) {
+        if (dyeOptions.type === 'preset') {
+          // 新系统：多槽染色
+          coloredMat = await createPresetColoredMaterial(
+            itemId,
             geometryData.materials,
-            dyeOptions.colorIndex,
-            gameDataStore
-          )) ?? undefined
+            geometryData.meshMaterialCounts,
+            dyeOptions.preset,
+            dyeOptions.slotValues
+          )
+        } else {
+          // 旧系统：单槽染色
+          coloredMat =
+            (await createColoredMaterial(
+              geometryData.materials,
+              dyeOptions.colorIndex,
+              gameDataStore
+            )) ?? undefined
+        }
+        if (coloredMat) {
+          coloredMaterialCache.set(cacheKey, coloredMat)
+        }
       }
-      if (coloredMat) {
-        coloredMaterialCache.set(cacheKey, coloredMat)
-      }
+      material = coloredMat ?? geometryData.mergedMaterial
     }
-    material = coloredMat ?? geometryData.mergedMaterial
 
     // 计算分配容量（Headroom 策略：预留空间以减少频繁重建）
     const minCapacity = 32

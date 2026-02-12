@@ -39,6 +39,7 @@ export interface AppSettings {
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
+  enableModelDye: boolean // 模型模式下是否显示染色纹理
 
   // 相机设置
   cameraFov: number // 透视相机视场角 (30-90)
@@ -78,6 +79,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableWatchNotification: true,
   threeDisplayMode: 'simple-box',
   threeSymbolScale: 1.0,
+  enableModelDye: false,
   cameraFov: 50,
   cameraBaseSpeed: 1000,
   cameraShiftMultiplier: 4,

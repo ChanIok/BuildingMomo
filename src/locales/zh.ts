@@ -296,6 +296,10 @@ export const zhLocale = {
       label: '家园背景图',
       hint: '显示背景参考图',
     },
+    modelDye: {
+      label: '模型染色显示',
+      hint: '开启染色纹理加载',
+    },
     editAssist: '编辑辅助',
     duplicateDetection: {
       label: '重复物品检测',

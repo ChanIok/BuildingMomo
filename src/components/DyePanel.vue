@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { X } from 'lucide-vue-next'
+import { X, Paintbrush } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useI18n } from '@/composables/useI18n'
 import { Button } from '@/components/ui/button'
+import { Toggle } from '@/components/ui/toggle'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import type { AppItem, GameColorMap } from '@/types/editor'
 import { decodeColorMapToGroupMap } from '@/lib/colorMap'
@@ -28,8 +31,16 @@ interface GroupSelectionState {
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
+const settingsStore = useSettingsStore()
 const { saveHistory } = useEditorHistory()
 const { t } = useI18n()
+
+const enableModelDye = computed({
+  get: () => settingsStore.settings.enableModelDye,
+  set: (val) => {
+    settingsStore.settings.enableModelDye = val
+  },
+})
 
 // 控制显示
 const isVisible = defineModel<boolean>('open', { default: false })
@@ -349,11 +360,29 @@ function handleIconError(event: Event) {
     v-if="isVisible"
     class="absolute top-4 left-4 z-50 flex max-h-[calc(100%-32px)] w-auto flex-col rounded-md border border-border bg-background/90 shadow-2xl backdrop-blur-md"
   >
-    <div class="flex items-center justify-between gap-4 p-3">
+    <div class="flex items-center justify-between gap-4 p-3 pr-2">
       <h3 class="text-sm font-semibold">{{ t('dyePanel.title') }}</h3>
-      <Button variant="ghost" size="icon" class="h-6 w-6 shrink-0" @click="close">
-        <X class="h-4 w-4" />
-      </Button>
+      <div class="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <div class="inline-flex">
+              <Toggle
+                size="sm"
+                v-model="enableModelDye"
+                class="h-6 w-6 min-w-6 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <Paintbrush class="h-3.5 w-3.5" />
+              </Toggle>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" class="text-xs">
+            {{ t('settings.modelDye.label') }}
+          </TooltipContent>
+        </Tooltip>
+        <Button variant="ghost" size="icon" class="h-6 w-6 shrink-0" @click="close">
+          <X class="h-4 w-4" />
+        </Button>
+      </div>
     </div>
 
     <ScrollArea class="min-h-0 flex-1">

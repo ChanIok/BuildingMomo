@@ -4,6 +4,7 @@ import type { AppItem } from '@/types/editor'
 import type { DyePreset } from '@/types/furniture'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
 import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
@@ -117,6 +118,7 @@ async function preloadTexturesBatch(
 export function useModelMode() {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
+  const settingsStore = useSettingsStore()
   const loadingStore = useLoadingStore()
   const modelManager = getThreeModelManager()
 
@@ -262,6 +264,8 @@ export function useModelMode() {
 
     // 1. 按 (gameId, dyeKey) 分组（包含回退项）
     // dyeKey: 旧系统 `${gameId}_${colorIndex}`，新系统 `${gameId}_${slotValues.join('_')}`
+    // 当 enableModelDye 关闭时，统一按 `${gameId}_0` 分组，跳过染色逻辑
+    const enableDye = settingsStore.settings.enableModelDye
     const groups = new Map<string, AppItem[]>()
     const groupMeta = new Map<string, GroupMeta>()
     const fallbackKey = '-1' // 特殊键，用于存放没有模型或加载失败的物品
@@ -275,31 +279,44 @@ export function useModelMode() {
 
       let key: string
       if (hasValidConfig) {
-        // 检查是否有染色预设（新系统）
-        const dyeResult = gameDataStore.getDyePreset(item.gameId)
+        if (enableDye) {
+          // 启用染色：按染色参数分组
+          // 检查是否有染色预设（新系统）
+          const dyeResult = gameDataStore.getDyePreset(item.gameId)
 
-        if (dyeResult) {
-          // 新系统：多槽染色
-          const { preset, slotIds } = dyeResult
-          const slotValues = parseColorMapSlots(item.extra.ColorMap, slotIds)
-          key = `${item.gameId}_${slotValues.join('_')}`
-          if (!groupMeta.has(key)) {
-            groupMeta.set(key, {
-              type: 'preset',
-              gameId: item.gameId,
-              preset,
-              slotValues,
-            })
+          if (dyeResult) {
+            // 新系统：多槽染色
+            const { preset, slotIds } = dyeResult
+            const slotValues = parseColorMapSlots(item.extra.ColorMap, slotIds)
+            key = `${item.gameId}_${slotValues.join('_')}`
+            if (!groupMeta.has(key)) {
+              groupMeta.set(key, {
+                type: 'preset',
+                gameId: item.gameId,
+                preset,
+                slotValues,
+              })
+            }
+          } else {
+            // 旧系统：单槽染色
+            const ci = parseColorIndex(item.extra.ColorMap) ?? 0
+            key = `${item.gameId}_${ci}`
+            if (!groupMeta.has(key)) {
+              groupMeta.set(key, {
+                type: 'legacy',
+                gameId: item.gameId,
+                colorIndex: ci,
+              })
+            }
           }
         } else {
-          // 旧系统：单槽染色
-          const ci = parseColorIndex(item.extra.ColorMap) ?? 0
-          key = `${item.gameId}_${ci}`
+          // 禁用染色：统一按 gameId 分组，跳过颜色解析
+          key = `${item.gameId}_0`
           if (!groupMeta.has(key)) {
             groupMeta.set(key, {
               type: 'legacy',
               gameId: item.gameId,
-              colorIndex: ci,
+              colorIndex: 0,
             })
           }
         }
@@ -317,15 +334,16 @@ export function useModelMode() {
     const modelItemIds = Array.from(new Set(Array.from(groupMeta.values()).map((m) => m.gameId)))
     const unloadedIds = modelItemIds.length > 0 ? modelManager.getUnloadedModels(modelItemIds) : []
 
-    // 收集预设系统需要的贴图（可在 GLB 加载前确定文件名）
-    const presetTextures = collectPresetTextures(groupMeta)
+    // 收集预设系统需要的贴图（仅在启用染色时）
+    const presetTextures = enableDye ? collectPresetTextures(groupMeta) : []
     const uncachedTextures = presetTextures.filter((t) =>
       t.type === 'array' ? !isArrayTextureCached(t.fileName) : !isDiffuseTextureCached(t.fileName)
     )
 
     // mesh 创建也纳入进度追踪（避免进度条完成后仍有可感知的等待）
     const groupsToProcess = Array.from(groups.keys()).filter((k) => k !== fallbackKey).length
-    const totalTasks = unloadedIds.length + uncachedTextures.length + groupsToProcess
+    const totalTasks =
+      unloadedIds.length + uncachedTextures.length + (enableDye ? groupsToProcess : 0)
 
     // 进度追踪变量（跨阶段共享）
     let glbCompleted = 0
@@ -422,7 +440,8 @@ export function useModelMode() {
         itemsOfModel.length,
         meta.type === 'preset'
           ? { type: 'preset', preset: meta.preset, slotValues: meta.slotValues }
-          : { type: 'legacy', colorIndex: meta.colorIndex }
+          : { type: 'legacy', colorIndex: meta.colorIndex },
+        !enableDye
       )
 
       if (!mesh) {
@@ -504,9 +523,11 @@ export function useModelMode() {
 
       globalIndex += itemsOfModel.length
 
-      // 更新 mesh 创建进度
-      meshCreated++
-      updateCombinedProgress()
+      // 更新 mesh 创建进度（仅当计入总数时）
+      if (enableDye) {
+        meshCreated++
+        updateCombinedProgress()
+      }
     }
 
     // 5. 集中处理所有回退物品

@@ -13,6 +13,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
+const isSecureModeEnabled = import.meta.env.VITE_ENABLE_SECURE_MODE === 'true'
+
 // FOV 节流处理
 const fovValue = ref(settingsStore.settings.cameraFov)
 const handleFovChange = useThrottleFn((value: number[] | undefined) => {
@@ -460,6 +462,20 @@ const fmt = (n: number, decimals: number = 0) => {
               </p>
             </div>
             <Switch v-model="settingsStore.settings.showBackground" />
+          </div>
+
+          <!-- 模型染色显示开关 -->
+          <div
+            v-if="isSecureModeEnabled && settingsStore.isAuthenticated"
+            class="flex items-center justify-between"
+          >
+            <div class="mr-2 space-y-0.5">
+              <Label class="text-xs">{{ t('settings.modelDye.label') }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('settings.modelDye.hint') }}
+              </p>
+            </div>
+            <Switch v-model="settingsStore.settings.enableModelDye" />
           </div>
 
           <!-- 图标/方块大小控制 -->
