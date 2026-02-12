@@ -52,20 +52,52 @@ export function parseColorIndex(colorMap: GameColorMap | undefined): number | nu
 }
 
 /**
+ * 将 ColorMap 解码为「groupId -> colorIndex」映射。
+ *
+ * 统一解码规则（值驱动）：
+ * - value <= 0 或无效：忽略
+ * - value < 10：groupId = 0，colorIndex = value（简单模式）
+ * - value >= 10：groupId = floor(value / 10)，colorIndex = value % 10（多组模式）
+ *
+ * 说明：
+ * - 数组格式：逐项按 value 解码（不依赖索引语义）
+ * - 对象格式：key 作为 groupId，value 仅用于取 colorIndex（兼容旧数据）
+ */
+export function decodeColorMapToGroupMap(colorMap: GameColorMap | undefined): Map<number, number> {
+  const result = new Map<number, number>()
+  if (!colorMap) return result
+
+  const toColorIndex = (value: number): number | null => {
+    if (!Number.isFinite(value) || value <= 0) return null
+    const colorIndex = value < 10 ? value : value % 10
+    return colorIndex > 0 ? colorIndex : null
+  }
+
+  if (Array.isArray(colorMap)) {
+    for (const raw of colorMap) {
+      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) continue
+      const colorIndex = toColorIndex(raw)
+      if (colorIndex === null) continue
+      const groupId = raw < 10 ? 0 : Math.floor(raw / 10)
+      result.set(groupId, colorIndex)
+    }
+    return result
+  }
+
+  for (const [groupKey, raw] of Object.entries(colorMap)) {
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) continue
+    const groupId = Number(groupKey)
+    if (!Number.isFinite(groupId) || groupId < 0) continue
+    const colorIndex = toColorIndex(raw)
+    if (colorIndex === null) continue
+    result.set(groupId, colorIndex)
+  }
+
+  return result
+}
+
+/**
  * 从 ColorMap 中解析多槽颜色索引（新系统，多槽染色）
- *
- * ColorMap 编码规则：
- * - Key: 色盘组编号（不固定，可能是 0, 1, 4, 7 这样跳跃的）
- * - Value: 复合编号 = 色盘组编号 * 10 + 颜色编号
- *
- * 例子：
- * - slotIds = [1, 4, 7]（从 furniture_db.colors 的 keys 排序得到）
- * - ColorMap = { "1": 12, "4": 41, "7": 73 }
- * - 解码：
- *   - slots[0]: slotId=1, ColorMap["1"]=12, 12%10=2 → slots[0]=2
- *   - slots[1]: slotId=4, ColorMap["4"]=41, 41%10=1 → slots[1]=1
- *   - slots[2]: slotId=7, ColorMap["7"]=73, 73%10=3 → slots[2]=3
- * - 结果: [2, 1, 3]
  *
  * @param colorMap 游戏 ColorMap 数据
  * @param slotIds 色盘组编号列表（与 preset.slots 数组一一对应）
@@ -75,34 +107,8 @@ export function parseColorMapSlots(
   colorMap: GameColorMap | undefined,
   slotIds: number[]
 ): number[] {
-  // 初始化所有槽位为默认值 0
-  const slots = new Array(slotIds.length).fill(0)
-
-  if (colorMap === undefined || colorMap === null) {
-    return slots
-  }
-
-  // 遍历每个 slot，根据对应的 slotId 去 ColorMap 中查找
-  for (let i = 0; i < slotIds.length; i++) {
-    const slotId = slotIds[i]!
-    let compositeValue: number | null | undefined
-
-    if (Array.isArray(colorMap)) {
-      // 数组格式：slotId 作为索引
-      compositeValue = colorMap[slotId]
-    } else if (typeof colorMap === 'object') {
-      // 对象格式：slotId 作为 key
-      compositeValue = colorMap[String(slotId)]
-    }
-
-    if (typeof compositeValue === 'number' && compositeValue > 0) {
-      // 解码：复合编号 % 10 = 颜色编号
-      slots[i] = compositeValue % 10
-    }
-    // 缺失、null 或 0 保持默认 0（未染色）
-  }
-
-  return slots
+  const groupMap = decodeColorMapToGroupMap(colorMap)
+  return slotIds.map((slotId) => groupMap.get(slotId) ?? 0)
 }
 
 /**

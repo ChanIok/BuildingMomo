@@ -363,16 +363,56 @@ uniform sampler2D tintMap;
 uniform float tintStrength;
 varying vec2 vTintUv;`
     )
-    // 在 map_fragment 之后，执行亮度保持染色：
-    // 提取底色亮度（纹理细节），将 tint 颜色等比缩放到该亮度，保留色相
+    // 在 map_fragment 之后，执行自适应亮度 + 彩度融合：
+    // - diffuse 与 tint 都拆分为亮度 Y 和彩度向量 C = rgb - Y
+    // - 彩度按长度加权混合（谁更彩谁权重更大，灰度自动让位）
+    // - 亮度以 diffuse 为主，tint 根据彩度对亮度做适度拉扯
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
+vec3 baseColor = diffuseColor.rgb;
 vec3 tintColor = texture2D( tintMap, vTintUv ).rgb;
-float baseLuma = dot( diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722) );
-float detail = baseLuma / ${TINT_REFERENCE_GRAY};
-vec3 tintedColor = min( tintColor * detail, vec3(1.0) );
-diffuseColor.rgb = mix( diffuseColor.rgb, tintedColor, tintStrength );`
+
+// 亮度权重（近似 Rec.709）
+vec3 lumaWeights = vec3(0.2126, 0.7152, 0.0722);
+
+// 分解为亮度 Y 和彩度向量 C = rgb - Y
+float Yd = dot(baseColor, lumaWeights);
+float Yt = dot(tintColor, lumaWeights);
+
+vec3 grayD = vec3(Yd);
+vec3 grayT = vec3(Yt);
+
+vec3 Cd = baseColor - grayD;
+vec3 Ct = tintColor - grayT;
+
+float Sd = length(Cd);
+float St = length(Ct);
+
+// 彩度权重：谁更彩，谁对色相影响更大
+float wd = Sd;
+float wt = St;
+float wSum = wd + wt + 1e-5;
+wd /= wSum;
+wt /= wSum;
+
+vec3 Cmix = wd * Cd + wt * Ct;
+float Smix = length(Cmix);
+float Smax = max(Sd, St);
+if (Smix > 1e-5) {
+  Cmix = Cmix * (min(Smix, Smax) / Smix);
+}
+
+// 亮度：以 diffuse 为基准，tint 的彩度越高，对亮度影响越大
+float wYd = 1.0;
+float wYt = St * 2.0;
+float wYsum = wYd + wYt;
+wYd /= wYsum;
+wYt /= wYsum;
+float Ymix = wYd * Yd + wYt * Yt;
+
+vec3 targetColor = vec3(Ymix) + Cmix;
+diffuseColor.rgb = mix( baseColor, targetColor, tintStrength );`
     )
   }
 

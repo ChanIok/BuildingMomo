@@ -4,7 +4,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
-import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
+import { decodeColorMapToGroupMap, parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
 import { useI18n } from '@/composables/useI18n'
 
 const { t } = useI18n()
@@ -50,6 +50,7 @@ const modelDebugInfo = computed(() => {
   const config = gameDataStore.getFurnitureModelConfig(item.gameId)
   const debugInfo = modelManager.getModelDebugInfo(item.gameId)
   const furniture = gameDataStore.getFurniture(item.gameId)
+  const decodedColorMap = decodeColorMapToGroupMap(item.extra.ColorMap)
 
   // 检查是否使用新系统（多槽染色）
   const dyeResult = gameDataStore.getDyePreset(item.gameId)
@@ -64,9 +65,19 @@ const modelDebugInfo = computed(() => {
     // 显示格式："[2, 1, 0]" 并标注对应的 slotId
     colorDisplay = slotValues.map((v, i) => `${slotIds[i]}:${v}`).join(', ')
   } else {
-    // 旧系统：单槽染色
-    colorIndex = parseColorIndex(item.extra.ColorMap)
-    colorDisplay = colorIndex !== null ? String(colorIndex) : 'N/A'
+    // 旧系统：优先使用统一解码规则；无 group 0 时回退旧解析
+    colorIndex = decodedColorMap.get(0) ?? parseColorIndex(item.extra.ColorMap)
+
+    if (colorIndex !== null) {
+      colorDisplay = String(colorIndex)
+    } else if (decodedColorMap.size > 0) {
+      colorDisplay = Array.from(decodedColorMap.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([groupId, value]) => `${groupId}:${value}`)
+        .join(', ')
+    } else {
+      colorDisplay = 'N/A'
+    }
   }
 
   // Build meshes list with material info
@@ -164,7 +175,7 @@ function fmtSize(v: number): string {
 </script>
 
 <template>
-  <div class="absolute bottom-32 left-4">
+  <div class="absolute bottom-4 left-4">
     <button
       @click="showPanel = !showPanel"
       class="rounded border border-border bg-secondary px-2 py-1 text-xs text-secondary-foreground shadow-sm hover:bg-secondary/80"

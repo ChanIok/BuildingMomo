@@ -8,6 +8,7 @@ import { useI18n } from '@/composables/useI18n'
 import { Button } from '@/components/ui/button'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import type { AppItem, GameColorMap } from '@/types/editor'
+import { decodeColorMapToGroupMap } from '@/lib/colorMap'
 
 interface ColorOption {
   colorIndex: number
@@ -102,12 +103,6 @@ const isSimpleMode = computed(() => {
 
 const hasColorConfig = computed(() => colorGroups.value.length > 0)
 
-const groupOrderMap = computed(() => {
-  const map = new Map<number, number>()
-  colorGroups.value.forEach((group, index) => map.set(group.groupId, index))
-  return map
-})
-
 const resetIconUrl = computed(() => `${import.meta.env.BASE_URL}assets/colors/0.png`)
 
 function getColorIconUrl(iconId: number): string {
@@ -116,46 +111,19 @@ function getColorIconUrl(iconId: number): string {
 
 function getColorIndexFromColorMap(
   colorMap: GameColorMap | undefined,
-  groupId: number,
-  groupOrderIndex: number
+  groupId: number
 ): number | null {
-  if (!colorMap) return null
-
-  let rawValue: number | null | undefined
-  if (Array.isArray(colorMap)) {
-    rawValue = colorMap[groupOrderIndex]
-  } else {
-    rawValue = colorMap[String(groupId)]
-  }
-
-  if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) return null
-
-  const value = rawValue
-
-  // 简单模式：仅 group 0，有效值为颜色编号本身（0 表示禁用）
-  if (isSimpleMode.value) {
-    if (groupId !== 0) return null
-    if (value <= 0) return null
-    return value
-  }
-
-  // 复杂模式：按「组编号 * 10 + 颜色编号」编码
-  if (value <= 0) return null
-  const encodedGroup = Math.floor(value / 10)
-  const colorIndex = value % 10
-  if (encodedGroup !== groupId || colorIndex <= 0) return null
-  return colorIndex
+  const groupMap = decodeColorMapToGroupMap(colorMap)
+  const colorIndex = groupMap.get(groupId)
+  return typeof colorIndex === 'number' ? colorIndex : null
 }
 
 const groupSelectionStates = computed<Record<string, GroupSelectionState>>(() => {
   const states: Record<string, GroupSelectionState> = {}
 
   for (const group of colorGroups.value) {
-    const groupOrderIndex = groupOrderMap.value.get(group.groupId)
-    if (groupOrderIndex === undefined) continue
-
     const values = selectedItems.value.map((item) =>
-      getColorIndexFromColorMap(item.extra.ColorMap, group.groupId, groupOrderIndex)
+      getColorIndexFromColorMap(item.extra.ColorMap, group.groupId)
     )
 
     if (values.length === 0) {
@@ -189,34 +157,12 @@ function isGroupOptionActive(groupKey: string, colorIndex: number | null): boole
 
 function toEditableColorMapObject(colorMap: GameColorMap | undefined): Record<string, number> {
   const result: Record<string, number> = {}
+  const groupMap = decodeColorMapToGroupMap(colorMap)
 
-  if (!colorMap) return result
-
-  if (Array.isArray(colorMap)) {
-    colorGroups.value.forEach((group, index) => {
-      const value = colorMap[index]
-      if (typeof value !== 'number' || !Number.isFinite(value)) return
-      result[group.groupKey] = value
-    })
-    return result
-  }
-
-  // 简单模式：仅关心 group 0，value 为色号（0 表示禁用）
-  if (isSimpleMode.value) {
-    const raw = (colorMap as Record<string, unknown>)['0']
-    const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : 0
-    if (value > 0) {
-      result['0'] = value
-    }
-    return result
-  }
-
-  // 多组模式：仅保留大于 0 的值（0 代表未染色，不写入）
-  for (const [groupKey, value] of Object.entries(colorMap)) {
-    if (typeof value !== 'number' || !Number.isFinite(value)) continue
-    if (value > 0) {
-      result[groupKey] = value
-    }
+  for (const [groupId, colorIndex] of groupMap.entries()) {
+    if (!Number.isFinite(colorIndex) || colorIndex <= 0) continue
+    const groupKey = String(groupId)
+    result[groupKey] = groupId === 0 ? colorIndex : groupId * 10 + colorIndex
   }
 
   return result
