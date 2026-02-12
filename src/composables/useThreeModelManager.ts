@@ -181,9 +181,17 @@ async function processGeometryForItem(
   const tempScale = new Vector3()
   const tempTrans = new Vector3()
 
-  for (const meshConfig of config.meshes) {
-    // 直接加载GLB模型
-    const model = await loadGLBModel(gltfLoader, MODEL_BASE_URL, meshConfig.path)
+  // 并发下载所有 mesh 的 GLB 模型（网络 I/O 并行，提升多 mesh 家具加载速度）
+  const models = await Promise.all(
+    config.meshes.map((meshConfig: any) =>
+      loadGLBModel(gltfLoader, MODEL_BASE_URL, meshConfig.path)
+    )
+  )
+
+  // 串行处理几何体（需要维护 materials 数组顺序和 meshMaterialCounts）
+  for (let meshIdx = 0; meshIdx < config.meshes.length; meshIdx++) {
+    const meshConfig = config.meshes[meshIdx]
+    const model = models[meshIdx]
 
     if (!model) {
       console.warn(`[ModelManager] Failed to load mesh: ${meshConfig.path}`)
@@ -195,7 +203,7 @@ async function processGeometryForItem(
     const materialCountBefore = materials.length
 
     // 提取此 mesh 的所有几何体
-    model.traverse((child) => {
+    model.traverse((child: Object3D) => {
       if ((child as any).isMesh) {
         const mesh = child as Mesh
         const geom = mesh.geometry.clone()
@@ -469,19 +477,26 @@ async function createPresetColoredMaterial(
   // 记录已克隆的材质索引（避免对同一索引重复 clone）
   const clonedIndices = new Set<number>()
 
-  // 遍历每个 slot
+  // 并发加载所有 slot 的贴图（网络 I/O 并行，提升多槽染色加载速度）
+  const slotTextures = await Promise.all(
+    preset.slots.map(async (slot, slotIndex) => {
+      const variantIndex = slotValues[slotIndex] ?? 0
+      const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
+      const variant = slot.variants[safeVariantIndex]
+      if (!variant) return { tint: null, diffuse: null }
+      const [tint, diffuse] = await Promise.all([
+        loadArrayTexture(variant.color),
+        variant.diffuse ? loadDiffuseTexture(variant.diffuse) : Promise.resolve(null),
+      ])
+      return { tint, diffuse }
+    })
+  )
+
+  // 串行应用贴图到材质
   for (let slotIndex = 0; slotIndex < preset.slots.length; slotIndex++) {
     const slot = preset.slots[slotIndex]!
-    const variantIndex = slotValues[slotIndex] ?? 0
-
-    // 确定实际使用的变体索引（越界则回退到 0）
-    const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
-    const variant = slot.variants[safeVariantIndex]
-    if (!variant) continue
-
-    // 加载贴图
-    const tintTexture = await loadArrayTexture(variant.color)
-    const diffuseTexture = variant.diffuse ? await loadDiffuseTexture(variant.diffuse) : null
+    const { tint: tintTexture, diffuse: diffuseTexture } = slotTextures[slotIndex]!
+    if (!tintTexture && !diffuseTexture) continue
 
     // 遍历每个 target
     for (const target of slot.targets) {
@@ -544,39 +559,37 @@ async function createColoredMaterial(
   colorIndex: number,
   gameDataStore: ReturnType<typeof useGameDataStore>
 ): Promise<Material | Material[] | null> {
-  // 单次遍历完成「检查是否有变体」与「实际构造染色材质」
+  // 1. 收集需要加载的贴图文件名，同时检查是否有变体
   let hasVariant = false
-  const coloredMats: Material[] = []
-
-  for (const { mat, name } of materials) {
+  const textureFiles: (string | null)[] = materials.map(({ name }) => {
     const textures = name ? gameDataStore.getVariantTextures(name) : null
-
     if (textures && textures.length > 0) {
       hasVariant = true
-
-      // 确定实际使用的颜色索引（越界则回退到 0）
       const safeIndex = colorIndex < textures.length ? colorIndex : 0
-      const textureFile = textures[safeIndex]!
-
-      // 加载 Array 贴图为 Three.js Texture
-      const tintTexture = await loadArrayTexture(textureFile)
-
-      // 克隆材质
-      const cloned = mat.clone()
-
-      // 注入 UV2 × tintMap shader 逻辑
-      if (tintTexture && (cloned as any).isMeshStandardMaterial) {
-        applyTintShader(cloned as MeshStandardMaterial, tintTexture)
-      }
-
-      coloredMats.push(cloned)
-    } else {
-      // 不可染色的材质，直接复用原材质
-      coloredMats.push(mat)
+      return textures[safeIndex]!
     }
-  }
+    return null
+  })
 
   if (!hasVariant) return null
+
+  // 2. 并发加载所有需要的贴图（网络 I/O 并行）
+  const loadedTextures = await Promise.all(
+    textureFiles.map((file) => (file ? loadArrayTexture(file) : Promise.resolve(null)))
+  )
+
+  // 3. 构建染色材质
+  const coloredMats: Material[] = materials.map(({ mat }, i) => {
+    const tintTexture = loadedTextures[i]
+    if (tintTexture) {
+      const cloned = mat.clone()
+      if ((cloned as any).isMeshStandardMaterial) {
+        applyTintShader(cloned as MeshStandardMaterial, tintTexture)
+      }
+      return cloned
+    }
+    return mat
+  })
 
   return coloredMats.length > 1 ? coloredMats : coloredMats[0]!
 }

@@ -187,3 +187,17 @@ export async function loadDiffuseTexture(textureFileName: string): Promise<Textu
     return null
   }
 }
+
+/**
+ * 检查 Array 贴图是否已缓存
+ */
+export function isArrayTextureCached(fileName: string): boolean {
+  return textureCache.has(fileName)
+}
+
+/**
+ * 检查 Diffuse 贴图是否已缓存
+ */
+export function isDiffuseTextureCached(fileName: string): boolean {
+  return diffuseTextureCache.has(fileName)
+}

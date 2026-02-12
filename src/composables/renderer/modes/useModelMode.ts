@@ -8,6 +8,12 @@ import { useLoadingStore } from '@/stores/loadingStore'
 import { coordinates3D } from '@/lib/coordinates'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
 import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
+import {
+  loadArrayTexture,
+  loadDiffuseTexture,
+  isArrayTextureCached,
+  isDiffuseTextureCached,
+} from '@/lib/colorMap'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -38,6 +44,69 @@ interface PresetGroupMeta {
 }
 
 type GroupMeta = LegacyGroupMeta | PresetGroupMeta
+
+/** 贴图加载描述 */
+interface TextureToLoad {
+  type: 'array' | 'diffuse'
+  fileName: string
+}
+
+/**
+ * 从预设分组元数据中收集所有需要的贴图文件名
+ * 仅处理 preset 类型（新系统），legacy 类型的 array 贴图极小（平均 ~134B），无需预加载
+ */
+function collectPresetTextures(groupMeta: Map<string, GroupMeta>): TextureToLoad[] {
+  const textures: TextureToLoad[] = []
+  const seen = new Set<string>()
+
+  for (const meta of groupMeta.values()) {
+    if (meta.type !== 'preset') continue
+
+    for (let slotIndex = 0; slotIndex < meta.preset.slots.length; slotIndex++) {
+      const slot = meta.preset.slots[slotIndex]!
+      const variantIndex = meta.slotValues[slotIndex] ?? 0
+      const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
+      const variant = slot.variants[safeVariantIndex]
+      if (!variant) continue
+
+      if (!seen.has(variant.color)) {
+        seen.add(variant.color)
+        textures.push({ type: 'array', fileName: variant.color })
+      }
+      if (variant.diffuse && !seen.has(variant.diffuse)) {
+        seen.add(variant.diffuse)
+        textures.push({ type: 'diffuse', fileName: variant.diffuse })
+      }
+    }
+  }
+
+  return textures
+}
+
+/**
+ * 批量并发预加载贴图
+ */
+async function preloadTexturesBatch(
+  textures: TextureToLoad[],
+  onProgress?: (completed: number) => void
+): Promise<void> {
+  let completed = 0
+  await Promise.all(
+    textures.map(async ({ type, fileName }) => {
+      try {
+        if (type === 'array') {
+          await loadArrayTexture(fileName)
+        } else {
+          await loadDiffuseTexture(fileName)
+        }
+      } catch (e) {
+        console.warn(`[ModelMode] 贴图预加载失败: ${fileName}`, e)
+      }
+      completed++
+      onProgress?.(completed)
+    })
+  )
+}
 
 /**
  * Model 渲染模式
@@ -245,48 +314,86 @@ export function useModelMode() {
       groups.get(key)!.push(item)
     }
 
-    // 2. 预加载所有模型（并发加载，提升性能）
+    // 2. 预加载所有模型和染色贴图 + 追踪 mesh 创建进度（统一进度条）
     const modelItemIds = Array.from(new Set(Array.from(groupMeta.values()).map((m) => m.gameId)))
-    if (modelItemIds.length > 0) {
-      // 先过滤出未加载的模型，避免进度条数量不匹配
-      const unloadedIds = modelManager.getUnloadedModels(modelItemIds)
+    const unloadedIds = modelItemIds.length > 0 ? modelManager.getUnloadedModels(modelItemIds) : []
 
-      if (unloadedIds.length > 0) {
-        loadingStore.startLoading('model', unloadedIds.length, 'simple')
+    // 收集预设系统需要的贴图（可在 GLB 加载前确定文件名）
+    const presetTextures = collectPresetTextures(groupMeta)
+    const uncachedTextures = presetTextures.filter((t) =>
+      t.type === 'array' ? !isArrayTextureCached(t.fileName) : !isDiffuseTextureCached(t.fileName)
+    )
 
-        await modelManager
-          .preloadModels(unloadedIds, (current, _total, failed) => {
-            loadingStore.updateProgress(current, failed)
-          })
-          .catch((err) => {
-            console.warn('[ModelMode] 模型预加载失败:', err)
-            loadingStore.cancelLoading()
-          })
+    // mesh 创建也纳入进度追踪（避免进度条完成后仍有可感知的等待）
+    const groupsToProcess = Array.from(groups.keys()).filter((k) => k !== fallbackKey).length
+    const totalTasks = unloadedIds.length + uncachedTextures.length + groupsToProcess
 
-        // ✅ 检查点 2：异步加载完成后，检查 scheme 是否仍然有效
-        if (editorStore.activeScheme !== currentScheme) {
-          console.log('[ModelMode] 检测到方案切换，中断旧的 rebuild')
-          loadingStore.cancelLoading()
-          return // 立即中断，避免渲染错误的方案物品
-        }
+    // 进度追踪变量（跨阶段共享）
+    let glbCompleted = 0
+    let textureCompleted = 0
+    let meshCreated = 0
+    let glbFailed = 0
+
+    const updateCombinedProgress = () => {
+      if (totalTasks > 0) {
+        loadingStore.updateProgress(glbCompleted + textureCompleted + meshCreated, glbFailed)
       }
-      // 如果全部已缓存，无需显示加载提示
     }
 
-    // 3. 清理旧的 InstancedMesh（在新一轮渲染后不再需要的）
+    if (totalTasks > 0) {
+      loadingStore.startLoading('model', totalTasks, 'simple')
+    }
+
+    // 阶段 2a：并发预加载 GLB + 贴图
+    if (unloadedIds.length > 0 || uncachedTextures.length > 0) {
+      const loadPromises: Promise<void>[] = []
+
+      if (unloadedIds.length > 0) {
+        loadPromises.push(
+          modelManager
+            .preloadModels(unloadedIds, (current, _total, failed) => {
+              glbCompleted = current
+              glbFailed = failed
+              updateCombinedProgress()
+            })
+            .catch((err) => {
+              console.warn('[ModelMode] 模型预加载失败:', err)
+            })
+        )
+      }
+
+      if (uncachedTextures.length > 0) {
+        loadPromises.push(
+          preloadTexturesBatch(uncachedTextures, (current) => {
+            textureCompleted = current
+            updateCombinedProgress()
+          })
+        )
+      }
+
+      await Promise.all(loadPromises)
+
+      // ✅ 检查点 2：异步加载完成后，检查 scheme 是否仍然有效
+      if (editorStore.activeScheme !== currentScheme) {
+        console.log('[ModelMode] 检测到方案切换，中断旧的 rebuild')
+        loadingStore.cancelLoading()
+        return // 立即中断，避免渲染错误的方案物品
+      }
+    }
+
+    // 3. 标记需要清理的旧 InstancedMesh（延迟到新 mesh 就绪后再删除，避免闪烁）
     const activeMeshKeys = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
+    const meshKeysToRemove: string[] = []
     for (const [meshKey] of modelMeshMap.value.entries()) {
       if (!activeMeshKeys.has(meshKey)) {
-        // 模型不再需要，清理
-        modelManager.disposeMesh(meshKey)
-        modelMeshMap.value.delete(meshKey)
+        meshKeysToRemove.push(meshKey)
       }
     }
 
     // 确保 fallbackMesh 资源已初始化（但不重置 count，由后续逻辑决定）
     ensureFallbackResources()
 
-    // 4. 为每个家具创建或更新 InstancedMesh
+    // 4. 为每个家具创建或更新 InstancedMesh（暂不设置 count，延迟到原子切换阶段）
     let globalIndex = 0
     const newIndexToIdMap = new Map<number, string>()
     const newIdToIndexMap = new Map<string, number>()
@@ -298,6 +405,9 @@ export function useModelMode() {
     if (groups.has(fallbackKey)) {
       allFallbackItems.push(...groups.get(fallbackKey)!)
     }
+
+    // 收集新建/更新的 mesh 及其目标 count（用于原子切换）
+    const pendingMeshUpdates: { mesh: InstancedMesh; count: number }[] = []
 
     // 遍历处理正常模型组
     for (const [meshKey, itemsOfModel] of groups.entries()) {
@@ -328,13 +438,14 @@ export function useModelMode() {
         modelMeshMap.value.set(meshKey, markRaw(mesh))
       }
 
-      // 更新实例数量
-      mesh.count = itemsOfModel.length
+      // ⚠️ 不在此处设置 mesh.count，延迟到原子切换阶段
+      // 记录目标 count
+      pendingMeshUpdates.push({ mesh, count: itemsOfModel.length })
 
       // 为当前 mesh 创建局部索引映射
       const localIndexMap = new Map<number, string>()
 
-      // 设置每个实例的矩阵和颜色
+      // 设置每个实例的矩阵和颜色（此时 count=0 或旧值，不影响矩阵写入）
       for (let i = 0; i < itemsOfModel.length; i++) {
         const item = itemsOfModel[i]
         if (!item) continue
@@ -393,9 +504,14 @@ export function useModelMode() {
       }
 
       globalIndex += itemsOfModel.length
+
+      // 更新 mesh 创建进度
+      meshCreated++
+      updateCombinedProgress()
     }
 
     // 5. 集中处理所有回退物品
+    let pendingFallbackCount = 0
     if (allFallbackItems.length > 0) {
       if (fallbackMesh.value) {
         const localIndexMap = new Map<number, string>()
@@ -414,14 +530,12 @@ export function useModelMode() {
           if (!item) continue
           newInternalIdToMeshInfo.set(item.internalId, { meshKey: '-1', localIndex: i })
         }
+        pendingFallbackCount = allFallbackItems.length
       }
-    } else if (fallbackMesh.value) {
-      // 显式重置 fallbackMesh count
-      fallbackMesh.value.count = 0
     }
 
     // 为 fallbackMesh 构建 BVH（如果有新的回退物品）
-    if (fallbackMesh.value && fallbackMesh.value.count > 0 && fallbackMesh.value.geometry) {
+    if (fallbackMesh.value && pendingFallbackCount > 0 && fallbackMesh.value.geometry) {
       if (!fallbackMesh.value.geometry.boundsTree) {
         fallbackMesh.value.geometry.computeBoundsTree({
           setBoundingBox: true,
@@ -435,7 +549,27 @@ export function useModelMode() {
       return
     }
 
-    // 更新索引映射
+    // 6. 🔥 原子切换：同步设置所有新 mesh 的 count + 删除所有旧 mesh
+    //    整个代码块是同步的，浏览器不会在中间插入渲染帧
+    //    效果：旧场景 → 新场景，单帧切换，无闪烁
+
+    // 6a. 设置所有新 mesh 的 count（使其可见）
+    for (const { mesh, count } of pendingMeshUpdates) {
+      mesh.count = count
+    }
+
+    // 6b. 设置 fallbackMesh 的 count
+    if (fallbackMesh.value) {
+      fallbackMesh.value.count = pendingFallbackCount
+    }
+
+    // 6c. 删除所有不再需要的旧 mesh
+    for (const meshKey of meshKeysToRemove) {
+      modelManager.disposeMesh(meshKey)
+      modelMeshMap.value.delete(meshKey)
+    }
+
+    // 6d. 更新索引映射
     modelIndexToIdMap.value = newIndexToIdMap
     modelIdToIndexMap.value = newIdToIndexMap
     meshToLocalIndexMap.value = newMeshToLocalIndexMap
