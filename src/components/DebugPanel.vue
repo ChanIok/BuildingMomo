@@ -4,7 +4,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
-import { parseColorIndex } from '@/lib/colorMap'
+import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
 import { useI18n } from '@/composables/useI18n'
 
 const { t } = useI18n()
@@ -49,42 +49,99 @@ const modelDebugInfo = computed(() => {
 
   const config = gameDataStore.getFurnitureModelConfig(item.gameId)
   const debugInfo = modelManager.getModelDebugInfo(item.gameId)
-  const colorIndex = parseColorIndex(item.extra.ColorMap)
   const furniture = gameDataStore.getFurniture(item.gameId)
 
-  // Build material info with variant textures (from runtime geometryCache)
-  const runtimeMaterials = (debugInfo?.materials ?? []).map((mat) => {
-    const variants = gameDataStore.getVariantTextures(mat.name)
-    const safeIndex =
-      colorIndex !== null && variants ? (colorIndex < variants.length ? colorIndex : 0) : null
-    return {
-      name: mat.name,
-      variants,
-      currentVariantIndex: safeIndex,
-      currentVariantFile: safeIndex !== null && variants ? (variants[safeIndex] ?? null) : null,
-    }
-  })
+  // 检查是否使用新系统（多槽染色）
+  const dyeResult = gameDataStore.getDyePreset(item.gameId)
+  let colorDisplay: string
+  let colorIndex: number | null = null
+  let slotValues: number[] | null = null
 
-  // Build meshes list from config, attach runtime materials
-  // Use meshMaterialCounts to correctly distribute materials across meshes
-  const meshMaterialCounts = debugInfo?.meshMaterialCounts ?? []
-  let matCursor = 0
-  const meshes =
-    config?.meshes?.map((meshConfig, meshIndex) => {
-      const count = meshMaterialCounts[meshIndex] ?? 0
-      const meshMats = runtimeMaterials.slice(matCursor, matCursor + count)
-      matCursor += count
+  if (dyeResult) {
+    // 新系统：多槽染色
+    const { slotIds } = dyeResult
+    slotValues = parseColorMapSlots(item.extra.ColorMap, slotIds)
+    // 显示格式："[2, 1, 0]" 并标注对应的 slotId
+    colorDisplay = slotValues.map((v, i) => `${slotIds[i]}:${v}`).join(', ')
+  } else {
+    // 旧系统：单槽染色
+    colorIndex = parseColorIndex(item.extra.ColorMap)
+    colorDisplay = colorIndex !== null ? String(colorIndex) : 'N/A'
+  }
+
+  // Build meshes list with material info
+  // 新系统：显示 preset 中的 slot 信息
+  // 旧系统：显示 variantMap 中的变体信息
+  interface MeshDebugInfo {
+    path: string
+    slots?: { slotIndex: number; mi: string; variantCount: number; currentVariant: number }[]
+    materials?: {
+      name: string
+      variants: string[] | null
+      currentVariantIndex: number | null
+      currentVariantFile: string | null
+    }[]
+  }
+
+  let meshes: MeshDebugInfo[] = []
+
+  if (dyeResult && slotValues) {
+    // 新系统：按 mesh 分组显示 slot 信息
+    const { preset, slotIds } = dyeResult
+    meshes =
+      config?.meshes?.map((meshConfig, meshIndex) => {
+        // 找出作用于这个 mesh 的所有 slots
+        const slotsForMesh: MeshDebugInfo['slots'] = []
+        preset.slots.forEach((slot, slotIdx) => {
+          const targetsForMesh = slot.targets.filter((t) => t.mesh === meshIndex)
+          if (targetsForMesh.length > 0) {
+            slotsForMesh.push({
+              slotIndex: slotIds[slotIdx]!,
+              mi: targetsForMesh.map((t) => t.mi).join(', '),
+              variantCount: slot.variants.length,
+              currentVariant: slotValues![slotIdx]!,
+            })
+          }
+        })
+        return {
+          path: meshConfig.path,
+          slots: slotsForMesh,
+        }
+      }) ?? []
+  } else {
+    // 旧系统：显示 variantMap 信息
+    const meshMaterialCounts = debugInfo?.meshMaterialCounts ?? []
+    const runtimeMaterials = (debugInfo?.materials ?? []).map((mat) => {
+      const variants = gameDataStore.getVariantTextures(mat.name)
+      const safeIndex =
+        colorIndex !== null && variants ? (colorIndex < variants.length ? colorIndex : 0) : null
       return {
-        path: meshConfig.path,
-        materials: meshMats,
+        name: mat.name,
+        variants,
+        currentVariantIndex: safeIndex,
+        currentVariantFile: safeIndex !== null && variants ? (variants[safeIndex] ?? null) : null,
       }
-    }) ?? []
+    })
+
+    let matCursor = 0
+    meshes =
+      config?.meshes?.map((meshConfig, meshIndex) => {
+        const count = meshMaterialCounts[meshIndex] ?? 0
+        const meshMats = runtimeMaterials.slice(matCursor, matCursor + count)
+        matCursor += count
+        return {
+          path: meshConfig.path,
+          materials: meshMats,
+        }
+      }) ?? []
+  }
 
   return {
     name: furniture?.name_cn ?? config?.name ?? 'Unknown',
     gameId: item.gameId,
     internalId: item.internalId,
-    colorIndex,
+    colorDisplay,
+    isPresetDye: !!dyeResult,
     geometry: debugInfo
       ? {
           vertexCount: debugInfo.vertexCount,
@@ -177,8 +234,12 @@ function fmtSize(v: number): string {
             <div>
               <span class="text-muted-foreground">GameID:</span>
               {{ modelDebugInfo.gameId }}
-              <span class="ml-2 text-muted-foreground">Color:</span>
-              {{ modelDebugInfo.colorIndex ?? 'N/A' }}
+            </div>
+            <div>
+              <span class="text-muted-foreground"
+                >{{ modelDebugInfo.isPresetDye ? 'Slots' : 'Color' }}:</span
+              >
+              {{ modelDebugInfo.colorDisplay }}
             </div>
 
             <!-- Geometry -->
@@ -207,7 +268,7 @@ function fmtSize(v: number): string {
               <div class="mt-1 text-muted-foreground italic">Geometry not cached (fallback)</div>
             </template>
 
-            <!-- Meshes & Materials -->
+            <!-- Meshes & Materials/Slots -->
             <div class="mt-1.5 font-semibold text-muted-foreground">
               ▸ Meshes ({{ modelDebugInfo.meshes.length }})
             </div>
@@ -217,33 +278,59 @@ function fmtSize(v: number): string {
               class="mt-0.5 border-l border-border/50 pl-2"
             >
               <div>[{{ mi }}] {{ mesh.path }}</div>
-              <div v-for="(mat, matIdx) in mesh.materials" :key="matIdx" class="pl-2">
-                <div class="text-muted-foreground">{{ mat.name }}</div>
-                <template v-if="mat.variants && mat.variants.length > 0">
+
+              <!-- 新系统：显示 Slot 信息 -->
+              <template v-if="mesh.slots && mesh.slots.length > 0">
+                <div v-for="(slot, slotIdx) in mesh.slots" :key="slotIdx" class="pl-2">
+                  <div class="text-muted-foreground">{{ slot.mi }}</div>
                   <div class="pl-2">
-                    Variants ({{ mat.variants.length }}):
+                    Slot {{ slot.slotIndex }}:
                     <span
-                      v-for="(_v, vi) in mat.variants"
-                      :key="vi"
+                      v-for="vi in slot.variantCount"
+                      :key="vi - 1"
                       class="mr-1"
                       :class="
-                        vi === mat.currentVariantIndex
+                        vi - 1 === slot.currentVariant
                           ? 'font-semibold text-primary'
                           : 'text-muted-foreground'
                       "
                     >
-                      {{ vi }}
+                      {{ vi - 1 }}
                     </span>
                   </div>
-                  <div v-if="mat.currentVariantFile" class="pl-2 text-primary">
-                    → {{ mat.currentVariantFile }}
-                  </div>
-                </template>
-                <div v-else class="pl-2 text-muted-foreground italic">No variants</div>
-              </div>
-              <div v-if="mesh.materials.length === 0" class="pl-2 text-muted-foreground italic">
-                No material info
-              </div>
+                </div>
+              </template>
+
+              <!-- 旧系统：显示 Material 信息 -->
+              <template v-else-if="mesh.materials && mesh.materials.length > 0">
+                <div v-for="(mat, matIdx) in mesh.materials" :key="matIdx" class="pl-2">
+                  <div class="text-muted-foreground">{{ mat.name }}</div>
+                  <template v-if="mat.variants && mat.variants.length > 0">
+                    <div class="pl-2">
+                      Variants ({{ mat.variants.length }}):
+                      <span
+                        v-for="(_v, vi) in mat.variants"
+                        :key="vi"
+                        class="mr-1"
+                        :class="
+                          vi === mat.currentVariantIndex
+                            ? 'font-semibold text-primary'
+                            : 'text-muted-foreground'
+                        "
+                      >
+                        {{ vi }}
+                      </span>
+                    </div>
+                    <div v-if="mat.currentVariantFile" class="pl-2 text-primary">
+                      → {{ mat.currentVariantFile }}
+                    </div>
+                  </template>
+                  <div v-else class="pl-2 text-muted-foreground italic">No variants</div>
+                </div>
+              </template>
+
+              <!-- 无信息 -->
+              <div v-else class="pl-2 text-muted-foreground italic">No slot/material info</div>
             </div>
           </div>
         </div>

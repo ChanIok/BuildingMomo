@@ -92,3 +92,53 @@ export interface FurnitureDB {
   categories: string[]
   furniture: FurnitureModelConfig[]
 }
+
+// ========== Dye Presets (多槽染色预设) ==========
+
+/** 染色变体配置（单个颜色选项） */
+export interface DyeVariant {
+  /** tint 调色板贴图文件名（UV2 采样） */
+  color: string
+  /** 可选：替换基础 D 贴图文件名（UV1 采样） */
+  diffuse?: string
+}
+
+/** 染色目标配置（指定作用于哪个 mesh 的哪个材质） */
+export interface DyeTarget {
+  /** meshes 数组中的索引 */
+  mesh: number
+  /** 材质实例名（如 "MI_WallPaper_01"） */
+  mi: string
+}
+
+/** 染色槽位配置（一个独立染色区域） */
+export interface DyeSlot {
+  /** 作用目标列表（可能跨多个 mesh） */
+  targets: DyeTarget[]
+  /** 变体列表（索引对应 ColorMap 中的值） */
+  variants: DyeVariant[]
+}
+
+/** 染色预设配置（描述一类家具的所有染色区域） */
+export interface DyePreset {
+  /** 预设名称（调试用） */
+  name: string
+  /** 预设 ID */
+  id: number
+  /** 染色槽位列表（索引对应 ColorMap 的 key/index） */
+  slots: DyeSlot[]
+}
+
+/** 家具 ID 到预设的引用 */
+export interface DyeItemRef {
+  /** 引用的预设 ID（presets 数组索引） */
+  presets: number
+}
+
+/** furniture_dye_presets.json 的完整数据结构 */
+export interface DyePresetsData {
+  /** 预设定义列表 */
+  presets: DyePreset[]
+  /** 家具 ID -> 预设引用的映射 */
+  items: Record<string, DyeItemRef>
+}

@@ -1,4 +1,4 @@
-import { ref, watch, markRaw } from 'vue'
+import { ref, markRaw } from 'vue'
 import {
   PlaneGeometry,
   InstancedMesh,

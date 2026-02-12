@@ -6,6 +6,8 @@ import type {
   RawFurnitureEntry,
   FurnitureDB,
   FurnitureModelConfig,
+  DyePresetsData,
+  DyePreset,
 } from '../types/furniture'
 
 // 远程数据源 (Build time fetched)
@@ -14,9 +16,12 @@ const FURNITURE_DATA_URL = import.meta.env.BASE_URL + 'assets/data/building-momo
 const BUILDABLE_AREA_URL = import.meta.env.BASE_URL + 'assets/data/home-buildable-area.json'
 // 家具模型数据库（替代 id_to_model.json）
 const FURNITURE_DB_URL = import.meta.env.BASE_URL + 'assets/data/furniture_db.json'
-// 家具染色变体映射表
+// 家具染色变体映射表（单槽染色，旧系统）
 const VARIANT_MAP_URL =
-  import.meta.env.BASE_URL + 'assets/furniture-model/furniture_variant_map.json'
+  import.meta.env.BASE_URL + 'assets/furniture-model/material_variant_map.json'
+// 家具染色预设表（多槽染色，新系统）
+const DYE_PRESETS_URL =
+  import.meta.env.BASE_URL + 'assets/furniture-model/furniture_dye_presets.json'
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 
@@ -38,6 +43,11 @@ export const useGameDataStore = defineStore('gameData', () => {
   // 材质实例名 → Array 贴图文件名列表
   const variantMap = ref<Record<string, string[]>>({})
   const isVariantMapLoaded = ref(false)
+
+  // ========== 状态 (Dye Presets) ==========
+  // 多槽染色预设数据
+  const dyePresetsData = ref<DyePresetsData | null>(null)
+  const isDyePresetsLoaded = ref(false)
 
   // ========== 数据加载 (Furniture) ==========
 
@@ -183,6 +193,29 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
   }
 
+  // ========== 数据加载 (Dye Presets) ==========
+
+  async function loadDyePresets() {
+    if (isDyePresetsLoaded.value) return
+
+    try {
+      const response = await fetch(DYE_PRESETS_URL)
+      if (!response.ok) throw new Error('Failed to load dye presets')
+      dyePresetsData.value = await response.json()
+      isDyePresetsLoaded.value = true
+      console.log(
+        '[GameDataStore] Dye presets loaded:',
+        dyePresetsData.value?.presets.length ?? 0,
+        'presets,',
+        Object.keys(dyePresetsData.value?.items ?? {}).length,
+        'items'
+      )
+    } catch (error) {
+      console.error('[GameDataStore] Failed to load dye presets:', error)
+      isDyePresetsLoaded.value = true // 标记为已加载，避免重试阻塞
+    }
+  }
+
   // ========== 全局初始化 ==========
 
   // 初始化（应用启动时调用）
@@ -191,7 +224,8 @@ export const useGameDataStore = defineStore('gameData', () => {
       isFurnitureInitialized.value &&
       isBuildableAreaLoaded.value &&
       isFurnitureDBLoaded.value &&
-      isVariantMapLoaded.value
+      isVariantMapLoaded.value &&
+      isDyePresetsLoaded.value
     ) {
       return
     }
@@ -202,6 +236,7 @@ export const useGameDataStore = defineStore('gameData', () => {
       !isBuildableAreaLoaded.value ? loadBuildableAreaData() : Promise.resolve(),
       !isFurnitureDBLoaded.value ? loadFurnitureDB() : Promise.resolve(),
       !isVariantMapLoaded.value ? loadVariantMap() : Promise.resolve(),
+      !isDyePresetsLoaded.value ? loadDyePresets() : Promise.resolve(),
     ])
   }
 
@@ -265,12 +300,43 @@ export const useGameDataStore = defineStore('gameData', () => {
   }
 
   /**
-   * 根据材质实例名获取染色变体贴图列表
+   * 根据材质实例名获取染色变体贴图列表（旧系统，单槽染色）
    * @param materialName 材质实例名（如 "MI_NHFurn_Chair_07"）
    * @returns Array 贴图文件名列表，如果不存在返回 null
    */
   function getVariantTextures(materialName: string): string[] | null {
     return variantMap.value[materialName] ?? null
+  }
+
+  /**
+   * 根据家具 ID 获取染色预设（新系统，多槽染色）
+   * @param gameId 家具 ItemID
+   * @returns { preset, slotIds } 染色预设配置和色盘组编号列表，如果不存在返回 null
+   *          slotIds: 从 furniture_db.colors 的 keys 排序得到，与 preset.slots 数组一一对应
+   */
+  function getDyePreset(gameId: number): { preset: DyePreset; slotIds: number[] } | null {
+    if (!dyePresetsData.value) return null
+    const itemRef = dyePresetsData.value.items[gameId.toString()]
+    if (!itemRef) return null
+    const preset = dyePresetsData.value.presets[itemRef.presets]
+    if (!preset) return null
+
+    // 从 furniture_db 的 colors 字段获取色盘组编号列表
+    const config = furnitureDB.value.get(gameId)
+    let slotIds: number[] = []
+    if (config?.colors) {
+      // colors 的 keys 是色盘组编号（字符串），转为数字并排序
+      slotIds = Object.keys(config.colors)
+        .map(Number)
+        .sort((a, b) => a - b)
+    }
+
+    // 如果 colors 缺失，回退到 0-based 索引
+    if (slotIds.length === 0) {
+      slotIds = preset.slots.map((_, i) => i)
+    }
+
+    return { preset, slotIds }
   }
 
   // 清除缓存 (仅重置状态)
@@ -285,6 +351,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     isFurnitureDBLoaded.value = false
     variantMap.value = {}
     isVariantMapLoaded.value = false
+    dyePresetsData.value = null
+    isDyePresetsLoaded.value = false
     console.log('[GameDataStore] State cleared')
   }
 
@@ -302,6 +370,10 @@ export const useGameDataStore = defineStore('gameData', () => {
     furnitureDB,
     isFurnitureDBLoaded,
 
+    // 状态 (Dye Presets)
+    dyePresetsData,
+    isDyePresetsLoaded,
+
     // 方法
     initialize,
     getFurniture,
@@ -309,6 +381,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     getIconUrl,
     getFurnitureModelConfig,
     getVariantTextures,
+    getDyePreset,
     getFurnitureConstraintsMap,
     clearCache,
   }

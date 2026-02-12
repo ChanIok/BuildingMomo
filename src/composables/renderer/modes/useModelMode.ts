@@ -1,12 +1,13 @@
 import { ref, markRaw, shallowRef } from 'vue'
 import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 'three'
 import type { AppItem } from '@/types/editor'
+import type { DyePreset } from '@/types/furniture'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { coordinates3D } from '@/lib/coordinates'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
-import { parseColorIndex } from '@/lib/colorMap'
+import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -21,10 +22,28 @@ import { MAX_RENDER_INSTANCES as MAX_INSTANCES } from '@/types/constants'
 // 当缺少尺寸信息时使用的默认尺寸（游戏坐标：X=长, Y=宽, Z=高）
 const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 
+/** 分组元数据：旧系统（单槽染色） */
+interface LegacyGroupMeta {
+  type: 'legacy'
+  gameId: number
+  colorIndex: number
+}
+
+/** 分组元数据：新系统（多槽染色预设） */
+interface PresetGroupMeta {
+  type: 'preset'
+  gameId: number
+  preset: DyePreset
+  slotValues: number[]
+}
+
+type GroupMeta = LegacyGroupMeta | PresetGroupMeta
+
 /**
  * Model 渲染模式
  *
- * 3D 模型实例化渲染（按 (gameId, colorIndex) 分组管理多个 InstancedMesh）
+ * 3D 模型实例化渲染（按 (gameId, dyeKey) 分组管理多个 InstancedMesh）
+ * 支持旧系统（单槽染色）和新系统（多槽染色预设）
  * 对无模型或加载失败的物品自动回退到 Box 渲染
  */
 export function useModelMode() {
@@ -36,7 +55,8 @@ export function useModelMode() {
   // 追踪上一次的 scheme 引用，用于检测方案切换
   let lastSchemeRef: any = null
 
-  // 模型 InstancedMesh 映射：meshKey -> InstancedMesh（meshKey = `${gameId}_${colorIndex}`）
+  // 模型 InstancedMesh 映射：meshKey -> InstancedMesh
+  // meshKey 格式：旧系统 `${gameId}_${colorIndex}`，新系统 `${gameId}_${slotValues.join('_')}`
   const modelMeshMap = ref(new Map<string, InstancedMesh>())
 
   // 模型索引映射：用于拾取和选择（跨所有模型 mesh 的全局索引）
@@ -172,9 +192,10 @@ export function useModelMode() {
       }
     }
 
-    // 1. 按 (gameId, colorIndex) 分组（包含回退项）
+    // 1. 按 (gameId, dyeKey) 分组（包含回退项）
+    // dyeKey: 旧系统 `${gameId}_${colorIndex}`，新系统 `${gameId}_${slotValues.join('_')}`
     const groups = new Map<string, AppItem[]>()
-    const groupMeta = new Map<string, { gameId: number; colorIndex: number }>()
+    const groupMeta = new Map<string, GroupMeta>()
     const fallbackKey = '-1' // 特殊键，用于存放没有模型或加载失败的物品
 
     for (let i = 0; i < instanceCount; i++) {
@@ -186,10 +207,33 @@ export function useModelMode() {
 
       let key: string
       if (hasValidConfig) {
-        const ci = parseColorIndex(item.extra.ColorMap) ?? 0 // 多槽染色暂不支持，退回默认色
-        key = `${item.gameId}_${ci}`
-        if (!groupMeta.has(key)) {
-          groupMeta.set(key, { gameId: item.gameId, colorIndex: ci })
+        // 检查是否有染色预设（新系统）
+        const dyeResult = gameDataStore.getDyePreset(item.gameId)
+
+        if (dyeResult) {
+          // 新系统：多槽染色
+          const { preset, slotIds } = dyeResult
+          const slotValues = parseColorMapSlots(item.extra.ColorMap, slotIds)
+          key = `${item.gameId}_${slotValues.join('_')}`
+          if (!groupMeta.has(key)) {
+            groupMeta.set(key, {
+              type: 'preset',
+              gameId: item.gameId,
+              preset,
+              slotValues,
+            })
+          }
+        } else {
+          // 旧系统：单槽染色
+          const ci = parseColorIndex(item.extra.ColorMap) ?? 0
+          key = `${item.gameId}_${ci}`
+          if (!groupMeta.has(key)) {
+            groupMeta.set(key, {
+              type: 'legacy',
+              gameId: item.gameId,
+              colorIndex: ci,
+            })
+          }
         }
       } else {
         key = fallbackKey
@@ -211,13 +255,8 @@ export function useModelMode() {
         loadingStore.startLoading('model', unloadedIds.length, 'simple')
 
         await modelManager
-          .preloadModels(modelItemIds, (current, total, failed) => {
-            // 如果 total === 0，说明全部缓存命中，取消加载提示
-            if (total === 0) {
-              loadingStore.cancelLoading()
-            } else {
-              loadingStore.updateProgress(current, failed)
-            }
+          .preloadModels(unloadedIds, (current, _total, failed) => {
+            loadingStore.updateProgress(current, failed)
           })
           .catch((err) => {
             console.warn('[ModelMode] 模型预加载失败:', err)
@@ -270,8 +309,11 @@ export function useModelMode() {
       const existingMesh = modelMeshMap.value.get(meshKey)
       const mesh = await modelManager.createInstancedMesh(
         meta.gameId,
-        meta.colorIndex,
-        itemsOfModel.length
+        meshKey,
+        itemsOfModel.length,
+        meta.type === 'preset'
+          ? { type: 'preset', preset: meta.preset, slotValues: meta.slotValues }
+          : { type: 'legacy', colorIndex: meta.colorIndex }
       )
 
       if (!mesh) {
@@ -343,8 +385,8 @@ export function useModelMode() {
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
 
-      // 构建 BVH 加速结构（仅对新创建的 mesh）
-      if (!existingMesh && mesh.geometry) {
+      // 构建 BVH 加速结构：若当前几何体尚未构建 boundsTree，则进行一次构建
+      if (mesh.geometry && !(mesh.geometry as any).boundsTree) {
         mesh.geometry.computeBoundsTree({
           setBoundingBox: true,
         })
