@@ -2,7 +2,6 @@ import { ref, markRaw } from 'vue'
 import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { coordinates3D } from '@/lib/coordinates'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -62,7 +61,7 @@ export function useSimpleBoxMode() {
       if (!item) continue
 
       // 位置
-      coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+      scratchPosition.set(item.x, item.y, item.z)
 
       // 旋转：同 Box 模式，需要对 Roll / Pitch 取反以抵消父级 Y 轴镜像
       const Rotation = item.rotation

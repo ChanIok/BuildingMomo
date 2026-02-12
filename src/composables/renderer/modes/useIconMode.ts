@@ -15,7 +15,6 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useLoadingStore } from '@/stores/loadingStore'
-import { coordinates3D } from '@/lib/coordinates'
 import { getThreeIconManager, disposeThreeIconManager } from '@/composables/useThreeIconManager'
 import {
   scratchMatrix,
@@ -252,7 +251,7 @@ export function useIconMode() {
       if (!item) continue
 
       // 位置
-      coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+      scratchPosition.set(item.x, item.y, item.z)
 
       // 1. 计算基础旋转矩阵 (World Space LookAt)
       scratchTmpVec3

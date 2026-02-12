@@ -2,7 +2,6 @@ import { ref, markRaw } from 'vue'
 import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
-import { coordinates3D } from '@/lib/coordinates'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -62,7 +61,7 @@ export function useBoxMode() {
       if (!item) continue
 
       // 位置
-      coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+      scratchPosition.set(item.x, item.y, item.z)
 
       // 缩放参数和尺寸
       const Scale = item.extra.Scale

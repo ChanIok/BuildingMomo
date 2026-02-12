@@ -5,7 +5,6 @@ import type { DyePreset } from '@/types/furniture'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
-import { coordinates3D } from '@/lib/coordinates'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
 import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
 import {
@@ -190,7 +189,7 @@ export function useModelMode() {
       const globalIndex = globalStartIndex + i
 
       // 位置
-      coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+      scratchPosition.set(item.x, item.y, item.z)
 
       // 缩放参数和尺寸
       const Scale = item.extra.Scale
@@ -451,7 +450,7 @@ export function useModelMode() {
         if (!item) continue
 
         // 位置
-        coordinates3D.setThreeFromGame(scratchPosition, { x: item.x, y: item.y, z: item.z })
+        scratchPosition.set(item.x, item.y, item.z)
 
         // 缩放参数
         const Scale = item.extra.Scale

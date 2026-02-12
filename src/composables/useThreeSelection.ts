@@ -1,6 +1,5 @@
 import { ref, markRaw, type Ref } from 'vue'
 import { Raycaster, Vector2, Vector3, type Camera } from 'three'
-import { coordinates3D } from '@/lib/coordinates'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorSelection } from './editor/useEditorSelection'
@@ -369,12 +368,8 @@ export function useThreeSelection(
       const item = itemById.get(id)
       if (!item) continue
 
-      // 使用游戏坐标转换为 Three.js 世界坐标，再投影到屏幕空间
-      coordinates3D.setThreeFromGame(tempVec3, { x: item.x, y: item.y, z: item.z })
-
-      // 修正：由于 ThreeEditor 中对整个场景进行了 Scale Y = -1 的翻转以模拟左手坐标系
-      // 这里在计算投影前也需要手动应用这个翻转，否则框选区域会与视觉位置（Y轴）相反
-      tempVec3.y = -tempVec3.y
+      // 数据坐标 -> 世界坐标（投影前需要应用场景父级 Y 翻转）
+      tempVec3.set(item.x, -item.y, item.z)
 
       tempVec3.project(camera)
 
@@ -472,8 +467,7 @@ export function useThreeSelection(
       const item = itemById.get(id)
       if (!item) continue
 
-      coordinates3D.setThreeFromGame(tempVec3, { x: item.x, y: item.y, z: item.z })
-      tempVec3.y = -tempVec3.y
+      tempVec3.set(item.x, -item.y, item.z)
       tempVec3.project(camera)
 
       const sx = (tempVec3.x + 1) * 0.5 * containerRect.width
