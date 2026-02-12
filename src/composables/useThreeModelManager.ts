@@ -25,7 +25,7 @@ import type { Texture } from 'three'
  * 标准化几何体属性，确保所有几何体具有兼容的属性集
  * 改进策略：
  * - 对关键属性（position, normal, uv）求交集，缺失则删除
- * - 对顶点色属性（color, color_1 等）求并集，缺失则补充默认白色
+ * - 对顶点色属性（color, color_1 等）和 uv2 求并集，缺失则补充默认值
  * - 对其他非关键属性求交集，缺失则删除
  *
  * @param geometries 要标准化的几何体数组
@@ -47,12 +47,17 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
     }
   }
 
-  // 3. 找出所有顶点色属性（需要补充而非删除）
-  const colorAttributes = new Set<string>()
+  // 3. 找出需要走“并集 + 补默认值”策略的属性（顶点色 + uv2）
+  const unionAttributes = new Set<string>()
   for (const attrSet of attributeSets) {
     for (const attr of attrSet) {
+      // 顶点色属性：color, color_1, color_2 ...
       if (attr === 'color' || attr.startsWith('color_')) {
-        colorAttributes.add(attr)
+        unionAttributes.add(attr)
+      }
+      // uv2 属性（用于染色 tint shader）
+      if (attr === 'uv2') {
+        unionAttributes.add(attr)
       }
     }
   }
@@ -62,16 +67,16 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
     const geom = geometries[i]!
     const attrs = Object.keys(geom.attributes)
 
-    // 4.1 删除不是所有几何体都有的非颜色属性
+    // 4.1 删除不是所有几何体都有的非 union 属性
     for (const attr of attrs) {
-      if (!commonAttributes.has(attr) && !colorAttributes.has(attr)) {
+      if (!commonAttributes.has(attr) && !unionAttributes.has(attr)) {
         geom.deleteAttribute(attr)
       }
     }
 
-    // 4.2 为缺失的顶点色属性补充默认白色
-    for (const colorAttr of colorAttributes) {
-      if (!geom.attributes[colorAttr]) {
+    // 4.2 为缺失的 union 属性补充默认值
+    for (const unionAttr of unionAttributes) {
+      if (!geom.attributes[unionAttr]) {
         const vertexCount = geom.attributes.position?.count
 
         // 如果几何体没有 position 属性，跳过
@@ -80,8 +85,8 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
         // 找到已有该属性的几何体，复制其类型和尺寸
         let referenceAttr = null
         for (const refGeom of geometries) {
-          if (refGeom.attributes[colorAttr]) {
-            referenceAttr = refGeom.attributes[colorAttr]
+          if (refGeom.attributes[unionAttr]) {
+            referenceAttr = refGeom.attributes[unionAttr]
             break
           }
         }
@@ -91,17 +96,20 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
           const itemSize = referenceAttr.itemSize
           const normalized = referenceAttr.normalized
           const ArrayType = referenceAttr.array.constructor as any
-          const colorArray = new ArrayType(vertexCount * itemSize)
+          const dataArray = new ArrayType(vertexCount * itemSize)
 
-          // 填充白色（根据数据类型使用不同的值）
-          const whiteValue = ArrayType === Float32Array ? 1.0 : 255
-          for (let j = 0; j < colorArray.length; j++) {
-            colorArray[j] = whiteValue
+          // 填充默认值：
+          // - 顶点色：白色 (1.0 或 255)
+          // - uv2：(0, 0)（不可染色部件采样到什么不重要）
+          const isColorAttr = unionAttr === 'color' || unionAttr.startsWith('color_')
+          const fillValue = isColorAttr ? (ArrayType === Float32Array ? 1.0 : 255) : 0
+          for (let j = 0; j < dataArray.length; j++) {
+            dataArray[j] = fillValue
           }
 
           const BufferAttrType = referenceAttr.constructor as any
-          const newAttr = new BufferAttrType(colorArray, itemSize, normalized)
-          geom.setAttribute(colorAttr, newAttr)
+          const newAttr = new BufferAttrType(dataArray, itemSize, normalized)
+          geom.setAttribute(unionAttr, newAttr)
         }
       }
     }
@@ -159,12 +167,14 @@ async function processGeometryForItem(
       materials: { mat: Material; name: string }[]
       mergedMaterial: Material | Material[]
       boundingBox: Box3
+      meshMaterialCounts: number[]
     }
   | undefined
 > {
   // 加载所有 mesh 文件
   const allGeometries: BufferGeometry[] = []
   const materials: { mat: Material; name: string }[] = []
+  const meshMaterialCounts: number[] = []
   const tempMatrix = new Matrix4()
   const tempQuat = new Quaternion()
   const tempScale = new Vector3()
@@ -176,8 +186,12 @@ async function processGeometryForItem(
 
     if (!model) {
       console.warn(`[ModelManager] Failed to load mesh: ${meshConfig.path}`)
+      meshMaterialCounts.push(0)
       continue
     }
+
+    // 记录此 meshConfig 开始前的材质数量
+    const materialCountBefore = materials.length
 
     // 提取此 mesh 的所有几何体
     model.traverse((child) => {
@@ -220,6 +234,9 @@ async function processGeometryForItem(
         materials.push({ mat, name: mat.name || '' })
       }
     })
+
+    // 记录此 meshConfig 产生的材质数量
+    meshMaterialCounts.push(materials.length - materialCountBefore)
   }
 
   if (allGeometries.length === 0) {
@@ -298,7 +315,7 @@ async function processGeometryForItem(
   geometry.computeBoundingBox()
   const boundingBox = geometry.boundingBox!.clone() // 克隆避免共享引用
 
-  return { geometry, materials, mergedMaterial, boundingBox }
+  return { geometry, materials, mergedMaterial, boundingBox, meshMaterialCounts }
 }
 
 // 染色参数
@@ -458,6 +475,7 @@ export function useThreeModelManager() {
       materials: { mat: Material; name: string }[]
       mergedMaterial: Material | Material[]
       boundingBox: Box3
+      meshMaterialCounts: number[]
     }
   >()
 
@@ -732,7 +750,7 @@ export function useThreeModelManager() {
     const data = geometryCache.get(itemId)
     if (!data) return null
 
-    const { geometry, materials, boundingBox } = data
+    const { geometry, materials, boundingBox, meshMaterialCounts } = data
 
     const vertexCount = geometry.attributes.position?.count ?? 0
     const indexCount = geometry.index?.count ?? 0
@@ -756,6 +774,7 @@ export function useThreeModelManager() {
         name: name || '(unnamed)',
         type: (mat as any).type || mat.constructor.name,
       })),
+      meshMaterialCounts,
     }
   }
 

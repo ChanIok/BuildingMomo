@@ -186,15 +186,10 @@ export function useModelMode() {
 
       let key: string
       if (hasValidConfig) {
-        const ci = parseColorIndex(item.extra.ColorMap)
-        if (ci === null) {
-          // 多槽染色暂不支持，回退到 fallback
-          key = fallbackKey
-        } else {
-          key = `${item.gameId}_${ci}`
-          if (!groupMeta.has(key)) {
-            groupMeta.set(key, { gameId: item.gameId, colorIndex: ci })
-          }
+        const ci = parseColorIndex(item.extra.ColorMap) ?? 0 // 多槽染色暂不支持，退回默认色
+        key = `${item.gameId}_${ci}`
+        if (!groupMeta.has(key)) {
+          groupMeta.set(key, { gameId: item.gameId, colorIndex: ci })
         }
       } else {
         key = fallbackKey

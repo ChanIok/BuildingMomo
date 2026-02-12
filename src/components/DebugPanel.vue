@@ -66,28 +66,14 @@ const modelDebugInfo = computed(() => {
   })
 
   // Build meshes list from config, attach runtime materials
-  // Runtime materials are collected in mesh order during processGeometryForItem,
-  // so we distribute them sequentially across meshes.
+  // Use meshMaterialCounts to correctly distribute materials across meshes
+  const meshMaterialCounts = debugInfo?.meshMaterialCounts ?? []
   let matCursor = 0
   const meshes =
-    config?.meshes?.map((meshConfig) => {
-      // Each GLB may contain multiple sub-meshes, each producing one material entry.
-      // Without explicit counts, we greedily assign remaining materials to the last mesh.
-      // For single-mesh models this is exact; for multi-mesh it's a best-effort split.
-      const isLastMesh = config.meshes.indexOf(meshConfig) === config.meshes.length - 1
-      let meshMats: typeof runtimeMaterials
-      if (isLastMesh) {
-        // Last mesh gets all remaining materials
-        meshMats = runtimeMaterials.slice(matCursor)
-        matCursor = runtimeMaterials.length
-      } else {
-        // Non-last mesh: assign at least one material if available
-        meshMats =
-          matCursor < runtimeMaterials.length
-            ? runtimeMaterials.slice(matCursor, matCursor + 1)
-            : []
-        matCursor += meshMats.length
-      }
+    config?.meshes?.map((meshConfig, meshIndex) => {
+      const count = meshMaterialCounts[meshIndex] ?? 0
+      const meshMats = runtimeMaterials.slice(matCursor, matCursor + count)
+      matCursor += count
       return {
         path: meshConfig.path,
         materials: meshMats,
