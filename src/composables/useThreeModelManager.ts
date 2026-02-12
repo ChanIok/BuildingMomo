@@ -321,14 +321,19 @@ async function processGeometryForItem(
 
 // 染色参数
 const TINT_BLEND_STRENGTH = 0.9
-const TINT_REFERENCE_GRAY = 0.214 // sRGB 0.5 对应的线性值，作为“精确还原 tint”的基准灰度
+// 乘法染色后的亮度补偿强度：0=纯乘法（更暗），1=尽量回到原始亮度（更亮）
+const TINT_LUMA_COMPENSATION = 0.82
+// 亮度补偿增益上限，防止暗部被过度拉亮导致发灰
+const TINT_LUMA_GAIN_MAX = 2.3
+// 额外亮度提升系数，1.3 表示整体再提亮约 30%
+const TINT_BRIGHTNESS_BOOST = 1.3
 
 /**
- * 为材质注入 UV2 × tintMap 染色逻辑（亮度保持方案）
+ * 为材质注入 UV2 × tintMap 染色逻辑（乘法为主 + 亮度补偿）
  *
  * 通过 onBeforeCompile 修改 MeshStandardMaterial 的 shader：
  * - 顶点着色器：传递 UV2（TEXCOORD_1）到片段着色器
- * - 片段着色器：提取底色亮度，将 tint 颜色等比缩放到该亮度，保留色相和纹理细节
+ * - 片段着色器：先做乘法染色（接近正片叠底观感），再做受限亮度补偿避免整体过暗
  *
  * @param material 要修改的材质（会被原地修改）
  * @param tintTexture Array 贴图（调色板纹理）
@@ -338,6 +343,9 @@ function applyTintShader(material: MeshStandardMaterial, tintTexture: Texture): 
     // 注入 tintMap uniform
     shader.uniforms.tintMap = { value: tintTexture }
     shader.uniforms.tintStrength = { value: TINT_BLEND_STRENGTH }
+    shader.uniforms.tintLumaCompensation = { value: TINT_LUMA_COMPENSATION }
+    shader.uniforms.tintLumaGainMax = { value: TINT_LUMA_GAIN_MAX }
+    shader.uniforms.tintBrightnessBoost = { value: TINT_BRIGHTNESS_BOOST }
 
     // === 顶点着色器 ===
     // 声明 uv2 attribute 和 vTintUv varying
@@ -361,64 +369,43 @@ vTintUv = uv2;`
       `#include <common>
 uniform sampler2D tintMap;
 uniform float tintStrength;
+uniform float tintLumaCompensation;
+uniform float tintLumaGainMax;
+uniform float tintBrightnessBoost;
 varying vec2 vTintUv;`
     )
-    // 在 map_fragment 之后，执行自适应亮度 + 彩度融合：
-    // - diffuse 与 tint 都拆分为亮度 Y 和彩度向量 C = rgb - Y
-    // - 彩度按长度加权混合（谁更彩谁权重更大，灰度自动让位）
-    // - 亮度以 diffuse 为主，tint 根据彩度对亮度做适度拉扯
+    // 在 map_fragment 之后，执行“乘法染色 + 亮度补偿”：
+    // - 先用 baseColor * tintColor 得到接近正片叠底的结果
+    // - 再根据亮度比例做受限增益，减轻发黑问题
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
       `#include <map_fragment>
 vec3 baseColor = diffuseColor.rgb;
 vec3 tintColor = texture2D( tintMap, vTintUv ).rgb;
+vec3 multiplyColor = baseColor * tintColor;
 
 // 亮度权重（近似 Rec.709）
 vec3 lumaWeights = vec3(0.2126, 0.7152, 0.0722);
+float baseLuma = dot(baseColor, lumaWeights);
+float multiplyLuma = dot(multiplyColor, lumaWeights);
 
-// 分解为亮度 Y 和彩度向量 C = rgb - Y
-float Yd = dot(baseColor, lumaWeights);
-float Yt = dot(tintColor, lumaWeights);
+// 亮度补偿：
+// gain = ((baseLuma + eps) / (multiplyLuma + eps)) ^ tintLumaCompensation
+// tintLumaCompensation: 0 => 不补偿（更接近纯乘法）
+// tintLumaCompensation: 1 => 尽量回到 base 亮度
+const float eps = 1e-4;
+float lumaRatio = (baseLuma + eps) / (multiplyLuma + eps);
+float gain = pow(lumaRatio, tintLumaCompensation);
+gain = clamp(gain, 1.0, tintLumaGainMax);
 
-vec3 grayD = vec3(Yd);
-vec3 grayT = vec3(Yt);
-
-vec3 Cd = baseColor - grayD;
-vec3 Ct = tintColor - grayT;
-
-float Sd = length(Cd);
-float St = length(Ct);
-
-// 彩度权重：谁更彩，谁对色相影响更大
-float wd = Sd;
-float wt = St;
-float wSum = wd + wt + 1e-5;
-wd /= wSum;
-wt /= wSum;
-
-vec3 Cmix = wd * Cd + wt * Ct;
-float Smix = length(Cmix);
-float Smax = max(Sd, St);
-if (Smix > 1e-5) {
-  Cmix = Cmix * (min(Smix, Smax) / Smix);
-}
-
-// 亮度：以 diffuse 为基准，tint 的彩度越高，对亮度影响越大
-float wYd = 1.0;
-float wYt = St * 2.0;
-float wYsum = wYd + wYt;
-wYd /= wYsum;
-wYt /= wYsum;
-float Ymix = wYd * Yd + wYt * Yt;
-
-vec3 targetColor = vec3(Ymix) + Cmix;
-diffuseColor.rgb = mix( baseColor, targetColor, tintStrength );`
+vec3 compensatedMultiply = clamp(multiplyColor * gain * tintBrightnessBoost, 0.0, 1.0);
+diffuseColor.rgb = mix( baseColor, compensatedMultiply, tintStrength );`
     )
   }
 
   // 标记自定义 shader 的缓存键，避免不同 tintMap 的材质共享编译缓存
   material.customProgramCacheKey = () =>
-    `tint_${tintTexture.id}_${TINT_BLEND_STRENGTH}_${TINT_REFERENCE_GRAY}`
+    `tint_${tintTexture.id}_${TINT_BLEND_STRENGTH}_${TINT_LUMA_COMPENSATION}_${TINT_LUMA_GAIN_MAX}_${TINT_BRIGHTNESS_BOOST}`
   material.needsUpdate = true
 }
 
