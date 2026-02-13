@@ -214,7 +214,10 @@ export function useIconMode() {
 
     if (unloadedIds.length > 0) {
       // 开始加载，报告总数（使用simple模式）
-      loadingStore.startLoading('icon', unloadedIds.length, 'simple')
+      loadingStore.startLoading('icon', unloadedIds.length, 'simple', {
+        showDelayMs: 200,
+        completeHoldMs: 500,
+      })
 
       await iconManager
         .preloadIcons(itemIds, (current, total, failed) => {

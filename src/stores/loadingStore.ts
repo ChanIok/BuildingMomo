@@ -4,10 +4,18 @@ import { ref, computed } from 'vue'
 export type LoadingType = 'icon' | 'model'
 export type LoadingPhase = 'network' | 'processing'
 export type LoadingMode = 'simple' | 'staged' // 新增：加载模式
+export interface LoadingDisplayOptions {
+  showDelayMs?: number
+  completeHoldMs?: number
+}
+
+const DEFAULT_SHOW_DELAY_MS = 200
+const DEFAULT_COMPLETE_HOLD_MS = 500
 
 export const useLoadingStore = defineStore('loading', () => {
   // 状态
   const isLoading = ref(false)
+  const isVisible = ref(false)
   const loadingType = ref<LoadingType | null>(null)
   const current = ref(0)
   const total = ref(0)
@@ -19,8 +27,31 @@ export const useLoadingStore = defineStore('loading', () => {
   // 新增：加载模式
   const mode = ref<LoadingMode>('simple')
 
-  // 自动隐藏定时器
+  // 自动隐藏/延迟显示定时器
+  let showTimer: number | null = null
   let hideTimer: number | null = null
+  let loadingSessionId = 0
+  let activeCompleteHoldMs = DEFAULT_COMPLETE_HOLD_MS
+
+  function clearTimers() {
+    if (showTimer !== null) {
+      clearTimeout(showTimer)
+      showTimer = null
+    }
+    if (hideTimer !== null) {
+      clearTimeout(hideTimer)
+      hideTimer = null
+    }
+  }
+
+  function resetState() {
+    isLoading.value = false
+    isVisible.value = false
+    current.value = 0
+    total.value = 0
+    failedCount.value = 0
+    loadingType.value = null
+  }
 
   // 计算属性
   const progress = computed(() => {
@@ -50,15 +81,24 @@ export const useLoadingStore = defineStore('loading', () => {
   function startLoading(
     type: LoadingType,
     totalCount: number,
-    loadingMode: LoadingMode = 'simple'
+    loadingMode: LoadingMode = 'simple',
+    displayOptions: LoadingDisplayOptions = {}
   ) {
-    // 清除之前的自动隐藏定时器
-    if (hideTimer !== null) {
-      clearTimeout(hideTimer)
-      hideTimer = null
+    if (totalCount <= 0) {
+      clearTimers()
+      resetState()
+      return
     }
 
+    const showDelayMs = Math.max(0, displayOptions.showDelayMs ?? DEFAULT_SHOW_DELAY_MS)
+    activeCompleteHoldMs = Math.max(0, displayOptions.completeHoldMs ?? DEFAULT_COMPLETE_HOLD_MS)
+    loadingSessionId++
+    const sessionId = loadingSessionId
+
+    clearTimers()
+
     isLoading.value = true
+    isVisible.value = false
     loadingType.value = type
     current.value = 0
     total.value = totalCount
@@ -67,6 +107,18 @@ export const useLoadingStore = defineStore('loading', () => {
     mode.value = loadingMode // 设置加载模式
 
     console.log(`[LoadingStore] 开始加载 ${type}, 总数: ${totalCount}, 模式: ${loadingMode}`)
+
+    if (showDelayMs === 0) {
+      isVisible.value = true
+      return
+    }
+
+    showTimer = window.setTimeout(() => {
+      if (sessionId !== loadingSessionId) return
+      if (!isLoading.value) return
+      isVisible.value = true
+      showTimer = null
+    }, showDelayMs)
   }
 
   /**
@@ -100,33 +152,35 @@ export const useLoadingStore = defineStore('loading', () => {
     console.log(`[LoadingStore] 加载完成`)
     isLoading.value = false
 
-    // 2秒后清空状态，让完成动画有时间显示
+    if (showTimer !== null) {
+      clearTimeout(showTimer)
+      showTimer = null
+    }
+
+    // 未达到显示阈值时，直接清空，避免瞬时任务闪烁
+    if (!isVisible.value) {
+      resetState()
+      return
+    }
+
+    // 显示完成状态一小段时间后再隐藏
     hideTimer = window.setTimeout(() => {
-      current.value = 0
-      total.value = 0
-      failedCount.value = 0
-      loadingType.value = null
+      resetState()
       hideTimer = null
-    }, 2000)
+    }, activeCompleteHoldMs)
   }
 
   function cancelLoading() {
     console.log(`[LoadingStore] 取消加载`)
-    if (hideTimer !== null) {
-      clearTimeout(hideTimer)
-      hideTimer = null
-    }
-
-    isLoading.value = false
-    current.value = 0
-    total.value = 0
-    failedCount.value = 0
-    loadingType.value = null
+    loadingSessionId++
+    clearTimers()
+    resetState()
   }
 
   return {
     // 状态
     isLoading,
+    isVisible,
     loadingType,
     current,
     total,

@@ -8,7 +8,7 @@ const loadingStore = useLoadingStore()
 
 // 是否显示（加载中或刚完成且在淡出阶段）
 const shouldShow = computed(() => {
-  return loadingStore.isLoading || loadingStore.total > 0
+  return loadingStore.isVisible
 })
 
 // 加载类型标题

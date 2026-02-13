@@ -340,25 +340,38 @@ export function useModelMode() {
       t.type === 'array' ? !isArrayTextureCached(t.fileName) : !isDiffuseTextureCached(t.fileName)
     )
 
-    // mesh 创建也纳入进度追踪（避免进度条完成后仍有可感知的等待）
     const groupsToProcess = Array.from(groups.keys()).filter((k) => k !== fallbackKey).length
-    const totalTasks =
-      unloadedIds.length + uncachedTextures.length + (enableDye ? groupsToProcess : 0)
+    const resourceTasks = unloadedIds.length + uncachedTextures.length
+    // 仅当存在真实资源加载时，才把 mesh 处理纳入全局进度（避免纯重建也弹进度条）
+    const trackMeshProcessing = resourceTasks > 0
+    const totalTasks = resourceTasks + (trackMeshProcessing ? groupsToProcess : 0)
 
     // 进度追踪变量（跨阶段共享）
     let glbCompleted = 0
     let textureCompleted = 0
-    let meshCreated = 0
+    let meshCompleted = 0
     let glbFailed = 0
 
     const updateCombinedProgress = () => {
       if (totalTasks > 0) {
-        loadingStore.updateProgress(glbCompleted + textureCompleted + meshCreated, glbFailed)
+        loadingStore.updateProgress(
+          glbCompleted + textureCompleted + (trackMeshProcessing ? meshCompleted : 0),
+          glbFailed
+        )
       }
     }
 
     if (totalTasks > 0) {
-      loadingStore.startLoading('model', totalTasks, 'simple')
+      loadingStore.startLoading('model', totalTasks, 'simple', {
+        showDelayMs: 200,
+        completeHoldMs: 500,
+      })
+    }
+
+    const markMeshProcessed = () => {
+      if (!trackMeshProcessing) return
+      meshCompleted++
+      updateCombinedProgress()
     }
 
     // 阶段 2a：并发预加载 GLB + 贴图
@@ -448,6 +461,7 @@ export function useModelMode() {
         // 加载失败，加入回退列表
         console.warn(`[ModelMode] Failed to create mesh for ${meshKey}, using fallback`)
         allFallbackItems.push(...itemsOfModel)
+        markMeshProcessed()
         continue
       }
 
@@ -522,12 +536,7 @@ export function useModelMode() {
       }
 
       globalIndex += itemsOfModel.length
-
-      // 更新 mesh 创建进度（仅当计入总数时）
-      if (enableDye) {
-        meshCreated++
-        updateCombinedProgress()
-      }
+      markMeshProcessed()
     }
 
     // 5. 集中处理所有回退物品
