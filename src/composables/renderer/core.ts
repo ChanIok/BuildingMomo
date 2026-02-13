@@ -57,6 +57,12 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   // 全局索引映射（用于 box/icon/simple-box 模式）
   const indexToIdMap = ref(new Map<number, string>())
   const idToIndexMap = ref(new Map<string, number>())
+  let isDisposed = false
+
+  // 重建调度器：保证同一时刻只有一个 rebuild 在执行，后续请求合并到下一轮
+  let rebuildPending = false
+  let rebuildRunner: Promise<void> | null = null
+  let requestedRebuildSeq = 0
 
   function buildSidebarHoveredItemIds(): Set<string> | null {
     const scheme = editorStore.activeScheme
@@ -90,10 +96,39 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     return null
   }
 
+  async function rebuildLoop() {
+    while (rebuildPending && !isDisposed) {
+      rebuildPending = false
+      const seq = requestedRebuildSeq
+      await rebuildInstances(seq)
+    }
+  }
+
+  function scheduleRebuild() {
+    if (isDisposed) return
+
+    requestedRebuildSeq++
+    rebuildPending = true
+    if (rebuildRunner) return
+
+    rebuildRunner = rebuildLoop()
+      .catch((error) => {
+        console.error('[ThreeInstancedRenderer] rebuild failed:', error)
+      })
+      .finally(() => {
+        rebuildRunner = null
+        if (rebuildPending && !isDisposed) {
+          scheduleRebuild()
+        }
+      })
+  }
+
   /**
    * 主重建函数（路由到对应模式）
    */
-  async function rebuildInstances() {
+  async function rebuildInstances(seq: number) {
+    if (isDisposed) return
+
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
@@ -117,6 +152,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       if (modelMode.fallbackMesh.value) {
         modelMode.fallbackMesh.value.count = 0
       }
+      selectionOutline.reconcileMaskMeshes(
+        new Map<string, InstancedMesh>(),
+        null,
+        MAX_RENDER_INSTANCES
+      )
     }
 
     // 执行对应模式的重建
@@ -131,18 +171,22 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         await simpleBoxMode.rebuild()
         break
       case 'model':
-        await modelMode.rebuild()
-
-        // 初始化 mask mesh（为每个模型类型创建对应的 mask mesh）
-        for (const [itemId, mesh] of modelMode.meshMap.value.entries()) {
-          selectionOutline.initMaskMesh(itemId, mesh, MAX_RENDER_INSTANCES)
+        // 若本轮构建被模型模式内部中断（方案切换等），跳过后续提交，等待下一轮
+        const committed = await modelMode.rebuild({
+          isStale: () => isDisposed || seq !== requestedRebuildSeq,
+        })
+        if (!committed || isDisposed || seq !== requestedRebuildSeq) {
+          return
         }
 
-        // 为 fallbackMesh 创建 mask mesh
         const fallbackMesh = modelMode.fallbackMesh.value
-        if (fallbackMesh && fallbackMesh.count > 0) {
-          selectionOutline.initMaskMesh('-1', fallbackMesh, MAX_RENDER_INSTANCES)
-        }
+
+        // 先对齐 mask mesh 集合，确保不会累积 stale mask
+        selectionOutline.reconcileMaskMeshes(
+          modelMode.meshMap.value,
+          fallbackMesh,
+          MAX_RENDER_INSTANCES
+        )
 
         // 更新 mask 状态
         const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
@@ -167,6 +211,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
         invalidateScene()
         return
+    }
+
+    // 当前构建已过期，直接丢弃结果（下一轮会提交最新状态）
+    if (isDisposed || seq !== requestedRebuildSeq) {
+      return
     }
 
     // 非 Model 模式：构建全局索引映射
@@ -557,7 +606,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       if (isTransformDragging?.value) {
         return
       }
-      rebuildInstances()
+      scheduleRebuild()
     },
     { deep: false, immediate: true }
   )
@@ -566,7 +615,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   watch(
     () => settingsStore.settings.threeDisplayMode,
     () => {
-      rebuildInstances()
+      scheduleRebuild()
     }
   )
 
@@ -575,7 +624,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     () => settingsStore.settings.enableModelDye,
     () => {
       if (settingsStore.settings.threeDisplayMode === 'model') {
-        rebuildInstances()
+        scheduleRebuild()
       }
     }
   )
@@ -783,6 +832,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // 资源清理
   onUnmounted(() => {
+    isDisposed = true
+    rebuildPending = false
     console.log('[ThreeInstancedRenderer] Disposing resources')
     boxMode.dispose()
     iconMode.dispose()

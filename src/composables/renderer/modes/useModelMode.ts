@@ -39,6 +39,10 @@ interface TextureToLoad {
   fileName: string
 }
 
+interface ModelRebuildOptions {
+  isStale?: () => boolean
+}
+
 /**
  * 从分组元数据中收集 preset 需要的贴图文件名
  */
@@ -113,9 +117,6 @@ export function useModelMode() {
   const loadingStore = useLoadingStore()
   const modelManager = getThreeModelManager()
 
-  // 追踪上一次的 scheme 引用，用于检测方案切换
-  let lastSchemeRef: any = null
-
   // 模型 InstancedMesh 映射：meshKey -> InstancedMesh
   // meshKey 格式示例：
   // - plain:  `${gameId}|plain`
@@ -175,7 +176,6 @@ export function useModelMode() {
     // fallbackMesh 使用局部索引（0, 1, 2...），而不是全局索引
     // 设置当前需要渲染的实例数量
     const count = Math.min(items.length, MAX_INSTANCES)
-    fallbackMesh.value.count = count
 
     for (let i = 0; i < count; i++) {
       const item = items[i]
@@ -229,32 +229,24 @@ export function useModelMode() {
   /**
    * 重建所有模型实例
    */
-  async function rebuild() {
+  async function rebuild(options?: ModelRebuildOptions): Promise<boolean> {
     // ✅ 检查点 1：捕获当前 scheme 引用，用于后续验证
     const currentScheme = editorStore.activeScheme
     const items = currentScheme?.items.value ?? []
     const instanceCount = Math.min(items.length, MAX_INSTANCES)
+    const isStale = () =>
+      options?.isStale?.() === true || editorStore.activeScheme !== currentScheme
+    const abort = () => {
+      loadingStore.cancelLoading()
+      return false
+    }
 
     if (items.length > MAX_INSTANCES) {
       console.warn(
         `[ModelMode] 当前可见物品数量 (${items.length}) 超过上限 ${MAX_INSTANCES}，仅渲染前 ${MAX_INSTANCES} 个`
       )
     }
-
-    // 检测是否是方案切换（引用变化）
-    const isSchemeSwitch = currentScheme !== lastSchemeRef
-    lastSchemeRef = currentScheme
-
-    // 0. 🔥 仅在方案切换时立即清理旧场景（避免内容更新时闪烁，但避免方案切换时残留）
-    if (isSchemeSwitch) {
-      // 将所有现有的 mesh 计数设为 0，使其立即从场景中消失
-      for (const mesh of modelMeshMap.value.values()) {
-        mesh.count = 0
-      }
-      if (fallbackMesh.value) {
-        fallbackMesh.value.count = 0
-      }
-    }
+    if (isStale()) return false
 
     // 1. 按 (gameId, dyePlan) 分组（包含回退项）
     // 规则由 resolveModelDyePlan 统一决策：
@@ -370,16 +362,16 @@ export function useModelMode() {
 
       await Promise.all(loadPromises)
 
-      // ✅ 检查点 2：异步加载完成后，检查 scheme 是否仍然有效
-      if (editorStore.activeScheme !== currentScheme) {
+      // ✅ 检查点 2：异步加载完成后检查是否过期
+      if (isStale()) {
         console.log('[ModelMode] 检测到方案切换，中断旧的 rebuild')
-        loadingStore.cancelLoading()
-        return // 立即中断，避免渲染错误的方案物品
+        return abort()
       }
     }
 
     // 3. 标记需要清理的旧 InstancedMesh（延迟到新 mesh 就绪后再删除，避免闪烁）
     const activeMeshKeys = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
+    const nextModelMeshMap = new Map(modelMeshMap.value)
     const meshKeysToRemove: string[] = []
     for (const [meshKey] of modelMeshMap.value.entries()) {
       if (!activeMeshKeys.has(meshKey)) {
@@ -408,6 +400,7 @@ export function useModelMode() {
 
     // 遍历处理正常模型组
     for (const [meshKey, itemsOfModel] of groups.entries()) {
+      if (isStale()) return abort()
       if (meshKey === fallbackKey) continue
 
       const meta = groupMeta.get(meshKey)!
@@ -420,6 +413,7 @@ export function useModelMode() {
         itemsOfModel.length,
         meta.dyePlan
       )
+      if (isStale()) return abort()
 
       if (!mesh) {
         // 加载失败，加入回退列表
@@ -431,7 +425,7 @@ export function useModelMode() {
 
       // 更新引用（createInstancedMesh 可能会返回新的实例）
       if (existingMesh !== mesh) {
-        modelMeshMap.value.set(meshKey, markRaw(mesh))
+        nextModelMeshMap.set(meshKey, markRaw(mesh))
       }
 
       // ⚠️ 不在此处设置 mesh.count，延迟到原子切换阶段
@@ -506,6 +500,7 @@ export function useModelMode() {
     // 5. 集中处理所有回退物品
     let pendingFallbackCount = 0
     if (allFallbackItems.length > 0) {
+      if (isStale()) return abort()
       if (fallbackMesh.value) {
         const localIndexMap = new Map<number, string>()
         renderFallbackItems(
@@ -537,9 +532,9 @@ export function useModelMode() {
     }
 
     // ✅ 检查点 3：渲染完成前最终检查（双保险）
-    if (editorStore.activeScheme !== currentScheme) {
+    if (isStale()) {
       console.log('[ModelMode] 渲染前检测到方案切换，跳过索引映射更新')
-      return
+      return abort()
     }
 
     // 6. 🔥 原子切换：同步设置所有新 mesh 的 count + 删除所有旧 mesh
@@ -559,14 +554,16 @@ export function useModelMode() {
     // 6c. 删除所有不再需要的旧 mesh
     for (const meshKey of meshKeysToRemove) {
       modelManager.disposeMesh(meshKey)
-      modelMeshMap.value.delete(meshKey)
+      nextModelMeshMap.delete(meshKey)
     }
 
-    // 6d. 更新索引映射
+    // 6d. 原子提交共享状态
+    modelMeshMap.value = nextModelMeshMap
     modelIndexToIdMap.value = newIndexToIdMap
     modelIdToIndexMap.value = newIdToIndexMap
     meshToLocalIndexMap.value = newMeshToLocalIndexMap
     internalIdToMeshInfo.value = newInternalIdToMeshInfo
+    return true
   }
 
   /**

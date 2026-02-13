@@ -261,6 +261,39 @@ export function useSelectionOutline() {
   }
 
   /**
+   * 对齐 mask mesh 集合到当前激活的 model mesh 集合
+   *
+   * - 删除不再使用的 stale mask
+   * - 为当前激活 mesh 创建缺失的 mask
+   */
+  function reconcileMaskMeshes(
+    meshMap: Map<string, InstancedMesh>,
+    fallbackMesh: InstancedMesh | null,
+    maxInstances: number
+  ) {
+    const activeKeys = new Set<string>(meshMap.keys())
+    if (fallbackMesh) {
+      activeKeys.add('-1')
+    }
+
+    // 先清理 stale mask，避免长期累积
+    for (const meshKey of Array.from(maskMeshMap.value.keys())) {
+      if (!activeKeys.has(meshKey)) {
+        disposeMaskMesh(meshKey)
+      }
+    }
+
+    // 再补齐当前激活模型的 mask
+    for (const [meshKey, mesh] of meshMap.entries()) {
+      initMaskMesh(meshKey, mesh, maxInstances)
+    }
+
+    if (fallbackMesh) {
+      initMaskMesh('-1', fallbackMesh, maxInstances)
+    }
+  }
+
+  /**
    * 更新 mask 状态
    *
    * 双通道编码：
@@ -316,6 +349,7 @@ export function useSelectionOutline() {
       const { meshKey, localIndex } = meshInfo
       const maskMesh = maskMeshMap.value.get(meshKey)
       if (!maskMesh) continue
+      if (localIndex < 0 || localIndex >= maskMesh.count) continue
 
       // R=1 表示选中
       scratchColor.setRGB(1.0, 0.0, 0.0)
@@ -333,6 +367,7 @@ export function useSelectionOutline() {
         const { meshKey, localIndex } = meshInfo
         const maskMesh = maskMeshMap.value.get(meshKey)
         if (!maskMesh) continue
+        if (localIndex < 0 || localIndex >= maskMesh.count) continue
 
         // 读取当前颜色，保留R通道，设置G通道
         maskMesh.getColorAt(localIndex, tempColor)
@@ -451,6 +486,7 @@ export function useSelectionOutline() {
 
   return {
     initMaskMesh,
+    reconcileMaskMeshes,
     updateMasks,
     renderMaskPass,
     renderOverlay,
