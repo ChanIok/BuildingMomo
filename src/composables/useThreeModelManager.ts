@@ -20,6 +20,7 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 import { loadArrayTexture, loadDiffuseTexture } from '@/lib/colorMap'
 import type { Texture } from 'three'
+import type { ModelDyePlan } from '@/lib/modelDye'
 import type { DyePreset } from '@/types/furniture'
 
 /**
@@ -460,7 +461,7 @@ function findMaterialIndex(
  * @param meshMaterialCounts 每个 mesh 产生的材质数量
  * @param preset 染色预设配置
  * @param slotValues 各槽位的变体索引
- * @returns 染色后的材质（单个或数组）
+ * @returns 染色后的材质（单个或数组），若关键步骤失败返回 null（整件回退 plain）
  */
 async function createPresetColoredMaterial(
   itemId: number,
@@ -468,7 +469,7 @@ async function createPresetColoredMaterial(
   meshMaterialCounts: number[],
   preset: DyePreset,
   slotValues: number[]
-): Promise<Material | Material[]> {
+): Promise<Material | Material[] | null> {
   // 按需克隆材质：仅对实际参与染色的材质创建副本，其余直接复用原材质
   const coloredMats: Material[] = materials.map(({ mat }) => mat)
 
@@ -477,71 +478,95 @@ async function createPresetColoredMaterial(
   // 记录已克隆的材质索引（避免对同一索引重复 clone）
   const clonedIndices = new Set<number>()
 
-  // 并发加载所有 slot 的贴图（网络 I/O 并行，提升多槽染色加载速度）
-  const slotTextures = await Promise.all(
-    preset.slots.map(async (slot, slotIndex) => {
-      const variantIndex = slotValues[slotIndex] ?? 0
-      const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
-      const variant = slot.variants[safeVariantIndex]
-      if (!variant) return { tint: null, diffuse: null }
-      const [tint, diffuse] = await Promise.all([
-        loadArrayTexture(variant.color),
-        variant.diffuse ? loadDiffuseTexture(variant.diffuse) : Promise.resolve(null),
-      ])
-      return { tint, diffuse }
-    })
-  )
+  try {
+    // 并发加载所有 slot 的贴图（网络 I/O 并行，提升多槽染色加载速度）
+    const slotTextures = await Promise.all(
+      preset.slots.map(async (slot, slotIndex) => {
+        const variantIndex = slotValues[slotIndex] ?? 0
+        const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
+        const variant = slot.variants[safeVariantIndex]
+        if (!variant) {
+          throw new Error(`slot=${slotIndex} variant=${safeVariantIndex} does not exist`)
+        }
 
-  // 串行应用贴图到材质
-  for (let slotIndex = 0; slotIndex < preset.slots.length; slotIndex++) {
-    const slot = preset.slots[slotIndex]!
-    const { tint: tintTexture, diffuse: diffuseTexture } = slotTextures[slotIndex]!
-    if (!tintTexture && !diffuseTexture) continue
+        const tint = await loadArrayTexture(variant.color)
+        if (!tint) {
+          throw new Error(`failed to load tint texture: ${variant.color}`)
+        }
 
-    // 遍历每个 target
-    for (const target of slot.targets) {
-      const matIndex = findMaterialIndex(target.mesh, target.mi, materials, meshMaterialCounts)
+        let diffuse: Texture | null = null
+        if (variant.diffuse) {
+          diffuse = await loadDiffuseTexture(variant.diffuse)
+          if (!diffuse) {
+            throw new Error(`failed to load diffuse texture: ${variant.diffuse}`)
+          }
+        }
 
-      if (matIndex === -1) {
-        console.warn(
-          `[ModelManager] Preset target not found: itemId=${itemId}, preset="${preset.name}", mesh=${target.mesh}, mi="${target.mi}"`
-        )
-        continue
-      }
+        return { tint, diffuse }
+      })
+    )
 
-      // 检测冲突
-      if (processedIndices.has(matIndex)) {
-        console.warn(
-          `[ModelManager] Material index ${matIndex} already processed, skipping duplicate target: itemId=${itemId}, preset="${preset.name}"`
-        )
-        continue
-      }
-      processedIndices.add(matIndex)
+    // 串行应用贴图到材质
+    for (let slotIndex = 0; slotIndex < preset.slots.length; slotIndex++) {
+      const slot = preset.slots[slotIndex]!
+      const { tint: tintTexture, diffuse: diffuseTexture } = slotTextures[slotIndex]!
 
-      // 首次命中该材质索引时再进行克隆，避免对未参与染色的材质做无意义的复制
-      if (!clonedIndices.has(matIndex)) {
-        const originalMat = materials[matIndex]!.mat
-        coloredMats[matIndex] = originalMat.clone()
-        clonedIndices.add(matIndex)
-      }
+      // 遍历每个 target
+      for (const target of slot.targets) {
+        const matIndex = findMaterialIndex(target.mesh, target.mi, materials, meshMaterialCounts)
+        if (matIndex === -1) {
+          throw new Error(
+            `target did not hit material: mesh=${target.mesh}, mi=${target.mi}, slot=${slotIndex}`
+          )
+        }
 
-      const clonedMat = coloredMats[matIndex]!
+        // 同一个材质位被多个 target 命中视为配置冲突，整件回退 plain
+        if (processedIndices.has(matIndex)) {
+          throw new Error(`target conflict: matIndex=${matIndex}, slot=${slotIndex}`)
+        }
+        processedIndices.add(matIndex)
 
-      // 应用 diffuse 贴图替换（如果有）
-      if (diffuseTexture && (clonedMat as any).isMeshStandardMaterial) {
+        // 首次命中该材质索引时再进行克隆，避免对未参与染色的材质做无意义的复制
+        if (!clonedIndices.has(matIndex)) {
+          const originalMat = materials[matIndex]!.mat
+          coloredMats[matIndex] = originalMat.clone()
+          clonedIndices.add(matIndex)
+        }
+
+        const clonedMat = coloredMats[matIndex]!
+        if (!(clonedMat as any).isMeshStandardMaterial) {
+          throw new Error(`target material does not support preset dyeing: matIndex=${matIndex}`)
+        }
         const stdMat = clonedMat as MeshStandardMaterial
-        stdMat.map = diffuseTexture
-        stdMat.needsUpdate = true
-      }
 
-      // 应用 tint shader
-      if (tintTexture && (clonedMat as any).isMeshStandardMaterial) {
-        applyTintShader(clonedMat as MeshStandardMaterial, tintTexture)
+        // 应用 diffuse 贴图替换（如果有）
+        if (diffuseTexture) {
+          stdMat.map = diffuseTexture
+          stdMat.needsUpdate = true
+        }
+
+        // 应用 tint shader
+        applyTintShader(stdMat, tintTexture)
       }
     }
-  }
 
-  return coloredMats.length > 1 ? coloredMats : coloredMats[0]!
+    return coloredMats.length > 1 ? coloredMats : coloredMats[0]!
+  } catch (error) {
+    // 释放已克隆的材质，避免失败重试时泄漏
+    for (const idx of clonedIndices) {
+      const cloned = coloredMats[idx]
+      if (cloned) {
+        cloned.dispose()
+      }
+      coloredMats[idx] = materials[idx]!.mat
+    }
+
+    console.warn(
+      `[ModelManager] Preset dye failed, fallback to plain: itemId=${itemId}, preset="${preset.name}"`,
+      error
+    )
+    return null
+  }
 }
 
 /**
@@ -619,7 +644,7 @@ export function useThreeModelManager() {
   // 模型基础路径
   const MODEL_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-model/'
 
-  // cacheKey -> InstancedMesh 的映射（cacheKey = `${itemId}_${colorIndex}`）
+  // cacheKey -> InstancedMesh 的映射（key 由 modelDye.ts 统一生成）
   const meshMap = new Map<string, InstancedMesh>()
 
   // itemId -> 几何体和原始材质的缓存（几何体与颜色无关，按 itemId 缓存）
@@ -635,26 +660,23 @@ export function useThreeModelManager() {
   >()
 
   // 染色材质缓存：cacheKey -> 已染色的材质
-  // cacheKey 格式：旧系统 `${itemId}_${colorIndex}`，新系统 `${itemId}_${slotValues.join('_')}`
+  // plain 模式不进入此缓存
   const coloredMaterialCache = new Map<string, Material | Material[]>()
 
   /**
    * 为指定家具创建 InstancedMesh
    *
    * @param itemId 家具 ItemID
-   * @param cacheKey 缓存键（旧系统: `${itemId}_${colorIndex}`，新系统: `${itemId}_${slotValues.join('_')}`）
+   * @param cacheKey 缓存键（由 modelDye.ts 的 buildModelMeshKey 生成）
    * @param instanceCount 实例数量
-   * @param dyeOptions 染色选项（二选一）
+   * @param dyePlan 染色计划（plain / legacy / preset）
    * @returns Promise<InstancedMesh | null>
    */
   async function createInstancedMesh(
     itemId: number,
     cacheKey: string,
     instanceCount: number,
-    dyeOptions:
-      | { type: 'legacy'; colorIndex: number }
-      | { type: 'preset'; preset: DyePreset; slotValues: number[] },
-    skipDye: boolean = false
+    dyePlan: ModelDyePlan
   ): Promise<InstancedMesh | null> {
     // 检查是否已存在
     if (meshMap.has(cacheKey)) {
@@ -699,34 +721,38 @@ export function useThreeModelManager() {
 
     // 确定使用的材质
     let material: Material | Material[]
-    if (skipDye) {
-      // 跳过染色：直接使用原始材质
+    if (dyePlan.mode === 'plain') {
       material = geometryData.mergedMaterial
-    } else {
+    } else if (dyePlan.mode === 'legacy') {
       let coloredMat = coloredMaterialCache.get(cacheKey)
       if (!coloredMat) {
-        if (dyeOptions.type === 'preset') {
-          // 新系统：多槽染色
-          coloredMat = await createPresetColoredMaterial(
-            itemId,
+        coloredMat =
+          (await createColoredMaterial(
             geometryData.materials,
-            geometryData.meshMaterialCounts,
-            dyeOptions.preset,
-            dyeOptions.slotValues
-          )
-        } else {
-          // 旧系统：单槽染色
-          coloredMat =
-            (await createColoredMaterial(
-              geometryData.materials,
-              dyeOptions.colorIndex,
-              gameDataStore
-            )) ?? undefined
-        }
+            dyePlan.colorIndex,
+            gameDataStore
+          )) ?? undefined
         if (coloredMat) {
           coloredMaterialCache.set(cacheKey, coloredMat)
         }
       }
+      material = coloredMat ?? geometryData.mergedMaterial
+    } else {
+      let coloredMat = coloredMaterialCache.get(cacheKey)
+      if (!coloredMat) {
+        coloredMat =
+          (await createPresetColoredMaterial(
+            itemId,
+            geometryData.materials,
+            geometryData.meshMaterialCounts,
+            dyePlan.preset,
+            dyePlan.slotValues
+          )) ?? undefined
+        if (coloredMat) {
+          coloredMaterialCache.set(cacheKey, coloredMat)
+        }
+      }
+      // 预设染色失败时，严格回退整件 plain（使用 mergedMaterial）
       material = coloredMat ?? geometryData.mergedMaterial
     }
 
@@ -765,7 +791,7 @@ export function useThreeModelManager() {
 
   /**
    * 获取指定家具的 InstancedMesh
-   * @param cacheKey 缓存键（`${itemId}_${colorIndex}`）
+   * @param cacheKey 缓存键（由 modelDye.ts 的 buildModelMeshKey 生成）
    * @returns InstancedMesh | null
    */
   function getMesh(cacheKey: string): InstancedMesh | null {
@@ -867,7 +893,7 @@ export function useThreeModelManager() {
 
   /**
    * 销毁指定的 InstancedMesh
-   * @param cacheKey 缓存键（`${itemId}_${colorIndex}`）
+   * @param cacheKey 缓存键（由 modelDye.ts 的 buildModelMeshKey 生成）
    */
   function disposeMesh(cacheKey: string): void {
     const mesh = meshMap.get(cacheKey)

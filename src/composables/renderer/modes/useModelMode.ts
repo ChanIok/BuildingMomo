@@ -1,19 +1,18 @@
 import { ref, markRaw, shallowRef } from 'vue'
 import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 'three'
 import type { AppItem } from '@/types/editor'
-import type { DyePreset } from '@/types/furniture'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
-import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
 import {
   loadArrayTexture,
   loadDiffuseTexture,
   isArrayTextureCached,
   isDiffuseTextureCached,
 } from '@/lib/colorMap'
+import { type ModelDyePlan, resolveModelDyePlan, buildModelMeshKey } from '@/lib/modelDye'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -28,22 +27,11 @@ import { MAX_RENDER_INSTANCES as MAX_INSTANCES } from '@/types/constants'
 // 当缺少尺寸信息时使用的默认尺寸（游戏坐标：X=长, Y=宽, Z=高）
 const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 
-/** 分组元数据：旧系统（单槽染色） */
-interface LegacyGroupMeta {
-  type: 'legacy'
+/** 模型分组元数据 */
+interface GroupMeta {
   gameId: number
-  colorIndex: number
+  dyePlan: ModelDyePlan
 }
-
-/** 分组元数据：新系统（多槽染色预设） */
-interface PresetGroupMeta {
-  type: 'preset'
-  gameId: number
-  preset: DyePreset
-  slotValues: number[]
-}
-
-type GroupMeta = LegacyGroupMeta | PresetGroupMeta
 
 /** 贴图加载描述 */
 interface TextureToLoad {
@@ -52,19 +40,19 @@ interface TextureToLoad {
 }
 
 /**
- * 从预设分组元数据中收集所有需要的贴图文件名
- * 仅处理 preset 类型（新系统），legacy 类型的 array 贴图极小（平均 ~134B），无需预加载
+ * 从分组元数据中收集 preset 需要的贴图文件名
  */
 function collectPresetTextures(groupMeta: Map<string, GroupMeta>): TextureToLoad[] {
   const textures: TextureToLoad[] = []
   const seen = new Set<string>()
 
   for (const meta of groupMeta.values()) {
-    if (meta.type !== 'preset') continue
+    if (meta.dyePlan.mode !== 'preset') continue
 
-    for (let slotIndex = 0; slotIndex < meta.preset.slots.length; slotIndex++) {
-      const slot = meta.preset.slots[slotIndex]!
-      const variantIndex = meta.slotValues[slotIndex] ?? 0
+    const { preset, slotValues } = meta.dyePlan
+    for (let slotIndex = 0; slotIndex < preset.slots.length; slotIndex++) {
+      const slot = preset.slots[slotIndex]!
+      const variantIndex = slotValues[slotIndex] ?? 0
       const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
       const variant = slot.variants[safeVariantIndex]
       if (!variant) continue
@@ -111,8 +99,11 @@ async function preloadTexturesBatch(
 /**
  * Model 渲染模式
  *
- * 3D 模型实例化渲染（按 (gameId, dyeKey) 分组管理多个 InstancedMesh）
- * 支持旧系统（单槽染色）和新系统（多槽染色预设）
+ * 3D 模型实例化渲染（按 gameId + 染色计划分组管理多个 InstancedMesh）
+ * 染色策略由 `resolveModelDyePlan` 统一决策：
+ * - enableModelDye=false -> plain
+ * - 有 preset -> 仅 preset（不访问 legacy）
+ * - 无 preset -> legacy
  * 对无模型或加载失败的物品自动回退到 Box 渲染
  */
 export function useModelMode() {
@@ -126,7 +117,10 @@ export function useModelMode() {
   let lastSchemeRef: any = null
 
   // 模型 InstancedMesh 映射：meshKey -> InstancedMesh
-  // meshKey 格式：旧系统 `${gameId}_${colorIndex}`，新系统 `${gameId}_${slotValues.join('_')}`
+  // meshKey 格式示例：
+  // - plain:  `${gameId}|plain`
+  // - legacy: `${gameId}|legacy|ci=${colorIndex}`
+  // - preset: `${gameId}|preset|slots=${slotValues.join('_')}`
   const modelMeshMap = ref(new Map<string, InstancedMesh>())
 
   // 模型索引映射：用于拾取和选择（跨所有模型 mesh 的全局索引）
@@ -262,9 +256,11 @@ export function useModelMode() {
       }
     }
 
-    // 1. 按 (gameId, dyeKey) 分组（包含回退项）
-    // dyeKey: 旧系统 `${gameId}_${colorIndex}`，新系统 `${gameId}_${slotValues.join('_')}`
-    // 当 enableModelDye 关闭时，统一按 `${gameId}_0` 分组，跳过染色逻辑
+    // 1. 按 (gameId, dyePlan) 分组（包含回退项）
+    // 规则由 resolveModelDyePlan 统一决策：
+    // - enableModelDye=false -> plain
+    // - 有 preset -> 仅 preset（不访问 legacy）
+    // - 无 preset -> legacy
     const enableDye = settingsStore.settings.enableModelDye
     const groups = new Map<string, AppItem[]>()
     const groupMeta = new Map<string, GroupMeta>()
@@ -279,46 +275,17 @@ export function useModelMode() {
 
       let key: string
       if (hasValidConfig) {
-        if (enableDye) {
-          // 启用染色：按染色参数分组
-          // 检查是否有染色预设（新系统）
-          const dyeResult = gameDataStore.getDyePreset(item.gameId)
-
-          if (dyeResult) {
-            // 新系统：多槽染色
-            const { preset, slotIds } = dyeResult
-            const slotValues = parseColorMapSlots(item.extra.ColorMap, slotIds)
-            key = `${item.gameId}_${slotValues.join('_')}`
-            if (!groupMeta.has(key)) {
-              groupMeta.set(key, {
-                type: 'preset',
-                gameId: item.gameId,
-                preset,
-                slotValues,
-              })
-            }
-          } else {
-            // 旧系统：单槽染色
-            const ci = parseColorIndex(item.extra.ColorMap) ?? 0
-            key = `${item.gameId}_${ci}`
-            if (!groupMeta.has(key)) {
-              groupMeta.set(key, {
-                type: 'legacy',
-                gameId: item.gameId,
-                colorIndex: ci,
-              })
-            }
-          }
-        } else {
-          // 禁用染色：统一按 gameId 分组，跳过颜色解析
-          key = `${item.gameId}_0`
-          if (!groupMeta.has(key)) {
-            groupMeta.set(key, {
-              type: 'legacy',
-              gameId: item.gameId,
-              colorIndex: 0,
-            })
-          }
+        const dyePlan = resolveModelDyePlan({
+          item,
+          enableModelDye: enableDye,
+          getDyePreset: gameDataStore.getDyePreset,
+        })
+        key = buildModelMeshKey(item.gameId, dyePlan)
+        if (!groupMeta.has(key)) {
+          groupMeta.set(key, {
+            gameId: item.gameId,
+            dyePlan,
+          })
         }
       } else {
         key = fallbackKey
@@ -451,10 +418,7 @@ export function useModelMode() {
         meta.gameId,
         meshKey,
         itemsOfModel.length,
-        meta.type === 'preset'
-          ? { type: 'preset', preset: meta.preset, slotValues: meta.slotValues }
-          : { type: 'legacy', colorIndex: meta.colorIndex },
-        !enableDye
+        meta.dyePlan
       )
 
       if (!mesh) {
