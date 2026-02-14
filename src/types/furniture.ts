@@ -93,6 +93,22 @@ export interface FurnitureDB {
   furniture: FurnitureModelConfig[]
 }
 
+// ========== Material Variant Map (单槽染色映射) ==========
+
+/** 旧染色系统中的材质处理类型 */
+export type MaterialVariantType = 'color' | 'diffuse'
+
+/** material_variant_map.json 中单个材质实例的配置 */
+export interface MaterialVariantConfig {
+  /** color: 使用 tint shader；diffuse: 直接替换基础贴图 */
+  type: MaterialVariantType
+  /** 按 colorIndex 对应的贴图文件名列表 */
+  file: string[]
+}
+
+/** material_variant_map.json 的完整结构：材质实例名 -> 配置 */
+export type MaterialVariantMap = Record<string, MaterialVariantConfig>
+
 // ========== Dye Presets (多槽染色预设) ==========
 
 /** 染色变体配置（单个颜色选项） */

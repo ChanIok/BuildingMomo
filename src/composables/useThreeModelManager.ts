@@ -571,8 +571,9 @@ async function createPresetColoredMaterial(
 
 /**
  * 为指定颜色索引创建染色材质（旧系统，单槽染色）
- * 遍历模型的材质列表，查找在 variantMap 中有染色配置的材质，
- * 克隆并通过 onBeforeCompile 注入 UV2 × tintMap 逻辑。
+ * 遍历模型的材质列表，查找在 variantMap 中有染色配置的材质。
+ * - type=color：应用 tint shader（UV2 × tintMap）
+ * - type=diffuse：直接替换基础 diffuse 贴图（不走 tint shader）
  *
  * @param materials 原始材质列表（含材质名）
  * @param colorIndex 颜色索引
@@ -584,36 +585,58 @@ async function createColoredMaterial(
   colorIndex: number,
   gameDataStore: ReturnType<typeof useGameDataStore>
 ): Promise<Material | Material[] | null> {
-  // 1. 收集需要加载的贴图文件名，同时检查是否有变体
+  // 1. 收集每个材质位对应的变体配置，并选择 colorIndex 对应文件
   let hasVariant = false
-  const textureFiles: (string | null)[] = materials.map(({ name }) => {
-    const textures = name ? gameDataStore.getVariantTextures(name) : null
-    if (textures && textures.length > 0) {
-      hasVariant = true
-      const safeIndex = colorIndex < textures.length ? colorIndex : 0
-      return textures[safeIndex]!
+  const texturePlans: ({ mode: 'color' | 'diffuse'; fileName: string } | null)[] = materials.map(
+    ({ name }) => {
+      const variantConfig = name ? gameDataStore.getVariantConfig(name) : null
+      if (variantConfig && variantConfig.file.length > 0) {
+        hasVariant = true
+        const safeIndex = colorIndex < variantConfig.file.length ? colorIndex : 0
+        const fileName = variantConfig.file[safeIndex]
+        if (!fileName) return null
+        return { mode: variantConfig.type, fileName }
+      }
+      return null
     }
-    return null
-  })
+  )
 
   if (!hasVariant) return null
 
   // 2. 并发加载所有需要的贴图（网络 I/O 并行）
   const loadedTextures = await Promise.all(
-    textureFiles.map((file) => (file ? loadArrayTexture(file) : Promise.resolve(null)))
+    texturePlans.map(async (plan) => {
+      if (!plan) return null
+      const texture =
+        plan.mode === 'color'
+          ? await loadArrayTexture(plan.fileName)
+          : await loadDiffuseTexture(plan.fileName)
+      if (!texture) return null
+      return { mode: plan.mode, texture } as const
+    })
   )
 
   // 3. 构建染色材质
   const coloredMats: Material[] = materials.map(({ mat }, i) => {
-    const tintTexture = loadedTextures[i]
-    if (tintTexture) {
-      const cloned = mat.clone()
-      if ((cloned as any).isMeshStandardMaterial) {
-        applyTintShader(cloned as MeshStandardMaterial, tintTexture)
-      }
+    const loaded = loadedTextures[i]
+    if (!loaded) {
+      return mat
+    }
+
+    const cloned = mat.clone()
+    if (!(cloned as any).isMeshStandardMaterial) {
       return cloned
     }
-    return mat
+
+    const stdMat = cloned as MeshStandardMaterial
+    if (loaded.mode === 'color') {
+      applyTintShader(stdMat, loaded.texture)
+    } else {
+      stdMat.map = loaded.texture
+      stdMat.needsUpdate = true
+    }
+
+    return cloned
   })
 
   return coloredMats.length > 1 ? coloredMats : coloredMats[0]!

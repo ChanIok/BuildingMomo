@@ -6,6 +6,8 @@ import type {
   RawFurnitureEntry,
   FurnitureDB,
   FurnitureModelConfig,
+  MaterialVariantMap,
+  MaterialVariantConfig,
   DyePresetsData,
   DyePreset,
 } from '../types/furniture'
@@ -40,8 +42,8 @@ export const useGameDataStore = defineStore('gameData', () => {
   const isFurnitureDBLoaded = ref(false)
 
   // ========== 状态 (Variant Map) ==========
-  // 材质实例名 → Array 贴图文件名列表
-  const variantMap = ref<Record<string, string[]>>({})
+  // 材质实例名 → 单槽染色配置（type + file）
+  const variantMap = ref<MaterialVariantMap>({})
   const isVariantMapLoaded = ref(false)
 
   // ========== 状态 (Dye Presets) ==========
@@ -180,7 +182,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     try {
       const response = await fetch(VARIANT_MAP_URL)
       if (!response.ok) throw new Error('Failed to load variant map')
-      variantMap.value = await response.json()
+      const data: MaterialVariantMap = await response.json()
+      variantMap.value = data
       isVariantMapLoaded.value = true
       console.log(
         '[GameDataStore] Variant map loaded:',
@@ -300,11 +303,11 @@ export const useGameDataStore = defineStore('gameData', () => {
   }
 
   /**
-   * 根据材质实例名获取染色变体贴图列表（旧系统，单槽染色）
+   * 根据材质实例名获取染色变体配置（旧系统，单槽染色）
    * @param materialName 材质实例名（如 "MI_NHFurn_Chair_07"）
-   * @returns Array 贴图文件名列表，如果不存在返回 null
+   * @returns 染色配置（type + file），如果不存在返回 null
    */
-  function getVariantTextures(materialName: string): string[] | null {
+  function getVariantConfig(materialName: string): MaterialVariantConfig | null {
     return variantMap.value[materialName] ?? null
   }
 
@@ -380,7 +383,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     getFurnitureSize,
     getIconUrl,
     getFurnitureModelConfig,
-    getVariantTextures,
+    getVariantConfig,
     getDyePreset,
     getFurnitureConstraintsMap,
     clearCache,

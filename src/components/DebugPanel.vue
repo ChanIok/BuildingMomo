@@ -96,6 +96,7 @@ const modelDebugInfo = computed(() => {
     }[]
     materials?: {
       name: string
+      variantType: 'color' | 'diffuse' | null
       variants: string[] | null
       currentVariantIndex: number | null
       currentVariantFile: string | null
@@ -105,11 +106,13 @@ const modelDebugInfo = computed(() => {
   let meshes: MeshDebugInfo[] = []
   const meshMaterialCounts = debugInfo?.meshMaterialCounts ?? []
   const runtimeMaterials = (debugInfo?.materials ?? []).map((mat) => {
-    const variants = gameDataStore.getVariantTextures(mat.name)
+    const variantConfig = gameDataStore.getVariantConfig(mat.name)
+    const variants = variantConfig?.file ?? null
     const safeIndex =
       colorIndex !== null && variants ? (colorIndex < variants.length ? colorIndex : 0) : null
     return {
       name: mat.name,
+      variantType: variantConfig?.type ?? null,
       variants,
       currentVariantIndex: safeIndex,
       currentVariantFile: safeIndex !== null && variants ? (variants[safeIndex] ?? null) : null,
@@ -352,6 +355,9 @@ function fmtSize(v: number): string {
                 <template v-else-if="mesh.materials && mesh.materials.length > 0">
                   <div v-for="(mat, matIdx) in mesh.materials" :key="matIdx" class="pl-2">
                     <div class="text-muted-foreground">{{ mat.name }}</div>
+                    <div class="pl-2 text-muted-foreground">
+                      Type: {{ mat.variantType ?? 'none' }}
+                    </div>
                     <template v-if="mat.variants && mat.variants.length > 0">
                       <div class="pl-2">
                         Variants ({{ mat.variants.length }}):
