@@ -56,8 +56,12 @@ export function useSelectionOutline() {
       vertexShader: `
         varying vec3 vInstanceColor;
         void main() {
-          // Three.js 自动注入 instanceColor attribute
-          vInstanceColor = instanceColor;
+          // 仅在存在 instanceColor attribute 时读取，避免 Shader 编译失败
+          #ifdef USE_INSTANCING_COLOR
+            vInstanceColor = instanceColor;
+          #else
+            vInstanceColor = vec3(0.0);
+          #endif
           gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
         }
       `,
