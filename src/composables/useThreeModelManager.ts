@@ -489,16 +489,21 @@ async function createPresetColoredMaterial(
           throw new Error(`slot=${slotIndex} variant=${safeVariantIndex} does not exist`)
         }
 
-        const tint = await loadArrayTexture(variant.color)
-        if (!tint) {
-          throw new Error(`failed to load tint texture: ${variant.color}`)
+        const colorFileName = typeof variant.color === 'string' ? variant.color.trim() : ''
+        const diffuseFileName = typeof variant.diffuse === 'string' ? variant.diffuse.trim() : ''
+        let tint: Texture | null = null
+        if (colorFileName) {
+          tint = await loadArrayTexture(colorFileName)
+          if (!tint) {
+            throw new Error(`failed to load tint texture: ${colorFileName}`)
+          }
         }
 
         let diffuse: Texture | null = null
-        if (variant.diffuse) {
-          diffuse = await loadDiffuseTexture(variant.diffuse)
+        if (diffuseFileName) {
+          diffuse = await loadDiffuseTexture(diffuseFileName)
           if (!diffuse) {
-            throw new Error(`failed to load diffuse texture: ${variant.diffuse}`)
+            throw new Error(`failed to load diffuse texture: ${diffuseFileName}`)
           }
         }
 
@@ -510,6 +515,11 @@ async function createPresetColoredMaterial(
     for (let slotIndex = 0; slotIndex < preset.slots.length; slotIndex++) {
       const slot = preset.slots[slotIndex]!
       const { tint: tintTexture, diffuse: diffuseTexture } = slotTextures[slotIndex]!
+
+      // 该变体不提供 color/diffuse：视为 no-op（显式不染色）
+      if (!tintTexture && !diffuseTexture) {
+        continue
+      }
 
       // 遍历每个 target
       for (const target of slot.targets) {
@@ -545,8 +555,10 @@ async function createPresetColoredMaterial(
           stdMat.needsUpdate = true
         }
 
-        // 应用 tint shader
-        applyTintShader(stdMat, tintTexture)
+        // 应用 tint shader（当 color 缺失时，仅替换 diffuse，不做 tint）
+        if (tintTexture) {
+          applyTintShader(stdMat, tintTexture)
+        }
       }
     }
 

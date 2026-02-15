@@ -113,10 +113,11 @@ export type MaterialVariantMap = Record<string, MaterialVariantConfig>
 
 /** 染色变体配置（单个颜色选项） */
 export interface DyeVariant {
-  /** tint 调色板贴图文件名（UV2 采样） */
-  color: string
+  /** 可选：tint 调色板贴图文件名（UV2 采样） */
+  color?: string
   /** 可选：替换基础 D 贴图文件名（UV1 采样） */
   diffuse?: string
+  /** 说明：当 color 与 diffuse 都缺失时，表示该变体为 no-op（显式不染色） */
 }
 
 /** 染色目标配置（指定作用于哪个 mesh 的哪个材质） */

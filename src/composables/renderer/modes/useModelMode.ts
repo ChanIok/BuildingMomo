@@ -61,13 +61,15 @@ function collectPresetTextures(groupMeta: Map<string, GroupMeta>): TextureToLoad
       const variant = slot.variants[safeVariantIndex]
       if (!variant) continue
 
-      if (!seen.has(variant.color)) {
-        seen.add(variant.color)
-        textures.push({ type: 'array', fileName: variant.color })
+      const colorFileName = typeof variant.color === 'string' ? variant.color.trim() : ''
+      if (colorFileName && !seen.has(colorFileName)) {
+        seen.add(colorFileName)
+        textures.push({ type: 'array', fileName: colorFileName })
       }
-      if (variant.diffuse && !seen.has(variant.diffuse)) {
-        seen.add(variant.diffuse)
-        textures.push({ type: 'diffuse', fileName: variant.diffuse })
+      const diffuseFileName = typeof variant.diffuse === 'string' ? variant.diffuse.trim() : ''
+      if (diffuseFileName && !seen.has(diffuseFileName)) {
+        seen.add(diffuseFileName)
+        textures.push({ type: 'diffuse', fileName: diffuseFileName })
       }
     }
   }
