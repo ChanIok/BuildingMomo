@@ -148,7 +148,7 @@ export function useTransformSelection() {
 
     // 边界（最小/最大值）- 轴点范围
     let bounds = null
-    if (selected.length > 1) {
+    if (selected.length > 0) {
       // 使用 uiStore 统一 API 转换每个点：数据空间 -> 工作坐标系
       const transformedPoints = selected.map((i) =>
         uiStore.dataToWorking({ x: i.x, y: i.y, z: i.z })
@@ -179,7 +179,7 @@ export function useTransformSelection() {
     // 包围盒范围（考虑尺寸、旋转、缩放）
     // 使用 collision.ts 的 OBB 工具，与 Gizmo 吸附功能保持一致
     let bboxBounds = null
-    if (selected.length > 1) {
+    if (selected.length > 0) {
       const modelManager = getThreeModelManager()
       const allCorners: { x: number; y: number; z: number }[] = []
 

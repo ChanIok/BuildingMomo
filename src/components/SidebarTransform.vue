@@ -377,7 +377,7 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
       </div>
     </div>
 
-    <!-- 多选范围 -->
+    <!-- 范围 -->
     <div
       v-if="selectionInfo.bounds"
       class="mt-3 flex flex-col gap-3 border-t border-sidebar-border pt-3"
