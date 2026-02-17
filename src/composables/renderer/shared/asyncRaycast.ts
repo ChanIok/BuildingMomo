@@ -136,7 +136,14 @@ export async function raycastInstancedMeshAsync(
 
     // 处理命中结果
     if (_instanceIntersects.length > 0) {
-      const hit = _instanceIntersects[0]
+      // 注意：mesh.raycast() 返回的交点顺序不保证按 distance 排序，
+      // 这里显式选择当前实例中最近的命中，保持与 Raycaster.intersectObject 语义一致
+      let hit: Intersection | null = null
+      for (const it of _instanceIntersects) {
+        if (!hit || it.distance < hit.distance) {
+          hit = it
+        }
+      }
       if (!hit) continue
 
       // 获取 internalId
