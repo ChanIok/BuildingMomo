@@ -34,6 +34,8 @@ export function useThreeSelection(
   const lassoPoints = ref<{ x: number; y: number }[]>([])
   const mouseDownPos = ref<{ x: number; y: number } | null>(null)
   const tempVec3 = markRaw(new Vector3())
+  const tempCameraPos = markRaw(new Vector3())
+  const tempCameraForward = markRaw(new Vector3())
 
   const { deselectItems, updateSelection, intersectSelection, clearSelection } =
     useEditorSelection()
@@ -363,6 +365,8 @@ export function useThreeSelection(
     const selectedIds: string[] = []
     // Ctrl 键控制是否强制单选（不扩展到组）
     const skipGroupExpansion = forceIndividualSelection.value
+    camera.getWorldPosition(tempCameraPos)
+    camera.getWorldDirection(tempCameraForward)
 
     for (const id of idMap.values()) {
       const item = itemById.get(id)
@@ -370,6 +374,16 @@ export function useThreeSelection(
 
       // 数据坐标 -> 世界坐标（投影前需要应用场景父级 Y 翻转）
       tempVec3.set(item.x, -item.y, item.z)
+
+      // 仅排除摄像机后方物体，保留前方穿透式框选行为
+      const toPointX = tempVec3.x - tempCameraPos.x
+      const toPointY = tempVec3.y - tempCameraPos.y
+      const toPointZ = tempVec3.z - tempCameraPos.z
+      const dot =
+        toPointX * tempCameraForward.x +
+        toPointY * tempCameraForward.y +
+        toPointZ * tempCameraForward.z
+      if (dot <= 0) continue
 
       tempVec3.project(camera)
 
@@ -450,6 +464,8 @@ export function useThreeSelection(
     const selectedIds: string[] = []
     // Ctrl 键控制是否强制单选（不扩展到组）
     const skipGroupExpansion = forceIndividualSelection.value
+    camera.getWorldPosition(tempCameraPos)
+    camera.getWorldDirection(tempCameraForward)
 
     // 优化 2：包围盒预筛选
     let minX = Infinity,
@@ -468,6 +484,17 @@ export function useThreeSelection(
       if (!item) continue
 
       tempVec3.set(item.x, -item.y, item.z)
+
+      // 仅排除摄像机后方物体，保留前方穿透式框选行为
+      const toPointX = tempVec3.x - tempCameraPos.x
+      const toPointY = tempVec3.y - tempCameraPos.y
+      const toPointZ = tempVec3.z - tempCameraPos.z
+      const dot =
+        toPointX * tempCameraForward.x +
+        toPointY * tempCameraForward.y +
+        toPointZ * tempCameraForward.z
+      if (dot <= 0) continue
+
       tempVec3.project(camera)
 
       const sx = (tempVec3.x + 1) * 0.5 * containerRect.width
