@@ -757,66 +757,46 @@ watch(
     <div class="ml-auto flex flex-none items-center gap-2">
       <!-- 粗指针（触屏）：聚焦选中、复制并粘贴、撤销、重做 -->
       <template v-if="isCoarsePointer && editorStore.activeScheme">
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-8 w-11 p-0"
-              :disabled="!isEnabled('view.focusSelection')"
-              @click="handleCommandWithHaptic('view.focusSelection')"
-              :aria-label="t('command.view.focusSelection')"
-            >
-              <Focus class="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent :side-offset="-6">{{ t('command.view.focusSelection') }}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-8 w-11 p-0"
-              :disabled="!isEnabled('edit.duplicate')"
-              @click="handleCommandWithHaptic('edit.duplicate')"
-              :aria-label="t('command.edit.duplicate')"
-            >
-              <CopyPlus class="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent :side-offset="-6">{{ t('command.edit.duplicate') }}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-8 w-11 p-0"
-              :disabled="!isEnabled('edit.undo')"
-              @click="handleCommandWithHaptic('edit.undo')"
-              :aria-label="t('command.edit.undo')"
-            >
-              <Undo2 class="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent :side-offset="-6">{{ t('command.edit.undo') }}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button
-              variant="outline"
-              size="sm"
-              class="h-8 w-11 p-0"
-              :disabled="!isEnabled('edit.redo')"
-              @click="handleCommandWithHaptic('edit.redo')"
-              :aria-label="t('command.edit.redo')"
-            >
-              <Redo2 class="h-4 w-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent :side-offset="-6">{{ t('command.edit.redo') }}</TooltipContent>
-        </Tooltip>
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-8 w-11 p-0"
+          :disabled="!isEnabled('view.focusSelection')"
+          @click="handleCommandWithHaptic('view.focusSelection')"
+          :aria-label="t('command.view.focusSelection')"
+        >
+          <Focus class="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-8 w-11 p-0"
+          :disabled="!isEnabled('edit.duplicate')"
+          @click="handleCommandWithHaptic('edit.duplicate')"
+          :aria-label="t('command.edit.duplicate')"
+        >
+          <CopyPlus class="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-8 w-11 p-0"
+          :disabled="!isEnabled('edit.undo')"
+          @click="handleCommandWithHaptic('edit.undo')"
+          :aria-label="t('command.edit.undo')"
+        >
+          <Undo2 class="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="h-8 w-11 p-0"
+          :disabled="!isEnabled('edit.redo')"
+          @click="handleCommandWithHaptic('edit.redo')"
+          :aria-label="t('command.edit.redo')"
+        >
+          <Redo2 class="h-4 w-4" />
+        </Button>
       </template>
 
       <!-- 非粗指针：监控状态指示器 -->
