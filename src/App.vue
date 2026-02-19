@@ -5,7 +5,6 @@ import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useTabStore } from './stores/tabStore'
-import { useI18n } from './composables/useI18n'
 import Toolbar from './components/Toolbar.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
@@ -27,7 +26,6 @@ const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
 const uiStore = useUIStore()
-const { t } = useI18n()
 const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorkspaceWorker()
 
 // 导入 commandStore 用于全局命令状态

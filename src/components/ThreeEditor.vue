@@ -288,9 +288,11 @@ const orbitEnableRotate = computed(() => {
   return !isOrthographic.value
 })
 
-// 平移开关：仅正交视图允许平移；透视 Orbit 模式完全禁用平移
+// 平移开关：
+// - 正交视图始终允许平移
+// - 透视视图仅在手形工具下允许平移（用于触屏单指拖拽平移）
 const orbitEnablePan = computed(() => {
-  return isOrthographic.value
+  return isOrthographic.value || (cameraInput.currentTool.value === 'hand' && isCoarsePointer.value)
 })
 
 // 触摸手势：默认单指用于选择；双指用于缩放/平移；手形工具保留单指相机操作
@@ -299,7 +301,8 @@ const orbitTouches = computed(() => {
     if (cameraInput.isOrthographic.value) {
       return { ONE: TOUCH.PAN, TWO: TOUCH.DOLLY_PAN }
     }
-    return { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN }
+    // 透视 + 手形工具：单指平移，双指旋转+缩放（与 selection 透视双指一致）
+    return { ONE: TOUCH.PAN, TWO: TOUCH.DOLLY_ROTATE }
   }
 
   // 选择工具：
@@ -379,7 +382,7 @@ const shouldShowModelMesh = computed(() => currentDisplayMode.value === 'model')
 const {
   shouldShowGizmo,
   handleGizmoDragging,
-  handleGizmoMouseDown,
+  handleGizmoMouseDown: handleGizmoMouseDownInternal,
   handleGizmoMouseUp,
   handleGizmoChange,
   transformSpace,
@@ -746,6 +749,46 @@ function isPointerOnGizmoAxis(): boolean {
     transformRef.value
 
   return !!controls?.axis
+}
+
+function shouldSuppressNativeTouchLongPress() {
+  // 触摸下只在 Gizmo 相关场景提前阻断原生长按，减少副作用。
+  return isTransformDragging.value || isPointerOverGizmo.value || isPointerOnGizmoAxis()
+}
+
+function handleContainerTouchStartCapture(evt: TouchEvent) {
+  if (evt.touches.length !== 1) return
+  if (!shouldSuppressNativeTouchLongPress()) return
+
+  // 尽早阻断系统长按手势，避免出现“菜单被抑制但仍震动”。
+  evt.preventDefault()
+  suppressTouchContextMenu(TOUCH_LONG_PRESS_MS + TOUCH_CONTEXTMENU_SUPPRESS_MS)
+}
+
+function handleContainerPointerDownCapture(evt: PointerEvent) {
+  if (evt.pointerType !== 'touch' || evt.button !== 0) return
+  if (!shouldSuppressNativeTouchLongPress()) return
+
+  // 某些浏览器仅在 Pointer 流程中识别长按，这里再做一次兜底阻断。
+  evt.preventDefault()
+  suppressTouchContextMenu(TOUCH_LONG_PRESS_MS + TOUCH_CONTEXTMENU_SUPPRESS_MS)
+}
+
+function handleGizmoMouseDown(event?: any) {
+  const sourceEvent = event?.sourceEvent || event
+  if (
+    sourceEvent &&
+    sourceEvent.pointerType === 'touch' &&
+    typeof sourceEvent.preventDefault === 'function' &&
+    sourceEvent.cancelable !== false
+  ) {
+    // 仅在 Gizmo 触控按下时前置阻断原生长按，保留普通长按触觉反馈。
+    sourceEvent.preventDefault()
+    suppressTouchContextMenu(TOUCH_LONG_PRESS_MS + TOUCH_CONTEXTMENU_SUPPRESS_MS)
+    ignoreNextNativeContextMenu.value = true
+  }
+
+  handleGizmoMouseDownInternal(event)
 }
 
 function shouldStartSelectionRoute(evt: PointerEvent): boolean {
@@ -1178,6 +1221,8 @@ onDeactivated(() => {
     <div
       ref="threeContainerRef"
       class="absolute inset-0 touch-none overflow-hidden"
+      @touchstart.capture="handleContainerTouchStartCapture"
+      @pointerdown.capture="handleContainerPointerDownCapture"
       @pointerdown="handleContainerPointerDown"
       @pointermove="handleContainerPointerMove"
       @pointerup="handleContainerPointerUp"
