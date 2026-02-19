@@ -793,7 +793,6 @@ function handleContainerPointerDown(evt: PointerEvent) {
   // 鼠标场景下捕获指针，确保移出画布后仍能响应事件
   captureContainerPointer(evt)
   registerTouchPointer(evt)
-  ignoreNextNativeContextMenu.value = false
   if (evt.pointerType === 'touch') {
     stopTouchLongPressGuard(evt.pointerId)
   }

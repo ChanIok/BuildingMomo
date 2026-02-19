@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useMediaQuery } from '@vueuse/core'
+import { computed, type CSSProperties } from 'vue'
+import { useMediaQuery, useWindowSize } from '@vueuse/core'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,6 +89,49 @@ const settingsStore = useSettingsStore()
 
 // 移动端（粗指针）仅显示“xx模式”，不显示操作提示
 const isCoarsePointer = useMediaQuery('(pointer: coarse)')
+const { width: viewportWidth, height: viewportHeight } = useWindowSize()
+
+const MENU_SAFE_PADDING = 8
+const TOUCH_MENU_Y_OFFSET = 12
+
+const contextMenuCollisionPadding = {
+  top: MENU_SAFE_PADDING,
+  right: MENU_SAFE_PADDING,
+  bottom: MENU_SAFE_PADDING,
+  left: MENU_SAFE_PADDING,
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+const correctedContextMenuPoint = computed(() => {
+  let x = props.contextMenu.x
+  let y = props.contextMenu.y
+
+  // 触屏轻微上移，减少手指遮挡；完整避让由 Popper collision 处理。
+  if (isCoarsePointer.value) {
+    y -= TOUCH_MENU_Y_OFFSET
+  }
+
+  const maxX = Math.max(MENU_SAFE_PADDING, viewportWidth.value - MENU_SAFE_PADDING)
+  const maxY = Math.max(MENU_SAFE_PADDING, viewportHeight.value - MENU_SAFE_PADDING)
+
+  x = clamp(x, MENU_SAFE_PADDING, maxX)
+  y = clamp(y, MENU_SAFE_PADDING, maxY)
+
+  return { x, y }
+})
+
+const contextMenuTriggerStyle = computed<CSSProperties>(() => ({
+  position: 'fixed',
+  left: `${correctedContextMenuPoint.value.x}px`,
+  top: `${correctedContextMenuPoint.value.y}px`,
+  width: '1px',
+  height: '1px',
+  pointerEvents: 'none',
+  opacity: 0,
+}))
 
 function getControlKeyName(key: 'orbitRotate' | 'flightLook') {
   const binding = settingsStore.settings.inputBindings.camera[key]
@@ -174,17 +217,7 @@ function handleViewInfoClick() {
   <DropdownMenu v-model:open="contextMenuOpen" :modal="false">
     <!-- 虚拟触发器：不可见但存在于 DOM 中，动态定位到鼠标位置 -->
     <DropdownMenuTrigger as-child>
-      <div
-        :style="{
-          position: 'fixed',
-          left: `${contextMenu.x}px`,
-          top: `${contextMenu.y}px`,
-          width: '1px',
-          height: '1px',
-          pointerEvents: 'none',
-          opacity: 0,
-        }"
-      />
+      <div :style="contextMenuTriggerStyle" />
     </DropdownMenuTrigger>
 
     <!-- 菜单内容 -->
@@ -193,6 +226,11 @@ function handleViewInfoClick() {
       :align="'start'"
       :side-offset="0"
       :align-offset="0"
+      :prioritize-position="isCoarsePointer"
+      :sticky="isCoarsePointer ? 'always' : 'partial'"
+      :collision-padding="isCoarsePointer ? contextMenuCollisionPadding : 0"
+      :update-position-strategy="isCoarsePointer ? 'always' : 'optimized'"
+      @contextmenu.prevent.stop
       @escape-key-down="contextMenuOpen = false"
       @pointer-down-outside="contextMenuOpen = false"
     >
