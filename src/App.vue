@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useTabStore } from './stores/tabStore'
+import { useI18n } from './composables/useI18n'
 import Toolbar from './components/Toolbar.vue'
 import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
@@ -13,6 +15,7 @@ import CoordinateDialog from './components/CoordinateDialog.vue'
 import DocsViewer from './components/DocsViewer.vue'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
+import { Button } from '@/components/ui/button'
 import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
@@ -22,11 +25,14 @@ const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
+const { t } = useI18n()
 const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorkspaceWorker()
 
 // 导入 commandStore 用于全局命令状态
 import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
+const isNarrowViewport = useMediaQuery('(max-width: 767px)')
+const isRotateHintDismissed = ref(false)
 
 const applyTheme = () => {
   const theme = settingsStore.settings.theme
@@ -51,6 +57,18 @@ useKeyboardShortcuts({
 })
 
 const isAppReady = ref(false)
+const shouldShowRotateMask = computed(
+  () =>
+    isAppReady.value &&
+    !isRotateHintDismissed.value &&
+    isNarrowViewport.value &&
+    tabStore.activeTab?.type === 'scheme' &&
+    !!editorStore.activeScheme
+)
+
+function dismissRotateMaskForSession() {
+  isRotateHintDismissed.value = true
+}
 
 // 初始化
 onMounted(async () => {
@@ -128,6 +146,28 @@ onMounted(async () => {
 
       <!-- 底部状态栏 -->
       <StatusBar />
+    </div>
+
+    <!-- 窄屏提示遮罩 -->
+    <div
+      v-if="shouldShowRotateMask"
+      class="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-6"
+    >
+      <div
+        class="w-full max-w-sm rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg"
+      >
+        <p class="text-center text-sm leading-6 text-muted-foreground">
+          {{ t('welcome.rotateMask.message') }}
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          class="mt-4 w-full"
+          @click="dismissRotateMaskForSession"
+        >
+          {{ t('welcome.rotateMask.dismiss') }}
+        </Button>
+      </div>
     </div>
   </TooltipProvider>
 

@@ -43,6 +43,10 @@ export const zhLocale = {
       title: '仅支持电脑端',
       desc: '本工具用于编辑本地游戏文件',
     },
+    rotateMask: {
+      message: '为获得更好体验，请横屏使用。',
+      dismiss: '不再提示',
+    },
     selectGameDir: '选择游戏目录',
     selectGameDirDesc: '自动检测建造数据更新',
     importData: '导入建造数据',

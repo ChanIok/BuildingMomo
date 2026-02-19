@@ -43,6 +43,10 @@ export const enLocale = {
       title: 'Desktop Only',
       desc: 'This tool is for editing local game files',
     },
+    rotateMask: {
+      message: 'For a better experience, please use landscape mode.',
+      dismiss: "Don't show again",
+    },
     selectGameDir: 'Link Game Folder',
     selectGameDirDesc: 'Auto-sync game data',
     importData: 'Import Data File',
