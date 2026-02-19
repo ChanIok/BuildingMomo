@@ -55,6 +55,9 @@ export const useUIStore = defineStore('ui', () => {
   // 底部状态栏折叠状态（仅影响布局，不持久化）
   const statusBarCollapsed = ref(false)
 
+  // 右侧边栏折叠状态（仅影响布局，不持久化）
+  const sidebarCollapsed = ref(false)
+
   // Gizmo 空间模式：代理到 settingsStore，自动持久化
   const gizmoSpace = computed({
     get: () => settingsStore.settings.gizmoSpace,
@@ -167,6 +170,16 @@ export const useUIStore = defineStore('ui', () => {
 
   function toggleStatusBar() {
     statusBarCollapsed.value = !statusBarCollapsed.value
+  }
+
+  // ========== 侧边栏管理 ==========
+
+  function setSidebarCollapsed(collapsed: boolean) {
+    sidebarCollapsed.value = collapsed
+  }
+
+  function toggleSidebar() {
+    sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
   // ========== 数据空间 <-> 工作坐标系 便捷 API ==========
@@ -365,6 +378,7 @@ export const useUIStore = defineStore('ui', () => {
     alignReferenceItemId,
     alignReferencePosition,
     statusBarCollapsed,
+    sidebarCollapsed,
 
     // 视图模式
     toggleViewMode,
@@ -381,6 +395,10 @@ export const useUIStore = defineStore('ui', () => {
     // 状态栏
     setStatusBarCollapsed,
     toggleStatusBar,
+
+    // 侧边栏
+    setSidebarCollapsed,
+    toggleSidebar,
 
     // 工作坐标系
     setWorkingCoordinateSystem,

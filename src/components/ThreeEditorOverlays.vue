@@ -13,7 +13,7 @@ import { useI18n } from '@/composables/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
-import { PanelBottomClose, PanelBottomOpen } from 'lucide-vue-next'
+import { PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next'
 import LoadingProgress from './LoadingProgress.vue'
 import CanvasToolbar from './CanvasToolbar.vue'
 import FurnitureLibrary from './FurnitureLibrary.vue'
@@ -92,7 +92,8 @@ const settingsStore = useSettingsStore()
 
 // 移动端（粗指针）仅显示“xx模式”，不显示操作提示
 const isCoarsePointer = useMediaQuery('(pointer: coarse)')
-const isCompactViewport = useMediaQuery('(max-height: 600px)')
+const isCompactViewport = useMediaQuery('(max-height: 768px)')
+const isNarrowWidth = useMediaQuery('(max-width: 1024px)')
 const { width: viewportWidth, height: viewportHeight } = useWindowSize()
 
 const MENU_SAFE_PADDING = 8
@@ -128,6 +129,9 @@ const correctedContextMenuPoint = computed(() => {
 })
 
 const showStatusBarToggle = computed(() => isCompactViewport.value)
+const showSidebarToggle = computed(
+  () => isNarrowWidth.value || isCoarsePointer.value || uiStore.sidebarCollapsed
+)
 
 const contextMenuTriggerStyle = computed<CSSProperties>(() => ({
   position: 'fixed',
@@ -153,57 +157,72 @@ function handleViewInfoClick() {
 <template>
   <!-- 右上角状态信息组（禁止选中文本，避免拖拽/点击时误选） -->
   <div class="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 select-none">
-    <!-- 视图信息 -->
-    <div
-      class="flex items-baseline rounded-md border bg-background/90 px-3 py-2 text-xs shadow-xs backdrop-blur-sm"
-    >
-      <div class="flex items-baseline gap-2">
-        <div
-          class="font-medium transition-colors"
-          :class="{
-            'cursor-pointer hover:text-primary': !viewInfo.isOrthographic && !isCoarsePointer,
-            'cursor-default': viewInfo.isOrthographic || isCoarsePointer,
-          }"
-          @click.stop="handleViewInfoClick"
-        >
-          <template v-if="viewInfo.isOrthographic">
-            {{ t('editor.viewMode.orthographic') }}
-          </template>
-          <template v-else>
-            {{
-              viewInfo.controlMode === 'flight'
-                ? t('editor.viewMode.flight')
-                : t('editor.viewMode.orbit')
-            }}
-            <span v-if="!isCoarsePointer" class="ml-1 text-[10px]"
-              >· {{ t('editor.controls.tabSwitch') }}</span
-            >
-          </template>
-        </div>
-        <div v-if="!isCoarsePointer" class="text-[10px] text-muted-foreground">
-          <template v-if="viewInfo.isOrthographic">
-            {{
-              t('editor.controls.ortho', {
-                pan: getControlKeyName('orbitRotate'),
-              })
-            }}
-          </template>
-          <template v-else-if="viewInfo.controlMode === 'orbit'">
-            {{
-              t('editor.controls.orbit', {
-                rotate: getControlKeyName('orbitRotate'),
-              })
-            }}
-          </template>
-          <template v-else>
-            {{
-              t('editor.controls.flight', {
-                look: getControlKeyName('flightLook'),
-              })
-            }}
-          </template>
+    <!-- 视图信息和侧边栏控制按钮（同一行） -->
+    <div class="flex items-center gap-2">
+      <!-- 视图信息 -->
+      <div
+        class="flex items-baseline rounded-md border bg-background/90 px-3 py-2 text-xs shadow-xs backdrop-blur-sm"
+      >
+        <div class="flex items-baseline gap-2">
+          <div
+            class="font-medium transition-colors"
+            :class="{
+              'cursor-pointer hover:text-primary': !viewInfo.isOrthographic && !isCoarsePointer,
+              'cursor-default': viewInfo.isOrthographic || isCoarsePointer,
+            }"
+            @click.stop="handleViewInfoClick"
+          >
+            <template v-if="viewInfo.isOrthographic">
+              {{ t('editor.viewMode.orthographic') }}
+            </template>
+            <template v-else>
+              {{
+                viewInfo.controlMode === 'flight'
+                  ? t('editor.viewMode.flight')
+                  : t('editor.viewMode.orbit')
+              }}
+              <span v-if="!isCoarsePointer" class="ml-1 text-[10px]"
+                >· {{ t('editor.controls.tabSwitch') }}</span
+              >
+            </template>
+          </div>
+          <div v-if="!isCoarsePointer" class="text-[10px] text-muted-foreground">
+            <template v-if="viewInfo.isOrthographic">
+              {{
+                t('editor.controls.ortho', {
+                  pan: getControlKeyName('orbitRotate'),
+                })
+              }}
+            </template>
+            <template v-else-if="viewInfo.controlMode === 'orbit'">
+              {{
+                t('editor.controls.orbit', {
+                  rotate: getControlKeyName('orbitRotate'),
+                })
+              }}
+            </template>
+            <template v-else>
+              {{
+                t('editor.controls.flight', {
+                  look: getControlKeyName('flightLook'),
+                })
+              }}
+            </template>
+          </div>
         </div>
       </div>
+
+      <!-- 侧边栏折叠切换（宽度≤640px或移动端时显示） -->
+      <button
+        v-if="showSidebarToggle"
+        type="button"
+        class="flex h-8 w-8 items-center justify-center rounded-md border bg-background/90 text-xs shadow-xs backdrop-blur-sm hover:bg-accent"
+        @click.stop="uiStore.toggleSidebar()"
+      >
+        <!-- 侧边栏展开时显示"关闭右侧面板"图标，折叠时显示"打开右侧面板"图标 -->
+        <PanelRightClose v-if="!uiStore.sidebarCollapsed" class="h-4 w-4" />
+        <PanelRightOpen v-else class="h-4 w-4" />
+      </button>
     </div>
 
     <!-- 加载进度显示（右上角） -->

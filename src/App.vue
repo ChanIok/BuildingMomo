@@ -35,6 +35,7 @@ import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
 const isNarrowViewport = useMediaQuery('(max-width: 767px)')
 const isCompactViewport = useMediaQuery('(max-height: 600px)')
+const isNarrowWidth = useMediaQuery('(max-width: 640px)')
 const isRotateHintDismissed = ref(false)
 
 const applyTheme = () => {
@@ -63,6 +64,21 @@ watch(
     }
     if (!compact) {
       uiStore.setStatusBarCollapsed(false)
+    }
+  },
+  { immediate: true }
+)
+
+// 视口宽度≤640px时自动折叠侧边栏，恢复宽度时展开
+watch(
+  isNarrowWidth,
+  (narrow, prevNarrow) => {
+    if (narrow && !prevNarrow) {
+      uiStore.setSidebarCollapsed(true)
+      return
+    }
+    if (!narrow) {
+      uiStore.setSidebarCollapsed(false)
     }
   },
   { immediate: true }
@@ -157,8 +173,13 @@ onMounted(async () => {
             </template>
           </div>
 
-          <!-- 右侧边栏：仅方案类型显示 -->
-          <div v-if="tabStore.activeTab?.type === 'scheme'" class="h-full"><Sidebar /></div>
+          <!-- 右侧边栏：仅方案类型显示，且未折叠时显示 -->
+          <div
+            v-if="tabStore.activeTab?.type === 'scheme' && !uiStore.sidebarCollapsed"
+            class="h-full"
+          >
+            <Sidebar />
+          </div>
         </div>
       </div>
 
