@@ -39,6 +39,7 @@ import {
   CopyPlus,
   Undo2,
   Redo2,
+  Focus,
 } from 'lucide-vue-next'
 import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
@@ -168,6 +169,12 @@ function handleCommand(commandId: string) {
   }
 
   commandStore.executeCommand(commandId)
+}
+
+// 粗指针（触屏）按钮点击时触发短震动再执行命令
+function handleCommandWithHaptic(commandId: string) {
+  navigator.vibrate?.(10)
+  handleCommand(commandId)
 }
 
 // 检查命令是否可用
@@ -746,18 +753,33 @@ watch(
       <ScrollBar orientation="horizontal" class="h-1.5" />
     </ScrollArea>
 
-    <!-- 右侧：粗指针时显示复制并粘贴/撤销/重做，否则显示监控状态 + 设置按钮 -->
+    <!-- 右侧：粗指针时显示聚焦选中/复制并粘贴/撤销/重做，否则显示监控状态 + 设置按钮 -->
     <div class="ml-auto flex flex-none items-center gap-2">
-      <!-- 粗指针（触屏）：复制并粘贴、撤销、重做 -->
-      <template v-if="isCoarsePointer">
+      <!-- 粗指针（触屏）：聚焦选中、复制并粘贴、撤销、重做 -->
+      <template v-if="isCoarsePointer && editorStore.activeScheme">
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
               variant="outline"
               size="sm"
-              class="h-8 w-12 p-0"
+              class="h-8 w-11 p-0"
+              :disabled="!isEnabled('view.focusSelection')"
+              @click="handleCommandWithHaptic('view.focusSelection')"
+              :aria-label="t('command.view.focusSelection')"
+            >
+              <Focus class="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent :side-offset="-6">{{ t('command.view.focusSelection') }}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 w-11 p-0"
               :disabled="!isEnabled('edit.duplicate')"
-              @click="handleCommand('edit.duplicate')"
+              @click="handleCommandWithHaptic('edit.duplicate')"
               :aria-label="t('command.edit.duplicate')"
             >
               <CopyPlus class="h-4 w-4" />
@@ -770,9 +792,9 @@ watch(
             <Button
               variant="outline"
               size="sm"
-              class="h-8 w-12 p-0"
+              class="h-8 w-11 p-0"
               :disabled="!isEnabled('edit.undo')"
-              @click="handleCommand('edit.undo')"
+              @click="handleCommandWithHaptic('edit.undo')"
               :aria-label="t('command.edit.undo')"
             >
               <Undo2 class="h-4 w-4" />
@@ -785,9 +807,9 @@ watch(
             <Button
               variant="outline"
               size="sm"
-              class="h-8 w-12 p-0"
+              class="h-8 w-11 p-0"
               :disabled="!isEnabled('edit.redo')"
-              @click="handleCommand('edit.redo')"
+              @click="handleCommandWithHaptic('edit.redo')"
               :aria-label="t('command.edit.redo')"
             >
               <Redo2 class="h-4 w-4" />
