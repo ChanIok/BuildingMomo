@@ -77,16 +77,16 @@ async function handleVerify() {
     <DialogContent class="p-0 md:max-w-2xl">
       <DialogTitle class="sr-only">{{ t('settings.title') }}</DialogTitle>
       <DialogDescription class="sr-only">{{ t('settings.title') }}</DialogDescription>
-      <!-- PC端：左右布局 -->
-      <div class="flex h-[480px]">
+      <!-- PC端：左右布局；高度上限 480px，横屏时不超过视口以显示滚动条 -->
+      <div class="flex h-[min(480px,calc(100vh-2rem))] min-h-0">
         <!-- 左侧菜单栏 -->
-        <nav class="hidden w-40 shrink-0 flex-col border-r md:flex">
+        <nav class="hidden min-h-0 w-40 shrink-0 flex-col border-r md:flex">
           <!-- 标题区 -->
           <div class="px-6 pt-6">
             <h2 class="text-base">{{ t('settings.title') }}</h2>
           </div>
 
-          <ScrollArea class="flex-1">
+          <ScrollArea class="min-h-0 flex-1">
             <ul class="space-y-1 p-3">
               <li v-for="item in menuItems" :key="item.id">
                 <button
@@ -108,7 +108,7 @@ async function handleVerify() {
         </nav>
 
         <!-- 右侧内容区 -->
-        <ScrollArea class="min-w-0 flex-1">
+        <ScrollArea class="min-h-0 min-w-0 flex-1">
           <div class="p-6">
             <!-- 通用设置 -->
             <div v-show="activeSection === 'general'" class="space-y-6">

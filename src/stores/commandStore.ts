@@ -321,7 +321,8 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.undo'),
       shortcut: 'Ctrl+Z',
       category: 'edit',
-      enabled: () => canUndo(),
+      // 依赖 historyVersion，使 undo/redo 后（triggerHistoryUpdate）按钮 enabled 能重新计算
+      enabled: () => (void editorStore.historyVersion, canUndo()),
       execute: () => {
         console.log('[Command] 撤销')
         undo()
@@ -332,7 +333,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.redo'),
       shortcut: 'Ctrl+Y',
       category: 'edit',
-      enabled: () => canRedo(),
+      enabled: () => (void editorStore.historyVersion, canRedo()),
       execute: () => {
         console.log('[Command] 重做')
         redo()

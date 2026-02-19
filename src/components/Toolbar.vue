@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, onMounted, watch, onUnmounted } from 'vue'
-import { useEventListener } from '@vueuse/core'
+import { useEventListener, useMediaQuery } from '@vueuse/core'
 import {
   Menubar,
   MenubarContent,
@@ -29,7 +29,17 @@ import { useEditorStore } from '../stores/editorStore'
 import { useTabStore } from '../stores/tabStore'
 import { useI18n } from '../composables/useI18n'
 import { Item, ItemContent } from '@/components/ui/item'
-import { X, Settings, BookOpen, FolderSearch, Download, Trash2 } from 'lucide-vue-next'
+import {
+  X,
+  Settings,
+  BookOpen,
+  FolderSearch,
+  Download,
+  Trash2,
+  CopyPlus,
+  Undo2,
+  Redo2,
+} from 'lucide-vue-next'
 import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 import ImportCodeDialog from './ImportCodeDialog.vue'
@@ -41,6 +51,9 @@ const editorStore = useEditorStore()
 const tabStore = useTabStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
+
+// 粗指针（触屏等）：右侧显示复制并粘贴 / 撤销 / 重做，不显示选择游戏目录与监控
+const isCoarsePointer = useMediaQuery('(pointer: coarse)')
 
 // 按分类获取命令（添加过滤）
 const fileCommands = computed(() => {
@@ -733,10 +746,59 @@ watch(
       <ScrollBar orientation="horizontal" class="h-1.5" />
     </ScrollArea>
 
-    <!-- 右侧：监控状态 + 设置按钮（始终固定在最右边） -->
+    <!-- 右侧：粗指针时显示复制并粘贴/撤销/重做，否则显示监控状态 + 设置按钮 -->
     <div class="ml-auto flex flex-none items-center gap-2">
-      <!-- 监控状态指示器 -->
-      <template v-if="showWatchButton">
+      <!-- 粗指针（触屏）：复制并粘贴、撤销、重做 -->
+      <template v-if="isCoarsePointer">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 w-12 p-0"
+              :disabled="!isEnabled('edit.duplicate')"
+              @click="handleCommand('edit.duplicate')"
+              :aria-label="t('command.edit.duplicate')"
+            >
+              <CopyPlus class="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent :side-offset="-6">{{ t('command.edit.duplicate') }}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 w-12 p-0"
+              :disabled="!isEnabled('edit.undo')"
+              @click="handleCommand('edit.undo')"
+              :aria-label="t('command.edit.undo')"
+            >
+              <Undo2 class="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent :side-offset="-6">{{ t('command.edit.undo') }}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-8 w-12 p-0"
+              :disabled="!isEnabled('edit.redo')"
+              @click="handleCommand('edit.redo')"
+              :aria-label="t('command.edit.redo')"
+            >
+              <Redo2 class="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent :side-offset="-6">{{ t('command.edit.redo') }}</TooltipContent>
+        </Tooltip>
+      </template>
+
+      <!-- 非粗指针：监控状态指示器 -->
+      <template v-else-if="showWatchButton">
         <!-- 未监控状态：提示选择游戏目录 -->
         <Tooltip v-if="!watchState.isActive">
           <TooltipTrigger as-child>

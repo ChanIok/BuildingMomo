@@ -82,6 +82,7 @@ export interface CameraControllerResult {
   handleNavPointerMove: (evt: PointerEvent) => void
   handleNavPointerUp: (evt: PointerEvent) => void
   handleFlightWheel: (deltaY: number) => void
+  handleFlightPinch: (deltaDistance: number) => void
   setPoseFromLookAt: (position: Vec3, target: Vec3) => void
   lookAtTarget: (target: Vec3) => void
   toggleCameraMode: () => void
@@ -559,24 +560,14 @@ export function useThreeCamera(
     }
   }
 
-  // Flight 模式下的滚轮前进/后退
-  function handleFlightWheel(deltaY: number) {
-    if (controlMode.value !== 'flight') return
-    if (!isViewFocused.value || deps.isTransformDragging?.value) return
-
+  function moveFlightAlongForward(distance: number) {
     // 获取移动向量（尊重 lockHorizontalMovement 设置）
     const { forward } = getMovementVectors(settingsStore.settings.cameraLockHorizontalMovement)
 
-    // 方向：deltaY > 0 (向下滚) = 后退, deltaY < 0 (向上滚) = 前进
-    const direction = deltaY > 0 ? -1 : 1
-
-    // 固定步长 × 滚轮速度设置
-    const stepDistance = 200 * settingsStore.settings.cameraZoomSpeed
-
     const newPos: Vec3 = [
-      state.value.position[0] + forward[0] * stepDistance * direction,
-      state.value.position[1] + forward[1] * stepDistance * direction,
-      state.value.position[2] + forward[2] * stepDistance * direction,
+      state.value.position[0] + forward[0] * distance,
+      state.value.position[1] + forward[1] * distance,
+      state.value.position[2] + forward[2] * distance,
     ]
 
     // 高度限制 (Z axis)
@@ -586,6 +577,33 @@ export function useThreeCamera(
 
     state.value.position = newPos
     updateLookAtFromYawPitch()
+  }
+
+  // Flight 模式下的滚轮前进/后退
+  function handleFlightWheel(deltaY: number) {
+    if (controlMode.value !== 'flight') return
+    if (!isViewFocused.value || deps.isTransformDragging?.value) return
+
+    // 方向：deltaY > 0 (向下滚) = 后退, deltaY < 0 (向上滚) = 前进
+    const direction = deltaY > 0 ? -1 : 1
+
+    // 固定步长 × 滚轮速度设置
+    const stepDistance = 200 * settingsStore.settings.cameraZoomSpeed
+
+    moveFlightAlongForward(stepDistance * direction)
+  }
+
+  // Flight 模式下的双指 pinch 前进/后退
+  function handleFlightPinch(deltaDistance: number) {
+    if (controlMode.value !== 'flight') return
+    if (!isViewFocused.value || deps.isTransformDragging?.value) return
+    if (Math.abs(deltaDistance) < 0.5) return
+
+    // 双指间距增大（delta > 0）= 前进；间距减小（delta < 0）= 后退
+    // 跟随“移动基础速度”设置，而非缩放速度，保证触摸前进/后退与飞行移动手感一致
+    const pinchScaleByBaseSpeed = 0.01
+    const moveDistance = deltaDistance * baseSpeed.value * pinchScaleByBaseSpeed
+    moveFlightAlongForward(moveDistance)
   }
 
   // ============================================================
@@ -973,6 +991,7 @@ export function useThreeCamera(
     handleNavPointerMove,
     handleNavPointerUp,
     handleFlightWheel,
+    handleFlightPinch,
 
     // 命令
     setPoseFromLookAt,

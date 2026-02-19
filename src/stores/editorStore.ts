@@ -91,6 +91,8 @@ export const useEditorStore = defineStore('editor', () => {
   const sceneVersion = ref(0)
   // 选择状态版本号，用于低开销监听选中变化
   const selectionVersion = ref(0)
+  // 历史栈版本号：undo/redo 会原地修改 history.value，用此版本号驱动撤销/重做按钮的 enabled 更新
+  const historyVersion = ref(0)
 
   // 手动触发更新的方法
   function triggerSceneUpdate() {
@@ -104,6 +106,12 @@ export const useEditorStore = defineStore('editor', () => {
     if (activeScheme.value) {
       triggerRef(activeScheme.value.selectedItemIds)
       selectionVersion.value++
+    }
+  }
+
+  function triggerHistoryUpdate() {
+    if (activeScheme.value) {
+      historyVersion.value++
     }
   }
 
@@ -452,8 +460,10 @@ export const useEditorStore = defineStore('editor', () => {
     // 手动触发更新 (Crucial for ShallowRef pattern)
     sceneVersion,
     selectionVersion,
+    historyVersion,
     triggerSceneUpdate,
     triggerSelectionUpdate,
+    triggerHistoryUpdate,
 
     // 组合工具函数
     getGroupIdIfEntireGroupSelected,

@@ -184,6 +184,7 @@ const {
   handleNavPointerMove,
   handleNavPointerUp,
   handleFlightWheel,
+  handleFlightPinch,
   setPoseFromLookAt,
   setZoom,
   toggleCameraMode,
@@ -266,14 +267,20 @@ const activePointerRoute = ref<{
 
 // 当前处于按下状态的触摸 pointer（用于识别单指/双指手势）
 const activeTouchPointerIds = ref(new Set<number>())
+const activeTouchPointerPositions = ref(new Map<number, { x: number; y: number }>())
 const isMultiTouchActive = computed(() => activeTouchPointerIds.value.size >= 2)
 
 const ORBIT_TOUCH_NONE = -1
 
-// 框选会话期间临时禁用 OrbitControls（含 touch），避免框选与相机同时响应
+// 框选会话期间临时禁用 OrbitControls。
+// 触摸设备下需要保持启用，确保第一指能被 OrbitControls 跟踪，
+// 否则第二指加入时无法正确进入双指缩放（DOLLY_PAN）。
 const orbitControlsEnabled = computed(() => {
   const session = activePointerRoute.value
-  return session.route !== 'selection'
+  if (session.route === 'selection' && session.pointerType !== 'touch') {
+    return false
+  }
+  return true
 })
 
 // 旋转开关：保持桌面原逻辑，是否可旋转由视图类型决定
@@ -281,13 +288,9 @@ const orbitEnableRotate = computed(() => {
   return !isOrthographic.value
 })
 
-// 平移开关：正交始终允许；透视下仅在双指触摸时为选择工具临时开启
+// 平移开关：仅正交视图允许平移；透视 Orbit 模式完全禁用平移
 const orbitEnablePan = computed(() => {
-  if (isOrthographic.value) return true
-  if (cameraInput.currentTool.value !== 'hand' && isMultiTouchActive.value) {
-    return true
-  }
-  return false
+  return isOrthographic.value
 })
 
 // 触摸手势：默认单指用于选择；双指用于缩放/平移；手形工具保留单指相机操作
@@ -299,8 +302,13 @@ const orbitTouches = computed(() => {
     return { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN }
   }
 
-  // 选择工具：禁用单指相机手势，保留双指缩放/平移
-  return { ONE: ORBIT_TOUCH_NONE, TWO: TOUCH.DOLLY_PAN }
+  // 选择工具：
+  // - 正交视图：双指缩放+平移
+  // - 透视视图：双指缩放+旋转（禁用平移）
+  if (cameraInput.isOrthographic.value) {
+    return { ONE: ORBIT_TOUCH_NONE, TWO: TOUCH.DOLLY_PAN }
+  }
+  return { ONE: ORBIT_TOUCH_NONE, TWO: TOUCH.DOLLY_ROTATE }
 })
 
 // 当前活动的相机（根据视图类型动态切换）
@@ -543,8 +551,10 @@ function handleContainerWheel(evt: WheelEvent) {
 // 右键菜单状态
 const contextMenuState = ref({ open: false, x: 0, y: 0 })
 const TOUCH_LONG_PRESS_MS = 380
-const TOUCH_LONG_PRESS_SLOP = 10
+const TOUCH_LONG_PRESS_SLOP = 5
+const TOUCH_CONTEXTMENU_SUPPRESS_MS = 320
 const ignoreNextNativeContextMenu = ref(false)
+const suppressTouchContextMenuUntil = ref(0)
 const touchLongPressState = ref<{
   pointerId: number | null
   startX: number
@@ -567,6 +577,17 @@ const rightClickState = ref<{
 } | null>(null)
 
 const DRAG_THRESHOLD = 5 // px
+
+function suppressTouchContextMenu(durationMs = TOUCH_CONTEXTMENU_SUPPRESS_MS) {
+  suppressTouchContextMenuUntil.value = Math.max(
+    suppressTouchContextMenuUntil.value,
+    Date.now() + durationMs
+  )
+}
+
+function isTouchContextMenuSuppressed() {
+  return Date.now() <= suppressTouchContextMenuUntil.value
+}
 
 function clearTouchLongPressTimer() {
   const timer = touchLongPressState.value.timer
@@ -648,16 +669,47 @@ function updateTouchLongPressGuard(evt: PointerEvent) {
 function registerTouchPointer(evt: PointerEvent) {
   if (evt.pointerType !== 'touch') return
   activeTouchPointerIds.value.add(evt.pointerId)
+  activeTouchPointerPositions.value.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
 }
 
 function unregisterTouchPointer(evt: PointerEvent) {
   if (evt.pointerType !== 'touch') return
   activeTouchPointerIds.value.delete(evt.pointerId)
+  activeTouchPointerPositions.value.delete(evt.pointerId)
 }
 
 function clearTouchPointers() {
   activeTouchPointerIds.value.clear()
+  activeTouchPointerPositions.value.clear()
   stopTouchLongPressGuard()
+}
+
+function updateTouchPointerPosition(evt: PointerEvent) {
+  if (evt.pointerType !== 'touch') return
+  activeTouchPointerPositions.value.set(evt.pointerId, { x: evt.clientX, y: evt.clientY })
+}
+
+function getFlightPinchDelta(evt: PointerEvent): number | null {
+  if (evt.pointerType !== 'touch') return null
+  if (controlMode.value !== 'flight') return null
+  if (activeTouchPointerIds.value.size < 2) return null
+
+  const prevCurrent = activeTouchPointerPositions.value.get(evt.pointerId)
+  if (!prevCurrent) return null
+
+  const activeIds = Array.from(activeTouchPointerIds.value)
+  const otherPointerId = activeIds.find((id) => id !== evt.pointerId)
+  if (otherPointerId === undefined) return null
+
+  const otherPos = activeTouchPointerPositions.value.get(otherPointerId)
+  if (!otherPos) return null
+
+  const prevDistance = Math.hypot(prevCurrent.x - otherPos.x, prevCurrent.y - otherPos.y)
+  const nextCurrent = { x: evt.clientX, y: evt.clientY }
+  const nextDistance = Math.hypot(nextCurrent.x - otherPos.x, nextCurrent.y - otherPos.y)
+
+  activeTouchPointerPositions.value.set(evt.pointerId, nextCurrent)
+  return nextDistance - prevDistance
 }
 
 function startPointerRoute(evt: PointerEvent, route: PointerRoute) {
@@ -765,9 +817,12 @@ function handleContainerPointerDown(evt: PointerEvent) {
 
   // 触摸交互：双指出现时强制切换到导航，避免框选与相机手势冲突
   if (evt.pointerType === 'touch' && isMultiTouchActive.value) {
+    // 双指手势期间禁止触摸右键菜单，并取消任意已启动的长按候选
+    suppressTouchContextMenu()
+    stopTouchLongPressGuard()
+
     if (session.route === 'selection') {
       cancelSelectionSession()
-      stopTouchLongPressGuard(session.pointerId ?? undefined)
       clearPointerRoute()
     }
 
@@ -817,6 +872,7 @@ function handleContainerPointerMove(evt: PointerEvent) {
   if (session.route === 'selection') {
     // 仅由发起该会话的 pointer 驱动框选
     if (session.pointerId !== evt.pointerId) return
+    updateTouchPointerPosition(evt)
     handlePointerMove(evt)
     hideTooltip()
     return
@@ -825,12 +881,31 @@ function handleContainerPointerMove(evt: PointerEvent) {
   if (session.route === 'navigation') {
     // 触摸导航允许多个触点参与；鼠标/手写笔仅由发起 pointer 驱动
     if (session.pointerType !== 'touch' && session.pointerId !== evt.pointerId) return
+
+    // Flight + 双指：将 pinch 映射为前进/后退，不触发 look 拖拽
+    if (
+      session.pointerType === 'touch' &&
+      evt.pointerType === 'touch' &&
+      controlMode.value === 'flight' &&
+      activeTouchPointerIds.value.size >= 2
+    ) {
+      suppressTouchContextMenu()
+      const pinchDelta = getFlightPinchDelta(evt)
+      if (pinchDelta !== null) {
+        handleFlightPinch(pinchDelta)
+      }
+      hideTooltip()
+      return
+    }
+
+    updateTouchPointerPosition(evt)
     handleNavPointerMove(evt)
     hideTooltip()
     return
   }
 
   // 无会话时走 hover/预选路径
+  updateTouchPointerPosition(evt)
   handlePointerMoveWithTooltip(evt)
 }
 
@@ -914,6 +989,12 @@ function handleContainerPointerLeave() {
 function handleNativeContextMenu(evt: MouseEvent) {
   evt.preventDefault()
   evt.stopPropagation()
+
+  // 触摸双指手势期间或刚结束时，抑制右键菜单误触发
+  if (activeTouchPointerIds.value.size >= 2 || isTouchContextMenuSuppressed()) {
+    rightClickState.value = null
+    return
+  }
 
   if (ignoreNextNativeContextMenu.value) {
     ignoreNextNativeContextMenu.value = false

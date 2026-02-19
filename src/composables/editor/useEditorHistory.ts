@@ -88,6 +88,7 @@ export function useEditorHistory() {
 
     // 清空重做栈（新操作会使重做历史失效）
     history.redoStack = []
+    store.triggerHistoryUpdate()
   }
 
   // 撤销操作
@@ -126,6 +127,7 @@ export function useEditorHistory() {
       activeScheme.value.selectedItemIds.value = cloneSelection(snapshot.selectedItemIds)
     }
     store.triggerSelectionUpdate()
+    store.triggerHistoryUpdate()
 
     console.log(`[History] 撤销操作 (类型: ${snapshot.type})`)
   }
@@ -163,6 +165,7 @@ export function useEditorHistory() {
       activeScheme.value.selectedItemIds.value = cloneSelection(snapshot.selectedItemIds)
     }
     store.triggerSelectionUpdate()
+    store.triggerHistoryUpdate()
 
     console.log('[History] 重做操作')
   }
