@@ -127,7 +127,7 @@ const correctedContextMenuPoint = computed(() => {
   return { x, y }
 })
 
-const showStatusBarToggle = computed(() => isCoarsePointer.value && isCompactViewport.value)
+const showStatusBarToggle = computed(() => isCompactViewport.value)
 
 const contextMenuTriggerStyle = computed<CSSProperties>(() => ({
   position: 'fixed',
@@ -215,7 +215,7 @@ function handleViewInfoClick() {
     <CanvasToolbar />
   </div>
 
-  <!-- 状态栏折叠切换（右下角，仅移动端紧凑视口） -->
+  <!-- 状态栏折叠切换（右下角，紧凑视口高度≤600px） -->
   <div v-if="showStatusBarToggle" class="absolute right-4 bottom-4 z-20">
     <button
       type="button"
