@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
@@ -11,11 +11,11 @@ import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
 import ThreeEditor from './components/ThreeEditor.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
+import RotateHintDialog from './components/RotateHintDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
 import DocsViewer from './components/DocsViewer.vue'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
-import { Button } from '@/components/ui/button'
 import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
@@ -34,9 +34,11 @@ const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorksp
 import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
 const isNarrowViewport = useMediaQuery('(max-width: 767px)')
+const isPortraitViewport = useMediaQuery('(orientation: portrait)')
 const isCompactViewport = useMediaQuery('(max-height: 600px)')
 const isNarrowWidth = useMediaQuery('(max-width: 640px)')
 const isRotateHintDismissed = ref(false)
+const hasEnteredFullscreen = ref(false)
 
 const applyTheme = () => {
   const theme = settingsStore.settings.theme
@@ -95,7 +97,9 @@ const shouldShowRotateMask = computed(
   () =>
     isAppReady.value &&
     !isRotateHintDismissed.value &&
+    !hasEnteredFullscreen.value &&
     isNarrowViewport.value &&
+    isPortraitViewport.value &&
     tabStore.activeTab?.type === 'scheme' &&
     !!editorStore.activeScheme
 )
@@ -104,8 +108,29 @@ function dismissRotateMaskForSession() {
   isRotateHintDismissed.value = true
 }
 
+function handleRotateHintOpenChange(open: boolean) {
+  if (!open) {
+    dismissRotateMaskForSession()
+  }
+}
+
+function handleRotateHintToggleFullscreen() {
+  commandStore.executeCommand('view.toggleFullscreen')
+}
+
+function handleFullscreenChange() {
+  if (typeof document === 'undefined') return
+  if (document.fullscreenElement) {
+    hasEnteredFullscreen.value = true
+    dismissRotateMaskForSession()
+  }
+}
+
 // 初始化
 onMounted(async () => {
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
+  handleFullscreenChange()
+
   if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
     settingsStore.initializeAuth()
   }
@@ -132,6 +157,10 @@ onMounted(async () => {
   if (isWorkerActive.value) {
     startMonitoring()
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
 })
 </script>
 
@@ -187,27 +216,12 @@ onMounted(async () => {
       <StatusBar v-if="!uiStore.statusBarCollapsed" />
     </div>
 
-    <!-- 窄屏提示遮罩 -->
-    <div
-      v-if="shouldShowRotateMask"
-      class="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 p-6"
-    >
-      <div
-        class="w-full max-w-sm rounded-lg border border-border bg-card p-6 text-card-foreground shadow-lg"
-      >
-        <p class="text-center text-sm leading-6 text-muted-foreground">
-          {{ t('welcome.rotateMask.message') }}
-        </p>
-        <Button
-          type="button"
-          variant="secondary"
-          class="mt-4 w-full"
-          @click="dismissRotateMaskForSession"
-        >
-          {{ t('welcome.rotateMask.dismiss') }}
-        </Button>
-      </div>
-    </div>
+    <RotateHintDialog
+      :open="shouldShowRotateMask"
+      @update:open="handleRotateHintOpenChange"
+      @toggle-fullscreen="handleRotateHintToggleFullscreen"
+      @dismiss="dismissRotateMaskForSession"
+    />
   </TooltipProvider>
 
   <!-- 全局 Toast 通知 -->

@@ -44,7 +44,8 @@ export const zhLocale = {
       desc: '本工具用于编辑本地游戏文件',
     },
     rotateMask: {
-      message: '为获得更好体验，请横屏使用。',
+      title: '横屏提示',
+      message: '横屏体验更佳，可点击"切换全屏"尝试切换。',
       dismiss: '不再提示',
     },
     selectGameDir: '选择游戏目录',
@@ -238,6 +239,9 @@ export const zhLocale = {
       desc: '文件 {name} 已更新，最后修改时间：{time}。\n\n是否立即导入最新数据？',
       confirm: '立即导入',
       cancel: '稍后',
+    },
+    fullscreen: {
+      toggleFailed: '切换全屏失败，请检查浏览器权限或手动操作。',
     },
     success: '成功',
     error: '错误',

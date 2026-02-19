@@ -44,7 +44,9 @@ export const enLocale = {
       desc: 'This tool is for editing local game files',
     },
     rotateMask: {
-      message: 'For a better experience, please use landscape mode.',
+      title: 'Landscape Hint',
+      message:
+        'Landscape mode provides a better experience. Click "Toggle Fullscreen" to try switching.',
       dismiss: "Don't show again",
     },
     selectGameDir: 'Link Game Folder',
@@ -239,6 +241,10 @@ export const enLocale = {
       desc: 'File {name} updated at {time}.\n\nImport new data?',
       confirm: 'Import Now',
       cancel: 'Later',
+    },
+    fullscreen: {
+      toggleFailed:
+        'Failed to toggle fullscreen. Please check browser permissions or do it manually.',
     },
     success: 'Success',
     error: 'Error',

@@ -11,6 +11,7 @@ import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
+import { useNotification } from '../composables/useNotification'
 import { matrixTransform } from '../lib/matrixTransform'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
@@ -42,6 +43,7 @@ export const useCommandStore = defineStore('command', () => {
 
   const uiStore = useUIStore()
   const { t } = useI18n()
+  const notification = useNotification()
 
   // 视图函数引用（需要从外部设置）
   const fitToViewFn = ref<(() => void) | null>(null)
@@ -61,17 +63,53 @@ export const useCommandStore = defineStore('command', () => {
     )
   }
 
+  type OrientationApi = {
+    lock?: (orientation: string) => Promise<void>
+    unlock?: () => void
+  }
+
+  function getOrientationApi(): OrientationApi | null {
+    if (typeof screen === 'undefined') return null
+    const screenWithOrientation = screen as unknown as { orientation?: OrientationApi }
+    return screenWithOrientation.orientation ?? null
+  }
+
+  async function tryLockLandscapeOrientation() {
+    const orientationApi = getOrientationApi()
+    if (!orientationApi || typeof orientationApi.lock !== 'function') return
+    try {
+      await orientationApi.lock('landscape')
+    } catch (error) {
+      // 在不支持或系统拒绝时静默降级，不影响全屏行为
+      console.debug('[Command] Lock landscape orientation failed:', error)
+    }
+  }
+
+  function tryUnlockOrientation() {
+    const orientationApi = getOrientationApi()
+    if (!orientationApi || typeof orientationApi.unlock !== 'function') return
+    try {
+      orientationApi.unlock()
+    } catch (error) {
+      // 解锁失败同样不应影响退出全屏流程
+      console.debug('[Command] Unlock orientation failed:', error)
+    }
+  }
+
   async function toggleFullscreen() {
     if (typeof document === 'undefined' || !isFullscreenSupported()) return
 
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen()
+        tryUnlockOrientation()
       } else {
         await document.documentElement.requestFullscreen()
+        await tryLockLandscapeOrientation()
       }
     } catch (error) {
       console.warn('[Command] Toggle fullscreen failed:', error)
+      notification.error(t('notification.fullscreen.toggleFailed'))
     }
   }
 
