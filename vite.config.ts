@@ -138,10 +138,6 @@ export default defineConfig(() => {
             ) {
               return 'vue-vendor'
             }
-            // Konva 图形库
-            if (id.includes('node_modules/konva/') || id.includes('node_modules/vue-konva/')) {
-              return 'konva'
-            }
             // TresJS 核心和cientos
             if (
               id.includes('node_modules/@tresjs/core/') ||

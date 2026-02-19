@@ -643,6 +643,12 @@ function beginTouchLongPressGuard(evt: PointerEvent) {
       isPointerOverGizmo.value = false
     }
 
+    if (isTransformDragging.value || isPointerOverGizmo.value) {
+      suppressTouchContextMenu()
+      ignoreNextNativeContextMenu.value = true
+      return
+    }
+
     // 主动打开触摸长按菜单，避免依赖浏览器较慢的原生 contextmenu 时机
     contextMenuState.value = {
       open: true,
@@ -988,6 +994,11 @@ function handleContainerPointerLeave() {
 function handleNativeContextMenu(evt: MouseEvent) {
   evt.preventDefault()
   evt.stopPropagation()
+
+  if (isTransformDragging.value || isPointerOverGizmo.value) {
+    rightClickState.value = null
+    return
+  }
 
   // 触摸双指手势期间或刚结束时，抑制右键菜单误触发
   if (activeTouchPointerIds.value.size >= 2 || isTouchContextMenuSuppressed()) {
