@@ -16,9 +16,7 @@ const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
 
-const isCompactSidebar = useMediaQuery(
-  '(orientation: landscape) and (max-height: 620px) and (max-width: 1024px)'
-)
+const isCompactSidebar = useMediaQuery('(max-height: 700px)')
 const isHeaderCollapsed = ref(false)
 
 watch(
