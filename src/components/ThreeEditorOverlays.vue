@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,6 +87,9 @@ const contextMenuOpen = computed({
 
 const settingsStore = useSettingsStore()
 
+// 移动端（粗指针）仅显示“xx模式”，不显示操作提示
+const isCoarsePointer = useMediaQuery('(pointer: coarse)')
+
 function getControlKeyName(key: 'orbitRotate' | 'flightLook') {
   const binding = settingsStore.settings.inputBindings.camera[key]
   return t(`settings.inputBindings.keysShort.${binding}`)
@@ -108,8 +112,8 @@ function handleViewInfoClick() {
         <div
           class="font-medium transition-colors"
           :class="{
-            'cursor-pointer hover:text-primary': !viewInfo.isOrthographic,
-            'cursor-default': viewInfo.isOrthographic,
+            'cursor-pointer hover:text-primary': !viewInfo.isOrthographic && !isCoarsePointer,
+            'cursor-default': viewInfo.isOrthographic || isCoarsePointer,
           }"
           @click.stop="handleViewInfoClick"
         >
@@ -122,10 +126,12 @@ function handleViewInfoClick() {
                 ? t('editor.viewMode.flight')
                 : t('editor.viewMode.orbit')
             }}
-            <span class="ml-1 text-[10px]">· {{ t('editor.controls.tabSwitch') }}</span>
+            <span v-if="!isCoarsePointer" class="ml-1 text-[10px]"
+              >· {{ t('editor.controls.tabSwitch') }}</span
+            >
           </template>
         </div>
-        <div class="text-[10px] text-muted-foreground">
+        <div v-if="!isCoarsePointer" class="text-[10px] text-muted-foreground">
           <template v-if="viewInfo.isOrthographic">
             {{
               t('editor.controls.ortho', {

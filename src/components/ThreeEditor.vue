@@ -29,7 +29,13 @@ import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import { useThreeEnvironment } from '@/composables/useThreeEnvironment'
 import { setSceneInvalidate, invalidateScene } from '@/composables/useSceneInvalidate'
 import { useNearbyObjectsCheck } from '@/composables/useNearbyObjectsCheck'
-import { useMagicKeys, useElementSize, useResizeObserver, watchOnce } from '@vueuse/core'
+import {
+  useMagicKeys,
+  useElementSize,
+  useResizeObserver,
+  useMediaQuery,
+  watchOnce,
+} from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
 
 // 设置 Three.js 全局 Z 轴向上
@@ -73,6 +79,10 @@ const orbitControlsRef = ref<any | null>(null)
 const transformRef = ref()
 const axesRef = ref()
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
+
+// Gizmo 尺寸：粗指针（触屏）时放大，便于移动端操作
+const isCoarsePointer = useMediaQuery('(pointer: coarse)')
+const gizmoSize = computed(() => (isCoarsePointer.value ? 1.8 : 1))
 
 // 背景图管理（使用新的 composable）
 const {
@@ -1231,6 +1241,7 @@ onDeactivated(() => {
           :camera="activeCameraRef"
           :mode="editorStore.gizmoMode || 'translate'"
           :space="transformSpace"
+          :size="gizmoSize"
           :translationSnap="effectiveTranslationSnap"
           :rotationSnap="effectiveRotationSnap"
           @dragging="handleGizmoDragging"

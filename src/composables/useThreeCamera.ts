@@ -146,6 +146,8 @@ export function useThreeCamera(
   const isViewFocused = ref(false)
   const isMouseLookActive = ref(false) // 重命名：是否正在进行鼠标视角拖拽
   const isOrbitDragging = ref(false) // Orbit 模式下的鼠标拖拽状态
+  const touchLookPointerId = ref<number | null>(null)
+  const touchLookLastPos = ref<{ x: number; y: number } | null>(null)
   let isActive = false
 
   // === 派生状态 (Computed) ===
@@ -432,6 +434,9 @@ export function useThreeCamera(
 
   function switchToOrbitMode(): Vec3 | null {
     if (controlMode.value === 'orbit') return null
+    isMouseLookActive.value = false
+    touchLookPointerId.value = null
+    touchLookLastPos.value = null
 
     let newTarget: Vec3
 
@@ -476,6 +481,14 @@ export function useThreeCamera(
 
     // Flight 模式下根据配置控制视角
     if (controlMode.value === 'flight') {
+      // 触屏下：单指导航会话直接进入视角拖拽
+      if (evt.pointerType === 'touch') {
+        touchLookPointerId.value = evt.pointerId
+        touchLookLastPos.value = { x: evt.clientX, y: evt.clientY }
+        isMouseLookActive.value = true
+        return
+      }
+
       if (cameraInput.shouldTriggerFlightLook(evt.button)) {
         isMouseLookActive.value = true
         evt.preventDefault()
@@ -494,6 +507,26 @@ export function useThreeCamera(
     if (!isMouseLookActive.value || controlMode.value !== 'flight') return
     if (deps.isTransformDragging?.value) return
 
+    // 触摸事件在多数浏览器没有 movementX/Y，改用 client 坐标差分
+    if (evt.pointerType === 'touch') {
+      if (touchLookPointerId.value !== evt.pointerId || !touchLookLastPos.value) return
+
+      const deltaX = evt.clientX - touchLookLastPos.value.x
+      const deltaY = evt.clientY - touchLookLastPos.value.y
+
+      touchLookLastPos.value = { x: evt.clientX, y: evt.clientY }
+
+      state.value.yaw += deltaX * mouseSensitivity.value
+      state.value.pitch = clamp(
+        state.value.pitch - deltaY * mouseSensitivity.value,
+        pitchMinRad.value,
+        pitchMaxRad.value
+      )
+
+      updateLookAtFromYawPitch()
+      return
+    }
+
     // 更新 yaw/pitch（透视视角下始终视为透视预设的连续变体）
     state.value.yaw += evt.movementX * mouseSensitivity.value
     state.value.pitch = clamp(
@@ -506,6 +539,13 @@ export function useThreeCamera(
   }
 
   function handleNavPointerUp(evt: PointerEvent) {
+    if (evt.pointerType === 'touch' && touchLookPointerId.value === evt.pointerId) {
+      isMouseLookActive.value = false
+      touchLookPointerId.value = null
+      touchLookLastPos.value = null
+      return
+    }
+
     // 检查是否是当前配置的按键
     if (cameraInput.shouldReleaseFlightLook(evt.button)) {
       isMouseLookActive.value = false
@@ -730,6 +770,9 @@ export function useThreeCamera(
     isActive = false
     pause()
     isViewFocused.value = false
+    isMouseLookActive.value = false
+    touchLookPointerId.value = null
+    touchLookLastPos.value = null
   }
 
   onMounted(() => {
