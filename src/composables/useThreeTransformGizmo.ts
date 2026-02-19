@@ -1054,7 +1054,11 @@ export function useThreeTransformGizmo(
    * - 处理旋转轴限制（限制检测开启时根据家具数据隐藏 X/Y 轴）
    * - Y 轴几何体翻转（适配游戏坐标系）
    */
-  function setupGizmoAppearance(transformRef: Ref<any | null>, axesRef?: Ref<any | null>) {
+  function setupGizmoAppearance(
+    transformRef: Ref<any | null>,
+    axesRef?: Ref<any | null>,
+    onAppearanceApplied?: () => void
+  ) {
     const settingsStore = useSettingsStore()
 
     // 计算当前选中物品的约束信息
@@ -1214,6 +1218,7 @@ export function useThreeTransformGizmo(
 
           // 修改完成后显示 Gizmo
           latestControls.visible = true
+          onAppearanceApplied?.()
         })
       }
     )

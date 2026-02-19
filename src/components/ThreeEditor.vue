@@ -5,6 +5,7 @@ import { OrbitControls, TransformControls, Grid } from '@tresjs/cientos'
 import {
   Object3D,
   MOUSE,
+  TOUCH,
   Raycaster,
   Vector2,
   Vector3,
@@ -26,7 +27,7 @@ import { useThreeBackground } from '@/composables/useThreeBackground'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import { useThreeEnvironment } from '@/composables/useThreeEnvironment'
-import { setSceneInvalidate } from '@/composables/useSceneInvalidate'
+import { setSceneInvalidate, invalidateScene } from '@/composables/useSceneInvalidate'
 import { useNearbyObjectsCheck } from '@/composables/useNearbyObjectsCheck'
 import { useMagicKeys, useElementSize, useResizeObserver, watchOnce } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
@@ -241,6 +242,57 @@ const orbitMouseButtons = computed(() => {
   }
 })
 
+type PointerRoute = 'none' | 'selection' | 'navigation'
+
+const activePointerRoute = ref<{
+  pointerId: number | null
+  pointerType: string | null
+  route: PointerRoute
+}>({
+  pointerId: null,
+  pointerType: null,
+  route: 'none',
+})
+
+// 当前处于按下状态的触摸 pointer（用于识别单指/双指手势）
+const activeTouchPointerIds = ref(new Set<number>())
+const isMultiTouchActive = computed(() => activeTouchPointerIds.value.size >= 2)
+
+const ORBIT_TOUCH_NONE = -1
+
+// 框选会话期间临时禁用 OrbitControls（含 touch），避免框选与相机同时响应
+const orbitControlsEnabled = computed(() => {
+  const session = activePointerRoute.value
+  return session.route !== 'selection'
+})
+
+// 旋转开关：保持桌面原逻辑，是否可旋转由视图类型决定
+const orbitEnableRotate = computed(() => {
+  return !isOrthographic.value
+})
+
+// 平移开关：正交始终允许；透视下仅在双指触摸时为选择工具临时开启
+const orbitEnablePan = computed(() => {
+  if (isOrthographic.value) return true
+  if (cameraInput.currentTool.value !== 'hand' && isMultiTouchActive.value) {
+    return true
+  }
+  return false
+})
+
+// 触摸手势：默认单指用于选择；双指用于缩放/平移；手形工具保留单指相机操作
+const orbitTouches = computed(() => {
+  if (cameraInput.currentTool.value === 'hand') {
+    if (cameraInput.isOrthographic.value) {
+      return { ONE: TOUCH.PAN, TWO: TOUCH.DOLLY_PAN }
+    }
+    return { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN }
+  }
+
+  // 选择工具：禁用单指相机手势，保留双指缩放/平移
+  return { ONE: ORBIT_TOUCH_NONE, TWO: TOUCH.DOLLY_PAN }
+})
+
 // 当前活动的相机（根据视图类型动态切换）
 const activeCameraRef = computed(() => {
   return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
@@ -323,8 +375,10 @@ const {
   transformRef
 )
 
-// 自动管理 Gizmo 外观（一次性调用）
-setupGizmoAppearance(transformRef, axesRef)
+// 自动管理 Gizmo 外观：外观应用完成后精确触发一次重渲染
+setupGizmoAppearance(transformRef, axesRef, () => {
+  invalidateScene()
+})
 
 // 同步 maskScene 的 Y 轴翻转（因为主场景用了 scale=[1,-1,1]）
 onMounted(() => {
@@ -389,8 +443,14 @@ function handlePostRender(context: any) {
   }
 }
 
-const { selectionRect, lassoPoints, handlePointerDown, handlePointerMove, handlePointerUp } =
-  useThreeSelection(activeCameraRef, { pickingConfig }, threeContainerRef, isTransformDragging)
+const {
+  selectionRect,
+  lassoPoints,
+  handlePointerDown,
+  handlePointerMove,
+  handlePointerUp,
+  cancelSelectionSession,
+} = useThreeSelection(activeCameraRef, { pickingConfig }, threeContainerRef, isTransformDragging)
 
 // 3D Tooltip 系统（与 2D 复用同一开关）
 const {
@@ -409,6 +469,12 @@ const {
 )
 
 function handlePointerMoveWithTooltip(evt: PointerEvent) {
+  // 触控下禁用 hover tooltip（触摸交互由 pointer route 管理）
+  if (evt.pointerType === 'touch') {
+    hideTooltip()
+    return
+  }
+
   // 如果应该禁用框选，跳过选择逻辑
   if (cameraInput.shouldDisableSelection.value) {
     hideTooltip()
@@ -466,6 +532,22 @@ function handleContainerWheel(evt: WheelEvent) {
 
 // 右键菜单状态
 const contextMenuState = ref({ open: false, x: 0, y: 0 })
+const TOUCH_LONG_PRESS_MS = 380
+const TOUCH_LONG_PRESS_SLOP = 10
+const ignoreNextNativeContextMenu = ref(false)
+const touchLongPressState = ref<{
+  pointerId: number | null
+  startX: number
+  startY: number
+  triggered: boolean
+  timer: ReturnType<typeof setTimeout> | null
+}>({
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  triggered: false,
+  timer: null,
+})
 
 // 右键拖拽检测状态
 const rightClickState = ref<{
@@ -476,10 +558,183 @@ const rightClickState = ref<{
 
 const DRAG_THRESHOLD = 5 // px
 
+function clearTouchLongPressTimer() {
+  const timer = touchLongPressState.value.timer
+  if (timer !== null) {
+    clearTimeout(timer)
+    touchLongPressState.value.timer = null
+  }
+}
+
+function stopTouchLongPressGuard(pointerId?: number) {
+  if (pointerId !== undefined && touchLongPressState.value.pointerId !== pointerId) {
+    return
+  }
+
+  clearTouchLongPressTimer()
+  touchLongPressState.value.pointerId = null
+  touchLongPressState.value.startX = 0
+  touchLongPressState.value.startY = 0
+  touchLongPressState.value.triggered = false
+}
+
+function isTouchLongPressTriggered(pointerId: number) {
+  const state = touchLongPressState.value
+  return state.pointerId === pointerId && state.triggered
+}
+
+function beginTouchLongPressGuard(evt: PointerEvent) {
+  if (evt.pointerType !== 'touch' || evt.button !== 0) return
+
+  stopTouchLongPressGuard()
+  ignoreNextNativeContextMenu.value = false
+  touchLongPressState.value.pointerId = evt.pointerId
+  touchLongPressState.value.startX = evt.clientX
+  touchLongPressState.value.startY = evt.clientY
+  touchLongPressState.value.triggered = false
+  touchLongPressState.value.timer = setTimeout(() => {
+    const state = touchLongPressState.value
+    if (state.pointerId !== evt.pointerId) return
+
+    state.timer = null
+    state.triggered = true
+
+    const session = activePointerRoute.value
+    if (session.route === 'selection' && session.pointerId === evt.pointerId) {
+      cancelSelectionSession()
+      clearPointerRoute(evt.pointerId)
+      hideTooltip()
+      isPointerOverGizmo.value = false
+    } else if (session.route === 'navigation' && session.pointerId === evt.pointerId) {
+      handleNavPointerUp(evt)
+      clearPointerRoute(evt.pointerId)
+      hideTooltip()
+      isPointerOverGizmo.value = false
+    }
+
+    // 主动打开触摸长按菜单，避免依赖浏览器较慢的原生 contextmenu 时机
+    contextMenuState.value = {
+      open: true,
+      x: state.startX,
+      y: state.startY,
+    }
+    ignoreNextNativeContextMenu.value = true
+  }, TOUCH_LONG_PRESS_MS)
+}
+
+function updateTouchLongPressGuard(evt: PointerEvent) {
+  if (evt.pointerType !== 'touch') return
+
+  const state = touchLongPressState.value
+  if (state.pointerId !== evt.pointerId || state.triggered) return
+
+  const dx = evt.clientX - state.startX
+  const dy = evt.clientY - state.startY
+  if (Math.hypot(dx, dy) > TOUCH_LONG_PRESS_SLOP) {
+    clearTouchLongPressTimer()
+  }
+}
+
+function registerTouchPointer(evt: PointerEvent) {
+  if (evt.pointerType !== 'touch') return
+  activeTouchPointerIds.value.add(evt.pointerId)
+}
+
+function unregisterTouchPointer(evt: PointerEvent) {
+  if (evt.pointerType !== 'touch') return
+  activeTouchPointerIds.value.delete(evt.pointerId)
+}
+
+function clearTouchPointers() {
+  activeTouchPointerIds.value.clear()
+  stopTouchLongPressGuard()
+}
+
+function startPointerRoute(evt: PointerEvent, route: PointerRoute) {
+  activePointerRoute.value = {
+    pointerId: evt.pointerId,
+    pointerType: evt.pointerType,
+    route,
+  }
+}
+
+function clearPointerRoute(pointerId?: number) {
+  if (pointerId !== undefined && activePointerRoute.value.pointerId !== pointerId) {
+    return
+  }
+
+  activePointerRoute.value = {
+    pointerId: null,
+    pointerType: null,
+    route: 'none',
+  }
+}
+
+function isPointerOnGizmoAxis(): boolean {
+  if (!shouldShowGizmo.value) return false
+
+  const controls: any =
+    (transformRef.value && (transformRef.value.instance || transformRef.value.value)) ||
+    transformRef.value
+
+  return !!controls?.axis
+}
+
+function shouldStartSelectionRoute(evt: PointerEvent): boolean {
+  if (evt.button !== 0) return false
+  if (evt.pointerType === 'touch' && activeTouchPointerIds.value.size > 1) return false
+  if (cameraInput.shouldDisableSelection.value) return false
+  if (isTransformDragging.value) return false
+
+  // 避免点击 Gizmo 时误进入框选会话
+  if (isPointerOverGizmo.value || isPointerOnGizmoAxis()) return false
+
+  return true
+}
+
+function shouldUseManualPointerCapture(evt: PointerEvent): boolean {
+  // 触摸设备下让 OrbitControls / TransformControls 自己管理 pointer，
+  // 避免与手势识别发生冲突导致状态错乱。
+  return evt.pointerType !== 'touch'
+}
+
+function captureContainerPointer(evt: PointerEvent) {
+  if (!shouldUseManualPointerCapture(evt)) return
+
+  const el = evt.currentTarget as HTMLElement | null
+  if (!el) return
+
+  try {
+    el.setPointerCapture(evt.pointerId)
+  } catch {
+    // 某些浏览器/时序下可能捕获失败，忽略即可
+  }
+}
+
+function releaseContainerPointer(evt: PointerEvent) {
+  if (!shouldUseManualPointerCapture(evt)) return
+
+  const el = evt.currentTarget as HTMLElement | null
+  if (!el) return
+
+  try {
+    if (el.hasPointerCapture(evt.pointerId)) {
+      el.releasePointerCapture(evt.pointerId)
+    }
+  } catch {
+    // 某些浏览器在 pointer cancel 后会抛错，忽略即可
+  }
+}
+
 // 容器级指针事件：先交给导航，再交给选择/tooltip
 function handleContainerPointerDown(evt: PointerEvent) {
-  // 捕获指针，确保移出画布后仍能响应事件
-  ;(evt.target as HTMLElement).setPointerCapture(evt.pointerId)
+  // 鼠标场景下捕获指针，确保移出画布后仍能响应事件
+  captureContainerPointer(evt)
+  registerTouchPointer(evt)
+  ignoreNextNativeContextMenu.value = false
+  if (evt.pointerType === 'touch') {
+    stopTouchLongPressGuard(evt.pointerId)
+  }
 
   // 如果右键菜单已打开，点击画布任意位置先关闭菜单
   if (contextMenuState.value.open) {
@@ -496,15 +751,49 @@ function handleContainerPointerDown(evt: PointerEvent) {
     // 注意：不在这里 preventDefault，而是在 contextmenu 事件统一阻止浏览器右键菜单
   }
 
-  handleNavPointerDown(evt)
+  const session = activePointerRoute.value
 
-  // 禁用框选的条件由 cameraInput.shouldDisableSelection 统一判断
-  if (!cameraInput.shouldDisableSelection.value) {
-    handlePointerDown(evt)
+  // 触摸交互：双指出现时强制切换到导航，避免框选与相机手势冲突
+  if (evt.pointerType === 'touch' && isMultiTouchActive.value) {
+    if (session.route === 'selection') {
+      cancelSelectionSession()
+      stopTouchLongPressGuard(session.pointerId ?? undefined)
+      clearPointerRoute()
+    }
+
+    if (activePointerRoute.value.route !== 'navigation') {
+      startPointerRoute(evt, 'navigation')
+      handleNavPointerDown(evt)
+    }
+
+    hideTooltip()
+    return
   }
+
+  // 会话已存在时，忽略新的 pointerdown（避免双路并发）
+  if (session.route !== 'none') {
+    return
+  }
+
+  if (shouldStartSelectionRoute(evt)) {
+    startPointerRoute(evt, 'selection')
+    beginTouchLongPressGuard(evt)
+    handlePointerDown(evt)
+    hideTooltip()
+    return
+  }
+
+  startPointerRoute(evt, 'navigation')
+  if (evt.pointerType === 'touch' && !isMultiTouchActive.value) {
+    beginTouchLongPressGuard(evt)
+  }
+  handleNavPointerDown(evt)
+  hideTooltip()
 }
 
 function handleContainerPointerMove(evt: PointerEvent) {
+  updateTouchLongPressGuard(evt)
+
   // 检测右键拖拽
   if (rightClickState.value && evt.buttons === 2) {
     const dx = evt.clientX - rightClickState.value.startX
@@ -514,18 +803,96 @@ function handleContainerPointerMove(evt: PointerEvent) {
     }
   }
 
-  handleNavPointerMove(evt)
+  const session = activePointerRoute.value
+  if (session.route === 'selection') {
+    // 仅由发起该会话的 pointer 驱动框选
+    if (session.pointerId !== evt.pointerId) return
+    handlePointerMove(evt)
+    hideTooltip()
+    return
+  }
+
+  if (session.route === 'navigation') {
+    // 触摸导航允许多个触点参与；鼠标/手写笔仅由发起 pointer 驱动
+    if (session.pointerType !== 'touch' && session.pointerId !== evt.pointerId) return
+    handleNavPointerMove(evt)
+    hideTooltip()
+    return
+  }
+
+  // 无会话时走 hover/预选路径
   handlePointerMoveWithTooltip(evt)
 }
 
 function handleContainerPointerUp(evt: PointerEvent) {
-  ;(evt.target as HTMLElement).releasePointerCapture(evt.pointerId)
+  releaseContainerPointer(evt)
+  unregisterTouchPointer(evt)
+  const longPressTriggered = isTouchLongPressTriggered(evt.pointerId)
+  stopTouchLongPressGuard(evt.pointerId)
 
-  handleNavPointerUp(evt)
+  const session = activePointerRoute.value
+  if (session.route === 'selection' && session.pointerId === evt.pointerId) {
+    const isTouchSession = session.pointerType === 'touch' || evt.pointerType === 'touch'
+    if (isTouchSession && longPressTriggered) {
+      cancelSelectionSession()
+      clearPointerRoute(evt.pointerId)
+      return
+    }
 
-  if (!cameraInput.shouldDisableSelection.value) {
+    // 无条件提交选择，避免因状态切换导致框选结束不生效
     handlePointerUp(evt)
+    clearPointerRoute(evt.pointerId)
+    return
   }
+
+  if (session.route === 'navigation') {
+    // 触摸导航会话：最后一个触点抬起时才结束
+    if (session.pointerType === 'touch') {
+      if (activeTouchPointerIds.value.size === 0) {
+        handleNavPointerUp(evt)
+        clearPointerRoute()
+      }
+      return
+    }
+
+    if (session.pointerId === evt.pointerId) {
+      handleNavPointerUp(evt)
+      clearPointerRoute(evt.pointerId)
+    }
+  }
+}
+
+function handleContainerPointerCancel(evt: PointerEvent) {
+  releaseContainerPointer(evt)
+  unregisterTouchPointer(evt)
+  stopTouchLongPressGuard(evt.pointerId)
+  const session = activePointerRoute.value
+
+  if (session.route === 'selection' && session.pointerId === evt.pointerId) {
+    const isTouchSession = session.pointerType === 'touch' || evt.pointerType === 'touch'
+    if (isTouchSession) {
+      cancelSelectionSession()
+      clearPointerRoute(evt.pointerId)
+      hideTooltip()
+      isPointerOverGizmo.value = false
+      return
+    }
+
+    handlePointerUp(evt)
+    clearPointerRoute(evt.pointerId)
+  } else if (session.route === 'navigation') {
+    if (session.pointerType === 'touch') {
+      if (activeTouchPointerIds.value.size === 0) {
+        handleNavPointerUp(evt)
+        clearPointerRoute()
+      }
+    } else if (session.pointerId === evt.pointerId) {
+      handleNavPointerUp(evt)
+      clearPointerRoute(evt.pointerId)
+    }
+  }
+  hideTooltip()
+  isPointerOverGizmo.value = false
 }
 
 function handleContainerPointerLeave() {
@@ -537,6 +904,12 @@ function handleContainerPointerLeave() {
 function handleNativeContextMenu(evt: MouseEvent) {
   evt.preventDefault()
   evt.stopPropagation()
+
+  if (ignoreNextNativeContextMenu.value) {
+    ignoreNextNativeContextMenu.value = false
+    rightClickState.value = null
+    return
+  }
 
   // 如果发生了拖拽，不显示菜单
   if (rightClickState.value?.wasDragged) {
@@ -692,6 +1065,9 @@ onDeactivated(() => {
   commandStore.setViewPresetFunction(null)
   commandStore.setToggleCameraModeFunction(null)
   getAddPositionFn.value = null
+  clearTouchPointers()
+  clearPointerRoute()
+  isPointerOverGizmo.value = false
 })
 </script>
 
@@ -700,10 +1076,11 @@ onDeactivated(() => {
     <!-- Three.js 场景 + 选择层 -->
     <div
       ref="threeContainerRef"
-      class="absolute inset-0 overflow-hidden"
+      class="absolute inset-0 touch-none overflow-hidden"
       @pointerdown="handleContainerPointerDown"
       @pointermove="handleContainerPointerMove"
       @pointerup="handleContainerPointerUp"
+      @pointercancel="handleContainerPointerCancel"
       @pointerleave="handleContainerPointerLeave"
       @contextmenu="handleNativeContextMenu"
       @wheel="handleContainerWheel"
@@ -749,13 +1126,15 @@ onDeactivated(() => {
           v-if="controlMode === 'orbit'"
           ref="orbitControlsRef"
           :target="orbitTarget"
+          :enabled="orbitControlsEnabled"
           :enableDamping="true"
           :dampingFactor="0.3"
-          :enableRotate="!isOrthographic"
-          :enablePan="isOrthographic"
+          :enableRotate="orbitEnableRotate"
+          :enablePan="orbitEnablePan"
           :enable-zoom="!isCtrlPressed"
           :zoomSpeed="settingsStore.settings.cameraZoomSpeed"
           :mouseButtons="orbitMouseButtons"
+          :touches="orbitTouches"
           @change="handleOrbitChange"
         />
 

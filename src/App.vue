@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
 import { useSettingsStore } from './stores/settingsStore'
@@ -27,9 +27,6 @@ const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorksp
 // 导入 commandStore 用于全局命令状态
 import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
-
-// 这里的逻辑负责应用主题
-import { watch } from 'vue'
 
 const applyTheme = () => {
   const theme = settingsStore.settings.theme

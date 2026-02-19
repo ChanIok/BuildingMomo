@@ -71,6 +71,7 @@ const VIEW_PRESET_IDS = [
 // 分组命令 ID
 const NAVIGATION_CMD_IDS = ['view.focusSelection', 'view.fitToView']
 const CAMERA_MODE_CMD_ID = 'view.toggleCameraMode'
+const FULLSCREEN_CMD_ID = 'view.toggleFullscreen'
 const COORDINATE_CMD_ID = 'view.coordinateSystem'
 const TOGGLE_GIZMO_SPACE_CMD_ID = 'view.toggleGizmoSpace'
 const WORKING_COORD_CMD_IDS = [
@@ -86,6 +87,11 @@ const navigationCommands = computed(() =>
 // 相机模式命令
 const cameraModeCommand = computed(() =>
   viewCommands.value.find((cmd) => cmd.id === CAMERA_MODE_CMD_ID)
+)
+
+// 全屏命令
+const fullscreenCommand = computed(() =>
+  viewCommands.value.find((cmd) => cmd.id === FULLSCREEN_CMD_ID)
 )
 
 // 坐标系命令
@@ -572,7 +578,22 @@ watch(
           <!-- 组 2 与组 3 的分隔线 -->
           <MenubarSeparator />
 
-          <!-- 组 3: 系统设置组令（坐标系） -->
+          <!-- 组 3: 全屏命令（独立分组） -->
+          <MenubarItem
+            v-if="fullscreenCommand"
+            :disabled="!isEnabled(fullscreenCommand.id)"
+            @click="handleCommand(fullscreenCommand.id)"
+          >
+            {{ fullscreenCommand.label }}
+            <MenubarShortcut v-if="fullscreenCommand.shortcut">{{
+              fullscreenCommand.shortcut
+            }}</MenubarShortcut>
+          </MenubarItem>
+
+          <!-- 组 3 与组 4 的分隔线 -->
+          <MenubarSeparator />
+
+          <!-- 组 4: 系统设置组令（坐标系） -->
           <MenubarItem
             v-if="coordinateCommand"
             :disabled="!isEnabled(coordinateCommand.id)"
@@ -584,7 +605,7 @@ watch(
             }}</MenubarShortcut>
           </MenubarItem>
 
-          <!-- 组 4: 切换坐标系命令 -->
+          <!-- 组 5: 切换坐标系命令 -->
           <MenubarItem
             v-if="toggleGizmoSpaceCommand"
             :disabled="!isEnabled(toggleGizmoSpaceCommand.id)"
@@ -596,7 +617,7 @@ watch(
             }}</MenubarShortcut>
           </MenubarItem>
 
-          <!-- 组 5: 工作坐标系操作命令（Z、Shift+Z） -->
+          <!-- 组 6: 工作坐标系操作命令（Z、Shift+Z） -->
           <template v-for="cmd in workingCoordCommands" :key="cmd.id">
             <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
               {{ cmd.label }}
@@ -604,7 +625,7 @@ watch(
             </MenubarItem>
           </template>
 
-          <!-- 组 5 与视图预设之间的分隔线 -->
+          <!-- 组 6 与视图预设之间的分隔线 -->
           <MenubarSeparator />
 
           <!-- 视图预设子菜单：透视视图 + 正交六视图 -->

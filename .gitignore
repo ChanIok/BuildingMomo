@@ -23,10 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# AI
-AGENTS.md
-WARP.md
-
 # Downloaded assets
 public/assets/data/
 public/assets/furniture-icon/

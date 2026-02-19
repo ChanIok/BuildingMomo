@@ -108,12 +108,16 @@ export function useThreeSelection(
     }
   }
 
+  function cancelSelectionSession() {
+    mouseDownPos.value = null
+    isSelecting.value = false
+    selectionRect.value = null
+    lassoPoints.value = []
+  }
+
   function handlePointerUp(evt: any) {
     if (transformDraggingRef?.value) {
-      mouseDownPos.value = null
-      isSelecting.value = false
-      selectionRect.value = null
-      lassoPoints.value = []
+      cancelSelectionSession()
       return
     }
 
@@ -125,9 +129,7 @@ export function useThreeSelection(
 
     const pos = getRelativePosition(evt)
     if (!start || !pos) {
-      isSelecting.value = false
-      selectionRect.value = null
-      lassoPoints.value = []
+      cancelSelectionSession()
       return
     }
 
@@ -143,9 +145,7 @@ export function useThreeSelection(
       performBoxSelection(rectInfo)
     }
 
-    isSelecting.value = false
-    selectionRect.value = null
-    lassoPoints.value = []
+    cancelSelectionSession()
   }
 
   /**
@@ -589,5 +589,6 @@ export function useThreeSelection(
     handlePointerMove,
     handlePointerUp,
     performClickSelection,
+    cancelSelectionSession,
   }
 }

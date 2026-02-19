@@ -101,6 +101,7 @@ export const enLocale = {
       coordinateSystem: 'Coordinate System',
       toggleGizmoSpace: 'Gizmo: World/Local',
       toggleCameraMode: 'Toggle Camera Mode',
+      toggleFullscreen: 'Toggle Fullscreen',
       setWorkingCoordinateFromSelection: 'Working: Fit to Object',
       resetWorkingCoordinate: 'Working: Reset',
       setViewPerspective: 'Perspective',

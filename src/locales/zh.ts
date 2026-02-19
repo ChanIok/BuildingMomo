@@ -101,6 +101,7 @@ export const zhLocale = {
       coordinateSystem: '工作坐标系',
       toggleGizmoSpace: '变换轴：全局/局部',
       toggleCameraMode: '切换相机模式',
+      toggleFullscreen: '切换全屏',
       setWorkingCoordinateFromSelection: '工作坐标：适配物品',
       resetWorkingCoordinate: '工作坐标：重置',
       setViewPerspective: '透视视图',

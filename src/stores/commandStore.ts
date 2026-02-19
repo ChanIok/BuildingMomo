@@ -53,6 +53,28 @@ export const useCommandStore = defineStore('command', () => {
   // 相机模式切换函数引用（3D视图专用，透视模式下 orbit/flight 切换）
   const toggleCameraModeFn = ref<(() => void) | null>(null)
 
+  function isFullscreenSupported() {
+    if (typeof document === 'undefined') return false
+    return (
+      !!document.fullscreenEnabled &&
+      typeof document.documentElement.requestFullscreen === 'function'
+    )
+  }
+
+  async function toggleFullscreen() {
+    if (typeof document === 'undefined' || !isFullscreenSupported()) return
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch (error) {
+      console.warn('[Command] Toggle fullscreen failed:', error)
+    }
+  }
+
   // 工作坐标系对话框状态
   const showCoordinateDialog = ref(false)
 
@@ -525,6 +547,16 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 切换相机模式 (Orbit/Flight)')
         toggleCameraModeFn.value?.()
+      },
+    },
+    {
+      id: 'view.toggleFullscreen',
+      label: t('command.view.toggleFullscreen'),
+      category: 'view',
+      enabled: () => isFullscreenSupported(),
+      execute: () => {
+        console.log('[Command] 切换网页全屏')
+        void toggleFullscreen()
       },
     },
     {
