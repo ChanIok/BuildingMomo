@@ -457,6 +457,10 @@ export const zhLocale = {
     structure: '结构',
     transform: '变换',
     editorSettings: '编辑器',
+    header: {
+      expand: '展开顶部工具',
+      collapse: '收起顶部工具',
+    },
     noSelection: '请选择物品查看详情或进行操作',
     selectionList: '选中列表',
     groupSingle: '组 #{id}',

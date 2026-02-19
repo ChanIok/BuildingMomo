@@ -460,6 +460,10 @@ export const enLocale = {
     structure: 'Structure',
     transform: 'Transform',
     editorSettings: 'Editor',
+    header: {
+      expand: 'Expand Header Tools',
+      collapse: 'Collapse Header Tools',
+    },
     noSelection: 'Select items to view details or edit',
     selectionList: 'Selection',
     groupSingle: 'Group #{id}',

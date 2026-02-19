@@ -213,14 +213,6 @@ function handleViewInfoClick() {
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem
-        :disabled="!commandStore.isCommandEnabled('edit.selectSameType')"
-        @select="commandStore.executeCommand('edit.selectSameType')"
-      >
-        <span>{{ t('command.edit.selectSameType') }}</span>
-        <DropdownMenuShortcut>Ctrl+Shift+A</DropdownMenuShortcut>
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
         :disabled="!commandStore.isCommandEnabled('edit.group')"
         @select="commandStore.executeCommand('edit.group')"
       >
