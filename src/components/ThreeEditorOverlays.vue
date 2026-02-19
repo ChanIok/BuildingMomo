@@ -11,7 +11,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useI18n } from '@/composables/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUIStore } from '@/stores/uiStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
+import { PanelBottomClose, PanelBottomOpen } from 'lucide-vue-next'
 import LoadingProgress from './LoadingProgress.vue'
 import CanvasToolbar from './CanvasToolbar.vue'
 import FurnitureLibrary from './FurnitureLibrary.vue'
@@ -19,6 +21,7 @@ import DyePanel from './DyePanel.vue'
 import DebugPanel from './DebugPanel.vue'
 
 const { t } = useI18n()
+const uiStore = useUIStore()
 
 interface SelectionRect {
   x: number
@@ -89,6 +92,7 @@ const settingsStore = useSettingsStore()
 
 // 移动端（粗指针）仅显示“xx模式”，不显示操作提示
 const isCoarsePointer = useMediaQuery('(pointer: coarse)')
+const isCompactViewport = useMediaQuery('(max-height: 600px)')
 const { width: viewportWidth, height: viewportHeight } = useWindowSize()
 
 const MENU_SAFE_PADDING = 8
@@ -122,6 +126,8 @@ const correctedContextMenuPoint = computed(() => {
 
   return { x, y }
 })
+
+const showStatusBarToggle = computed(() => isCoarsePointer.value && isCompactViewport.value)
 
 const contextMenuTriggerStyle = computed<CSSProperties>(() => ({
   position: 'fixed',
@@ -207,6 +213,19 @@ function handleViewInfoClick() {
   <!-- 画布工具栏（底部居中） -->
   <div class="absolute bottom-4 left-1/2 z-20 -translate-x-1/2">
     <CanvasToolbar />
+  </div>
+
+  <!-- 状态栏折叠切换（右下角，仅移动端紧凑视口） -->
+  <div v-if="showStatusBarToggle" class="absolute right-4 bottom-4 z-20">
+    <button
+      type="button"
+      class="flex h-8 w-8 items-center justify-center rounded-md border bg-background/90 text-xs shadow-xs backdrop-blur-sm hover:bg-accent"
+      @click.stop="uiStore.toggleStatusBar()"
+    >
+      <!-- 状态栏展开时显示“关闭底部面板”图标，折叠时显示“打开底部面板”图标 -->
+      <PanelBottomClose v-if="!uiStore.statusBarCollapsed" class="h-4 w-4" />
+      <PanelBottomOpen v-else class="h-4 w-4" />
+    </button>
   </div>
 
   <!-- 左侧面板 -->

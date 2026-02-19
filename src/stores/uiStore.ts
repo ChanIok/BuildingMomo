@@ -52,6 +52,9 @@ export const useUIStore = defineStore('ui', () => {
     },
   })
 
+  // 底部状态栏折叠状态（仅影响布局，不持久化）
+  const statusBarCollapsed = ref(false)
+
   // Gizmo 空间模式：代理到 settingsStore，自动持久化
   const gizmoSpace = computed({
     get: () => settingsStore.settings.gizmoSpace,
@@ -154,6 +157,16 @@ export const useUIStore = defineStore('ui', () => {
     }
 
     return convertPositionGlobalToWorking(worldPoint, workingCoordinateSystem.value.rotation)
+  }
+
+  // ========== 状态栏管理 ==========
+
+  function setStatusBarCollapsed(collapsed: boolean) {
+    statusBarCollapsed.value = collapsed
+  }
+
+  function toggleStatusBar() {
+    statusBarCollapsed.value = !statusBarCollapsed.value
   }
 
   // ========== 数据空间 <-> 工作坐标系 便捷 API ==========
@@ -351,6 +364,7 @@ export const useUIStore = defineStore('ui', () => {
     isSelectingAlignReference,
     alignReferenceItemId,
     alignReferencePosition,
+    statusBarCollapsed,
 
     // 视图模式
     toggleViewMode,
@@ -363,6 +377,10 @@ export const useUIStore = defineStore('ui', () => {
     // 侧边栏
     setSidebarView,
     setSidebarHoveredGameId,
+
+    // 状态栏
+    setStatusBarCollapsed,
+    toggleStatusBar,
 
     // 工作坐标系
     setWorkingCoordinateSystem,

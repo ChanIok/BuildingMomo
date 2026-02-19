@@ -20,11 +20,13 @@ import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useWorkspaceWorker } from './composables/useWorkspaceWorker'
+import { useUIStore } from './stores/uiStore'
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
+const uiStore = useUIStore()
 const { t } = useI18n()
 const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorkspaceWorker()
 
@@ -32,6 +34,7 @@ const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorksp
 import { useCommandStore } from './stores/commandStore'
 const commandStore = useCommandStore()
 const isNarrowViewport = useMediaQuery('(max-width: 767px)')
+const isCompactViewport = useMediaQuery('(max-height: 600px)')
 const isRotateHintDismissed = ref(false)
 
 const applyTheme = () => {
@@ -49,6 +52,21 @@ watch(() => settingsStore.settings.theme, applyTheme, { immediate: true })
 // 监听系统主题变化
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 mediaQuery.addEventListener('change', applyTheme)
+
+// 视口高度过小时自动折叠状态栏，恢复高度时展开
+watch(
+  isCompactViewport,
+  (compact, prevCompact) => {
+    if (compact && !prevCompact) {
+      uiStore.setStatusBarCollapsed(true)
+      return
+    }
+    if (!compact) {
+      uiStore.setStatusBarCollapsed(false)
+    }
+  },
+  { immediate: true }
+)
 
 // 全局快捷键系统（单例）
 useKeyboardShortcuts({
@@ -145,7 +163,7 @@ onMounted(async () => {
       </div>
 
       <!-- 底部状态栏 -->
-      <StatusBar />
+      <StatusBar v-if="!uiStore.statusBarCollapsed" />
     </div>
 
     <!-- 窄屏提示遮罩 -->
