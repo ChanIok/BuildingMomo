@@ -79,6 +79,16 @@ const orbitControlsRef = ref<any | null>(null)
 const transformRef = ref()
 const axesRef = ref()
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
+let isWritingOrbitRuntimePose = false
+
+function unwrapTresInstance<T>(raw: any): T | null {
+  if (!raw) return null
+  return (raw.instance || raw.value || raw) as T
+}
+
+function getOrbitControlsInstance() {
+  return orbitControlsRef.value?.instance || orbitControlsRef.value?.value || null
+}
 
 // Gizmo 尺寸：粗指针（触屏）时放大，便于移动端操作
 const isCoarsePointer = useMediaQuery('(pointer: coarse)')
@@ -144,8 +154,62 @@ const isPointerOverGizmo = ref(false)
 // 从 UI Store 获取当前视图预设
 const currentViewPreset = computed(() => uiStore.currentViewPreset)
 
-// Orbit 模式下的中心点：用于中键绕场景/选中物品旋转
-const orbitTarget = ref<[number, number, number]>([0, 0, 0])
+const activeCameraComponentRef = computed(() => {
+  return currentViewPreset.value !== 'perspective' ? orthoCameraRef.value : cameraRef.value
+})
+
+// 统一解包真实 Three 相机，避免组件 ref / instance 形态差异
+const activeCameraRef = computed<Camera | null>(() => {
+  return unwrapTresInstance<Camera>(activeCameraComponentRef.value)
+})
+const activeCameraForTransform = computed<Camera | undefined>(
+  () => activeCameraRef.value ?? undefined
+)
+
+function readOrbitRuntimePose() {
+  if (isWritingOrbitRuntimePose) return null
+  const controls: any = getOrbitControlsInstance()
+  const cam = (controls?.object as Camera | undefined) || activeCameraRef.value
+  if (!controls?.target || !cam) return null
+
+  return {
+    position: [cam.position.x, cam.position.y, cam.position.z] as [number, number, number],
+    target: [controls.target.x, controls.target.y, controls.target.z] as [number, number, number],
+    zoom: typeof (cam as any).zoom === 'number' ? (cam as any).zoom : undefined,
+  }
+}
+
+function writeOrbitRuntimePose(pose: {
+  position: [number, number, number]
+  target: [number, number, number]
+  up: [number, number, number]
+  zoom?: number
+}): boolean {
+  const controls: any = getOrbitControlsInstance()
+  if (!controls?.target) return false
+
+  const cam = (controls.object as Camera | undefined) || activeCameraRef.value
+  if (!cam) return false
+
+  isWritingOrbitRuntimePose = true
+  try {
+    cam.position.set(...pose.position)
+    cam.up.set(...pose.up)
+
+    if (typeof pose.zoom === 'number' && typeof (cam as any).zoom === 'number') {
+      ;(cam as any).zoom = pose.zoom
+      if (typeof (cam as any).updateProjectionMatrix === 'function') {
+        ;(cam as any).updateProjectionMatrix()
+      }
+    }
+
+    controls.target.set(...pose.target)
+    controls.update()
+    return true
+  } finally {
+    isWritingOrbitRuntimePose = false
+  }
+}
 
 // 监听 OrbitControls 挂载，确保初始化时 target 同步
 watchOnce(orbitControlsRef, (ref) => {
@@ -153,9 +217,8 @@ watchOnce(orbitControlsRef, (ref) => {
 
   // 等待下一帧，确保 OrbitControls 完全初始化
   requestAnimationFrame(() => {
-    orbitTarget.value = [...cameraLookAt.value]
-    const controls = ref.instance || ref.value
-    controls?.target.set(...orbitTarget.value)
+    const controls: any = ref.instance || ref.value
+    controls?.target.set(...cameraLookAt.value)
     controls?.update()
   })
 })
@@ -185,18 +248,14 @@ const {
   handleNavPointerUp,
   handleFlightWheel,
   handleFlightPinch,
-  setPoseFromLookAt,
-  setZoom,
   toggleCameraMode,
   switchToViewPreset,
   fitCameraToScene,
   focusOnSelection,
 } = useThreeCamera(cameraOptions, {
   isTransformDragging,
-  // 从 flight 切回 orbit 时，更新 OrbitControls 的 target
-  onOrbitTargetUpdate: (target) => {
-    orbitTarget.value = target
-  },
+  readOrbitRuntimePose,
+  writeOrbitRuntimePose,
   defaultCenter: mapCenter,
 })
 
@@ -314,17 +373,12 @@ const orbitTouches = computed(() => {
   return { ONE: ORBIT_TOUCH_NONE, TWO: TOUCH.DOLLY_ROTATE }
 })
 
-// 当前活动的相机（根据视图类型动态切换）
-const activeCameraRef = computed(() => {
-  return isOrthographic.value ? orthoCameraRef.value : cameraRef.value
-})
-
 // 监听 FOV 变化并更新相机
 watch(
   () => settingsStore.settings.cameraFov,
   (newFov) => {
     if (cameraRef.value && !isOrthographic.value) {
-      const camera = cameraRef.value.instance || cameraRef.value.value
+      const camera = unwrapTresInstance<any>(cameraRef.value)
       if (camera && 'fov' in camera) {
         camera.fov = newFov
         camera.updateProjectionMatrix()
@@ -1071,33 +1125,6 @@ function handleNativeContextMenu(evt: MouseEvent) {
   rightClickState.value = null
 }
 
-// OrbitControls 变更时，同步内部状态（仅在 orbit 模式下）
-function handleOrbitChange() {
-  if (controlMode.value !== 'orbit') return
-  if (!activeCameraRef.value) return
-
-  // 尝试获取 OrbitControls 的内部实例
-  const controls = orbitControlsRef.value?.instance || orbitControlsRef.value?.value
-  if (!controls) return
-
-  const cam = activeCameraRef.value as any
-  const pos = cam.position
-
-  // 从控制器实例直接获取最新的 target
-  const currentTarget = controls.target
-  if (!currentTarget) return
-
-  const targetArray: [number, number, number] = [currentTarget.x, currentTarget.y, currentTarget.z]
-
-  // 记录当前的 Zoom
-  if (cam.zoom !== undefined) {
-    setZoom(cam.zoom)
-  }
-
-  // 同步相机姿态（位置和目标点）
-  setPoseFromLookAt([pos.x, pos.y, pos.z], targetArray)
-}
-
 // 计算正交相机的视锥体参数
 const orthoFrustum = computed(() => {
   const distance = cameraDistance.value
@@ -1129,15 +1156,9 @@ function switchToView(preset: ViewPreset) {
 const { getAddPositionFn } = useEditorItemAdd()
 
 function getAddPosition(): [number, number, number] | null {
-  const cameraComponent = activeCameraRef.value
-  if (!cameraComponent) {
-    // 兜底：使用视野中心，Z=0
-    return [cameraLookAt.value[0], cameraLookAt.value[1], 0]
-  }
-
-  // 正确获取底层 Three.js 相机实例（TresJS 组件通过 .value 或 .instance 暴露）
-  const camera = cameraComponent.value || cameraComponent.instance || cameraComponent
+  const camera = activeCameraRef.value
   if (!camera) {
+    // 兜底：使用视野中心，Z=0
     return [cameraLookAt.value[0], cameraLookAt.value[1], 0]
   }
 
@@ -1271,7 +1292,7 @@ onDeactivated(() => {
         <OrbitControls
           v-if="controlMode === 'orbit'"
           ref="orbitControlsRef"
-          :target="orbitTarget"
+          :target="cameraLookAt"
           :enabled="orbitControlsEnabled"
           :enableDamping="true"
           :dampingFactor="0.3"
@@ -1281,7 +1302,6 @@ onDeactivated(() => {
           :zoomSpeed="settingsStore.settings.cameraZoomSpeed"
           :mouseButtons="orbitMouseButtons"
           :touches="orbitTouches"
-          @change="handleOrbitChange"
         />
 
         <!-- 简约光照系统：IBL + 辅助光 -->
@@ -1374,7 +1394,7 @@ onDeactivated(() => {
           v-if="shouldShowGizmo && gizmoPivot"
           ref="transformRef"
           :object="gizmoPivot"
-          :camera="activeCameraRef"
+          :camera="activeCameraForTransform"
           :mode="editorStore.gizmoMode || 'translate'"
           :space="transformSpace"
           :size="gizmoSize"
@@ -1399,7 +1419,6 @@ onDeactivated(() => {
           ? {
               cameraPosition,
               cameraLookAt,
-              orbitTarget,
               controlMode,
               currentViewPreset,
               isOrthographic,

@@ -13,7 +13,6 @@ const { t } = useI18n()
 interface CameraDebugData {
   cameraPosition: [number, number, number]
   cameraLookAt: [number, number, number]
-  orbitTarget: [number, number, number]
   controlMode: string
   currentViewPreset: string | null
   isOrthographic: boolean
@@ -247,12 +246,6 @@ function fmtSize(v: number): string {
               X: {{ cameraData.cameraLookAt[0].toFixed(1) }}<br />
               Y: {{ cameraData.cameraLookAt[1].toFixed(1) }}<br />
               Z: {{ cameraData.cameraLookAt[2].toFixed(1) }}
-            </div>
-            <div class="mt-1 text-muted-foreground">{{ t('editor.debug.orbitCenter') }}:</div>
-            <div class="pl-2">
-              X: {{ cameraData.orbitTarget[0].toFixed(1) }}<br />
-              Y: {{ cameraData.orbitTarget[1].toFixed(1) }}<br />
-              Z: {{ cameraData.orbitTarget[2].toFixed(1) }}
             </div>
           </div>
         </template>

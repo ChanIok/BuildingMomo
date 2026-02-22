@@ -55,7 +55,6 @@ interface ViewInfo {
 interface CameraDebugData {
   cameraPosition: [number, number, number]
   cameraLookAt: [number, number, number]
-  orbitTarget: [number, number, number]
   controlMode: string
   currentViewPreset: string | null
   isOrthographic: boolean

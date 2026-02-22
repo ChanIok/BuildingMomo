@@ -36,6 +36,12 @@ type Vec3 = [number, number, number]
 
 export type ViewPreset = 'perspective' | 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'
 
+interface OrbitRuntimePose {
+  position: Vec3
+  target: Vec3
+  zoom?: number
+}
+
 // 相机控制模式（简化）
 type ControlMode = 'orbit' | 'flight'
 
@@ -61,7 +67,8 @@ export interface CameraControllerOptions {
 // 依赖项
 export interface CameraControllerDeps {
   isTransformDragging?: Ref<boolean>
-  onOrbitTargetUpdate?: (target: Vec3) => void
+  readOrbitRuntimePose?: () => OrbitRuntimePose | null
+  writeOrbitRuntimePose?: (pose: OrbitRuntimePose & { up: Vec3 }) => boolean | void
   defaultCenter?: Ref<Vec3>
 }
 
@@ -147,6 +154,7 @@ export function useThreeCamera(
   const isViewFocused = ref(false)
   const isMouseLookActive = ref(false) // 重命名：是否正在进行鼠标视角拖拽
   const isOrbitDragging = ref(false) // Orbit 模式下的鼠标拖拽状态
+  const hasPendingOrbitRuntimeWrite = ref(false)
   const touchLookPointerId = ref<number | null>(null)
   const touchLookLastPos = ref<{ x: number; y: number } | null>(null)
   let isActive = false
@@ -273,16 +281,66 @@ export function useThreeCamera(
     { immediate: true }
   )
 
-  // === 自动同步 target 到外部 (OrbitControls) ===
-  watch(
-    () => state.value.target,
-    (newTarget) => {
-      if (controlMode.value === 'orbit' && deps.onOrbitTargetUpdate) {
-        deps.onOrbitTargetUpdate(newTarget)
-      }
-    },
-    { deep: true }
-  )
+  function vec3ApproxEqual(a: Vec3, b: Vec3, epsilon = 1e-4): boolean {
+    return (
+      Math.abs(a[0] - b[0]) < epsilon &&
+      Math.abs(a[1] - b[1]) < epsilon &&
+      Math.abs(a[2] - b[2]) < epsilon
+    )
+  }
+
+  function markOrbitRuntimeWriteNeeded() {
+    if (controlMode.value === 'orbit') {
+      hasPendingOrbitRuntimeWrite.value = true
+    }
+  }
+
+  // 切回 Orbit 时，要求将当前 state 写回 runtime（处理视图切换 / controls 重挂载）
+  watch(controlMode, (mode) => {
+    if (mode === 'orbit') {
+      hasPendingOrbitRuntimeWrite.value = true
+    }
+  })
+
+  function flushOrbitRuntimeWrite() {
+    if (controlMode.value !== 'orbit') return
+    if (!hasPendingOrbitRuntimeWrite.value) return
+    if (!deps.writeOrbitRuntimePose) return
+
+    const ok = deps.writeOrbitRuntimePose({
+      position: [...state.value.position],
+      target: [...state.value.target],
+      up: [...state.value.up],
+      zoom: state.value.zoom,
+    })
+
+    if (ok !== false) {
+      hasPendingOrbitRuntimeWrite.value = false
+    }
+  }
+
+  function syncOrbitStateFromRuntime() {
+    if (controlMode.value !== 'orbit') return
+    if (!deps.readOrbitRuntimePose) return
+
+    const runtimePose = deps.readOrbitRuntimePose()
+    if (!runtimePose) return
+
+    const posChanged = !vec3ApproxEqual(state.value.position, runtimePose.position)
+    const targetChanged = !vec3ApproxEqual(state.value.target, runtimePose.target)
+    const zoomChanged =
+      typeof runtimePose.zoom === 'number' &&
+      Math.abs((runtimePose.zoom ?? 0) - state.value.zoom) > 1e-5
+
+    if (!posChanged && !targetChanged && !zoomChanged) return
+
+    if (posChanged || targetChanged) {
+      setPoseFromLookAt([...runtimePose.position], [...runtimePose.target], 'runtime')
+    }
+    if (zoomChanged && typeof runtimePose.zoom === 'number') {
+      state.value.zoom = runtimePose.zoom
+    }
+  }
 
   function updateLookAtFromYawPitch() {
     const forward = getForwardVector(state.value.yaw, state.value.pitch)
@@ -466,6 +524,7 @@ export function useThreeCamera(
 
     // 更新 state.target，watch 会自动同步到 OrbitControls
     state.value.target = [...newTarget]
+    markOrbitRuntimeWriteNeeded()
 
     controlMode.value = 'orbit'
 
@@ -610,7 +669,7 @@ export function useThreeCamera(
   // 🔌 Public API (Internal Implementation)
   // ============================================================
 
-  function setPoseFromLookAt(position: Vec3, target: Vec3) {
+  function setPoseFromLookAt(position: Vec3, target: Vec3, source: 'state' | 'runtime' = 'state') {
     state.value.position = [...position]
     state.value.target = [...target]
 
@@ -618,6 +677,10 @@ export function useThreeCamera(
     const { yaw, pitch } = calculateYawPitchFromDirection(dir, pitchMinRad.value, pitchMaxRad.value)
     state.value.yaw = yaw
     state.value.pitch = pitch
+
+    if (source === 'state') {
+      markOrbitRuntimeWriteNeeded()
+    }
   }
 
   function lookAtTarget(target: Vec3) {
@@ -670,6 +733,7 @@ export function useThreeCamera(
 
     // 5. 更新 UI Store（唯一写入点）
     uiStore.setCurrentViewPreset(preset)
+    markOrbitRuntimeWriteNeeded()
   }
 
   /**
@@ -703,6 +767,7 @@ export function useThreeCamera(
 
     // 4. 更新 UI Store
     uiStore.setCurrentViewPreset(preset)
+    markOrbitRuntimeWriteNeeded()
 
     // 5. 控制模式由 watch(currentViewPreset) 自动处理
     // target 同步由 watch 自动处理
@@ -719,6 +784,13 @@ export function useThreeCamera(
       // 1. Flight 模式下更新移动
       if (controlMode.value === 'flight') {
         updateFlightMode(delta / 1000)
+      }
+
+      // Orbit 模式采用 runtime controls 作为权威源：
+      // 先尝试将 state 写回 runtime，再从 runtime 拉取最新姿态
+      if (controlMode.value === 'orbit') {
+        flushOrbitRuntimeWrite()
+        syncOrbitStateFromRuntime()
       }
 
       // 2. Orbit 模式下检测 WASD → 平移 (Pan)
@@ -765,6 +837,9 @@ export function useThreeCamera(
             state.value.target[1] + deltaVec[1],
             state.value.target[2] + deltaVec[2],
           ]
+
+          hasPendingOrbitRuntimeWrite.value = true
+          flushOrbitRuntimeWrite()
 
           // target 的同步由 watch 自动处理
         }
@@ -843,6 +918,7 @@ export function useThreeCamera(
 
     // 5. 同步 UI Store
     uiStore.setCurrentViewPreset(preset)
+    markOrbitRuntimeWriteNeeded()
 
     // 6. 确保控制模式正确
     controlMode.value = 'orbit'
@@ -965,6 +1041,7 @@ export function useThreeCamera(
 
       setPoseFromLookAt(newPos, target)
       state.value.zoom = 1 // 透视模式重置 Zoom
+      markOrbitRuntimeWriteNeeded()
     }
   }
 
