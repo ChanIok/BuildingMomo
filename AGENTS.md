@@ -166,7 +166,10 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 - Renders the main 3D workspace using `TresCanvas` and TresJS extras (`OrbitControls`, `TransformControls`, `Grid`).
 - Responsibilities that span multiple composables:
-  - Camera lifecycle and navigation via `useThreeCamera` (orbit vs flight modes, view presets, dynamic near plane based on nearby objects, WASD + mouse control).
+  - Camera state and mode transitions via `useThreeCamera` (orbit vs flight, view presets, fit/focus, dynamic near plane, WASD flight/orbit pan).
+  - Pointer/session routing via `useThreePointerRouter` (selection vs navigation, touch long-press, context menu, pointer capture, pinch-to-flight).
+  - Orbit input mapping via `useOrbitControlsInput` (mouse buttons, touch gestures, rotate/pan enable rules).
+  - Orbit runtime bridge is kept lightweight in `ThreeEditor.vue` (`readOrbitRuntimePose` / `writeOrbitRuntimePose`) to sync Tres camera + controls instance.
   - Background handling via `useThreeBackground`, rendering the game map texture with correct coordinate mapping and theme-derived colors.
   - Grid and axes via `useThreeGrid` and classic `Grid` / `AxesHelper` primitives.
   - Instanced rendering via `useThreeInstancedRenderer` (see below) with four display modes: `box`, `icon`, `simple-box`, `model`.
@@ -502,5 +505,6 @@ The `lib` directory contains reusable mathematical and geometric utilities that 
 - When adding major features, prefer to extend existing composables and stores instead of duplicating logic:
   - New editor operations should be built as composables under `src/composables/editor` and orchestrated via `commandStore` and `Toolbar`.
   - New visualizations or render modes should integrate with `useThreeInstancedRenderer` and its per-mode modules so that selection, picking, and highlighting remain consistent.
+  - Camera/input changes should prefer extending `useThreeCamera`, `useThreePointerRouter`, and `useOrbitControlsInput` instead of adding event/state logic directly in `ThreeEditor.vue`.
   - Any changes to save/load semantics should flow through `editorStore` and the `useFileOperations` facade (`fileOps/watchMode.ts`, `fileOps/codeImport.ts`) and, if relevant, be reflected in `workspace.worker.ts` validation rules.
 - If you introduce a test runner or additional build/lint tooling, update the **Commands** section accordingly.
