@@ -26,8 +26,12 @@ const customPivotEnabled = defineModel<boolean>('customPivotEnabled', { default:
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { updateSelectedItemsTransform, rotateSelectionAroundOrigin, getRotationCenter } =
-  useEditorManipulation()
+const {
+  updateSelectedItemsTransform,
+  rotateSelectionAroundOrigin,
+  setSelectedItemsAbsoluteRotationInWorking,
+  getRotationCenter,
+} = useEditorManipulation()
 
 // 旋转默认为相对模式 (true)
 const isRotationRelative = ref(false)
@@ -127,8 +131,11 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     } else if (originItemId) {
       // 多选有原点：以原点物品为基准旋转
       rotateSelectionAroundOrigin(originItemId, axis, value)
+    } else if (!customPivotEnabled.value) {
+      // 多选无原点 + 未启用定点旋转：直接设置为工作坐标系下的绝对角度
+      setSelectedItemsAbsoluteRotationInWorking(axis, value)
     } else {
-      // 多选无原点：绝对模式等于相对模式
+      // 多选无原点 + 启用定点旋转：保持当前绕定点旋转行为
       const delta = value
       if (delta === 0) return
 

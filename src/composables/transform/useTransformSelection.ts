@@ -109,8 +109,11 @@ export function useTransformSelection() {
     // 旋转角度（用于绝对模式显示）
     let rotation = { x: 0, y: 0, z: 0 }
 
-    // 确定旋转显示的来源物品：单选使用该物品，多选有原点使用原点物品
-    const rotationSourceItem = selected.length === 1 ? selected[0] : originItem
+    // 确定旋转显示的来源物品：
+    // 1) 单选：该物品
+    // 2) 多选有原点：原点物品
+    // 3) 多选无原点：使用第一个选中物品作为显示基准
+    const rotationSourceItem = selected.length === 1 ? selected[0] : originItem || selected[0]
 
     if (rotationSourceItem) {
       rotation = matrixTransform.dataRotationToVisual({
@@ -124,7 +127,6 @@ export function useTransformSelection() {
         rotation = convertRotationGlobalToWorking(rotation, effectiveCoordRotation)
       }
     }
-    // 多选无原点时绝对模式显示 0（相对模式会单独处理）
 
     // 缩放（不受工作坐标系影响）
     let scale = { x: 1, y: 1, z: 1 }

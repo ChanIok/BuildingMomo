@@ -702,6 +702,66 @@ export function useEditorManipulation() {
     store.triggerSceneUpdate()
   }
 
+  /**
+   * 多选绝对旋转（工作坐标系语义）
+   *
+   * 对每个选中物品执行：
+   * 1. 数据空间 -> 视觉空间
+   * 2. 全局旋转 -> 工作坐标系旋转（如有有效坐标系）
+   * 3. 设置目标轴绝对值
+   * 4. 工作坐标系旋转 -> 全局旋转（如有有效坐标系）
+   * 5. 视觉空间 -> 数据空间并写回
+   */
+  function setSelectedItemsAbsoluteRotationInWorking(axis: 'x' | 'y' | 'z', absoluteValue: number) {
+    if (!activeScheme.value) return
+
+    const scheme = activeScheme.value
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return
+
+    saveHistory('edit')
+
+    const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
+      selectedIds,
+      store.itemsMap
+    )
+
+    scheme.items.value = scheme.items.value.map((item) => {
+      if (!selectedIds.has(item.internalId)) {
+        return item
+      }
+
+      // 当前物品旋转：数据空间 -> 视觉空间
+      const globalVisualRotation = matrixTransform.dataRotationToVisual(item.rotation)
+
+      // 转到工作坐标系（若无有效坐标系则直接用全局）
+      const workingVisualRotation = effectiveWorkingRotation
+        ? convertRotationGlobalToWorking(globalVisualRotation, effectiveWorkingRotation)
+        : globalVisualRotation
+
+      // 设置目标轴的绝对值
+      const targetWorkingVisualRotation = {
+        ...workingVisualRotation,
+        [axis]: absoluteValue,
+      }
+
+      // 转回全局旋转（视觉空间）
+      const targetGlobalVisualRotation = effectiveWorkingRotation
+        ? convertRotationWorkingToGlobal(targetWorkingVisualRotation, effectiveWorkingRotation)
+        : targetWorkingVisualRotation
+
+      // 写回数据空间
+      const targetDataRotation = matrixTransform.visualRotationToData(targetGlobalVisualRotation)
+
+      return {
+        ...item,
+        rotation: targetDataRotation,
+      }
+    })
+
+    store.triggerSceneUpdate()
+  }
+
   // 批量提交变换（优化性能，用于 Gizmo 拖拽结束）
   function commitBatchedTransform(
     items: {
@@ -741,6 +801,7 @@ export function useEditorManipulation() {
     moveSelectedItems,
     mirrorSelectedItems,
     rotateSelectionAroundOrigin,
+    setSelectedItemsAbsoluteRotationInWorking,
     commitBatchedTransform,
   }
 }
