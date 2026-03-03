@@ -27,6 +27,10 @@ let settings = {
   enableAutoSave: false,
 }
 
+function isWorldBuildFilePath(filePath?: string): boolean {
+  return typeof filePath === 'string' && filePath.startsWith('WORLDBUILD_')
+}
+
 // --- 验证逻辑（适配 AppItem）---
 
 // 射线投射算法
@@ -81,7 +85,8 @@ function detectDuplicates(
 
 function checkLimits(
   items: AppItem[],
-  config: { enableLimitDetection: boolean }
+  config: { enableLimitDetection: boolean },
+  skipCoordinateChecks: boolean = false
 ): {
   outOfBoundsItemIds: string[]
   oversizedGroups: number[]
@@ -121,7 +126,7 @@ function checkLimits(
   const zRange = { min: -3500, max: 10200 }
   const polygons = buildableAreas ? Object.values(buildableAreas) : []
 
-  if (buildableAreas || zRange) {
+  if (!skipCoordinateChecks && (buildableAreas || zRange)) {
     for (const item of items) {
       let isInvalid = false
 
@@ -206,10 +211,11 @@ function checkLimits(
 
 function runValidation(
   items: AppItem[],
-  config: { enableDuplicateDetection: boolean; enableLimitDetection: boolean }
+  config: { enableDuplicateDetection: boolean; enableLimitDetection: boolean },
+  schemeFilePath?: string
 ): ValidationResult {
   const duplicates = detectDuplicates(items, config)
-  const limits = checkLimits(items, config)
+  const limits = checkLimits(items, config, isWorldBuildFilePath(schemeFilePath))
 
   return {
     duplicateGroups: duplicates,
@@ -276,7 +282,7 @@ function runValidationOnSnapshot(): ValidationResult {
     }
   }
 
-  return runValidation(activeScheme.items, settings)
+  return runValidation(activeScheme.items, settings, activeScheme.filePath)
 }
 
 // --- API ---
@@ -385,7 +391,7 @@ const api = {
 
     if (shouldValidate) {
       if (targetScheme) {
-        return { validation: runValidation(targetScheme.items, settings) }
+        return { validation: runValidation(targetScheme.items, settings, targetScheme.filePath) }
       } else {
         return { validation: runValidationOnSnapshot() }
       }

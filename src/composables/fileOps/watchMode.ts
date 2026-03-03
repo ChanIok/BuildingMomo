@@ -21,13 +21,15 @@ interface CreateWatchModeOpsParams {
   prepareDataForSave: () => Promise<GameItem[] | null>
 }
 
+const SAVE_DATA_FILENAME_REGEX = /^(BUILD|WORLDBUILD)_SAVEDATA_(\d+)\.json$/
+
 function extractUidFromFilename(filename: string): string | null {
-  const match = filename.match(/BUILD_SAVEDATA_(\d+)\.json/)
-  return match?.[1] ?? null
+  const match = filename.match(SAVE_DATA_FILENAME_REGEX)
+  return match?.[2] ?? null
 }
 
 function isBuildSaveDataFile(name: string): boolean {
-  return /^BUILD_SAVEDATA_\d+\.json$/.test(name)
+  return SAVE_DATA_FILENAME_REGEX.test(name)
 }
 
 async function resolvePath(
@@ -101,11 +103,7 @@ async function findLatestBuildSaveData(
 
   try {
     for await (const entry of (buildDataDir as any).values()) {
-      if (
-        entry.kind === 'file' &&
-        entry.name.startsWith('BUILD_SAVEDATA_') &&
-        entry.name.endsWith('.json')
-      ) {
+      if (entry.kind === 'file' && isBuildSaveDataFile(entry.name)) {
         const fileHandle = entry as FileSystemFileHandle
         const file = await fileHandle.getFile()
         buildFiles.push({ file, handle: fileHandle })
@@ -281,11 +279,11 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     let finalFileName = ''
 
     const currentFileName = editorStore.activeScheme?.filePath.value
-    const match = currentFileName?.match(/^BUILD_SAVEDATA_(\d+)\.json$/)
+    const match = currentFileName?.match(SAVE_DATA_FILENAME_REGEX)
 
     let isValidName = false
-    if (match && match[1]) {
-      const idPart = match[1]
+    if (match && match[2]) {
+      const idPart = match[2]
       if (idPart.length !== 13) {
         isValidName = true
       }

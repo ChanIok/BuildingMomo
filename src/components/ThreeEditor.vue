@@ -146,6 +146,9 @@ const isPointerOverGizmo = ref(false)
 
 // 从 UI Store 获取当前视图预设
 const currentViewPreset = computed(() => uiStore.currentViewPreset)
+const isWorldBuildScheme = computed(
+  () => editorStore.activeScheme?.filePath.value?.startsWith('WORLDBUILD_') === true
+)
 
 const activeCameraComponentRef = computed(() => {
   return currentViewPreset.value !== 'perspective' ? orthoCameraRef.value : cameraRef.value
@@ -741,7 +744,7 @@ onDeactivated(() => {
           <!-- 背景地图 -->
           <!-- 由于父级 Group 翻转了 Y 轴，这里再次翻转 Y 轴以保持地图图片方向正确（北朝上） -->
           <TresMesh
-            v-if="backgroundTexture && shouldShowBackground"
+            v-if="backgroundTexture && shouldShowBackground && !isWorldBuildScheme"
             :position="backgroundPosition"
             :scale="[1, -1, 1]"
             :render-order="isMapDepthDisabled ? -1 : 0"
@@ -782,7 +785,11 @@ onDeactivated(() => {
         </TresGroup>
 
         <!-- 辅助元素 - 适配大场景 - 移至世界空间 -->
-        <TresGroup v-if="backgroundTexture" :position="gridPosition" :rotation="containerRotation">
+        <TresGroup
+          v-if="backgroundTexture && !isWorldBuildScheme"
+          :position="gridPosition"
+          :rotation="containerRotation"
+        >
           <TresGroup :rotation="innerRotation">
             <!-- Grid 组件 -->
             <Grid
