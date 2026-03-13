@@ -619,16 +619,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
-  // 监听染色开关变化：仅在 Model 模式下触发重建
-  watch(
-    () => settingsStore.settings.enableModelDye,
-    () => {
-      if (settingsStore.settings.threeDisplayMode === 'model') {
-        scheduleRebuild()
-      }
-    }
-  )
-
   // 监听符号缩放变化：在当前模式下更新实例并触发重渲染
   watch(
     () => settingsStore.settings.threeSymbolScale,

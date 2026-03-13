@@ -1,63 +1,64 @@
 import type { AppItem } from '@/types/editor'
-import type { DyePreset } from '@/types/furniture'
-import { parseColorIndex, parseColorMapSlots } from '@/lib/colorMap'
+import type { FurnitureColorConfig } from '@/types/furniture'
+import { decodeColorMapToGroupMap } from '@/lib/colorMap'
 
 export type ModelDyePlan =
   | { mode: 'plain' }
-  | { mode: 'legacy'; colorIndex: number }
-  | { mode: 'preset'; preset: DyePreset; slotValues: number[] }
-
-interface ResolveModelDyePlanParams {
-  item: Pick<AppItem, 'gameId' | 'extra'>
-  enableModelDye: boolean
-  getDyePreset: (gameId: number) => { preset: DyePreset; slotIds: number[] } | null
-}
+  | {
+      mode: 'dyed'
+      /** meshIdx → { pattern, tint }：每个源 mesh 的贴图变体选择 */
+      dyeMap: Map<number, { pattern: number; tint: number }>
+    }
 
 /**
- * 根据当前设置和家具数据，解析模型染色计划。
+ * 根据家具模型的染色配置和物品 ColorMap，解析模型染色计划。
  *
  * 规则：
- * 1) enableModelDye=false -> plain
- * 2) 有 preset -> 仅使用 preset（不访问 legacy）
- * 3) 无 preset -> legacy
+ * 1) 无 colors 配置 → plain
+ * 2) 对每个存在染色配置的区域：优先使用 ColorMap 中显式选择的 colorIndex，
+ *    未显式选择时回退到该区域的 0 号配置
+ * 3) 只要任一区域命中 cfg，就返回 dyed；否则 plain
  */
 export function resolveModelDyePlan({
   item,
-  enableModelDye,
-  getDyePreset,
-}: ResolveModelDyePlanParams): ModelDyePlan {
-  if (!enableModelDye) {
-    return { mode: 'plain' }
-  }
+  colorsConfig,
+}: {
+  item: Pick<AppItem, 'extra'>
+  colorsConfig: FurnitureColorConfig | undefined
+}): ModelDyePlan {
+  if (!colorsConfig) return { mode: 'plain' }
 
-  const dyeResult = getDyePreset(item.gameId)
-  if (dyeResult) {
-    const { preset, slotIds } = dyeResult
-    const slotValues = parseColorMapSlots(item.extra.ColorMap, slotIds)
-    return {
-      mode: 'preset',
-      preset,
-      slotValues,
+  const groupMap = decodeColorMapToGroupMap(item.extra.ColorMap)
+
+  const dyeMap = new Map<number, { pattern: number; tint: number }>()
+
+  for (const [rawGroupId, groupConfig] of Object.entries(colorsConfig)) {
+    if (!groupConfig) continue
+    const groupId = Number(rawGroupId)
+    if (!Number.isFinite(groupId)) continue
+
+    const colorIndex = groupMap.get(groupId) ?? 0
+    const entry = groupConfig[colorIndex]
+    if (!entry) continue
+
+    for (const [meshIdx, pattern, tint] of entry.cfg) {
+      dyeMap.set(meshIdx, { pattern, tint })
     }
   }
 
-  return {
-    mode: 'legacy',
-    colorIndex: parseColorIndex(item.extra.ColorMap) ?? 0,
-  }
+  if (dyeMap.size === 0) return { mode: 'plain' }
+  return { mode: 'dyed', dyeMap }
 }
 
 /**
- * 生成模型分组键，键必须完整表达最终材质意图，避免错误复用。
+ * 生成模型分组缓存键，完整表达染色意图，避免错误复用。
  */
 export function buildModelMeshKey(gameId: number, plan: ModelDyePlan): string {
-  if (plan.mode === 'plain') {
-    return `${gameId}|plain`
-  }
-  if (plan.mode === 'legacy') {
-    return `${gameId}|legacy|ci=${plan.colorIndex}`
-  }
+  if (plan.mode === 'plain') return `${gameId}|plain`
 
-  const slotKey = plan.slotValues.length > 0 ? plan.slotValues.join('_') : 'none'
-  return `${gameId}|preset|slots=${slotKey}`
+  const parts = Array.from(plan.dyeMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([meshIdx, { pattern, tint }]) => `${meshIdx}:${pattern},${tint}`)
+    .join(';')
+  return `${gameId}|dyed|${parts}`
 }

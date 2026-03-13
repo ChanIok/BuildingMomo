@@ -464,20 +464,6 @@ const fmt = (n: number, decimals: number = 0) => {
             <Switch v-model="settingsStore.settings.showBackground" />
           </div>
 
-          <!-- 模型染色显示开关 -->
-          <div
-            v-if="isSecureModeEnabled && settingsStore.isAuthenticated"
-            class="flex items-center justify-between"
-          >
-            <div class="mr-2 space-y-0.5">
-              <Label class="text-xs">{{ t('settings.modelDye.label') }}</Label>
-              <p class="text-[11px] text-muted-foreground">
-                {{ t('settings.modelDye.hint') }}
-              </p>
-            </div>
-            <Switch v-model="settingsStore.settings.enableModelDye" />
-          </div>
-
           <!-- 图标/方块大小控制 -->
           <div class="flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">

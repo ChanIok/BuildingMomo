@@ -3,15 +3,8 @@ import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 't
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
-import { useSettingsStore } from '@/stores/settingsStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
-import {
-  loadArrayTexture,
-  loadDiffuseTexture,
-  isArrayTextureCached,
-  isDiffuseTextureCached,
-} from '@/lib/colorMap'
 import { type ModelDyePlan, resolveModelDyePlan, buildModelMeshKey } from '@/lib/modelDye'
 import { createBoxMaterial } from '../shared/materials'
 import {
@@ -33,73 +26,8 @@ interface GroupMeta {
   dyePlan: ModelDyePlan
 }
 
-/** 贴图加载描述 */
-interface TextureToLoad {
-  type: 'array' | 'diffuse'
-  fileName: string
-}
-
 interface ModelRebuildOptions {
   isStale?: () => boolean
-}
-
-/**
- * 从分组元数据中收集 preset 需要的贴图文件名
- */
-function collectPresetTextures(groupMeta: Map<string, GroupMeta>): TextureToLoad[] {
-  const textures: TextureToLoad[] = []
-  const seen = new Set<string>()
-
-  for (const meta of groupMeta.values()) {
-    if (meta.dyePlan.mode !== 'preset') continue
-
-    const { preset, slotValues } = meta.dyePlan
-    for (let slotIndex = 0; slotIndex < preset.slots.length; slotIndex++) {
-      const slot = preset.slots[slotIndex]!
-      const variantIndex = slotValues[slotIndex] ?? 0
-      const safeVariantIndex = variantIndex < slot.variants.length ? variantIndex : 0
-      const variant = slot.variants[safeVariantIndex]
-      if (!variant) continue
-
-      const colorFileName = typeof variant.color === 'string' ? variant.color.trim() : ''
-      if (colorFileName && !seen.has(colorFileName)) {
-        seen.add(colorFileName)
-        textures.push({ type: 'array', fileName: colorFileName })
-      }
-      const diffuseFileName = typeof variant.diffuse === 'string' ? variant.diffuse.trim() : ''
-      if (diffuseFileName && !seen.has(diffuseFileName)) {
-        seen.add(diffuseFileName)
-        textures.push({ type: 'diffuse', fileName: diffuseFileName })
-      }
-    }
-  }
-
-  return textures
-}
-
-/**
- * 批量并发预加载贴图
- */
-async function preloadTexturesBatch(
-  textures: TextureToLoad[],
-  onProgress?: (completed: number) => void
-): Promise<void> {
-  let completed = 0
-  await Promise.all(
-    textures.map(async ({ type, fileName }) => {
-      try {
-        if (type === 'array') {
-          await loadArrayTexture(fileName)
-        } else {
-          await loadDiffuseTexture(fileName)
-        }
-      } catch (e) {
-        console.warn(`[ModelMode] 贴图预加载失败: ${fileName}`, e)
-      }
-      completed++
-      onProgress?.(completed)
-    })
-  )
 }
 
 /**
@@ -107,22 +35,20 @@ async function preloadTexturesBatch(
  *
  * 3D 模型实例化渲染（按 gameId + 染色计划分组管理多个 InstancedMesh）
  * 染色策略由 `resolveModelDyePlan` 统一决策：
- * - enableModelDye=false -> plain
- * - 有 preset -> 仅 preset（不访问 legacy）
- * - 无 preset -> legacy
+ * - 无 colors 配置或 ColorMap 无有效条目 → plain
+ * - colors 配置 + 有效 ColorMap 条目 → dyed（D×T multiply + N法线 + ORM）
  * 对无模型或加载失败的物品自动回退到 Box 渲染
  */
 export function useModelMode() {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
-  const settingsStore = useSettingsStore()
   const loadingStore = useLoadingStore()
   const modelManager = getThreeModelManager()
 
   // 模型 InstancedMesh 映射：meshKey -> InstancedMesh
   // meshKey 格式示例：
-  // - plain:  `${gameId}|plain`
-  // - legacy: `${gameId}|legacy|ci=${colorIndex}`
+  // - plain: `${gameId}|plain`
+  // - dyed:  `${gameId}|dyed|0:1,2;1:0,0`
   // - preset: `${gameId}|preset|slots=${slotValues.join('_')}`
   const modelMeshMap = ref(new Map<string, InstancedMesh>())
 
@@ -251,14 +177,9 @@ export function useModelMode() {
     if (isStale()) return false
 
     // 1. 按 (gameId, dyePlan) 分组（包含回退项）
-    // 规则由 resolveModelDyePlan 统一决策：
-    // - enableModelDye=false -> plain
-    // - 有 preset -> 仅 preset（不访问 legacy）
-    // - 无 preset -> legacy
-    const enableDye = settingsStore.settings.enableModelDye
     const groups = new Map<string, AppItem[]>()
     const groupMeta = new Map<string, GroupMeta>()
-    const fallbackKey = '-1' // 特殊键，用于存放没有模型或加载失败的物品
+    const fallbackKey = '-1'
 
     for (let i = 0; i < instanceCount; i++) {
       const item = items[i]
@@ -271,52 +192,36 @@ export function useModelMode() {
       if (hasValidConfig) {
         const dyePlan = resolveModelDyePlan({
           item,
-          enableModelDye: enableDye,
-          getDyePreset: gameDataStore.getDyePreset,
+          colorsConfig: config.colors,
         })
         key = buildModelMeshKey(item.gameId, dyePlan)
         if (!groupMeta.has(key)) {
-          groupMeta.set(key, {
-            gameId: item.gameId,
-            dyePlan,
-          })
+          groupMeta.set(key, { gameId: item.gameId, dyePlan })
         }
       } else {
         key = fallbackKey
       }
 
-      if (!groups.has(key)) {
-        groups.set(key, [])
-      }
+      if (!groups.has(key)) groups.set(key, [])
       groups.get(key)!.push(item)
     }
 
-    // 2. 预加载所有模型和染色贴图 + 追踪 mesh 创建进度（统一进度条）
+    // 2. 预加载 GLB 模型 + 追踪 mesh 创建进度
     const modelItemIds = Array.from(new Set(Array.from(groupMeta.values()).map((m) => m.gameId)))
     const unloadedIds = modelItemIds.length > 0 ? modelManager.getUnloadedModels(modelItemIds) : []
 
-    // 收集预设系统需要的贴图（仅在启用染色时）
-    const presetTextures = enableDye ? collectPresetTextures(groupMeta) : []
-    const uncachedTextures = presetTextures.filter((t) =>
-      t.type === 'array' ? !isArrayTextureCached(t.fileName) : !isDiffuseTextureCached(t.fileName)
-    )
-
     const groupsToProcess = Array.from(groups.keys()).filter((k) => k !== fallbackKey).length
-    const resourceTasks = unloadedIds.length + uncachedTextures.length
-    // 仅当存在真实资源加载时，才把 mesh 处理纳入全局进度（避免纯重建也弹进度条）
-    const trackMeshProcessing = resourceTasks > 0
-    const totalTasks = resourceTasks + (trackMeshProcessing ? groupsToProcess : 0)
+    const trackMeshProcessing = unloadedIds.length > 0
+    const totalTasks = unloadedIds.length + (trackMeshProcessing ? groupsToProcess : 0)
 
-    // 进度追踪变量（跨阶段共享）
     let glbCompleted = 0
-    let textureCompleted = 0
     let meshCompleted = 0
     let glbFailed = 0
 
     const updateCombinedProgress = () => {
       if (totalTasks > 0) {
         loadingStore.updateProgress(
-          glbCompleted + textureCompleted + (trackMeshProcessing ? meshCompleted : 0),
+          glbCompleted + (trackMeshProcessing ? meshCompleted : 0),
           glbFailed
         )
       }
@@ -335,34 +240,17 @@ export function useModelMode() {
       updateCombinedProgress()
     }
 
-    // 阶段 2a：并发预加载 GLB + 贴图
-    if (unloadedIds.length > 0 || uncachedTextures.length > 0) {
-      const loadPromises: Promise<void>[] = []
-
-      if (unloadedIds.length > 0) {
-        loadPromises.push(
-          modelManager
-            .preloadModels(unloadedIds, (current, _total, failed) => {
-              glbCompleted = current
-              glbFailed = failed
-              updateCombinedProgress()
-            })
-            .catch((err) => {
-              console.warn('[ModelMode] 模型预加载失败:', err)
-            })
-        )
-      }
-
-      if (uncachedTextures.length > 0) {
-        loadPromises.push(
-          preloadTexturesBatch(uncachedTextures, (current) => {
-            textureCompleted = current
-            updateCombinedProgress()
-          })
-        )
-      }
-
-      await Promise.all(loadPromises)
+    // 阶段 2a：并发预加载 GLB
+    if (unloadedIds.length > 0) {
+      await modelManager
+        .preloadModels(unloadedIds, (current, _total, failed) => {
+          glbCompleted = current
+          glbFailed = failed
+          updateCombinedProgress()
+        })
+        .catch((err) => {
+          console.warn('[ModelMode] 模型预加载失败:', err)
+        })
 
       // ✅ 检查点 2：异步加载完成后检查是否过期
       if (isStale()) {

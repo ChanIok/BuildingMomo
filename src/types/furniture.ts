@@ -71,8 +71,21 @@ export interface FurnitureMeshConfig {
   scale: { x: number; y: number; z: number }
 }
 
-/** 染色配置：groupId -> (colorIndex -> iconId) */
-export type FurnitureColorConfig = Record<string, Record<string, number>>
+/** 单个染色变体的渲染配置 */
+export interface FurnitureColorEntry {
+  /** 显示图标 ID（UI 色块用） */
+  idx: number
+  /**
+   * 材质赋值列表：每项 [meshIdx, pattern, tint]
+   * - meshIdx: 目标源 mesh 索引（对应 config.meshes 的下标）
+   * - pattern: D/N/O 贴图变体索引（对应 matName_D{pattern} / _N{pattern} / _O{pattern}）
+   * - tint:    T 调色板变体索引（对应 matName_T{tint}）
+   */
+  cfg: [meshIdx: number, pattern: number, tint: number][]
+}
+
+/** 染色配置：groupId -> (colorIndex -> 变体配置) */
+export type FurnitureColorConfig = Record<number, Record<number, FurnitureColorEntry>>
 
 /** 家具模型配置 */
 export interface FurnitureModelConfig {
@@ -91,71 +104,4 @@ export interface FurnitureModelConfig {
 export interface FurnitureDB {
   categories: string[]
   furniture: FurnitureModelConfig[]
-}
-
-// ========== Material Variant Map (单槽染色映射) ==========
-
-/** 旧染色系统中的材质处理类型 */
-export type MaterialVariantType = 'color' | 'diffuse'
-
-/** material_variant_map.json 中单个材质实例的配置 */
-export interface MaterialVariantConfig {
-  /** color: 使用 tint shader；diffuse: 直接替换基础贴图 */
-  type: MaterialVariantType
-  /** 按 colorIndex 对应的贴图文件名列表 */
-  file: string[]
-}
-
-/** material_variant_map.json 的完整结构：材质实例名 -> 配置 */
-export type MaterialVariantMap = Record<string, MaterialVariantConfig>
-
-// ========== Dye Presets (多槽染色预设) ==========
-
-/** 染色变体配置（单个颜色选项） */
-export interface DyeVariant {
-  /** 可选：tint 调色板贴图文件名（UV2 采样） */
-  color?: string
-  /** 可选：替换基础 D 贴图文件名（UV1 采样） */
-  diffuse?: string
-  /** 说明：当 color 与 diffuse 都缺失时，表示该变体为 no-op（显式不染色） */
-}
-
-/** 染色目标配置（指定作用于哪个 mesh 的哪个材质） */
-export interface DyeTarget {
-  /** meshes 数组中的索引 */
-  mesh: number
-  /** 材质实例名（如 "MI_WallPaper_01"） */
-  mi: string
-}
-
-/** 染色槽位配置（一个独立染色区域） */
-export interface DyeSlot {
-  /** 作用目标列表（可能跨多个 mesh） */
-  targets: DyeTarget[]
-  /** 变体列表（索引对应 ColorMap 中的值） */
-  variants: DyeVariant[]
-}
-
-/** 染色预设配置（描述一类家具的所有染色区域） */
-export interface DyePreset {
-  /** 预设名称（调试用） */
-  name: string
-  /** 预设 ID */
-  id: number
-  /** 染色槽位列表（索引对应 ColorMap 的 key/index） */
-  slots: DyeSlot[]
-}
-
-/** 家具 ID 到预设的引用 */
-export interface DyeItemRef {
-  /** 引用的预设 ID（presets 数组索引） */
-  presets: number
-}
-
-/** furniture_dye_presets.json 的完整数据结构 */
-export interface DyePresetsData {
-  /** 预设定义列表 */
-  presets: DyePreset[]
-  /** 家具 ID -> 预设引用的映射 */
-  items: Record<string, DyeItemRef>
 }
