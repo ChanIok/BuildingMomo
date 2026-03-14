@@ -292,7 +292,13 @@ varying vec2 vMeshUv0;`
 vec3 baseColor = diffuseColor.rgb;
 vec4 dyeTint = texture2D(dyeTintMap, vTintUv);
 float dyeMask = clamp(texture2D(dyeMaskMap, vMeshUv0).a, 0.0, 1.0);
-vec3 dyedColor = baseColor * dyeTint.rgb;
+
+// vec3 dyedColor = baseColor * dyeTint.rgb * 2.0;
+
+float tintLum = dot(dyeTint.rgb, vec3(0.299, 0.587, 0.114));
+float boost = 1.0 / max(tintLum, 0.4);
+vec3 dyedColor = clamp(baseColor * dyeTint.rgb * boost, 0.0, 1.0);
+
 diffuseColor.rgb = mix(baseColor, dyedColor, dyeMask);`
     )
 
@@ -373,8 +379,6 @@ function buildDyeMaterial(
     metalnessMap: oTex ?? undefined,
     aoMap: oTex ?? undefined,
     aoMapIntensity: 1.0,
-    roughness: 1.0,
-    metalness: 1.0,
     emissive: new Color(0x111111),
     emissiveIntensity: 0.02,
   })
