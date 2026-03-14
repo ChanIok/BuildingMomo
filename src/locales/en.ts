@@ -330,6 +330,7 @@ export const enLocale = {
       label: 'Watch Popup',
       hint: 'Show a popup when the file changes; disabled will only record history.',
     },
+    fpsMonitor: 'Show FPS',
     autoUpdateFurniture: 'Auto-Update Furniture Data',
     threeDisplayMode: '3D Display Mode',
     threeSymbolScale: 'Icon/Block Scale',

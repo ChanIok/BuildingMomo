@@ -175,6 +175,14 @@ async function handleVerify() {
                 <Switch v-model="settingsStore.settings.enableWatchNotification" />
               </div>
 
+              <!-- FPS 监视器 -->
+              <div class="flex items-center justify-between">
+                <div class="space-y-0.5">
+                  <Label>{{ t('settings.fpsMonitor') }}</Label>
+                </div>
+                <Switch v-model="settingsStore.settings.showFpsMonitor" />
+              </div>
+
               <!-- 实验性功能 -->
               <div v-if="isSecureMode" class="flex items-center justify-between">
                 <div class="space-y-0.5">

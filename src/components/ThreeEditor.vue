@@ -30,6 +30,8 @@ import {
   watchOnce,
 } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
+import FpsMonitor from './FpsMonitor.vue'
+import { recordRenderFrame } from '@/composables/useFpsMonitor'
 
 // 设置 Three.js 全局 Z 轴向上
 Object3D.DEFAULT_UP.set(0, 0, 1)
@@ -386,7 +388,7 @@ function handleToggleCameraMode() {
 
 // 渲染后回调（仅在 TresJS 实际渲染主场景后触发，on-demand 模式下空闲时不运行）
 function handlePostRender(context: any) {
-  if (currentDisplayMode.value !== 'model') return
+  recordRenderFrame()
 
   const renderer = context.renderer?.instance as WebGLRenderer | undefined
   const camera = activeCameraRef.value
@@ -825,6 +827,14 @@ onDeactivated(() => {
           @change="handleGizmoChange"
         />
       </TresCanvas>
+    </div>
+
+    <!-- FPS 监视器 -->
+    <div
+      v-if="settingsStore.settings.showFpsMonitor"
+      class="pointer-events-none absolute right-3 bottom-3 z-50 rounded-lg bg-black/65 px-2.5 py-2 backdrop-blur-sm"
+    >
+      <FpsMonitor />
     </div>
 
     <!-- 所有 UI 叠加层 (统一子组件) -->

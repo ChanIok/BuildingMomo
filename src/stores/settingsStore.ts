@@ -58,6 +58,9 @@ export interface AppSettings {
   enableSurfaceSnap: boolean // 启用表面碰撞吸附
   surfaceSnapThreshold: number // 表面吸附距离（单位）
 
+  // 调试
+  showFpsMonitor: boolean
+
   // 语言设置
   language: Locale
 
@@ -90,6 +93,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   rotationSnap: 0,
   enableSurfaceSnap: false,
   surfaceSnapThreshold: 20,
+  showFpsMonitor: false,
   language: 'zh',
   inputBindings: {
     camera: {

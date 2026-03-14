@@ -326,6 +326,7 @@ export const zhLocale = {
       label: '文件监控弹窗',
       hint: '文件变化时弹窗询问是否导入，关闭后仅记录历史。',
     },
+    fpsMonitor: '显示 FPS',
     autoUpdateFurniture: '家具数据自动更新',
     threeDisplayMode: '3D显示模式',
     threeSymbolScale: '图标/方块缩放比例',
