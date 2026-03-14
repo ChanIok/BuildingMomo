@@ -1,5 +1,5 @@
 import { ref, markRaw, shallowRef } from 'vue'
-import { InstancedMesh, BoxGeometry, Sphere, Vector3, DynamicDrawUsage } from 'three'
+import { InstancedMesh, BoxGeometry, DynamicDrawUsage } from 'three'
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
@@ -79,8 +79,6 @@ export function useModelMode() {
     fallbackMesh.value = markRaw(
       new InstancedMesh(fallbackGeometry.value, fallbackMaterial, MAX_INSTANCES)
     )
-    fallbackMesh.value.frustumCulled = false
-    fallbackMesh.value.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
     fallbackMesh.value.instanceMatrix.setUsage(DynamicDrawUsage)
     fallbackMesh.value.count = 0
   }
@@ -431,14 +429,16 @@ export function useModelMode() {
     //    整个代码块是同步的，浏览器不会在中间插入渲染帧
     //    效果：旧场景 → 新场景，单帧切换，无闪烁
 
-    // 6a. 设置所有新 mesh 的 count（使其可见）
+    // 6a. 设置所有新 mesh 的 count（使其可见）并重算包围球
     for (const { mesh, count } of pendingMeshUpdates) {
       mesh.count = count
+      mesh.computeBoundingSphere()
     }
 
-    // 6b. 设置 fallbackMesh 的 count
+    // 6b. 设置 fallbackMesh 的 count 并重算包围球
     if (fallbackMesh.value) {
       fallbackMesh.value.count = pendingFallbackCount
+      fallbackMesh.value.computeBoundingSphere()
     }
 
     // 6c. 删除所有不再需要的旧 mesh

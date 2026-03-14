@@ -381,12 +381,11 @@ export function useSelectionOutline() {
       }
     }
 
-    // 更新所有 maskMesh 的 needsUpdate
+    // 更新所有 maskMesh 的颜色缓冲（矩阵与主 mesh 共享，不需要重复标脏）
     for (const maskMesh of maskMeshMap.value.values()) {
       if (maskMesh.instanceColor) {
         maskMesh.instanceColor.needsUpdate = true
       }
-      maskMesh.instanceMatrix.needsUpdate = true
     }
 
     // 更新缓存标记

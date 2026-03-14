@@ -370,6 +370,9 @@ function handleTresReady(context: any) {
     // 确保输出色彩空间正确
     renderer.outputColorSpace = 'srgb'
     renderer.shadowMap.enabled = true
+    // 禁用阴影自动更新：移动时跳过 shadow pass，停止后手动触发一次
+    renderer.shadowMap.autoUpdate = false
+    renderer.shadowMap.needsUpdate = true
   }
 
   // 连接按需渲染的 invalidate 函数
@@ -386,6 +389,12 @@ function handleToggleCameraMode() {
   }
 }
 
+// 逐帧相机位置缓存（用于检测帧间移动，跳过描边开销）
+// NaN 作初始值：首帧因 NaN !== number 视为"已移动"，echo 帧正常补渲描边
+let _prevCamX = NaN,
+  _prevCamY = NaN,
+  _prevCamZ = NaN
+
 // 渲染后回调（仅在 TresJS 实际渲染主场景后触发，on-demand 模式下空闲时不运行）
 function handlePostRender(context: any) {
   recordRenderFrame()
@@ -394,6 +403,27 @@ function handlePostRender(context: any) {
   const camera = activeCameraRef.value
 
   if (!renderer || !camera) return
+
+  // 检测帧间相机位移（含 OrbitControls 阻尼帧）
+  const cam = camera as any
+  const cx = cam.position.x,
+    cy = cam.position.y,
+    cz = cam.position.z
+  const moved = cx !== _prevCamX || cy !== _prevCamY || cz !== _prevCamZ
+  _prevCamX = cx
+  _prevCamY = cy
+  _prevCamZ = cz
+
+  if (moved) {
+    // 移动中：跳过阴影更新 + 跳过描边
+    invalidateScene()
+    return
+  }
+
+  // 常规静止帧（含 echo 帧）：更新阴影贴图
+  renderer.shadowMap.needsUpdate = true
+
+  if (currentDisplayMode.value !== 'model') return
 
   const size = renderer.getSize(new Vector2())
 

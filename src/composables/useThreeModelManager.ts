@@ -888,8 +888,6 @@ export function useThreeModelManager() {
     )
 
     const instancedMesh = new InstancedMesh(geomData.geometry, material, allocatedCapacity)
-    instancedMesh.frustumCulled = false
-    instancedMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
     instancedMesh.instanceMatrix.setUsage(DynamicDrawUsage)
     instancedMesh.count = 0
 

@@ -284,7 +284,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     )
 
     // Model 模式：同步更新 mask
-    if (mode === 'model') {
+    // 拖拽帧（skipBVHRefit=true）跳过：选中状态未变，位置由共享 instanceMatrix 自动同步
+    if (mode === 'model' && !skipBVHRefit) {
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
       selectionOutline.updateMasks(
         selectedItemIds,
