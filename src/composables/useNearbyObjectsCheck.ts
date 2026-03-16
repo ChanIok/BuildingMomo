@@ -1,7 +1,7 @@
 import { ref, watch, type Ref } from 'vue'
 import { useThrottleFn } from '@vueuse/core'
 import { useEditorStore } from '@/stores/editorStore'
-import { yieldToMain } from './renderer/shared/asyncRaycast'
+import { createTaskToken, cancelTaskToken, createTimeSlicer } from '@/lib/cooperativeTask'
 
 // ============================================================
 // 配置常量
@@ -12,14 +12,6 @@ const BUDGET_MS = 3
 
 /** 每隔多少个物品检查一次时间 */
 const ITEMS_PER_CHECK = 1000
-
-// ============================================================
-// 类型定义
-// ============================================================
-
-interface NearbyCheckTask {
-  cancelled: boolean
-}
 
 export interface NearbyObjectsCheckOptions {
   /** 检测阈值（距离，默认 1000） */
@@ -52,20 +44,22 @@ export function useNearbyObjectsCheck(
   const threshold = options?.threshold ?? 1000
   const throttleMs = options?.throttleMs ?? 200
   const THRESHOLD_SQ = threshold * threshold
+  const timeSlicer = createTimeSlicer({
+    budgetMs: BUDGET_MS,
+    checkEvery: ITEMS_PER_CHECK,
+  })
 
   // 当前任务（用于取消）
-  let currentTask: NearbyCheckTask | null = null
+  let currentTask: ReturnType<typeof createTaskToken> | null = null
 
   /**
    * 异步检测（时间切片）
    */
   async function performCheckAsync() {
     // 取消上一个任务
-    if (currentTask) {
-      currentTask.cancelled = true
-    }
+    cancelTaskToken(currentTask)
 
-    const task: NearbyCheckTask = { cancelled: false }
+    const task = createTaskToken()
     currentTask = task
 
     const items = editorStore.activeScheme?.items.value
@@ -80,22 +74,10 @@ export function useNearbyObjectsCheck(
     const camY = -camPos[1] // Y 轴取反（Three.js 坐标系）
     const camZ = camPos[2]
 
-    let frameStart = performance.now()
+    timeSlicer.reset()
 
     for (let i = 0; i < items.length; i++) {
-      // 检查是否被取消
-      if (task.cancelled) return
-
-      // 每 N 个物品检查时间预算
-      if (i % ITEMS_PER_CHECK === 0 && i > 0) {
-        const elapsed = performance.now() - frameStart
-        if (elapsed > BUDGET_MS) {
-          await yieldToMain()
-          // yield 后再次检查取消状态
-          if (task.cancelled) return
-          frameStart = performance.now()
-        }
-      }
+      if (!(await timeSlicer.checkpoint(i, task))) return
 
       const item = items[i]
       if (!item) continue

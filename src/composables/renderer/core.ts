@@ -158,11 +158,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       if (modelMode.fallbackMesh.value) {
         modelMode.fallbackMesh.value.count = 0
       }
-      selectionOutline.reconcileMaskMeshes(
-        new Map<string, InstancedMesh>(),
-        null,
-        MAX_RENDER_INSTANCES
-      )
+      selectionOutline.reconcileMaskMeshes(new Map<string, InstancedMesh>(), null)
     }
 
     // 执行对应模式的重建
@@ -188,11 +184,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         const fallbackMesh = modelMode.fallbackMesh.value
 
         // 先对齐 mask mesh 集合，确保不会累积 stale mask
-        selectionOutline.reconcileMaskMeshes(
-          modelMode.meshMap.value,
-          fallbackMesh,
-          MAX_RENDER_INSTANCES
-        )
+        selectionOutline.reconcileMaskMeshes(modelMode.meshMap.value, fallbackMesh)
 
         // 更新 mask 状态
         const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()

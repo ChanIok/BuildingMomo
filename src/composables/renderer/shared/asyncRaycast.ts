@@ -1,5 +1,11 @@
 import { Mesh, Matrix4, Raycaster, Sphere, type InstancedMesh, type Intersection } from 'three'
 import type { RaycastHit, RaycastTask } from '../types'
+import {
+  createTaskToken,
+  cancelTaskToken,
+  createTimeSlicer,
+  yieldToMain as sharedYieldToMain,
+} from '@/lib/cooperativeTask'
 
 // ============================================================
 // 配置常量
@@ -25,36 +31,20 @@ const _instanceIntersects: Intersection[] = []
 // 工具函数
 // ============================================================
 
-/**
- * 让出主线程一帧
- *
- * 优先使用 scheduler.yield()（现代浏览器），
- * 回退到 requestAnimationFrame
- */
-export function yieldToMain(): Promise<void> {
-  return new Promise((resolve) => {
-    if ('scheduler' in globalThis && 'yield' in (globalThis as any).scheduler) {
-      ;(globalThis as any).scheduler.yield().then(resolve)
-    } else {
-      requestAnimationFrame(() => resolve())
-    }
-  })
-}
+export const yieldToMain = sharedYieldToMain
 
 /**
  * 创建射线检测任务
  */
 export function createRaycastTask(): RaycastTask {
-  return { cancelled: false }
+  return createTaskToken()
 }
 
 /**
  * 取消射线检测任务
  */
 export function cancelTask(task: RaycastTask | null): void {
-  if (task) {
-    task.cancelled = true
-  }
+  cancelTaskToken(task)
 }
 
 // ============================================================
@@ -107,21 +97,15 @@ export async function raycastInstancedMeshAsync(
   }
 
   // 2. 时间切片遍历所有实例
-  let frameStart = performance.now()
+  const timeSlicer = createTimeSlicer({
+    budgetMs: BUDGET_MS,
+    checkEvery: Math.max(1, instancesPerCheck),
+  })
+  timeSlicer.reset()
   let closestHit: RaycastHit | null = null
 
   for (let instanceId = 0; instanceId < count; instanceId++) {
-    // 检查是否被取消
-    if (task.cancelled) return null
-
-    // 每 N 个实例检查一次时间
-    if (instanceId % instancesPerCheck === 0 && instanceId > 0) {
-      if (performance.now() - frameStart > BUDGET_MS) {
-        await yieldToMain()
-        if (task.cancelled) return null
-        frameStart = performance.now()
-      }
-    }
+    if (!(await timeSlicer.checkpoint(instanceId, task))) return null
 
     // 计算实例的世界矩阵
     mesh.getMatrixAt(instanceId, _instanceMatrix)

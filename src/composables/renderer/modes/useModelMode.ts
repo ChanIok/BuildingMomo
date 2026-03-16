@@ -6,7 +6,9 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
+import { createTimeSlicer } from '@/lib/cooperativeTask'
 import { type ModelDyePlan, resolveModelDyePlan, buildModelMeshKey } from '@/lib/modelDye'
+import { invalidateScene } from '@/composables/useSceneInvalidate'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -21,6 +23,10 @@ import type { ModelAssetProfile } from '@/types/furniture'
 
 // 当缺少尺寸信息时使用的默认尺寸（游戏坐标：X=长, Y=宽, Z=高）
 const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
+// 每处理多少个模型组就提交一次到渲染层（值越小，显示越“渐进”，但提交更频繁）
+const PROGRESSIVE_GROUPS_PER_COMMIT = 4
+// 渐进构建时每轮给主线程预留的时间预算（ms）
+const PROGRESSIVE_REBUILD_BUDGET_MS = 8
 
 /** 模型分组元数据 */
 interface GroupMeta {
@@ -113,89 +119,22 @@ export function useModelMode() {
   }
 
   /**
-   * 渲染回退物品（使用 Box）
-   */
-  function renderFallbackItems(
-    items: AppItem[],
-    globalStartIndex: number,
-    indexToIdMap: Map<number, string>,
-    idToIndexMap: Map<string, number>,
-    localIndexMap: Map<number, string>
-  ) {
-    ensureFallbackResources()
-    if (!fallbackMesh.value) {
-      console.error('[ModelMode] ❌ fallbackMesh 初始化失败！')
-      return
-    }
-
-    // fallbackMesh 使用局部索引（0, 1, 2...），而不是全局索引
-    // 设置当前需要渲染的实例数量
-    const count = Math.min(items.length, MAX_INSTANCES)
-
-    for (let i = 0; i < count; i++) {
-      const item = items[i]
-      if (!item) continue
-
-      // fallbackMesh 使用局部索引 i，全局索引用于全局映射
-      const globalIndex = globalStartIndex + i
-
-      // 位置
-      scratchPosition.set(item.x, item.y, item.z)
-
-      // 缩放参数和尺寸
-      const Scale = item.extra.Scale
-      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-      const [sizeX, sizeY, sizeZ] = furnitureSize
-
-      // 旋转
-      const Rotation = item.rotation
-      scratchEuler.set(
-        (-Rotation.x * Math.PI) / 180,
-        (-Rotation.y * Math.PI) / 180,
-        (Rotation.z * Math.PI) / 180,
-        'ZYX'
-      )
-      scratchQuaternion.setFromEuler(scratchEuler)
-
-      // 缩放（使用家具尺寸）
-      // 注意：游戏坐标系中 X/Y 与 Three.js 交换
-      scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
-
-      // 组合矩阵（使用局部索引 i）
-      scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
-      fallbackMesh.value.setMatrixAt(i, scratchMatrix)
-
-      // 颜色设置为白色（不影响贴图原色，因为白色 × 任何颜色 = 原颜色）
-      scratchColor.setHex(0xffffff)
-      fallbackMesh.value.setColorAt(i, scratchColor)
-
-      // 全局索引映射（用于颜色/矩阵更新）
-      indexToIdMap.set(globalIndex, item.internalId)
-      idToIndexMap.set(item.internalId, globalIndex)
-
-      // 局部索引映射（用于射线检测）
-      localIndexMap.set(i, item.internalId)
-    }
-
-    fallbackMesh.value.instanceMatrix.needsUpdate = true
-    if (fallbackMesh.value.instanceColor) fallbackMesh.value.instanceColor.needsUpdate = true
-  }
-
-  /**
    * 重建所有模型实例
    */
   async function rebuild(options?: ModelRebuildOptions): Promise<boolean> {
-    // ✅ 检查点 1：捕获当前 scheme 引用，用于后续验证
+    // 记录本次 rebuild 对应的方案和资源档位，用来判断“是否已经过期”
     const currentScheme = editorStore.activeScheme
     const assetProfile = settingsStore.settings.modelAssetProfile
     syncAssetProfile(assetProfile)
     const modelManager = getThreeModelManager()
     const items = currentScheme?.items.value ?? []
     const instanceCount = Math.min(items.length, MAX_INSTANCES)
+    // isStale=true 表示这次构建结果不该再提交（例如用户切方案了）
     const isStale = () =>
       options?.isStale?.() === true ||
       editorStore.activeScheme !== currentScheme ||
       settingsStore.settings.modelAssetProfile !== assetProfile
+    // 统一中断出口：取消 loading，返回 false 让上层跳过提交
     const abort = () => {
       loadingStore.cancelLoading()
       return false
@@ -208,9 +147,11 @@ export function useModelMode() {
     }
     if (isStale()) return false
 
-    // 1. 按 (gameId, dyePlan) 分组（包含回退项）
+    // 1) 先把物品按“同 gameId + 同染色方案”分组
+    // 这样每组可以共用一个 InstancedMesh，减少 draw call
     const groups = new Map<string, AppItem[]>()
     const groupMeta = new Map<string, GroupMeta>()
+    // 特殊组：无模型配置的物品，后面只在必要时才走 fallback
     const fallbackKey = '-1'
 
     for (let i = 0; i < instanceCount; i++) {
@@ -238,11 +179,15 @@ export function useModelMode() {
       groups.get(key)!.push(item)
     }
 
-    // 2. 预加载 GLB 模型 + 追踪 mesh 创建进度
+    const modelGroupEntries = Array.from(groups.entries()).filter(
+      ([meshKey]) => meshKey !== fallbackKey
+    )
+    // 静态 fallback：配置本身缺失（不是加载失败）
+    const staticFallbackItems = groups.get(fallbackKey) ?? []
     const modelItemIds = Array.from(new Set(Array.from(groupMeta.values()).map((m) => m.gameId)))
     const unloadedIds = modelItemIds.length > 0 ? modelManager.getUnloadedModels(modelItemIds) : []
 
-    const groupsToProcess = Array.from(groups.keys()).filter((k) => k !== fallbackKey).length
+    const groupsToProcess = modelGroupEntries.length
     const trackMeshProcessing = unloadedIds.length > 0
     const totalTasks = unloadedIds.length + (trackMeshProcessing ? groupsToProcess : 0)
 
@@ -250,6 +195,7 @@ export function useModelMode() {
     let meshCompleted = 0
     let glbFailed = 0
 
+    // 进度 = GLB 预载进度 + 分组处理进度
     const updateCombinedProgress = () => {
       if (totalTasks > 0) {
         loadingStore.updateProgress(
@@ -272,7 +218,7 @@ export function useModelMode() {
       updateCombinedProgress()
     }
 
-    // 阶段 2a：并发预加载 GLB
+    // 2) 先预热未缓存模型，避免后面每组都卡网络/解析
     if (unloadedIds.length > 0) {
       await modelManager
         .preloadModels(unloadedIds, (current, _total, failed) => {
@@ -284,51 +230,130 @@ export function useModelMode() {
           console.warn('[ModelMode] 模型预加载失败:', err)
         })
 
-      // ✅ 检查点 2：异步加载完成后检查是否过期
       if (isStale()) {
         console.log('[ModelMode] 检测到方案切换，中断旧的 rebuild')
         return abort()
       }
     }
 
-    // 3. 标记需要清理的旧 InstancedMesh（延迟到新 mesh 就绪后再删除，避免闪烁）
-    const activeMeshKeys = new Set(Array.from(groups.keys()).filter((k) => k !== fallbackKey))
-    const nextModelMeshMap = new Map(modelMeshMap.value)
-    const meshKeysToRemove: string[] = []
-    for (const [meshKey] of modelMeshMap.value.entries()) {
-      if (!activeMeshKeys.has(meshKey)) {
-        meshKeysToRemove.push(meshKey)
-      }
+    const previousModelMeshMap = new Map(modelMeshMap.value)
+    const hadVisibleModels = previousModelMeshMap.size > 0
+    // 当旧场景已有可见模型时，中间批次先不交换映射，避免“先清空再回填”的全体闪烁。
+    // 这种场景通常是移动结束/染色后的重建，优先保证画面连续性。
+    const deferIntermediateSwap = hadVisibleModels
+    // 用于最后清理“这次已不再使用”的旧 mesh
+    const activeMeshKeys = new Set<string>()
+
+    // 3) 不再提前清空旧 modelMeshMap，避免出现“空帧”导致整场景闪烁。
+    //    fallback 仍在本轮开始时清零：它是单独 mesh，不清零会把旧回退实例追加到新回退实例后面。
+    if (fallbackMesh.value) {
+      fallbackMesh.value.count = 0
     }
 
-    // 确保 fallbackMesh 资源已初始化（但不重置 count，由后续逻辑决定）
-    ensureFallbackResources()
-
-    // 4. 为每个家具创建或更新 InstancedMesh（暂不设置 count，延迟到原子切换阶段）
+    // 4) 渐进构建阶段使用的“进行中快照”
+    // 每次 commitProgress 都会把它们拷贝到对外响应式状态
+    const progressiveMeshMap = new Map<string, InstancedMesh>()
+    const progressiveIndexToIdMap = new Map<number, string>()
+    const progressiveIdToIndexMap = new Map<string, number>()
+    const progressiveMeshToLocalIndexMap = new Map<InstancedMesh, Map<number, string>>()
+    const progressiveInternalIdToMeshInfo = new Map<
+      string,
+      { meshKey: string; localIndex: number }
+    >()
     let globalIndex = 0
-    const newIndexToIdMap = new Map<number, string>()
-    const newIdToIndexMap = new Map<string, number>()
-    const newMeshToLocalIndexMap = new Map<InstancedMesh, Map<number, string>>()
-    const newInternalIdToMeshInfo = new Map<string, { meshKey: string; localIndex: number }>()
+    let groupsSinceLastCommit = 0
+    let processedGroups = 0
+    let fallbackLocalIndexMap: Map<number, string> | null = null
+    // 时间切片：每处理一组都检查一次预算，超时就让出主线程
+    const groupSlicer = createTimeSlicer({
+      budgetMs: PROGRESSIVE_REBUILD_BUDGET_MS,
+      checkEvery: 1,
+    })
+    groupSlicer.reset()
 
-    // 收集所有需要回退的 items
-    let allFallbackItems: AppItem[] = []
-    if (groups.has(fallbackKey)) {
-      allFallbackItems.push(...groups.get(fallbackKey)!)
+    // 把“当前已完成部分”提交到渲染层，让用户看到模型一批批出现
+    const commitProgress = (forceFinal = false) => {
+      // 若旧画面已存在，则中间批次不交换，直到最后一次提交，避免全体闪烁。
+      if (deferIntermediateSwap && !forceFinal) return
+
+      modelMeshMap.value = new Map(progressiveMeshMap)
+      modelIndexToIdMap.value = new Map(progressiveIndexToIdMap)
+      modelIdToIndexMap.value = new Map(progressiveIdToIndexMap)
+      meshToLocalIndexMap.value = new Map(progressiveMeshToLocalIndexMap)
+      internalIdToMeshInfo.value = new Map(progressiveInternalIdToMeshInfo)
+      invalidateScene()
     }
 
-    // 收集新建/更新的 mesh 及其目标 count（用于原子切换）
-    const pendingMeshUpdates: { mesh: InstancedMesh; count: number }[] = []
+    // 仅在“确实无模型可用”时才追加 fallback 物品
+    // - 无配置：静态 fallback
+    // - createInstancedMesh 失败：动态 fallback
+    const appendFallbackItem = (item: AppItem) => {
+      ensureFallbackResources()
+      if (!fallbackMesh.value) return
 
-    // 遍历处理正常模型组
-    for (const [meshKey, itemsOfModel] of groups.entries()) {
+      const mesh = fallbackMesh.value
+      const localIndex = mesh.count
+      // fallback 走固定容量，保险起见做越界保护
+      if (localIndex >= mesh.instanceMatrix.count) {
+        console.warn('[ModelMode] fallbackMesh 容量不足，跳过部分回退物品')
+        return
+      }
+
+      scratchPosition.set(item.x, item.y, item.z)
+      const Scale = item.extra.Scale
+      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
+      const [sizeX, sizeY, sizeZ] = furnitureSize
+
+      const Rotation = item.rotation
+      scratchEuler.set(
+        (-Rotation.x * Math.PI) / 180,
+        (-Rotation.y * Math.PI) / 180,
+        (Rotation.z * Math.PI) / 180,
+        'ZYX'
+      )
+      scratchQuaternion.setFromEuler(scratchEuler)
+
+      scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
+      scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
+      mesh.setMatrixAt(localIndex, scratchMatrix)
+      scratchColor.setHex(0xffffff)
+      mesh.setColorAt(localIndex, scratchColor)
+
+      mesh.count = localIndex + 1
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+
+      if (!fallbackLocalIndexMap) {
+        fallbackLocalIndexMap = new Map<number, string>()
+      }
+      fallbackLocalIndexMap.set(localIndex, item.internalId)
+      progressiveMeshToLocalIndexMap.set(mesh, fallbackLocalIndexMap)
+
+      progressiveIndexToIdMap.set(globalIndex, item.internalId)
+      progressiveIdToIndexMap.set(item.internalId, globalIndex)
+      progressiveInternalIdToMeshInfo.set(item.internalId, { meshKey: '-1', localIndex })
+      globalIndex++
+    }
+
+    // 先处理“配置缺失”的 fallback（这些不依赖模型加载结果）
+    for (const item of staticFallbackItems) {
       if (isStale()) return abort()
-      if (meshKey === fallbackKey) continue
+      appendFallbackItem(item)
+    }
 
-      const meta = groupMeta.get(meshKey)!
+    if (staticFallbackItems.length > 0) {
+      groupsSinceLastCommit++
+      commitProgress()
+    }
 
-      // 创建或获取 InstancedMesh
-      const existingMesh = modelMeshMap.value.get(meshKey)
+    for (const [meshKey, itemsOfModel] of modelGroupEntries) {
+      if (!(await groupSlicer.checkpoint(processedGroups))) return abort()
+      if (isStale()) return abort()
+      processedGroups++
+
+      const meta = groupMeta.get(meshKey)
+      if (!meta) continue
+
       const mesh = await modelManager.createInstancedMesh(
         meta.gameId,
         meshKey,
@@ -338,37 +363,30 @@ export function useModelMode() {
       if (isStale()) return abort()
 
       if (!mesh) {
-        // 加载失败，加入回退列表
+        // 模型创建失败时，这一组才回退到 fallback
         console.warn(`[ModelMode] Failed to create mesh for ${meshKey}, using fallback`)
-        allFallbackItems.push(...itemsOfModel)
+        for (const item of itemsOfModel) {
+          appendFallbackItem(item)
+        }
         markMeshProcessed()
+        groupsSinceLastCommit++
+        if (groupsSinceLastCommit >= PROGRESSIVE_GROUPS_PER_COMMIT) {
+          commitProgress()
+          groupsSinceLastCommit = 0
+        }
         continue
       }
 
-      // 更新引用（createInstancedMesh 可能会返回新的实例）
-      if (existingMesh !== mesh) {
-        nextModelMeshMap.set(meshKey, markRaw(mesh))
-      }
-
-      // ⚠️ 不在此处设置 mesh.count，延迟到原子切换阶段
-      // 记录目标 count
-      pendingMeshUpdates.push({ mesh, count: itemsOfModel.length })
-
-      // 为当前 mesh 创建局部索引映射
+      activeMeshKeys.add(meshKey)
+      progressiveMeshMap.set(meshKey, markRaw(mesh))
       const localIndexMap = new Map<number, string>()
 
-      // 设置每个实例的矩阵和颜色（此时 count=0 或旧值，不影响矩阵写入）
       for (let i = 0; i < itemsOfModel.length; i++) {
         const item = itemsOfModel[i]
         if (!item) continue
 
-        // 位置
         scratchPosition.set(item.x, item.y, item.z)
-
-        // 缩放参数
         const Scale = item.extra.Scale
-
-        // 旋转（与 Box 模式完全相同，模型已在导入时完成坐标系转换）
         const Rotation = item.rotation
         scratchEuler.set(
           (-Rotation.x * Math.PI) / 180,
@@ -377,116 +395,60 @@ export function useModelMode() {
           'ZYX'
         )
         scratchQuaternion.setFromEuler(scratchEuler)
-
-        // 缩放：仅使用用户的 Scale 参数，不再使用 furnitureSize
-        // 模型已包含实际尺寸，直接应用用户缩放即可
-        // 注意：游戏坐标系中 X/Y 与 Three.js 交换（游戏X→Three.js Y，游戏Y→Three.js X）
         scratchScale.set(Scale.Y || 1, Scale.X || 1, Scale.Z || 1)
 
-        // 组合矩阵
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
         mesh.setMatrixAt(i, scratchMatrix)
-
-        // 颜色设置为白色（不影响贴图原色，Model 模式使用描边系统表示状态）
         scratchColor.setHex(0xffffff)
         mesh.setColorAt(i, scratchColor)
 
-        // 全局索引映射（用于颜色/矩阵更新）
-        newIndexToIdMap.set(globalIndex + i, item.internalId)
-        newIdToIndexMap.set(item.internalId, globalIndex + i)
-
-        // 局部索引映射（用于射线检测）
+        progressiveIndexToIdMap.set(globalIndex, item.internalId)
+        progressiveIdToIndexMap.set(item.internalId, globalIndex)
         localIndexMap.set(i, item.internalId)
-
-        // 反向索引映射（用于描边高亮）
-        newInternalIdToMeshInfo.set(item.internalId, { meshKey, localIndex: i })
+        progressiveInternalIdToMeshInfo.set(item.internalId, { meshKey, localIndex: i })
+        globalIndex++
       }
 
-      // 将当前 mesh 的局部索引映射存储起来
-      newMeshToLocalIndexMap.set(mesh, localIndexMap)
-
+      mesh.count = itemsOfModel.length
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+      mesh.computeBoundingSphere()
 
-      // 构建 BVH 加速结构：若当前几何体尚未构建 boundsTree，则进行一次构建
       if (mesh.geometry && !(mesh.geometry as any).boundsTree) {
         mesh.geometry.computeBoundsTree({
           setBoundingBox: true,
         })
       }
 
-      globalIndex += itemsOfModel.length
+      progressiveMeshToLocalIndexMap.set(mesh, localIndexMap)
       markMeshProcessed()
-    }
+      groupsSinceLastCommit++
 
-    // 5. 集中处理所有回退物品
-    let pendingFallbackCount = 0
-    if (allFallbackItems.length > 0) {
-      if (isStale()) return abort()
-      if (fallbackMesh.value) {
-        const localIndexMap = new Map<number, string>()
-        renderFallbackItems(
-          allFallbackItems,
-          globalIndex,
-          newIndexToIdMap,
-          newIdToIndexMap,
-          localIndexMap
-        )
-        newMeshToLocalIndexMap.set(fallbackMesh.value, localIndexMap)
-
-        // 更新反向索引（fallback 使用 itemId = -1）
-        for (let i = 0; i < allFallbackItems.length; i++) {
-          const item = allFallbackItems[i]
-          if (!item) continue
-          newInternalIdToMeshInfo.set(item.internalId, { meshKey: '-1', localIndex: i })
-        }
-        pendingFallbackCount = allFallbackItems.length
+      if (groupsSinceLastCommit >= PROGRESSIVE_GROUPS_PER_COMMIT) {
+        commitProgress()
+        groupsSinceLastCommit = 0
       }
     }
 
-    // 为 fallbackMesh 构建 BVH（如果有新的回退物品）
-    if (fallbackMesh.value && pendingFallbackCount > 0 && fallbackMesh.value.geometry) {
-      if (!fallbackMesh.value.geometry.boundsTree) {
+    // fallback 也补齐包围球/BVH，保证拾取和后续计算稳定
+    if (fallbackMesh.value && fallbackMesh.value.count > 0) {
+      fallbackMesh.value.computeBoundingSphere()
+      if (fallbackMesh.value.geometry && !fallbackMesh.value.geometry.boundsTree) {
         fallbackMesh.value.geometry.computeBoundsTree({
           setBoundingBox: true,
         })
       }
     }
 
-    // ✅ 检查点 3：渲染完成前最终检查（双保险）
-    if (isStale()) {
-      console.log('[ModelMode] 渲染前检测到方案切换，跳过索引映射更新')
-      return abort()
+    for (const [meshKey] of previousModelMeshMap.entries()) {
+      if (!activeMeshKeys.has(meshKey)) {
+        modelManager.disposeMesh(meshKey, { evictColoredMaterial: true })
+      }
     }
 
-    // 6. 🔥 原子切换：同步设置所有新 mesh 的 count + 删除所有旧 mesh
-    //    整个代码块是同步的，浏览器不会在中间插入渲染帧
-    //    效果：旧场景 → 新场景，单帧切换，无闪烁
-
-    // 6a. 设置所有新 mesh 的 count（使其可见）并重算包围球
-    for (const { mesh, count } of pendingMeshUpdates) {
-      mesh.count = count
-      mesh.computeBoundingSphere()
-    }
-
-    // 6b. 设置 fallbackMesh 的 count 并重算包围球
-    if (fallbackMesh.value) {
-      fallbackMesh.value.count = pendingFallbackCount
-      fallbackMesh.value.computeBoundingSphere()
-    }
-
-    // 6c. 删除所有不再需要的旧 mesh
-    for (const meshKey of meshKeysToRemove) {
-      modelManager.disposeMesh(meshKey, { evictColoredMaterial: true })
-      nextModelMeshMap.delete(meshKey)
-    }
-
-    // 6d. 原子提交共享状态
-    modelMeshMap.value = nextModelMeshMap
-    modelIndexToIdMap.value = newIndexToIdMap
-    modelIdToIndexMap.value = newIdToIndexMap
-    meshToLocalIndexMap.value = newMeshToLocalIndexMap
-    internalIdToMeshInfo.value = newInternalIdToMeshInfo
+    // 最后一轮提交，确保尾批也可见
+    if (isStale()) return abort()
+    commitProgress(true)
     return true
   }
 

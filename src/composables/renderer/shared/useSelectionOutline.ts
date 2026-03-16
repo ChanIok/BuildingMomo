@@ -25,9 +25,6 @@ import { scratchColor } from './scratchObjects'
 const SELECTED_COLOR = new Color(0x60a5fa) // 蓝色
 const HOVER_COLOR = new Color(0xf59e0b) // 琥珀色
 
-// 用于读取颜色的临时对象
-const tempColor = new Color()
-
 /**
  * 选中描边管理器（屏幕空间）
  *
@@ -47,6 +44,10 @@ export function useSelectionOutline() {
 
   // meshKey -> mask InstancedMesh
   const maskMeshMap = ref(new Map<string, InstancedMesh>())
+  // meshKey -> 上一帧非零 mask 索引状态（bitmask: 1=selected, 2=hover）
+  const maskStateByKey = ref(new Map<string, Map<number, number>>())
+  // meshKey -> 上一帧可见实例数量，用于仅清理新增可见区间
+  const maskVisibleCountByKey = ref(new Map<string, number>())
 
   // 共享材质：使用自定义 shader 支持通过 instanceColor 控制实例可见性
   // depthTest=false 实现强穿透，fragment shader 通过 discard 排除未选中的实例
@@ -227,18 +228,15 @@ export function useSelectionOutline() {
    *
    * 检测 originalMesh 是否变化（扩容、重建等），如果变化则重新创建 maskMesh
    */
-  function initMaskMesh(
-    meshKey: string,
-    originalMesh: InstancedMesh,
-    maxInstances: number
-  ): InstancedMesh {
+  function initMaskMesh(meshKey: string, originalMesh: InstancedMesh): InstancedMesh {
     const existingMask = maskMeshMap.value.get(meshKey)
+    const requiredCapacity = Math.max(1, originalMesh.instanceMatrix.count, originalMesh.count)
 
     if (existingMask) {
       // 检查 geometry 是否匹配（mesh 重建会导致 geometry 引用变化）
       // 检查容量是否足够（扩容会导致 maxInstances 变化）
       const geometryMatch = existingMask.geometry === originalMesh.geometry
-      const capacityMatch = existingMask.instanceMatrix.count >= originalMesh.instanceMatrix.count
+      const capacityMatch = existingMask.instanceMatrix.count >= requiredCapacity
 
       if (geometryMatch && capacityMatch) {
         // 可以复用现有的 maskMesh
@@ -250,7 +248,7 @@ export function useSelectionOutline() {
     }
 
     // 创建新的 maskMesh
-    const maskMesh = new InstancedMesh(originalMesh.geometry, maskMaterial, maxInstances)
+    const maskMesh = new InstancedMesh(originalMesh.geometry, maskMaterial, requiredCapacity)
 
     maskMesh.frustumCulled = false
     maskMesh.boundingSphere = new Sphere(new Vector3(0, 0, 0), Infinity)
@@ -272,8 +270,7 @@ export function useSelectionOutline() {
    */
   function reconcileMaskMeshes(
     meshMap: Map<string, InstancedMesh>,
-    fallbackMesh: InstancedMesh | null,
-    maxInstances: number
+    fallbackMesh: InstancedMesh | null
   ) {
     const activeKeys = new Set<string>(meshMap.keys())
     if (fallbackMesh) {
@@ -289,11 +286,11 @@ export function useSelectionOutline() {
 
     // 再补齐当前激活模型的 mask
     for (const [meshKey, mesh] of meshMap.entries()) {
-      initMaskMesh(meshKey, mesh, maxInstances)
+      initMaskMesh(meshKey, mesh)
     }
 
     if (fallbackMesh) {
-      initMaskMesh('-1', fallbackMesh, maxInstances)
+      initMaskMesh('-1', fallbackMesh)
     }
   }
 
@@ -316,6 +313,18 @@ export function useSelectionOutline() {
     // 这样无需拷贝任何矩阵数据，完全消除 getMatrixAt 的 CPU-GPU 同步开销
 
     let hasContent = false
+    const nextStateByKey = new Map<string, Map<number, number>>()
+    const nextVisibleCountByKey = new Map<string, number>()
+
+    const setNextMaskState = (meshKey: string, localIndex: number, bit: number) => {
+      let stateMap = nextStateByKey.get(meshKey)
+      if (!stateMap) {
+        stateMap = new Map<number, number>()
+        nextStateByKey.set(meshKey, stateMap)
+      }
+      const prev = stateMap.get(localIndex) ?? 0
+      stateMap.set(localIndex, prev | bit)
+    }
 
     for (const [meshKey, maskMesh] of maskMeshMap.value.entries()) {
       let originalMesh: InstancedMesh | null = null
@@ -328,6 +337,7 @@ export function useSelectionOutline() {
       if (!originalMesh) {
         // 没有对应的 originalMesh（模型已被删除），隐藏这个 maskMesh
         maskMesh.count = 0
+        nextVisibleCountByKey.set(meshKey, 0)
         continue
       }
 
@@ -337,12 +347,7 @@ export function useSelectionOutline() {
       // ✅ 关键修复：maskMesh 的 count 应该等于主 mesh 的 count
       // 然后通过颜色来控制可见性
       maskMesh.count = originalMesh.count
-
-      // 先将所有实例的颜色重置为 (0,0,0)
-      for (let i = 0; i < originalMesh.count; i++) {
-        scratchColor.setRGB(0, 0, 0)
-        maskMesh.setColorAt(i, scratchColor)
-      }
+      nextVisibleCountByKey.set(meshKey, maskMesh.count)
     }
 
     // 为选中的实例设置 R通道 = 1
@@ -355,10 +360,7 @@ export function useSelectionOutline() {
       if (!maskMesh) continue
       if (localIndex < 0 || localIndex >= maskMesh.count) continue
 
-      // R=1 表示选中
-      scratchColor.setRGB(1.0, 0.0, 0.0)
-      maskMesh.setColorAt(localIndex, scratchColor)
-
+      setNextMaskState(meshKey, localIndex, 1)
       hasContent = true
     }
 
@@ -373,20 +375,66 @@ export function useSelectionOutline() {
         if (!maskMesh) continue
         if (localIndex < 0 || localIndex >= maskMesh.count) continue
 
-        // 读取当前颜色，保留R通道，设置G通道
-        maskMesh.getColorAt(localIndex, tempColor)
-        tempColor.g = 1.0 // 叠加hover标记
-        maskMesh.setColorAt(localIndex, tempColor)
+        setNextMaskState(meshKey, localIndex, 2)
         hasContent = true
       }
     }
 
-    // 更新所有 maskMesh 的颜色缓冲（矩阵与主 mesh 共享，不需要重复标脏）
-    for (const maskMesh of maskMeshMap.value.values()) {
-      if (maskMesh.instanceColor) {
+    const setMaskColorFromBits = (maskMesh: InstancedMesh, localIndex: number, bits: number) => {
+      if (bits === 0) {
+        scratchColor.setRGB(0.0, 0.0, 0.0)
+      } else if (bits === 1) {
+        scratchColor.setRGB(1.0, 0.0, 0.0)
+      } else if (bits === 2) {
+        scratchColor.setRGB(0.0, 1.0, 0.0)
+      } else {
+        scratchColor.setRGB(1.0, 1.0, 0.0)
+      }
+      maskMesh.setColorAt(localIndex, scratchColor)
+    }
+
+    // 增量应用颜色变化：仅更新变化索引，不做全量清空
+    for (const [meshKey, maskMesh] of maskMeshMap.value.entries()) {
+      const previousState = maskStateByKey.value.get(meshKey) ?? new Map<number, number>()
+      const nextState = nextStateByKey.get(meshKey) ?? new Map<number, number>()
+      const previousVisibleCount = maskVisibleCountByKey.value.get(meshKey) ?? 0
+      const nextVisibleCount = nextVisibleCountByKey.get(meshKey) ?? 0
+      const capacity = maskMesh.instanceMatrix.count
+      let changed = false
+
+      // 新建/扩容后新增可见区间必须显式清零，避免 instanceColor 脏数据误触发 hover/selected
+      if (nextVisibleCount > previousVisibleCount) {
+        const clearEnd = Math.min(nextVisibleCount, capacity)
+        for (let localIndex = previousVisibleCount; localIndex < clearEnd; localIndex++) {
+          setMaskColorFromBits(maskMesh, localIndex, 0)
+        }
+        if (clearEnd > previousVisibleCount) {
+          changed = true
+        }
+      }
+
+      for (const [localIndex, previousBits] of previousState.entries()) {
+        const nextBits = nextState.get(localIndex) ?? 0
+        if (previousBits === nextBits) continue
+        if (localIndex < 0 || localIndex >= capacity) continue
+        setMaskColorFromBits(maskMesh, localIndex, nextBits)
+        changed = true
+      }
+
+      for (const [localIndex, nextBits] of nextState.entries()) {
+        if (previousState.has(localIndex)) continue
+        if (localIndex < 0 || localIndex >= capacity) continue
+        setMaskColorFromBits(maskMesh, localIndex, nextBits)
+        changed = true
+      }
+
+      if (changed && maskMesh.instanceColor) {
         maskMesh.instanceColor.needsUpdate = true
       }
     }
+
+    maskStateByKey.value = nextStateByKey
+    maskVisibleCountByKey.value = nextVisibleCountByKey
 
     // 更新缓存标记
     hasMaskContent.value = hasContent
@@ -468,6 +516,8 @@ export function useSelectionOutline() {
       mesh.geometry = null as any
       mesh.material = null as any
       maskMeshMap.value.delete(meshKey)
+      maskStateByKey.value.delete(meshKey)
+      maskVisibleCountByKey.value.delete(meshKey)
     }
   }
 
@@ -476,6 +526,8 @@ export function useSelectionOutline() {
       disposeMaskMesh(meshKey)
     }
     maskMeshMap.value.clear()
+    maskStateByKey.value.clear()
+    maskVisibleCountByKey.value.clear()
 
     maskRT.dispose()
     maskMaterial.dispose()
