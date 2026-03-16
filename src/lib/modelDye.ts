@@ -17,7 +17,7 @@ export type ModelDyePlan =
  * 1) 无 colors 配置 → plain
  * 2) 对每个存在染色配置的区域：优先使用 ColorMap 中显式选择的 colorIndex，
  *    未显式选择时回退到该区域的 0 号配置
- * 3) 只要任一区域命中 cfg，就返回 dyed；否则 plain
+ * 3) 仅当任一区域命中非默认变体（pattern/tint 非全 0）时，返回 dyed；否则 plain
  */
 export function resolveModelDyePlan({
   item,
@@ -42,6 +42,7 @@ export function resolveModelDyePlan({
     if (!entry) continue
 
     for (const [meshIdx, pattern, tint] of entry.cfg) {
+      if (pattern === 0 && tint === 0) continue
       dyeMap.set(meshIdx, { pattern, tint })
     }
   }

@@ -604,14 +604,17 @@ async function buildDyedMaterials(
       const meshIndex = slotMeshIndices[idx] ?? -1
       const dyeEntry = dyeMap.get(meshIndex)
       if (!dyeEntry) return plainMat
+      const isDefaultVariant = dyeEntry.pattern === 0 && dyeEntry.tint === 0
 
       const baseName = meshBaseNames[idx]
       if (!baseName) {
-        console.warn(`[ModelManager][BuildDyed] ${debugLabel} slot=${idx} unresolved baseName`, {
-          material: getMaterialDebugName(plainMat),
-          meshIndex,
-          dyeEntry,
-        })
+        if (!isDefaultVariant) {
+          console.warn(`[ModelManager][BuildDyed] ${debugLabel} slot=${idx} unresolved baseName`, {
+            material: getMaterialDebugName(plainMat),
+            meshIndex,
+            dyeEntry,
+          })
+        }
         return plainMat
       }
 
