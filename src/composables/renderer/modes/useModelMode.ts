@@ -477,7 +477,7 @@ export function useModelMode() {
 
     // 6c. 删除所有不再需要的旧 mesh
     for (const meshKey of meshKeysToRemove) {
-      modelManager.disposeMesh(meshKey)
+      modelManager.disposeMesh(meshKey, { evictColoredMaterial: true })
       nextModelMeshMap.delete(meshKey)
     }
 
