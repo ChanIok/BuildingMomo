@@ -319,6 +319,21 @@ function getSourceMaterialTextures(sourceMat: Material): ResolvedMaterialTexture
   }
 }
 
+/**
+ * 判断材质是否具备参与运行时染色的基本信号。
+ *
+ * 如果既没有 D/M/N/O/T extras，也没有可复用的原始贴图，
+ * 通常说明该槽位并不属于当前运行时染色体系，应静默回退到 plain 材质。
+ */
+function hasRuntimeDyeSignals(sourceMat: Material): boolean {
+  const variantRefs = getMaterialVariantRefs(sourceMat)
+  for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
+    if ((variantRefs[type]?.length ?? 0) > 0) return true
+  }
+
+  return hasResolvedTextures(getSourceMaterialTextures(sourceMat))
+}
+
 /** 优先取指定变体，缺失时回退到 0 号默认变体。 */
 function getTextureVariantRef(
   entry: MaterialRegistryEntry | undefined,
@@ -608,7 +623,7 @@ async function buildDyedMaterials(
 
       const baseName = meshBaseNames[idx]
       if (!baseName) {
-        if (!isDefaultVariant) {
+        if (!isDefaultVariant && hasRuntimeDyeSignals(plainMat)) {
           console.warn(`[ModelManager][BuildDyed] ${debugLabel} slot=${idx} unresolved baseName`, {
             material: getMaterialDebugName(plainMat),
             meshIndex,
@@ -740,6 +755,237 @@ function reverseGeometryWinding(geometry: BufferGeometry): void {
   }
 }
 
+/** GLB 文件并发加载上限（过高会阻塞带宽，过低会拖慢首屏） */
+const MESH_ASSET_LOAD_CONCURRENCY = 6
+/** 几何体构建（clone + 变换 + merge）并发上限，防止主线程长时间卡顿 */
+const GEOMETRY_BUILD_CONCURRENCY = 4
+
+/**
+ * 并发任务限制器：同时运行不超过 maxConcurrent 个 task，
+ * 超出的请求排队等待，先进先出。
+ */
+function createTaskLimiter(maxConcurrent: number) {
+  let activeCount = 0
+  const queue: Array<() => void> = []
+
+  const scheduleNext = () => {
+    const next = queue.shift()
+    if (next) next()
+  }
+
+  return async function runWithLimit<T>(task: () => Promise<T>): Promise<T> {
+    if (activeCount >= maxConcurrent) {
+      // 排队等待，直到有槽位空闲
+      await new Promise<void>((resolve) => queue.push(resolve))
+    }
+
+    activeCount++
+    try {
+      return await task()
+    } finally {
+      activeCount--
+      scheduleNext()
+    }
+  }
+}
+
+/** 克隆 GLB 原始材质供单个 item 使用，同时深拷贝 userData（含变体引用信息） */
+function cloneSourceMaterialForItem(source: Material): Material {
+  const cloned = source.clone()
+  cloned.userData = { ...(source.userData as Record<string, unknown>) }
+  return cloned
+}
+
+/**
+ * 将 source 注册表合并进 target。
+ * 合并规则：同一 baseName + type + variantIdx 下，external 引用优先于 embedded——
+ * 因为 Lite 模式外链贴图质量更可控，且可被全局贴图缓存命中。
+ */
+function mergeMaterialRegistry(target: MaterialRegistry, source: MaterialRegistry): void {
+  for (const [baseName, sourceEntry] of source.entries()) {
+    const targetEntry = getOrCreateRegistryEntry(target, baseName)
+    for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
+      for (const [variantIdx, ref] of sourceEntry[type].entries()) {
+        const existingRef = targetEntry[type].get(variantIdx)
+        // 尚无引用，或新引用为外链而旧引用是内嵌时，更新
+        if (!existingRef || (ref.kind === 'external' && existingRef.kind !== 'external')) {
+          targetEntry[type].set(variantIdx, ref)
+        }
+      }
+    }
+  }
+}
+
+/** 释放注册表中所有已加载的内嵌贴图，并清空加载中状态 */
+function disposeMaterialRegistry(registry: MaterialRegistry): void {
+  for (const entry of registry.values()) {
+    for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
+      for (const ref of entry[type].values()) {
+        if (ref.kind === 'embedded' && ref._cache) {
+          ref._cache.dispose()
+          ref._cache = null
+        }
+        ref._loading = undefined
+      }
+    }
+  }
+}
+
+/** 共享 mesh 资产的缓存键：profile + meshPath + hash，确保不同版本的同名 GLB 不互相污染 */
+function buildMeshAssetCacheKey(
+  profile: ModelAssetProfile,
+  meshPath: string,
+  hash?: string
+): string {
+  return `${profile}:${meshPath}:${hash ?? 'nohash'}`
+}
+
+/** 单个 Mesh 节点的原始资产快照（从 GLTF scene 中提取，供 item 复用） */
+interface MeshAssetEntry {
+  geometry: BufferGeometry
+  material: Material
+  /** Mesh 在 GLTF 场景中的本地变换矩阵 */
+  localMatrix: Matrix4
+  /** 从 userData 解析出的材质 baseName，用于从注册表查找贴图变体 */
+  baseName: string | null
+}
+
+/**
+ * 单个 GLB 文件解析出的共享资产包。
+ * 多个 furniture item 可共享同一份 MeshAssetData（通过 meshAssetCache）。
+ * dispose() 释放原始 GLB 资产，但不影响各 item clone 出来的几何体。
+ */
+interface MeshAssetData {
+  meshEntries: MeshAssetEntry[]
+  materialRegistry: MaterialRegistry
+  dispose: () => void
+}
+
+/** 收集材质上所有已挂载的贴图，用于 dispose 时统一释放 */
+function collectMaterialTextures(material: Material): Texture[] {
+  const textures: Texture[] = []
+  const candidateKeys = [
+    'map',
+    'alphaMap',
+    'aoMap',
+    'bumpMap',
+    'displacementMap',
+    'emissiveMap',
+    'envMap',
+    'lightMap',
+    'metalnessMap',
+    'normalMap',
+    'roughnessMap',
+  ] as const
+
+  for (const key of candidateKeys) {
+    const value = (material as unknown as Record<string, unknown>)[key]
+    if ((value as Texture | undefined)?.isTexture) {
+      textures.push(value as Texture)
+    }
+  }
+
+  return textures
+}
+
+/**
+ * 从 GLTF JSON 的 material.extras 中扫描贴图变体名，注册懒加载引用到 MaterialRegistry。
+ * 此阶段不解码任何图片，仅建立 baseName → TextureRef 的映射关系。
+ * Lite 模式下通过 resolveExternalTextureUrl 将内嵌贴图替换为外链 URL。
+ */
+function buildMaterialRegistryFromGLTF(
+  result: GLTF,
+  meshPath: string,
+  profile: ModelAssetProfile,
+  resolveExternalTextureUrl?: (meshPath: string, textureName: string) => string | null
+): MaterialRegistry {
+  const materialRegistry: MaterialRegistry = new Map()
+
+  const getExternalUrl = (textureName: string) => {
+    if (profile !== 'lite' || !resolveExternalTextureUrl) return null
+    return resolveExternalTextureUrl(meshPath, textureName)
+  }
+
+  const rawMaterials = (result.parser.json.materials ?? []) as Array<{
+    extras?: Record<string, unknown>
+  }>
+
+  for (const rawMat of rawMaterials) {
+    const extras = rawMat.extras
+    if (!extras) continue
+
+    for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
+      const raw = extras[type]
+      if (!Array.isArray(raw)) continue
+
+      for (const textureName of raw) {
+        if (typeof textureName !== 'string' || !textureName.trim()) continue
+        const normalizedTextureName = textureName.trim()
+        registerLazyVariant(materialRegistry, normalizedTextureName, result, {
+          externalUrl: getExternalUrl(normalizedTextureName),
+        })
+      }
+    }
+  }
+
+  return materialRegistry
+}
+
+/**
+ * 从已解析的 GLTF 对象提取共享 mesh 资产包（MeshAssetData）。
+ * 遍历场景树收集所有 Mesh 节点，建立材质注册表，并挂载 dispose 方法。
+ * 注意：geometry/material/texture 均为 GLB 原始对象，item 使用时需 clone。
+ */
+function createMeshAssetData(
+  result: GLTF,
+  meshPath: string,
+  profile: ModelAssetProfile,
+  resolveExternalTextureUrl?: (meshPath: string, textureName: string) => string | null
+): MeshAssetData {
+  const meshEntries: MeshAssetEntry[] = []
+  // 用 Set 去重，避免同一对象被多次 dispose
+  const sourceGeometries = new Set<BufferGeometry>()
+  const sourceMaterials = new Set<Material>()
+  const sourceTextures = new Set<Texture>()
+
+  result.scene.traverse((child: Object3D) => {
+    if (!(child as any).isMesh) return
+
+    const mesh = child as Mesh
+    const material = mesh.material as Material
+    sourceGeometries.add(mesh.geometry)
+    sourceMaterials.add(material)
+    for (const texture of collectMaterialTextures(material)) {
+      sourceTextures.add(texture)
+    }
+
+    meshEntries.push({
+      geometry: mesh.geometry,
+      material,
+      localMatrix: mesh.matrix.clone(),
+      baseName: resolveMaterialBaseName(material),
+    })
+  })
+
+  const materialRegistry = buildMaterialRegistryFromGLTF(
+    result,
+    meshPath,
+    profile,
+    resolveExternalTextureUrl
+  )
+
+  return {
+    meshEntries,
+    materialRegistry,
+    dispose: () => {
+      for (const geometry of sourceGeometries) geometry.dispose()
+      for (const material of sourceMaterials) material.dispose()
+      for (const texture of sourceTextures) texture.dispose()
+      disposeMaterialRegistry(materialRegistry)
+    },
+  }
+}
+
 // ─── GLB 加载 ─────────────────────────────────────────────────────────────────
 
 async function loadGLBModel(
@@ -836,28 +1082,24 @@ function summarizeRegistryTextureSources(materialRegistry: MaterialRegistry): {
 async function processGeometryForItem(
   itemId: number,
   config: any,
-  gltfLoader: GLTFLoader,
   profile: ModelAssetProfile,
-  MODEL_BASE_URL: string,
-  resolveExternalTextureUrl?: (meshPath: string, textureName: string) => string | null
+  getMeshAsset: (meshPath: string, hash?: string) => Promise<MeshAssetData | null>
 ): Promise<GeometryData | undefined> {
   const allGeometries: BufferGeometry[] = []
   const sourceMaterials: Material[] = []
   const meshBaseNames: (string | null)[] = []
   const slotMeshIndices: number[] = []
   const meshMaterialCounts: number[] = []
+  const materialRegistry: MaterialRegistry = new Map()
   const tempMatrix = new Matrix4()
   const tempQuat = new Quaternion()
   const tempScale = new Vector3()
   const tempTrans = new Vector3()
 
-  // Phase 1: 并发加载所有 GLB（有 hash 时优先从 IDB 缓存读取）
-  const gltfResults: GLTF[] = await Promise.all(
+  // Phase 1: 获取当前 item 依赖的共享 mesh 资产
+  const meshAssets = await Promise.all(
     config.meshes.map((meshConfig: any) =>
-      loadGLBModel(
-        gltfLoader,
-        profile,
-        MODEL_BASE_URL,
+      getMeshAsset(
         meshConfig.path,
         meshConfig.hashes?.[profile] ?? meshConfig.hashes?.full ?? meshConfig.hashes?.lite
       )
@@ -867,23 +1109,20 @@ async function processGeometryForItem(
   // Phase 2: 串行处理几何体（维护材质数组顺序）
   for (let meshIdx = 0; meshIdx < config.meshes.length; meshIdx++) {
     const meshConfig = config.meshes[meshIdx]
-    const result = gltfResults[meshIdx]
+    const meshAsset = meshAssets[meshIdx]
 
-    if (!result) {
+    if (!meshAsset) {
       console.warn(`[ModelManager] Failed to load mesh: ${meshConfig.path}`)
       meshMaterialCounts.push(0)
       continue
     }
 
     const materialCountBefore = sourceMaterials.length
+    mergeMaterialRegistry(materialRegistry, meshAsset.materialRegistry)
 
-    result.scene.traverse((child: Object3D) => {
-      if (!(child as any).isMesh) return
-      const mesh = child as Mesh
-      const mat = mesh.material as Material
-
-      const geom = mesh.geometry.clone()
-      geom.applyMatrix4(mesh.matrix)
+    for (const meshEntry of meshAsset.meshEntries) {
+      const geom = meshEntry.geometry.clone()
+      geom.applyMatrix4(meshEntry.localMatrix)
 
       // 游戏坐标系 X/Y/Z → Three.js X/Z/Y，trans 单位厘米 (/100)，Y 取反
       tempScale.set(meshConfig.scale.x, meshConfig.scale.z, meshConfig.scale.y)
@@ -897,13 +1136,11 @@ async function processGeometryForItem(
       tempMatrix.compose(tempTrans, tempQuat, tempScale)
       geom.applyMatrix4(tempMatrix)
 
-      const baseName = resolveMaterialBaseName(mat)
-
       allGeometries.push(geom)
-      sourceMaterials.push(mat)
-      meshBaseNames.push(baseName)
+      sourceMaterials.push(cloneSourceMaterialForItem(meshEntry.material))
+      meshBaseNames.push(meshEntry.baseName)
       slotMeshIndices.push(meshIdx)
-    })
+    }
 
     meshMaterialCounts.push(sourceMaterials.length - materialCountBefore)
   }
@@ -942,41 +1179,7 @@ async function processGeometryForItem(
   geometry.computeBoundingBox()
   const boundingBox = geometry.boundingBox!.clone()
 
-  // Phase 3: 扫描材质 extras，注册懒加载引用（不解码任何图片）
-  const materialRegistry: MaterialRegistry = new Map()
-  for (let resultIndex = 0; resultIndex < gltfResults.length; resultIndex++) {
-    const result = gltfResults[resultIndex]
-    if (!result) continue
-
-    const meshPath = config.meshes[resultIndex]?.path
-    // Lite 模式：贴图可能外链，需 loadLiteTextureManifest 提供 URL；非 Lite 使用 GLB 内嵌贴图
-    const getExternalUrl = (textureName: string) => {
-      if (profile !== 'lite' || !meshPath || !resolveExternalTextureUrl) return null
-      return resolveExternalTextureUrl(meshPath, textureName)
-    }
-
-    const rawMaterials = (result.parser.json.materials ?? []) as Array<{
-      extras?: Record<string, unknown>
-    }>
-    for (const rawMat of rawMaterials) {
-      const extras = rawMat.extras
-      if (!extras) continue
-      for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
-        const raw = extras[type]
-        if (!Array.isArray(raw)) continue
-        for (const textureName of raw) {
-          if (typeof textureName === 'string' && textureName.trim()) {
-            const normalizedTextureName = textureName.trim()
-            registerLazyVariant(materialRegistry, normalizedTextureName, result, {
-              externalUrl: getExternalUrl(normalizedTextureName),
-            })
-          }
-        }
-      }
-    }
-  }
-
-  // 构建默认材质（只加载 D0/M0/N0/O0/T0，其余变体在染色时按需加载）
+  // Phase 3: 构建默认材质（只加载 D0/M0/N0/O0/T0，其余变体在染色时按需加载）
   const plainMaterials = await Promise.all(
     sourceMaterials.map((sourceMat, idx) =>
       buildDefaultPlainMaterial(sourceMat, meshBaseNames[idx] ?? null, materialRegistry)
@@ -1020,8 +1223,96 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
   /** itemId → 几何体数据，按 itemId 共享；染色按 dyePlan 分缓存在 coloredMaterialCache */
   const geometryCache = new Map<number, GeometryData>()
 
+  /** itemId → 正在构建中的 GeometryData Promise，避免并发重复构建 */
+  const geometryLoadingCache = new Map<number, Promise<GeometryData | null>>()
+
+  /** profile + meshPath + hash → 共享 mesh 资产 Promise，避免同一 GLB 重复 parse */
+  const meshAssetCache = new Map<string, Promise<MeshAssetData | null>>()
+
+  /** 已完成解析的共享 mesh 资产，用于 dispose 时统一释放 */
+  const resolvedMeshAssets = new Map<string, MeshAssetData>()
+
   /** cacheKey → 染色材质（与 meshMap 生命周期一致） */
   const coloredMaterialCache = new Map<string, Material | Material[]>()
+
+  /** GLB 文件加载并发限制器 */
+  const runAssetLoadTask = createTaskLimiter(MESH_ASSET_LOAD_CONCURRENCY)
+  /** 几何体构建并发限制器（clone + 变换 + merge） */
+  const runGeometryBuildTask = createTaskLimiter(GEOMETRY_BUILD_CONCURRENCY)
+  /** Lite 模式贴图清单的加载 Promise（实例级缓存，避免多次请求） */
+  let liteTextureManifestPromise: Promise<Map<string, string> | null> | null = null
+
+  /** 确保 Lite 模式下的外链贴图清单已加载，非 Lite 模式下直接返回 */
+  async function ensureLiteTextureManifestLoaded(): Promise<void> {
+    if (profile !== 'lite') return
+    if (!liteTextureManifestPromise) {
+      liteTextureManifestPromise = gameDataStore.loadLiteTextureManifest()
+    }
+    await liteTextureManifestPromise
+  }
+
+  async function getMeshAsset(meshPath: string, hash?: string): Promise<MeshAssetData | null> {
+    const cacheKey = buildMeshAssetCacheKey(profile, meshPath, hash)
+    const cached = meshAssetCache.get(cacheKey)
+    if (cached) return cached
+
+    const pending = runAssetLoadTask(async () => {
+      const result = await loadGLBModel(gltfLoader, profile, MODEL_BASE_URL, meshPath, hash)
+      if (!result) return null
+
+      return createMeshAssetData(result, meshPath, profile, (candidateMeshPath, textureName) =>
+        gameDataStore.getLiteTextureUrl(candidateMeshPath, textureName)
+      )
+    })
+
+    // 统一在 settled 阶段管理两个 Map，避免写入逻辑分散到 task 内部
+    const settled = pending
+      .then((asset) => {
+        if (asset) {
+          resolvedMeshAssets.set(cacheKey, asset)
+        } else {
+          meshAssetCache.delete(cacheKey)
+        }
+        return asset
+      })
+      .catch((error) => {
+        meshAssetCache.delete(cacheKey)
+        throw error
+      })
+
+    meshAssetCache.set(cacheKey, settled)
+    return settled
+  }
+
+  async function ensureGeometryData(itemId: number): Promise<GeometryData | null> {
+    const cached = geometryCache.get(itemId)
+    if (cached) return cached
+
+    const pending = geometryLoadingCache.get(itemId)
+    if (pending) return pending
+
+    // manifest 加载放在 limiter 之外：它是网络请求，不应占用 geometry build 并发槽位
+    await ensureLiteTextureManifestLoaded()
+
+    const buildPromise = runGeometryBuildTask(async () => {
+      const config = gameDataStore.getFurnitureModelConfig(itemId)
+      if (!config || !config.meshes?.length) {
+        console.warn(`[ModelManager] No model config for itemId: ${itemId}`)
+        return null
+      }
+
+      const geomData = await processGeometryForItem(itemId, config, profile, getMeshAsset)
+      if (geomData) {
+        geometryCache.set(itemId, geomData)
+      }
+      return geomData ?? null
+    }).finally(() => {
+      geometryLoadingCache.delete(itemId)
+    })
+
+    geometryLoadingCache.set(itemId, buildPromise)
+    return buildPromise
+  }
 
   /**
    * 为指定家具创建 InstancedMesh
@@ -1045,28 +1336,8 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
     }
 
     // 加载几何体（缓存命中则直接使用）
-    let geomData = geometryCache.get(itemId)
-    if (!geomData) {
-      const config = gameDataStore.getFurnitureModelConfig(itemId)
-      if (!config || !config.meshes?.length) {
-        console.warn(`[ModelManager] No model config for itemId: ${itemId}`)
-        return null
-      }
-      if (profile === 'lite') {
-        await gameDataStore.loadLiteTextureManifest()
-      }
-      const result = await processGeometryForItem(
-        itemId,
-        config,
-        gltfLoader,
-        profile,
-        MODEL_BASE_URL,
-        (meshPath, textureName) => gameDataStore.getLiteTextureUrl(meshPath, textureName)
-      )
-      if (!result) return null
-      geomData = result
-      geometryCache.set(itemId, geomData)
-    }
+    const geomData = await ensureGeometryData(itemId)
+    if (!geomData) return null
 
     // 确定材质
     let material: Material | Material[]
@@ -1111,7 +1382,9 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
   }
 
   function getUnloadedModels(itemIds: number[]): number[] {
-    return Array.from(new Set(itemIds)).filter((id) => !geometryCache.has(id))
+    return Array.from(new Set(itemIds)).filter(
+      (id) => !geometryCache.has(id) && !geometryLoadingCache.has(id)
+    )
   }
 
   function getModelBoundingBox(itemId: number): Box3 | null {
@@ -1133,33 +1406,12 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
     let completed = 0
     let failed = 0
 
-    if (profile === 'lite') {
-      await gameDataStore.loadLiteTextureManifest()
-    }
-
     await Promise.all(
       unloadedIds.map(async (itemId) => {
         try {
-          const config = gameDataStore.getFurnitureModelConfig(itemId)
-          if (!config?.meshes?.length) {
-            failed++
-            completed++
-            onProgress?.(completed, unloadedIds.length, failed)
-            return
-          }
-          const geomData = await processGeometryForItem(
-            itemId,
-            config,
-            gltfLoader,
-            profile,
-            MODEL_BASE_URL,
-            (meshPath, textureName) => gameDataStore.getLiteTextureUrl(meshPath, textureName)
-          )
-          if (geomData) {
-            geometryCache.set(itemId, geomData)
-          } else {
-            failed++
-          }
+          // ensureGeometryData 内部已写入 geometryCache，此处无需重复
+          const geomData = await ensureGeometryData(itemId)
+          if (!geomData) failed++
         } catch (err) {
           console.error(`[ModelManager] Error processing itemId ${itemId}:`, err)
           failed++
@@ -1179,7 +1431,13 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
   function dispose(): void {
     console.log('[ModelManager] Disposing resources...')
     meshMap.clear()
+    geometryLoadingCache.clear()
+    meshAssetCache.clear()
 
+    // NOTE: geometryCache 必须先于 resolvedMeshAssets 释放。
+    // 当 buildDefaultPlainMaterial 走 fallback 路径（无 registry 命中）时，
+    // plainMaterials 持有的是 cloneSourceMaterialForItem 克隆体，其贴图引用自 GLB 原始材质。
+    // 若先释放 resolvedMeshAssets（含原始贴图），geometryCache 的材质贴图会立即失效。
     for (const { geometry, mergedMaterial } of geometryCache.values()) {
       geometry.dispose()
       if (Array.isArray(mergedMaterial)) {
@@ -1190,11 +1448,18 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
     }
     geometryCache.clear()
 
+    // geometryCache 释放后，再释放共享 GLB 资产（几何体、原始材质、原始贴图）
+    for (const asset of resolvedMeshAssets.values()) {
+      asset.dispose()
+    }
+    resolvedMeshAssets.clear()
+
     for (const mat of coloredMaterialCache.values()) {
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
       else mat.dispose()
     }
     coloredMaterialCache.clear()
+    liteTextureManifestPromise = null
 
     console.log('[ModelManager] Resources disposed')
   }
