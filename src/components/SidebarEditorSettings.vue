@@ -59,6 +59,11 @@ function updateCameraMouseSensitivity(value: number[] | undefined) {
   settingsStore.settings.cameraMouseSensitivity = value[0]!
 }
 
+function updateCameraOrbitRotateSpeed(value: number[] | undefined) {
+  if (!value) return
+  settingsStore.settings.cameraOrbitRotateSpeed = value[0]!
+}
+
 function updateCameraZoomSpeed(value: number[] | undefined) {
   if (!value) return
   settingsStore.settings.cameraZoomSpeed = value[0]!
@@ -388,7 +393,7 @@ const fmt = (n: number, decimals: number = 0) => {
             />
           </div>
 
-          <!-- 鼠标灵敏度滑块 -->
+          <!-- 飞行视角灵敏度滑块 -->
           <div class="flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">
               <Label class="text-xs text-muted-foreground">
@@ -404,6 +409,27 @@ const fmt = (n: number, decimals: number = 0) => {
               :min="0.0005"
               :max="0.005"
               :step="0.0001"
+              variant="thin"
+              class="w-full"
+            />
+          </div>
+
+          <!-- 轨道旋转速度滑块 -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs text-muted-foreground">
+                {{ t('sidebar.camera.orbitRotateSpeed') }}
+              </Label>
+              <span class="shrink-0 text-xs font-medium text-sidebar-foreground">
+                {{ fmt(settingsStore.settings.cameraOrbitRotateSpeed, 1) }}
+              </span>
+            </div>
+            <Slider
+              :model-value="[settingsStore.settings.cameraOrbitRotateSpeed]"
+              @update:model-value="updateCameraOrbitRotateSpeed"
+              :min="0.1"
+              :max="3.0"
+              :step="0.1"
               variant="thin"
               class="w-full"
             />

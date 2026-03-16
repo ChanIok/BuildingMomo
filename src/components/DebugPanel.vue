@@ -5,7 +5,7 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
 import { decodeColorMapToGroupMap } from '@/lib/colorMap'
-import { resolveModelDyePlan } from '@/lib/modelDye'
+import { buildModelMeshKey, resolveModelDyePlan } from '@/lib/modelDye'
 import { useI18n } from '@/composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 
@@ -31,6 +31,28 @@ const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
 
 const showPanel = ref(false)
+
+const rendererDebugInfo = computed(() => {
+  const isModelMode = settingsStore.settings.threeDisplayMode === 'model'
+  const managerStats = isModelMode ? getThreeModelManager().getStats() : null
+  const manifestStatus =
+    settingsStore.settings.modelAssetProfile !== 'lite'
+      ? 'n/a'
+      : !gameDataStore.liteTextureManifestMeta
+        ? 'none'
+        : gameDataStore.isLiteTextureManifestLoaded
+          ? 'loaded'
+          : 'pending'
+
+  return {
+    displayMode: settingsStore.settings.threeDisplayMode,
+    assetProfile: settingsStore.settings.modelAssetProfile,
+    manifestStatus,
+    activeMeshes: managerStats?.activeMeshes ?? 0,
+    cachedGeometries: managerStats?.cachedGeometries ?? 0,
+    cachedColoredMaterials: managerStats?.cachedColoredMaterials ?? 0,
+  }
+})
 
 // ========== Model Debug Info ==========
 
@@ -63,23 +85,36 @@ const modelDebugInfo = computed(() => {
   const dyePlan = resolveModelDyePlan({ item, colorsConfig: config?.colors })
   const dyeEntries =
     dyePlan.mode === 'dyed' ? Array.from(dyePlan.dyeMap.entries()).sort(([a], [b]) => a - b) : []
+  const meshKey = buildModelMeshKey(item.gameId, dyePlan)
+  const meshPaths = (config?.meshes ?? [])
+    .map((mesh) => mesh.path?.trim())
+    .filter((path): path is string => !!path)
+  const textureSummary =
+    debugInfo?.textureSourceMode === 'external'
+      ? `external (${debugInfo.externalTextureRefs} ext)`
+      : debugInfo?.textureSourceMode === 'embedded'
+        ? `embedded (${debugInfo.embeddedTextureRefs} emb)`
+        : debugInfo?.textureSourceMode === 'mixed'
+          ? `mixed (${debugInfo.externalTextureRefs} ext / ${debugInfo.embeddedTextureRefs} emb)`
+          : 'unknown'
 
   return {
     name: furniture?.name_cn ?? config?.name ?? 'Unknown',
     gameId: item.gameId,
-    colorDisplay,
+    meshKey,
+    colorDisplay: colorDisplay !== 'N/A' ? colorDisplay : null,
     dyeMode: dyePlan.mode,
     dyeEntries,
+    meshPaths,
+    textureSummary,
     geometry: debugInfo
       ? {
           vertexCount: debugInfo.vertexCount,
           triangleCount: debugInfo.triangleCount,
-          attributes: debugInfo.attributes,
           boundingBox: debugInfo.boundingBox,
         }
       : null,
-    registryBaseNames: debugInfo?.registryBaseNames ?? [],
-    materials: debugInfo?.materials ?? [],
+    meshMaterialCounts: debugInfo?.meshMaterialCounts ?? [],
   }
 })
 
@@ -146,10 +181,40 @@ function fmtSize(v: number): string {
           </div>
         </template>
 
+        <div class="mt-3 border-t border-border pt-2">
+          <div class="mb-1 font-bold text-primary">Renderer</div>
+          <div class="space-y-0.5">
+            <div>
+              <span class="text-muted-foreground">Display:</span>
+              {{ rendererDebugInfo.displayMode }}
+            </div>
+            <div>
+              <span class="text-muted-foreground">Assets:</span>
+              {{ rendererDebugInfo.assetProfile }}
+            </div>
+            <div v-if="rendererDebugInfo.assetProfile === 'lite'">
+              <span class="text-muted-foreground">Manifest:</span>
+              {{ rendererDebugInfo.manifestStatus }}
+            </div>
+            <div v-if="rendererDebugInfo.displayMode === 'model'">
+              <span class="text-muted-foreground">Meshes:</span>
+              {{ rendererDebugInfo.activeMeshes }}
+            </div>
+            <div v-if="rendererDebugInfo.displayMode === 'model'">
+              <span class="text-muted-foreground">Geom Cache:</span>
+              {{ rendererDebugInfo.cachedGeometries }}
+            </div>
+            <div v-if="rendererDebugInfo.displayMode === 'model'">
+              <span class="text-muted-foreground">Dyed Mats:</span>
+              {{ rendererDebugInfo.cachedColoredMaterials }}
+            </div>
+          </div>
+        </div>
+
         <!-- Model Debug Section -->
         <template v-if="modelDebugInfo">
           <div class="mt-3 border-t border-border pt-2">
-            <div class="mb-1 font-bold text-primary">Model Debug</div>
+            <div class="mb-1 font-bold text-primary">Selection</div>
             <div class="space-y-0.5">
               <div>
                 <span class="text-muted-foreground">Name:</span>
@@ -159,20 +224,28 @@ function fmtSize(v: number): string {
                 <span class="text-muted-foreground">GameID:</span>
                 {{ modelDebugInfo.gameId }}
               </div>
-              <div>
+              <div v-if="modelDebugInfo.colorDisplay">
                 <span class="text-muted-foreground">ColorMap:</span>
                 {{ modelDebugInfo.colorDisplay }}
               </div>
               <div>
-                <span class="text-muted-foreground">DyePlan:</span>
-                <span
-                  :class="
-                    modelDebugInfo.dyeMode === 'dyed' ? 'text-primary' : 'text-muted-foreground'
-                  "
-                  >{{ modelDebugInfo.dyeMode }}</span
+                <span class="text-muted-foreground">Textures:</span>
+                {{ modelDebugInfo.textureSummary }}
+              </div>
+              <div v-if="modelDebugInfo.meshPaths.length > 0" class="mt-1.5">
+                <div class="font-semibold text-muted-foreground">
+                  ▸ GLBs ({{ modelDebugInfo.meshPaths.length }})
+                </div>
+                <div
+                  v-for="meshPath in modelDebugInfo.meshPaths"
+                  :key="meshPath"
+                  class="pl-2 text-[11px] break-all text-muted-foreground"
                 >
+                  {{ meshPath }}
+                </div>
               </div>
               <div
+                v-if="modelDebugInfo.dyeMode === 'dyed'"
                 v-for="[meshIdx, entry] in modelDebugInfo.dyeEntries"
                 :key="meshIdx"
                 class="pl-2 text-xs"
@@ -190,47 +263,22 @@ function fmtSize(v: number): string {
                     {{ fmt(modelDebugInfo.geometry.triangleCount) }}
                   </div>
                   <div>
-                    Attrs:
-                    <span class="text-muted-foreground">{{
-                      modelDebugInfo.geometry.attributes.join(', ')
-                    }}</span>
-                  </div>
-                  <div>
                     BBox:
                     {{ fmtSize(modelDebugInfo.geometry.boundingBox.size[0]) }} ×
                     {{ fmtSize(modelDebugInfo.geometry.boundingBox.size[1]) }} ×
                     {{ fmtSize(modelDebugInfo.geometry.boundingBox.size[2]) }}
+                  </div>
+                  <div v-if="modelDebugInfo.meshMaterialCounts.length > 0">
+                    Mesh Slots:
+                    <span class="text-muted-foreground">{{
+                      modelDebugInfo.meshMaterialCounts.join(', ')
+                    }}</span>
                   </div>
                 </div>
               </template>
               <template v-else>
                 <div class="mt-1 text-muted-foreground italic">Geometry not cached (fallback)</div>
               </template>
-
-              <!-- Material Registry -->
-              <template v-if="modelDebugInfo.registryBaseNames.length > 0">
-                <div class="mt-1.5 font-semibold text-muted-foreground">
-                  ▸ Registry ({{ modelDebugInfo.registryBaseNames.length }})
-                </div>
-                <div class="pl-2 text-muted-foreground">
-                  {{ modelDebugInfo.registryBaseNames.join(', ') }}
-                </div>
-              </template>
-
-              <!-- Materials -->
-              <div class="mt-1.5 font-semibold text-muted-foreground">
-                ▸ Materials ({{ modelDebugInfo.materials.length }})
-              </div>
-              <div
-                v-for="(mat, mi) in modelDebugInfo.materials"
-                :key="mi"
-                class="mt-0.5 border-l border-border/50 pl-2"
-              >
-                <div>[{{ mi }}] {{ mat.name }}</div>
-                <div v-if="mat.baseName" class="pl-2 text-muted-foreground">
-                  base: {{ mat.baseName }}
-                </div>
-              </div>
             </div>
           </div>
         </template>

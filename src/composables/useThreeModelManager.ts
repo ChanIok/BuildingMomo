@@ -791,6 +791,39 @@ interface GeometryData {
   meshMaterialCounts: number[]
 }
 
+function summarizeRegistryTextureSources(materialRegistry: MaterialRegistry): {
+  textureSourceMode: 'external' | 'embedded' | 'mixed' | 'unknown'
+  externalTextureRefs: number
+  embeddedTextureRefs: number
+} {
+  let externalTextureRefs = 0
+  let embeddedTextureRefs = 0
+
+  for (const entry of materialRegistry.values()) {
+    for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
+      for (const ref of entry[type].values()) {
+        if (ref.kind === 'external') externalTextureRefs++
+        else embeddedTextureRefs++
+      }
+    }
+  }
+
+  const textureSourceMode =
+    externalTextureRefs > 0 && embeddedTextureRefs > 0
+      ? 'mixed'
+      : externalTextureRefs > 0
+        ? 'external'
+        : embeddedTextureRefs > 0
+          ? 'embedded'
+          : 'unknown'
+
+  return {
+    textureSourceMode,
+    externalTextureRefs,
+    embeddedTextureRefs,
+  }
+}
+
 /**
  * 处理家具几何体：加载、变换、合并，并构建材质注册表
  *
@@ -1189,6 +1222,8 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
     const sizeX = boundingBox.max.x - boundingBox.min.x
     const sizeY = boundingBox.max.y - boundingBox.min.y
     const sizeZ = boundingBox.max.z - boundingBox.min.z
+    const { textureSourceMode, externalTextureRefs, embeddedTextureRefs } =
+      summarizeRegistryTextureSources(materialRegistry)
 
     return {
       vertexCount,
@@ -1205,6 +1240,9 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
       })),
       meshMaterialCounts,
       registryBaseNames: Array.from(materialRegistry.keys()),
+      textureSourceMode,
+      externalTextureRefs,
+      embeddedTextureRefs,
     }
   }
 

@@ -46,7 +46,8 @@ export interface AppSettings {
   cameraFov: number // 透视相机视场角 (30-90)
   cameraBaseSpeed: number // WASD 移动基础速度
   cameraShiftMultiplier: number // Shift 加速倍率
-  cameraMouseSensitivity: number // 鼠标视角灵敏度
+  cameraMouseSensitivity: number // 飞行模式视角灵敏度
+  cameraOrbitRotateSpeed: number // 轨道模式旋转速度
   cameraZoomSpeed: number // 鼠标滚轮缩放速度
   perspectiveControlMode: 'orbit' | 'flight' // 透视视图下的控制模式偏好
   cameraLockHorizontalMovement: boolean // 锁定水平移动（WASD仅在水平面移动）
@@ -87,7 +88,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   cameraFov: 50,
   cameraBaseSpeed: 1000,
   cameraShiftMultiplier: 4,
-  cameraMouseSensitivity: 0.002,
+  cameraMouseSensitivity: 0.0025,
+  cameraOrbitRotateSpeed: 1,
   cameraZoomSpeed: 2.5,
   perspectiveControlMode: 'orbit',
   cameraLockHorizontalMovement: false,

@@ -19,6 +19,7 @@ import CanvasToolbar from './CanvasToolbar.vue'
 import FurnitureLibrary from './FurnitureLibrary.vue'
 import DyePanel from './DyePanel.vue'
 import DebugPanel from './DebugPanel.vue'
+import FpsMonitor from './FpsMonitor.vue'
 
 const { t } = useI18n()
 const uiStore = useUIStore()
@@ -388,4 +389,12 @@ function handleViewInfoClick() {
 
   <!-- 调试面板 (开发模式) -->
   <DebugPanel v-if="isDev" :camera-data="cameraDebugData" />
+
+  <!-- FPS 监视器 -->
+  <div
+    v-if="settingsStore.settings.showFpsMonitor"
+    class="pointer-events-none absolute top-4 left-4 z-50 rounded-lg bg-black/65 px-2.5 py-2 backdrop-blur-sm"
+  >
+    <FpsMonitor />
+  </div>
 </template>

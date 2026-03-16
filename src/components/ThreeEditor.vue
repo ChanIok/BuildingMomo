@@ -30,7 +30,6 @@ import {
   watchOnce,
 } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
-import FpsMonitor from './FpsMonitor.vue'
 import { recordRenderFrame } from '@/composables/useFpsMonitor'
 
 // 设置 Three.js 全局 Z 轴向上
@@ -389,8 +388,8 @@ function handleToggleCameraMode() {
   }
 }
 
-// 逐帧相机位置缓存（用于检测帧间移动，跳过描边开销）
-// NaN 作初始值：首帧因 NaN !== number 视为"已移动"，echo 帧正常补渲描边
+// 逐帧相机位置缓存（用于检测帧间移动）
+// NaN 作初始值：首帧会视为"已移动"，以便后续补渲一帧应用静止态效果
 let _prevCamX = NaN,
   _prevCamY = NaN,
   _prevCamZ = NaN
@@ -404,7 +403,7 @@ function handlePostRender(context: any) {
 
   if (!renderer || !camera) return
 
-  // 检测帧间相机位移（含 OrbitControls 阻尼帧）
+  // 检测帧间相机位移
   const cam = camera as any
   const cx = cam.position.x,
     cy = cam.position.y,
@@ -415,13 +414,12 @@ function handlePostRender(context: any) {
   _prevCamZ = cz
 
   if (moved) {
-    // 移动中：跳过阴影更新 + 跳过描边
+    // 移动中：继续请求下一帧，但仅跳过阴影更新
     invalidateScene()
-    return
+  } else {
+    // 常规静止帧：更新阴影贴图
+    renderer.shadowMap.needsUpdate = true
   }
-
-  // 常规静止帧（含 echo 帧）：更新阴影贴图
-  renderer.shadowMap.needsUpdate = true
 
   if (currentDisplayMode.value !== 'model') return
 
@@ -741,8 +739,8 @@ onDeactivated(() => {
           ref="orbitControlsRef"
           :target="cameraLookAt"
           :enabled="orbitControlsEnabled"
-          :enableDamping="true"
-          :dampingFactor="0.3"
+          :enableDamping="false"
+          :rotateSpeed="settingsStore.settings.cameraOrbitRotateSpeed"
           :enableRotate="orbitEnableRotate"
           :enablePan="orbitEnablePan"
           :enable-zoom="!isCtrlPressed"
@@ -857,14 +855,6 @@ onDeactivated(() => {
           @change="handleGizmoChange"
         />
       </TresCanvas>
-    </div>
-
-    <!-- FPS 监视器 -->
-    <div
-      v-if="settingsStore.settings.showFpsMonitor"
-      class="pointer-events-none absolute right-3 bottom-3 z-50 rounded-lg bg-black/65 px-2.5 py-2 backdrop-blur-sm"
-    >
-      <FpsMonitor />
     </div>
 
     <!-- 所有 UI 叠加层 (统一子组件) -->
