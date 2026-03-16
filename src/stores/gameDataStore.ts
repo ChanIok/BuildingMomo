@@ -5,9 +5,10 @@ import type { ModelAssetProfile } from '@/types/furniture'
 import type {
   FurnitureItem,
   BuildingMomoFurniture,
-  RawFurnitureEntry,
   FurnitureDB,
   FurnitureModelConfig,
+  FurnitureLiteTextureManifestMeta,
+  FurnitureLiteTextureManifestFile,
 } from '../types/furniture'
 
 // 远程数据源 (Build time fetched)
@@ -19,12 +20,51 @@ const FURNITURE_DB_URL = import.meta.env.BASE_URL + 'assets/data/furniture_db.js
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 
+const LITE_TEXTURE_BASE_PATH = 'assets/furniture-model-lite/textures/'
+
 const MODEL_CACHE_PROFILES: ModelAssetProfile[] = ['lite', 'full']
+
+function normalizePublicAssetPath(assetPath: string): string {
+  return assetPath.replace(/^\/+/, '')
+}
+
+function buildPublicAssetUrl(assetPath: string, hash?: string): string {
+  if (/^https?:\/\//i.test(assetPath)) {
+    return assetPath
+  }
+
+  const url = `${import.meta.env.BASE_URL}${normalizePublicAssetPath(assetPath)}`
+  return hash ? `${url}?v=${encodeURIComponent(hash)}` : url
+}
+
+function normalizeManifestMeshPath(meshPath: string): string {
+  return meshPath.trim().replace(/\\/g, '/')
+}
+
+function getManifestMeshPathCandidates(meshPath: string): string[] {
+  const normalized = normalizeManifestMeshPath(meshPath)
+  const candidates = [normalized]
+  const lastSlash = normalized.lastIndexOf('/')
+  const baseName = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized
+
+  if (baseName && !candidates.includes(baseName)) {
+    candidates.push(baseName)
+  }
+
+  if (baseName && !baseName.toLowerCase().endsWith('.glb')) {
+    candidates.push(`${baseName}.glb`)
+  }
+
+  return candidates
+}
+
+function buildLiteTextureManifestKey(meshPath: string, textureName: string): string {
+  return `${normalizeManifestMeshPath(meshPath)}::${textureName.trim()}`
+}
 
 export const useGameDataStore = defineStore('gameData', () => {
   // ========== 状态 (Furniture) ==========
   const furnitureData = ref<Record<string, FurnitureItem>>({})
-  const lastFetchTime = ref<number>(0)
   const isFurnitureInitialized = ref(false)
 
   // ========== 状态 (Buildable Areas) ==========
@@ -34,6 +74,9 @@ export const useGameDataStore = defineStore('gameData', () => {
   // ========== 状态 (Furniture DB) ==========
   const furnitureDB = ref<Map<number, FurnitureModelConfig>>(new Map())
   const isFurnitureDBLoaded = ref(false)
+  const liteTextureManifestMeta = ref<FurnitureLiteTextureManifestMeta | null>(null)
+  const liteTextureManifest = shallowRef<Map<string, string> | null>(null)
+  const isLiteTextureManifestLoaded = ref(false)
 
   function collectValidGLBCacheKeys(data: FurnitureDB): Set<string> {
     const validKeys = new Set<string>()
@@ -68,49 +111,30 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
 
     const json: BuildingMomoFurniture = await response.json()
-
-    // 使用 Map 处理原始条目，然后归一化为 Record<string, FurnitureItem>
-    const rawMap = new Map<number, RawFurnitureEntry[1]>(json.d)
     const result: Record<string, FurnitureItem> = {}
 
-    for (const [itemId, value] of rawMap.entries()) {
-      const [nameZh, nameEn, iconId, dim, scaleRange, rot] = value
+    for (const [itemId, [nameZh, nameEn, iconId, dim, scaleRange, rot]] of json.d) {
+      const size: [number, number, number] =
+        Array.isArray(dim) && dim.length === 3 ? (dim as [number, number, number]) : [100, 100, 150]
 
-      // 基本校验：尺寸应为长度为3的数组
-      const validSize =
-        Array.isArray(dim) &&
-        dim.length === 3 &&
-        dim.every((n) => typeof n === 'number' && Number.isFinite(n))
+      const parsedScaleRange: [number, number] =
+        Array.isArray(scaleRange) && scaleRange.length === 2
+          ? (scaleRange as [number, number])
+          : [1, 1]
 
-      const size: [number, number, number] = validSize
-        ? (dim as [number, number, number])
-        : [100, 100, 150]
-
-      // 校验缩放范围：应为长度为2的数组
-      const validScaleRange =
-        Array.isArray(scaleRange) &&
-        scaleRange.length === 2 &&
-        scaleRange.every((n) => typeof n === 'number' && Number.isFinite(n))
-
-      const parsedScaleRange: [number, number] = validScaleRange
-        ? (scaleRange as [number, number])
-        : [1, 1] // 默认不可缩放
-
-      // 校验旋转限制：应为长度为2的布尔数组
-      const validRot = Array.isArray(rot) && rot.length === 2
-      const parsedRot = validRot ? rot : [true, true] // 默认允许所有旋转
+      const parsedRot: [boolean, boolean] =
+        Array.isArray(rot) && rot.length === 2 ? (rot as [boolean, boolean]) : [true, true]
 
       result[itemId.toString()] = {
         name_cn: String(nameZh ?? ''),
         name_en: String(nameEn ?? ''),
-        // 这里存储的是 icon_id，实际 URL 在 getIconUrl 中统一拼接 .webp
         icon: String(iconId ?? ''),
         size,
         scaleRange: parsedScaleRange,
         rotationAllowed: {
-          x: parsedRot[0] ?? true,
-          y: parsedRot[1] ?? true,
-          z: true, // Z 轴总是允许旋转
+          x: parsedRot[0],
+          y: parsedRot[1],
+          z: true,
         },
       }
     }
@@ -118,21 +142,13 @@ export const useGameDataStore = defineStore('gameData', () => {
     return result
   }
 
-  // 更新家具数据
   async function updateFurnitureData(): Promise<void> {
-    try {
-      const remoteData = await fetchFurnitureData()
+    if (isFurnitureInitialized.value) return
 
-      console.log('[GameDataStore] Fetched', Object.keys(remoteData).length, 'items')
-
-      // 更新状态
-      furnitureData.value = remoteData
-      lastFetchTime.value = Date.now()
-      isFurnitureInitialized.value = true
-    } catch (error) {
-      console.error('[GameDataStore] Update failed:', error)
-      throw error
-    }
+    const remoteData = await fetchFurnitureData()
+    console.log('[GameDataStore] Fetched', Object.keys(remoteData).length, 'items')
+    furnitureData.value = remoteData
+    isFurnitureInitialized.value = true
   }
 
   // 可建造区域数据加载
@@ -173,6 +189,9 @@ export const useGameDataStore = defineStore('gameData', () => {
       }
 
       furnitureDB.value = map
+      liteTextureManifestMeta.value = data.liteTextureManifest ?? null
+      liteTextureManifest.value = null
+      isLiteTextureManifestLoaded.value = false
       isFurnitureDBLoaded.value = true
 
       void cleanupStaleModelCache(data).catch((error) => {
@@ -185,18 +204,65 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
   }
 
+  async function loadLiteTextureManifest(force = false): Promise<Map<string, string> | null> {
+    if (isLiteTextureManifestLoaded.value && !force) {
+      return liteTextureManifest.value
+    }
+
+    const manifestMeta = liteTextureManifestMeta.value
+    if (!manifestMeta?.path) {
+      liteTextureManifest.value = null
+      isLiteTextureManifestLoaded.value = true
+      return null
+    }
+
+    try {
+      const response = await fetch(buildPublicAssetUrl(manifestMeta.path, manifestMeta.hash))
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const data: FurnitureLiteTextureManifestFile = await response.json()
+      const nextManifest = new Map<string, string>()
+      for (const [key, value] of Object.entries(data.textures ?? {})) {
+        const trimmedValue = value.trim()
+        if (trimmedValue) nextManifest.set(key, trimmedValue)
+      }
+
+      liteTextureManifest.value = nextManifest
+      isLiteTextureManifestLoaded.value = true
+      console.log(`[GameDataStore] Lite texture manifest loaded: ${nextManifest.size} entries`)
+      return nextManifest
+    } catch (error) {
+      liteTextureManifest.value = null
+      isLiteTextureManifestLoaded.value = true
+      console.warn('[GameDataStore] Failed to load lite texture manifest:', error)
+      return null
+    }
+  }
+
+  function getLiteTexturePath(meshPath: string, textureName: string): string | null {
+    const manifest = liteTextureManifest.value
+    if (!manifest || !meshPath || !textureName) return null
+
+    const normalizedTextureName = textureName.trim()
+    for (const candidate of getManifestMeshPathCandidates(meshPath)) {
+      const path = manifest.get(buildLiteTextureManifestKey(candidate, normalizedTextureName))
+      if (path) return path
+    }
+
+    return null
+  }
+
+  function getLiteTextureUrl(meshPath: string, textureName: string): string | null {
+    const fileName = getLiteTexturePath(meshPath, textureName)
+    return fileName ? buildPublicAssetUrl(`${LITE_TEXTURE_BASE_PATH}${fileName}`) : null
+  }
+
   // ========== 全局初始化 ==========
 
   async function initialize(): Promise<void> {
-    if (isFurnitureInitialized.value && isBuildableAreaLoaded.value && isFurnitureDBLoaded.value) {
-      return
-    }
-
-    await Promise.all([
-      !isFurnitureInitialized.value ? updateFurnitureData() : Promise.resolve(),
-      !isBuildableAreaLoaded.value ? loadBuildableAreaData() : Promise.resolve(),
-      !isFurnitureDBLoaded.value ? loadFurnitureDB() : Promise.resolve(),
-    ])
+    await Promise.all([updateFurnitureData(), loadBuildableAreaData(), loadFurnitureDB()])
   }
 
   // ========== 公共方法 (Furniture) ==========
@@ -227,9 +293,7 @@ export const useGameDataStore = defineStore('gameData', () => {
    * @returns 模型配置，如果不存在返回 null
    */
   function getFurnitureModelConfig(itemId: number): FurnitureModelConfig | null {
-    const config = furnitureDB.value.get(itemId) || null
-
-    return config
+    return furnitureDB.value.get(itemId) ?? null
   }
 
   /**
@@ -239,42 +303,37 @@ export const useGameDataStore = defineStore('gameData', () => {
   function getFurnitureConstraintsMap(): Map<
     string,
     {
-      scaleRange?: [number, number]
-      rotationAllowed?: { x: boolean; y: boolean; z: boolean }
+      scaleRange: [number, number]
+      rotationAllowed: { x: boolean; y: boolean; z: boolean }
     }
   > {
     const map = new Map()
 
     for (const [gameId, furniture] of Object.entries(furnitureData.value)) {
-      // 只包含有约束的家具
-      if (furniture.scaleRange || furniture.rotationAllowed) {
-        map.set(gameId, {
-          scaleRange: furniture.scaleRange ? toRaw(furniture.scaleRange) : undefined,
-          rotationAllowed: furniture.rotationAllowed ? toRaw(furniture.rotationAllowed) : undefined,
-        })
-      }
+      map.set(gameId, {
+        scaleRange: toRaw(furniture.scaleRange),
+        rotationAllowed: toRaw(furniture.rotationAllowed),
+      })
     }
 
     return map
   }
 
-  // 清除缓存 (仅重置状态)
-  async function clearCache(): Promise<void> {
-    console.log('[GameDataStore] Clearing state...')
+  function clearCache(): void {
     furnitureData.value = {}
-    lastFetchTime.value = 0
     isFurnitureInitialized.value = false
     buildableAreas.value = null
     isBuildableAreaLoaded.value = false
     furnitureDB.value.clear()
+    liteTextureManifestMeta.value = null
+    liteTextureManifest.value = null
+    isLiteTextureManifestLoaded.value = false
     isFurnitureDBLoaded.value = false
-    console.log('[GameDataStore] State cleared')
   }
 
   return {
     // 状态
     furnitureData,
-    lastFetchTime,
     isInitialized: isFurnitureInitialized,
 
     // 状态 (Buildable Areas)
@@ -284,6 +343,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     // 状态 (Furniture DB)
     furnitureDB,
     isFurnitureDBLoaded,
+    liteTextureManifestMeta,
+    isLiteTextureManifestLoaded,
 
     // 方法
     initialize,
@@ -292,6 +353,9 @@ export const useGameDataStore = defineStore('gameData', () => {
     getIconUrl,
     getFurnitureModelConfig,
     getFurnitureConstraintsMap,
+    loadLiteTextureManifest,
+    getLiteTexturePath,
+    getLiteTextureUrl,
     clearCache,
   }
 })

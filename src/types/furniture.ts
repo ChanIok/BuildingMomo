@@ -55,12 +55,6 @@ export interface FurnitureItem {
   }
 }
 
-/** IndexedDB 缓存结构 */
-export interface FurnitureCache {
-  lastFetchTime: number
-  data: Record<string, FurnitureItem>
-}
-
 // ========== Furniture DB (模型配置) ==========
 
 export type ModelAssetProfile = 'lite' | 'full'
@@ -68,6 +62,15 @@ export type ModelAssetProfile = 'lite' | 'full'
 export interface FurnitureMeshHashes {
   lite: string
   full: string
+}
+
+export interface FurnitureLiteTextureManifestMeta {
+  path: string
+  hash?: string
+}
+
+export interface FurnitureLiteTextureManifestFile {
+  textures: Record<string, string>
 }
 
 /** 单个 Mesh 配置 */
@@ -111,5 +114,6 @@ export interface FurnitureModelConfig {
 /** Furniture DB 数据结构 */
 export interface FurnitureDB {
   categories: string[]
+  liteTextureManifest?: FurnitureLiteTextureManifestMeta
   furniture: FurnitureModelConfig[]
 }

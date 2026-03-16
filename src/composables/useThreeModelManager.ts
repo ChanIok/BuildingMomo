@@ -18,6 +18,7 @@ import {
   LinearFilter,
   LinearMipmapLinearFilter,
   RepeatWrapping,
+  TextureLoader,
   Vector2,
   SRGBColorSpace,
   NoColorSpace,
@@ -36,16 +37,27 @@ import type { ModelAssetProfile } from '@/types/furniture'
 // ─── 材质注册表类型 ───────────────────────────────────────────────────────────
 
 /**
- * 懒加载贴图引用：持有 GLB 解析器引用，按需解码图片
+ * 懒加载贴图引用：支持内嵌贴图和 Lite 外链贴图两种来源。
  * _cache: undefined = 未加载；null = 加载失败；Texture = 已加载
  * _loading: 正在进行中的加载 Promise，防止并发重复解码
  */
-interface TextureRef {
+interface TextureRefBase {
   name: string
-  result: GLTF
   _cache?: Texture | null
   _loading?: Promise<Texture | null>
 }
+
+interface EmbeddedTextureRef extends TextureRefBase {
+  kind: 'embedded'
+  result: GLTF
+}
+
+interface ExternalTextureRef extends TextureRefBase {
+  kind: 'external'
+  url: string
+}
+
+type TextureRef = EmbeddedTextureRef | ExternalTextureRef
 
 /** 单个 baseName 下各类型贴图的变体映射（懒加载引用） */
 interface MaterialRegistryEntry {
@@ -70,6 +82,9 @@ interface ResolvedMaterialTextures {
 // ─── 全局 fallback 贴图 ───────────────────────────────────────────────────────
 
 let _whiteTex: DataTexture | null = null
+const externalTextureLoader = new TextureLoader()
+const externalTextureCache = new Map<string, Texture | null>()
+const externalTextureLoading = new Map<string, Promise<Texture | null>>()
 
 /** 1×1 白色贴图（tint fallback：白色 × 任何颜色 = 原色） */
 function getWhiteTex(): DataTexture {
@@ -88,6 +103,7 @@ interface ParsedMaterialName {
   variantIdx: number
 }
 
+/** 材质名格式：{baseName}_{type}{variantIdx}，D=diffuse/M=mask/N=normal/O=ORM/T=tint */
 const MATERIAL_NAME_RE = /^(?<baseName>.+)_(?<type>[DMNOT])(?<variantIdx>\d+)$/
 
 function parseMaterialName(name: string): ParsedMaterialName | null {
@@ -168,24 +184,72 @@ function applyTextureSettings(
 async function resolveTextureRef(ref: TextureRef): Promise<Texture | null> {
   if ('_cache' in ref) return ref._cache ?? null
   if (ref._loading) return ref._loading
-  ref._loading = loadImageTextureByName(ref.result, ref.name).then((texture) => {
-    const parsed = parseMaterialName(ref.name)
-    if (texture && parsed) applyTextureSettings(texture, parsed.type, ref.name)
+
+  const texturePromise =
+    ref.kind === 'external'
+      ? loadExternalTextureByUrl(ref.url, ref.name)
+      : loadImageTextureByName(ref.result, ref.name).then((texture) => {
+          const parsed = parseMaterialName(ref.name)
+          if (texture && parsed) applyTextureSettings(texture, parsed.type, ref.name)
+          return texture
+        })
+
+  ref._loading = texturePromise.then((texture) => {
     ref._cache = texture ?? null
     ref._loading = undefined
     return ref._cache
   })
+
   return ref._loading
 }
 
 /** 注册懒加载引用（不解码图片） */
-function registerLazyVariant(registry: MaterialRegistry, textureName: string, result: GLTF): void {
+function registerLazyVariant(
+  registry: MaterialRegistry,
+  textureName: string,
+  result: GLTF,
+  options?: { externalUrl?: string | null }
+): void {
   const parsed = parseMaterialName(textureName)
   if (!parsed) return
   const entry = getOrCreateRegistryEntry(registry, parsed.baseName)
-  if (!entry[parsed.type].has(parsed.variantIdx)) {
-    entry[parsed.type].set(parsed.variantIdx, { name: textureName, result })
+
+  const nextRef: TextureRef = options?.externalUrl
+    ? { kind: 'external', name: textureName, url: options.externalUrl }
+    : { kind: 'embedded', name: textureName, result }
+
+  const existingRef = entry[parsed.type].get(parsed.variantIdx)
+  if (!existingRef || (nextRef.kind === 'external' && existingRef.kind !== 'external')) {
+    entry[parsed.type].set(parsed.variantIdx, nextRef)
   }
+}
+
+async function loadExternalTextureByUrl(url: string, textureName: string): Promise<Texture | null> {
+  if (externalTextureCache.has(url)) {
+    return externalTextureCache.get(url) ?? null
+  }
+
+  const pending = externalTextureLoading.get(url)
+  if (pending) return pending
+
+  const loadPromise = externalTextureLoader
+    .loadAsync(url)
+    .then((texture) => {
+      const parsed = parseMaterialName(textureName)
+      if (parsed) applyTextureSettings(texture, parsed.type, textureName)
+      externalTextureCache.set(url, texture)
+      externalTextureLoading.delete(url)
+      return texture
+    })
+    .catch((error) => {
+      console.warn(`[ModelManager] Failed to load external texture: ${url}`, error)
+      externalTextureCache.set(url, null)
+      externalTextureLoading.delete(url)
+      return null
+    })
+
+  externalTextureLoading.set(url, loadPromise)
+  return loadPromise
 }
 
 function getMaterialVariantRefs(
@@ -532,7 +596,7 @@ async function buildDyedMaterials(
   meshBaseNames: (string | null)[],
   slotMeshIndices: number[],
   registry: MaterialRegistry,
-  dyeMap: Map<number, { pattern: number; tint: number }>,
+  dyeMap: Map<number, { pattern: number; tint: number }>, // key 为源 mesh 索引（config.meshes 下标），非材质槽位
   debugLabel: string
 ): Promise<Material | Material[]> {
   const result = await Promise.all(
@@ -639,6 +703,7 @@ function normalizeGeometryAttributes(geometries: BufferGeometry[]): void {
   }
 }
 
+/** 反转三角面顶点顺序，用于 scale(-1,1,1) 后恢复正确的正面朝向 */
 function reverseGeometryWinding(geometry: BufferGeometry): void {
   const index = geometry.getIndex()
 
@@ -737,7 +802,8 @@ async function processGeometryForItem(
   config: any,
   gltfLoader: GLTFLoader,
   profile: ModelAssetProfile,
-  MODEL_BASE_URL: string
+  MODEL_BASE_URL: string,
+  resolveExternalTextureUrl?: (meshPath: string, textureName: string) => string | null
 ): Promise<GeometryData | undefined> {
   const allGeometries: BufferGeometry[] = []
   const sourceMaterials: Material[] = []
@@ -783,6 +849,7 @@ async function processGeometryForItem(
       const geom = mesh.geometry.clone()
       geom.applyMatrix4(mesh.matrix)
 
+      // 游戏坐标系 X/Y/Z → Three.js X/Z/Y，trans 单位厘米 (/100)，Y 取反
       tempScale.set(meshConfig.scale.x, meshConfig.scale.z, meshConfig.scale.y)
       tempQuat.set(
         meshConfig.rotation.x,
@@ -825,12 +892,11 @@ async function processGeometryForItem(
     geometry = merged
   }
 
-  // root_offset + 单位换算
+  // root_offset 单位厘米，scale(100) 转为米；游戏 Y-Up → 场景 Z-Up 需 X 镜像 + winding 反转 + rotateY/X
   const offset = config.root_offset
   geometry.translate(offset.y / 100, offset.z / 100, offset.x / 100)
   geometry.scale(100, 100, 100)
 
-  // 坐标系转换：GLTF Y-Up → 场景 Z-Up
   geometry.scale(-1, 1, 1)
   reverseGeometryWinding(geometry)
   geometry.computeVertexNormals()
@@ -842,8 +908,17 @@ async function processGeometryForItem(
 
   // Phase 3: 扫描材质 extras，注册懒加载引用（不解码任何图片）
   const materialRegistry: MaterialRegistry = new Map()
-  for (const result of gltfResults) {
+  for (let resultIndex = 0; resultIndex < gltfResults.length; resultIndex++) {
+    const result = gltfResults[resultIndex]
     if (!result) continue
+
+    const meshPath = config.meshes[resultIndex]?.path
+    // Lite 模式：贴图可能外链，需 loadLiteTextureManifest 提供 URL；非 Lite 使用 GLB 内嵌贴图
+    const getExternalUrl = (textureName: string) => {
+      if (profile !== 'lite' || !meshPath || !resolveExternalTextureUrl) return null
+      return resolveExternalTextureUrl(meshPath, textureName)
+    }
+
     const rawMaterials = (result.parser.json.materials ?? []) as Array<{
       extras?: Record<string, unknown>
     }>
@@ -855,7 +930,10 @@ async function processGeometryForItem(
         if (!Array.isArray(raw)) continue
         for (const textureName of raw) {
           if (typeof textureName === 'string' && textureName.trim()) {
-            registerLazyVariant(materialRegistry, textureName.trim(), result)
+            const normalizedTextureName = textureName.trim()
+            registerLazyVariant(materialRegistry, normalizedTextureName, result, {
+              externalUrl: getExternalUrl(normalizedTextureName),
+            })
           }
         }
       }
@@ -900,10 +978,10 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
 
   const MODEL_BASE_URL = getModelBaseUrl(profile)
 
-  /** cacheKey → InstancedMesh */
+  /** cacheKey（通常为 itemId + dyePlan）→ InstancedMesh */
   const meshMap = new Map<string, InstancedMesh>()
 
-  /** itemId → 几何体数据（与染色无关） */
+  /** itemId → 几何体数据，按 itemId 共享；染色按 dyePlan 分缓存在 coloredMaterialCache */
   const geometryCache = new Map<number, GeometryData>()
 
   /** cacheKey → 染色材质（与 meshMap 生命周期一致） */
@@ -938,12 +1016,16 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
         console.warn(`[ModelManager] No model config for itemId: ${itemId}`)
         return null
       }
+      if (profile === 'lite') {
+        await gameDataStore.loadLiteTextureManifest()
+      }
       const result = await processGeometryForItem(
         itemId,
         config,
         gltfLoader,
         profile,
-        MODEL_BASE_URL
+        MODEL_BASE_URL,
+        (meshPath, textureName) => gameDataStore.getLiteTextureUrl(meshPath, textureName)
       )
       if (!result) return null
       geomData = result
@@ -970,7 +1052,7 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
       material = coloredMat
     }
 
-    // Headroom 分配策略
+    // 容量分配：缓冲 +16，预留 *1.5，最小 32，上限 MAX_RENDER_INSTANCES
     const allocatedCapacity = Math.min(
       Math.max(instanceCount + 16, Math.floor(instanceCount * 1.5), 32),
       MAX_RENDER_INSTANCES
@@ -1015,6 +1097,10 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
     let completed = 0
     let failed = 0
 
+    if (profile === 'lite') {
+      await gameDataStore.loadLiteTextureManifest()
+    }
+
     await Promise.all(
       unloadedIds.map(async (itemId) => {
         try {
@@ -1030,7 +1116,8 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
             config,
             gltfLoader,
             profile,
-            MODEL_BASE_URL
+            MODEL_BASE_URL,
+            (meshPath, textureName) => gameDataStore.getLiteTextureUrl(meshPath, textureName)
           )
           if (geomData) {
             geometryCache.set(itemId, geomData)
@@ -1136,7 +1223,7 @@ export function useThreeModelManager(profile: ModelAssetProfile) {
   }
 }
 
-// ─── 单例管理 ─────────────────────────────────────────────────────────────────
+// ─── 单例管理（profile 切换时 dispose 重建，避免 full/lite 混用）────────────────────
 
 let managerInstance: ReturnType<typeof useThreeModelManager> | null = null
 let managerProfile: ModelAssetProfile | null = null
