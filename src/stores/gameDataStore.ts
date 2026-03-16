@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, toRaw } from 'vue'
+import { createGLBCacheKey, sweepGLBCache } from '@/lib/glbCache'
+import type { ModelAssetProfile } from '@/types/furniture'
 import type {
   FurnitureItem,
   BuildingMomoFurniture,
@@ -17,6 +19,8 @@ const FURNITURE_DB_URL = import.meta.env.BASE_URL + 'assets/data/furniture_db.js
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 
+const MODEL_CACHE_PROFILES: ModelAssetProfile[] = ['lite', 'full']
+
 export const useGameDataStore = defineStore('gameData', () => {
   // ========== 状态 (Furniture) ==========
   const furnitureData = ref<Record<string, FurnitureItem>>({})
@@ -30,6 +34,29 @@ export const useGameDataStore = defineStore('gameData', () => {
   // ========== 状态 (Furniture DB) ==========
   const furnitureDB = ref<Map<number, FurnitureModelConfig>>(new Map())
   const isFurnitureDBLoaded = ref(false)
+
+  function collectValidGLBCacheKeys(data: FurnitureDB): Set<string> {
+    const validKeys = new Set<string>()
+
+    for (const furniture of data.furniture) {
+      for (const mesh of furniture.meshes ?? []) {
+        if (typeof mesh.path !== 'string' || !mesh.path.trim()) continue
+
+        for (const profile of MODEL_CACHE_PROFILES) {
+          validKeys.add(createGLBCacheKey(profile, mesh.path))
+        }
+      }
+    }
+
+    return validKeys
+  }
+
+  async function cleanupStaleModelCache(data: FurnitureDB): Promise<void> {
+    const removedCount = await sweepGLBCache(collectValidGLBCacheKeys(data))
+    if (removedCount > 0) {
+      console.log(`[GameDataStore] Cleaned ${removedCount} stale model cache entries`)
+    }
+  }
 
   // ========== 数据加载 (Furniture) ==========
 
@@ -147,6 +174,10 @@ export const useGameDataStore = defineStore('gameData', () => {
 
       furnitureDB.value = map
       isFurnitureDBLoaded.value = true
+
+      void cleanupStaleModelCache(data).catch((error) => {
+        console.warn('[GameDataStore] Failed to clean stale model cache:', error)
+      })
     } catch (error) {
       if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
         console.error('[GameDataStore] Failed to load furniture database:', error)
