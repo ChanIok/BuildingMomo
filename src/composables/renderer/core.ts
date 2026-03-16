@@ -1,5 +1,5 @@
 import { ref, watch, onUnmounted, computed, type Ref } from 'vue'
-import type { Matrix4, Raycaster, InstancedMesh } from 'three'
+import { Matrix4, Vector3, type Camera, type Raycaster, type InstancedMesh } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -19,7 +19,13 @@ import {
   raycastMultipleMeshesAsync,
   raycastInstancedMeshAsync,
 } from './shared/asyncRaycast'
-import type { PickingConfig, RaycastTask } from './types'
+import type {
+  InteractionAdapter,
+  RaycastHit,
+  RaycastTask,
+  RegionViewport,
+  RegionCenterCandidate,
+} from './types'
 import { initBVH } from './bvh'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
@@ -449,110 +455,185 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // 当前活动的异步射线检测任务（用于取消）
   let activeRaycastTask: RaycastTask | null = null
+  const geometryCenterCache = new WeakMap<object, Vector3>()
+  const scratchRegionInstanceMatrix = new Matrix4()
+  const scratchRegionWorldMatrix = new Matrix4()
+  const scratchRegionWorldPoint = new Vector3()
+  const scratchRegionCameraPoint = new Vector3()
+  const scratchRegionProjectedPoint = new Vector3()
+
+  function getActiveInstancedMesh(mode: string): InstancedMesh | null {
+    if (mode === 'icon') return iconMode.mesh.value
+    if (mode === 'simple-box') return simpleBoxMode.mesh.value
+    return boxMode.mesh.value
+  }
+
+  function getGeometryLocalCenter(mesh: InstancedMesh): Vector3 | null {
+    const geometry = mesh.geometry
+    if (!geometry.boundingBox) {
+      geometry.computeBoundingBox()
+    }
+
+    const boundingBox = geometry.boundingBox
+    if (!boundingBox) return null
+
+    let cachedCenter = geometryCenterCache.get(geometry)
+    if (!cachedCenter) {
+      cachedCenter = new Vector3()
+      boundingBox.getCenter(cachedCenter)
+      geometryCenterCache.set(geometry, cachedCenter)
+    }
+
+    return cachedCenter
+  }
+
+  function projectMeshInstanceCenter(
+    mesh: InstancedMesh,
+    instanceId: number,
+    camera: Camera,
+    viewport: RegionViewport
+  ) {
+    const localCenter = getGeometryLocalCenter(mesh)
+    if (!localCenter) return null
+
+    mesh.getMatrixAt(instanceId, scratchRegionInstanceMatrix)
+    scratchRegionWorldMatrix.multiplyMatrices(mesh.matrixWorld, scratchRegionInstanceMatrix)
+
+    // 将实例中心从局部空间变换到世界空间，再投影到裁剪空间
+    scratchRegionWorldPoint.copy(localCenter).applyMatrix4(scratchRegionWorldMatrix)
+    scratchRegionCameraPoint.copy(scratchRegionWorldPoint).applyMatrix4(camera.matrixWorldInverse)
+    // z >= 0 说明点在相机后方，不可见，跳过
+    if (scratchRegionCameraPoint.z >= 0) {
+      return null
+    }
+
+    scratchRegionProjectedPoint.copy(scratchRegionWorldPoint).project(camera)
+    if (
+      !Number.isFinite(scratchRegionProjectedPoint.x) ||
+      !Number.isFinite(scratchRegionProjectedPoint.y)
+    ) {
+      return null
+    }
+
+    // NDC [-1,1] 转换为像素坐标
+    return {
+      x: (scratchRegionProjectedPoint.x + 1) * 0.5 * viewport.width,
+      y: (-scratchRegionProjectedPoint.y + 1) * 0.5 * viewport.height,
+    }
+  }
+
+  function forEachMeshRegionCenterCandidate(
+    mesh: InstancedMesh | null,
+    idMap: ReadonlyMap<number, string>,
+    camera: Camera,
+    viewport: RegionViewport,
+    seenIds: Set<string>,
+    visitor: (candidate: RegionCenterCandidate) => void
+  ) {
+    if (!mesh || mesh.count === 0 || idMap.size === 0) return
+
+    mesh.updateWorldMatrix(true, false)
+
+    for (let instanceId = 0; instanceId < mesh.count; instanceId++) {
+      const internalId = idMap.get(instanceId)
+      if (!internalId) continue
+      // seenIds 用于 model 模式：防止同一物品出现在多个 mesh 中时被重复计入
+      if (seenIds.has(internalId)) continue
+
+      const center = projectMeshInstanceCenter(mesh, instanceId, camera, viewport)
+      if (!center) continue
+
+      seenIds.add(internalId)
+      visitor({ internalId, center })
+    }
+  }
 
   /**
-   * 获取当前模式的拾取配置（统一拾取接口）
+   * 返回 model 模式下所有可遍历的 mesh 及其局部索引映射（含 fallbackMesh）。
+   * 统一封装"meshMap + fallbackMesh"的迭代逻辑，避免在 pick / pickAsync /
+   * forEachRegionCenterCandidate 各处重复相同的遍历代码。
    */
-  const pickingConfig = computed<PickingConfig>(() => {
+  function getModelMeshesWithIndexMap(): Array<{
+    mesh: InstancedMesh
+    indexMap: ReadonlyMap<number, string>
+  }> {
+    const result: Array<{ mesh: InstancedMesh; indexMap: ReadonlyMap<number, string> }> = []
+
+    for (const mesh of modelMode.meshMap.value.values()) {
+      const indexMap = modelMode.meshToLocalIndexMap.value.get(mesh)
+      if (mesh && indexMap) result.push({ mesh, indexMap })
+    }
+
+    const fallbackMesh = modelMode.fallbackMesh.value
+    if (fallbackMesh) {
+      const indexMap = modelMode.meshToLocalIndexMap.value.get(fallbackMesh)
+      if (indexMap) result.push({ mesh: fallbackMesh, indexMap })
+    }
+
+    return result
+  }
+
+  /**
+   * 获取当前模式的交互适配器（统一点击 / hover / 区域选择接口）
+   */
+  const interactionAdapter = computed<InteractionAdapter>(() => {
     const mode = settingsStore.settings.threeDisplayMode
 
     return {
-      // 同步射线检测（用于框选等需要立即结果的场景）
-      performRaycast: (raycaster: Raycaster) => {
+      // 同步射线检测（用于点击等需要立即结果的场景）
+      pick: (raycaster: Raycaster) => {
         if (mode === 'model') {
-          // Model 模式：遍历所有 mesh，返回最近的交点
-          let closestHit: { instanceId: number; internalId: string; distance: number } | null = null
+          // Model 模式：遍历所有 mesh（含 fallback），返回距离最近的交点
+          // hit.instanceId 是 mesh 内的局部索引（0, 1, 2...），需通过 indexMap 转换
+          let closestHit: RaycastHit | null = null
 
-          // 辅助函数：检测单个 mesh 的射线交点
-          function testMesh(mesh: InstancedMesh) {
-            if (!mesh || mesh.count === 0) return
-
+          for (const { mesh, indexMap } of getModelMeshesWithIndexMap()) {
+            if (mesh.count === 0) continue
             const intersects = raycaster.intersectObject(mesh, false)
             const hit = intersects[0]
+            if (!hit || hit.instanceId === undefined) continue
 
-            if (hit && hit.instanceId !== undefined) {
-              // ✨ 关键改动：使用局部索引映射
-              // hit.instanceId 是 mesh 内的局部索引（0, 1, 2...）
-              const localIndexMap = modelMode.meshToLocalIndexMap.value.get(mesh)
-              if (!localIndexMap) return
-
-              const internalId = localIndexMap.get(hit.instanceId)
-
-              if (internalId && (!closestHit || hit.distance < closestHit.distance)) {
-                closestHit = {
-                  instanceId: hit.instanceId,
-                  internalId,
-                  distance: hit.distance,
-                }
-              }
+            const internalId = indexMap.get(hit.instanceId)
+            if (internalId && (!closestHit || hit.distance < closestHit.distance)) {
+              closestHit = { instanceId: hit.instanceId, internalId, distance: hit.distance }
             }
-          }
-
-          // 遍历所有模型 mesh
-          for (const [, mesh] of modelMode.meshMap.value.entries()) {
-            testMesh(mesh)
-          }
-
-          // 处理回退 mesh（如果有）
-          const fallbackMesh = modelMode.fallbackMesh.value
-          if (fallbackMesh) {
-            testMesh(fallbackMesh)
           }
 
           return closestHit
         } else {
           // Box/Icon/SimpleBox 模式：单 mesh 检测
-          let targetMesh: InstancedMesh | null = null
-
-          if (mode === 'icon') targetMesh = iconMode.mesh.value
-          else if (mode === 'simple-box') targetMesh = simpleBoxMode.mesh.value
-          else targetMesh = boxMode.mesh.value
-
+          const targetMesh = getActiveInstancedMesh(mode)
           if (!targetMesh || targetMesh.count === 0) return null
 
           const intersects = raycaster.intersectObject(targetMesh, false)
           const hit = intersects[0]
+          if (!hit || hit.instanceId === undefined) return null
 
-          if (hit && hit.instanceId !== undefined) {
-            const internalId = indexToIdMap.value.get(hit.instanceId)
-            if (internalId) {
-              return {
-                instanceId: hit.instanceId,
-                internalId,
-                distance: hit.distance,
-              }
-            }
-          }
-
-          return null
+          const internalId = indexToIdMap.value.get(hit.instanceId)
+          return internalId
+            ? { instanceId: hit.instanceId, internalId, distance: hit.distance }
+            : null
         }
       },
 
       // 异步时间切片射线检测（用于 tooltip 等可接受延迟的场景）
-      performRaycastAsync: async (raycaster: Raycaster) => {
-        // 取消上一次未完成的检测
+      pickAsync: async (raycaster: Raycaster) => {
+        // 取消上一次未完成的检测，避免旧任务的结果覆盖最新的 hover 状态
         cancelTask(activeRaycastTask)
 
         const task = createRaycastTask()
         activeRaycastTask = task
 
-        // 根据模式决定检查频率：模型模式由于几何体复杂，更频繁地检查时间预算
+        // 根据模式决定单轮检查的实例数：
+        // model 模式几何体复杂，减小批次以更频繁地检查时间预算，降低卡帧风险
         const instancesPerCheck = mode === 'model' ? 200 : 500
 
         if (mode === 'model') {
-          // Model 模式：使用可中断的实例级射线检测
-          const meshesToTest: InstancedMesh[] = []
-          for (const [, mesh] of modelMode.meshMap.value.entries()) {
-            if (mesh && mesh.count > 0) {
-              meshesToTest.push(mesh)
-            }
-          }
-          const fallbackMesh = modelMode.fallbackMesh.value
-          if (fallbackMesh && fallbackMesh.count > 0) {
-            meshesToTest.push(fallbackMesh)
-          }
+          // Model 模式：收集所有非空 mesh（含 fallback），使用可中断的实例级射线检测
+          const meshesToTest = getModelMeshesWithIndexMap()
+            .filter(({ mesh }) => mesh.count > 0)
+            .map(({ mesh }) => mesh)
 
-          // 使用新的可中断射线检测（在实例级别 yield）
           return await raycastMultipleMeshesAsync(
             meshesToTest,
             raycaster,
@@ -561,16 +642,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
             instancesPerCheck
           )
         } else {
-          // Box/Icon/SimpleBox 模式：单 mesh，使用可中断检测
-          let targetMesh: InstancedMesh | null = null
-
-          if (mode === 'icon') targetMesh = iconMode.mesh.value
-          else if (mode === 'simple-box') targetMesh = simpleBoxMode.mesh.value
-          else targetMesh = boxMode.mesh.value
-
+          // Box/Icon/SimpleBox 模式：单 mesh，也使用可中断检测（实例数多时同样会卡）
+          const targetMesh = getActiveInstancedMesh(mode)
           if (!targetMesh || targetMesh.count === 0) return null
 
-          // 对于单 mesh，也使用可中断检测（实例数多时也会卡）
           return await raycastInstancedMeshAsync(
             targetMesh,
             raycaster,
@@ -582,16 +657,32 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       },
 
       // 取消当前进行中的异步检测
-      cancelRaycast: () => {
+      cancelPick: () => {
         cancelTask(activeRaycastTask)
         activeRaycastTask = null
       },
 
-      // 动态返回当前模式的索引映射
-      indexToIdMap: computed(() => {
-        const currentMode = settingsStore.settings.threeDisplayMode
-        return currentMode === 'model' ? modelMode.indexToIdMap.value : indexToIdMap.value
-      }),
+      // 枚举当前模式下可参与区域选择的中心点候选（框选 / 套索的核心数据来源）
+      forEachRegionCenterCandidate: (camera, viewport, visitor) => {
+        // seenIds 防止 model 模式下同一物品出现在多个 mesh 时被重复访问
+        const seenIds = new Set<string>()
+
+        if (mode === 'model') {
+          for (const { mesh, indexMap } of getModelMeshesWithIndexMap()) {
+            forEachMeshRegionCenterCandidate(mesh, indexMap, camera, viewport, seenIds, visitor)
+          }
+          return
+        }
+
+        forEachMeshRegionCenterCandidate(
+          getActiveInstancedMesh(mode),
+          indexToIdMap.value,
+          camera,
+          viewport,
+          seenIds,
+          visitor
+        )
+      },
     }
   })
 
@@ -847,21 +938,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     simpleBoxInstancedMesh: simpleBoxMode.mesh,
     modelMeshMap: modelMode.meshMap,
     modelFallbackMesh: modelMode.fallbackMesh,
-    indexToIdMap,
-    idToIndexMap,
-    /**
-     * Model 模式的索引映射（跨所有模型 mesh 的全局索引）
-     *
-     * 注意：当前拾取逻辑尚未完全支持 Model 模式的多 mesh 遍历
-     * 此映射预留用于未来实现完整的 Model 拾取和选择功能
-     */
-    modelIndexToIdMap: modelMode.indexToIdMap,
-    modelIdToIndexMap: modelMode.idToIndexMap,
     updateSelectedInstancesMatrix,
     setHoveredItemId,
     updateIconFacing,
     setupIconFacing,
-    pickingConfig, // ✨ 新增：统一拾取配置
+    interactionAdapter,
     renderSelectionOutlineMaskPass: selectionOutline.renderMaskPass,
     renderSelectionOutlineOverlay: selectionOutline.renderOverlay,
     syncOutlineSceneTransform: selectionOutline.syncSceneTransform,

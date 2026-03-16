@@ -173,9 +173,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - Background handling via `useThreeBackground`, rendering the game map texture with correct coordinate mapping and theme-derived colors.
   - Grid and axes via `useThreeGrid` and classic `Grid` / `AxesHelper` primitives.
   - Instanced rendering via `useThreeInstancedRenderer` (see below) with four display modes: `box`, `icon`, `simple-box`, `model`.
-  - Selection and lasso via `useThreeSelection`, including rectangular and freeform selection in screen space.
+  - Selection and lasso via `useThreeSelection`, including rectangular and freeform selection in screen space. Region selection currently uses the projected center point of the rendered instance bounding box instead of selecting on any bounding-box overlap.
   - Transform gizmo via `useThreeTransformGizmo`, with snapping controlled by `settingsStore` and coupled to instanced-mesh matrix updates.
-  - 3D tooltips for hovered items via `useThreeTooltip`, using the same picking configuration as selection and delegating highlight handling to the renderer.
+  - 3D tooltips for hovered items via `useThreeTooltip`, using the same interaction adapter as selection and delegating highlight handling to the renderer.
   - Context menu and overlays via `ThreeEditorOverlays.vue`, which centralizes UI overlays (selection rectangle, tooltips, debug readouts).
 - Uses a shared `isTransformDragging` flag to avoid expensive full-scene rebuilds while the gizmo is being dragged.
 - `CanvasToolbar.vue` provides a floating toolbar within the canvas area.
@@ -197,9 +197,9 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
   - `asyncRaycast.ts` – async raycast for performance in large scenes.
   - `materials.ts` – shared material definitions.
   - `scratchObjects.ts` – pre-allocated Three.js objects for reuse in hot paths.
-- Provides a **unified picking interface** (`pickingConfig`) used by both selection and tooltips:
-  - `performRaycast(raycaster)` returns the closest instance hit along with its internal ID.
-  - `indexToIdMap` exposes the current mode's index mapping in a read-only fashion.
+- Provides a **unified interaction adapter** (`interactionAdapter`) used by selection and tooltips:
+  - `pick(raycaster)` / `pickAsync(raycaster)` return the closest instance hit along with its internal ID.
+  - `forEachRegionCandidate(visitor)` enumerates the currently rendered instances so region selection can test projected center points consistently across `box`, `icon`, `simple-box`, and `model` modes.
 - Performance constants defined in `src/types/constants.ts`: `MAX_RENDER_INSTANCES` (40000), `RAYCAST_SKIP_ITEM_THRESHOLD` (10000).
 
 ### Editor manipulation & coordinate systems
@@ -385,6 +385,13 @@ The `lib` directory contains reusable mathematical and geometric utilities that 
   - `convertPositionWorkingToGlobal` / `convertPositionGlobalToWorking` – Position conversion (World Space I/O)
   - `convertRotationWorkingToGlobal` / `convertRotationGlobalToWorking` – Rotation conversion (Visual Space I/O)
 - **Usage**: Enables transforms relative to custom reference frames (e.g., align to selected item's orientation)
+
+#### `interaction/` – Screen-space interaction geometry
+
+- **Purpose**: Pure utilities for projecting rendered instances to screen space and testing box/lasso overlap.
+- **Key files**:
+  - `renderInstanceProjection.ts` – Projects instanced mesh bounding shapes to screen space.
+  - `screenGeometry.ts` – Convex hull, bounds, and polygon intersection helpers for region selection.
 
 #### `rotationTransform.ts` – Rotation operations
 

@@ -4,7 +4,7 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from './useI18n'
-import type { PickingConfig } from './renderer/types'
+import type { InteractionAdapter } from './renderer/types'
 import { RAYCAST_SKIP_ITEM_THRESHOLD } from '@/types/constants'
 
 export interface ThreeTooltipData {
@@ -13,10 +13,6 @@ export interface ThreeTooltipData {
   position: { x: number; y: number } // 相对于 three 容器的屏幕坐标
   gameId: number
   instanceId: number
-}
-
-interface ThreeTooltipSources {
-  pickingConfig: Ref<PickingConfig>
 }
 
 interface PendingRaycast {
@@ -29,7 +25,7 @@ interface PendingRaycast {
 export function useThreeTooltip(
   cameraRef: Ref<Camera | null>,
   containerRef: Ref<HTMLElement | null>,
-  sources: ThreeTooltipSources,
+  interactionAdapter: Ref<InteractionAdapter>,
   isEnabled: Ref<boolean>,
   isTransformDragging?: Ref<boolean>,
   setHoveredItemId?: (id: string | null) => void,
@@ -52,7 +48,7 @@ export function useThreeTooltip(
 
   function hideTooltip() {
     // 取消进行中的异步检测
-    sources.pickingConfig.value.cancelRaycast()
+    interactionAdapter.value.cancelPick()
     // 清空待处理请求
     pendingRaycast = null
 
@@ -92,8 +88,7 @@ export function useThreeTooltip(
     raycaster.setFromCamera(pointerNdc, camera)
 
     // ✨ 使用异步时间切片拾取接口（不阻塞主线程）
-    const config = sources.pickingConfig.value
-    const hit = await config.performRaycastAsync(raycaster)
+    const hit = await interactionAdapter.value.pickAsync(raycaster)
 
     isRaycasting = false
 

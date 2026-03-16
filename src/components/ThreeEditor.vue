@@ -291,7 +291,7 @@ const dynamicNear = computed(() => {
   return hasNearbyObjects.value ? 10 : 100
 })
 
-// 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 pickingConfig
+// 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 interactionAdapter
 const {
   instancedMesh,
   iconInstancedMesh,
@@ -299,7 +299,7 @@ const {
   modelMeshMap,
   modelFallbackMesh,
   updateSelectedInstancesMatrix,
-  pickingConfig,
+  interactionAdapter,
   setHoveredItemId,
   setupIconFacing,
   renderSelectionOutlineMaskPass,
@@ -443,7 +443,7 @@ const {
   handlePointerMove,
   handlePointerUp,
   cancelSelectionSession,
-} = useThreeSelection(activeCameraRef, { pickingConfig }, threeContainerRef, isTransformDragging)
+} = useThreeSelection(activeCameraRef, interactionAdapter, isTransformDragging)
 
 // 3D Tooltip 系统（与 2D 复用同一开关）
 const {
@@ -454,7 +454,7 @@ const {
 } = useThreeTooltip(
   activeCameraRef,
   threeContainerRef,
-  { pickingConfig },
+  interactionAdapter,
   toRef(settingsStore.settings, 'showFurnitureTooltip'),
   isTransformDragging,
   setHoveredItemId,
@@ -700,6 +700,7 @@ onDeactivated(() => {
       <TresCanvas
         render-mode="on-demand"
         :clear-color="canvasClearColor"
+        power-preference="high-performance"
         @ready="handleTresReady"
         @render="handlePostRender"
       >

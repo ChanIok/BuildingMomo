@@ -1,5 +1,6 @@
-import type { InstancedMesh, Matrix4, Raycaster } from 'three'
+import type { Camera, InstancedMesh, Matrix4, Raycaster } from 'three'
 import type { Ref } from 'vue'
+import type { ScreenPoint } from '@/lib/interaction/screenGeometry'
 
 /**
  * 渲染模式返回值接口（各模式 composable 的统一返回结构）
@@ -32,15 +33,31 @@ export interface RaycastTask {
 }
 
 /**
- * 统一的拾取配置（对外暴露）
+ * 区域选择候选中心点
  */
-export interface PickingConfig {
+export interface RegionCenterCandidate {
+  internalId: string
+  center: ScreenPoint
+}
+
+/**
+ * 区域选择视口尺寸
+ */
+export interface RegionViewport {
+  width: number
+  height: number
+}
+
+/**
+ * 统一的交互适配器（点击 / hover / 区域选择）
+ */
+export interface InteractionAdapter {
   /**
-   * 同步射线检测（用于框选等需要立即结果的场景）
+   * 同步射线检测（用于点击选择等需要立即结果的场景）
    * @param raycaster - Three.js Raycaster 实例
    * @returns 拾取结果（最近的交点）或 null
    */
-  performRaycast: (raycaster: Raycaster) => RaycastHit | null
+  pick: (raycaster: Raycaster) => RaycastHit | null
 
   /**
    * 异步时间切片射线检测（用于 tooltip 等可接受延迟的场景）
@@ -48,18 +65,21 @@ export interface PickingConfig {
    * @param raycaster - Three.js Raycaster 实例
    * @returns Promise，返回拾取结果或 null（被取消时也返回 null）
    */
-  performRaycastAsync: (raycaster: Raycaster) => Promise<RaycastHit | null>
+  pickAsync: (raycaster: Raycaster) => Promise<RaycastHit | null>
 
   /**
    * 取消当前进行中的异步检测
    */
-  cancelRaycast: () => void
+  cancelPick: () => void
 
   /**
-   * 当前模式的索引映射（只读）
-   * index -> internalId
+   * 枚举当前模式下可参与区域选择的中心点候选
    */
-  readonly indexToIdMap: Ref<ReadonlyMap<number, string>>
+  forEachRegionCenterCandidate: (
+    camera: Camera,
+    viewport: RegionViewport,
+    visitor: (candidate: RegionCenterCandidate) => void
+  ) => void
 }
 
 /**
