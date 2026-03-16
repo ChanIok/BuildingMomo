@@ -305,6 +305,10 @@ export const zhLocale = {
       label: '家园背景图',
       hint: '显示背景参考图',
     },
+    modelAssets: {
+      label: '加载完整版模型资源',
+      hint: '增加法线和 ORM 贴图，材质更细腻；加载更慢、占用更多显存。',
+    },
     modelDye: {
       label: '模型染色显示',
       hint: '开启染色纹理加载',

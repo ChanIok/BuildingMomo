@@ -4,6 +4,7 @@ import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
 import { type ModelDyePlan, resolveModelDyePlan, buildModelMeshKey } from '@/lib/modelDye'
 import { createBoxMaterial } from '../shared/materials'
@@ -16,6 +17,7 @@ import {
   scratchColor,
 } from '../shared/scratchObjects'
 import { MAX_RENDER_INSTANCES as MAX_INSTANCES } from '@/types/constants'
+import type { ModelAssetProfile } from '@/types/furniture'
 
 // 当缺少尺寸信息时使用的默认尺寸（游戏坐标：X=长, Y=宽, Z=高）
 const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
@@ -43,7 +45,8 @@ export function useModelMode() {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
   const loadingStore = useLoadingStore()
-  const modelManager = getThreeModelManager()
+  const settingsStore = useSettingsStore()
+  let activeAssetProfile: ModelAssetProfile | null = null
 
   // 模型 InstancedMesh 映射：meshKey -> InstancedMesh
   // meshKey 格式示例：
@@ -66,6 +69,32 @@ export function useModelMode() {
   // 🔧 修复：markRaw + shallowRef 组合，保持响应式同时避免深度代理
   const fallbackGeometry = shallowRef<BoxGeometry | null>(null)
   const fallbackMesh = shallowRef<InstancedMesh | null>(null)
+
+  function clearRenderedModelState() {
+    for (const [, mesh] of modelMeshMap.value.entries()) {
+      if (mesh.geometry?.boundsTree) {
+        mesh.geometry.disposeBoundsTree()
+      }
+      mesh.count = 0
+      mesh.geometry = null as any
+      mesh.material = null as any
+    }
+    modelMeshMap.value.clear()
+    modelIndexToIdMap.value.clear()
+    modelIdToIndexMap.value.clear()
+    meshToLocalIndexMap.value.clear()
+    internalIdToMeshInfo.value.clear()
+  }
+
+  function syncAssetProfile(profile: ModelAssetProfile) {
+    if (activeAssetProfile === profile) return
+    clearRenderedModelState()
+    if (fallbackMesh.value) {
+      fallbackMesh.value.count = 0
+    }
+    disposeThreeModelManager()
+    activeAssetProfile = profile
+  }
 
   /**
    * 确保回退渲染资源已初始化
@@ -158,10 +187,15 @@ export function useModelMode() {
   async function rebuild(options?: ModelRebuildOptions): Promise<boolean> {
     // ✅ 检查点 1：捕获当前 scheme 引用，用于后续验证
     const currentScheme = editorStore.activeScheme
+    const assetProfile = settingsStore.settings.modelAssetProfile
+    syncAssetProfile(assetProfile)
+    const modelManager = getThreeModelManager()
     const items = currentScheme?.items.value ?? []
     const instanceCount = Math.min(items.length, MAX_INSTANCES)
     const isStale = () =>
-      options?.isStale?.() === true || editorStore.activeScheme !== currentScheme
+      options?.isStale?.() === true ||
+      editorStore.activeScheme !== currentScheme ||
+      settingsStore.settings.modelAssetProfile !== assetProfile
     const abort = () => {
       loadingStore.cancelLoading()
       return false
@@ -460,15 +494,7 @@ export function useModelMode() {
    * 清理资源
    */
   function dispose() {
-    // 清理模型 Mesh
-    for (const [, mesh] of modelMeshMap.value.entries()) {
-      if (mesh.geometry?.boundsTree) {
-        mesh.geometry.disposeBoundsTree()
-      }
-      mesh.geometry = null as any
-      mesh.material = null as any
-    }
-    modelMeshMap.value.clear()
+    clearRenderedModelState()
 
     // 清理回退 Mesh
     if (fallbackMesh.value) {
@@ -488,6 +514,7 @@ export function useModelMode() {
     }
 
     disposeThreeModelManager()
+    activeAssetProfile = null
   }
 
   return {

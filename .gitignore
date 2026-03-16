@@ -26,7 +26,7 @@ dist-ssr
 # Downloaded assets
 public/assets/data/
 public/assets/furniture-icon/
-public/assets/furniture-model/
+public/assets/furniture-model*/
 public/assets/colors/
 # Auto-copied decoder files
 public/draco/

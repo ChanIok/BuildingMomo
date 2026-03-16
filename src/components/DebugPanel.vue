@@ -29,7 +29,6 @@ defineProps<{
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
-const modelManager = getThreeModelManager()
 
 const showPanel = ref(false)
 
@@ -49,7 +48,7 @@ const modelDebugInfo = computed(() => {
   if (!item) return null
 
   const config = gameDataStore.getFurnitureModelConfig(item.gameId)
-  const debugInfo = modelManager.getModelDebugInfo(item.gameId)
+  const debugInfo = getThreeModelManager().getModelDebugInfo(item.gameId)
   const furniture = gameDataStore.getFurniture(item.gameId)
 
   const decodedColorMap = decodeColorMapToGroupMap(item.extra.ColorMap)

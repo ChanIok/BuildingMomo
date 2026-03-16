@@ -1,10 +1,10 @@
 import {
   InstancedMesh,
   DynamicDrawUsage,
-  Sphere,
   Vector3,
   type BufferGeometry,
   type Material,
+  type MeshStandardMaterialParameters,
   Mesh,
   MeshStandardMaterial,
   Color,
@@ -27,9 +27,11 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import type { Texture } from 'three'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 import type { ModelDyePlan } from '@/lib/modelDye'
 import { getGLBCacheEntry, putGLBCacheEntry } from '@/lib/glbCache'
+import type { ModelAssetProfile } from '@/types/furniture'
 
 // ─── 材质注册表类型 ───────────────────────────────────────────────────────────
 
@@ -48,6 +50,7 @@ interface TextureRef {
 /** 单个 baseName 下各类型贴图的变体映射（懒加载引用） */
 interface MaterialRegistryEntry {
   D: Map<number, TextureRef> // diffuse 变体
+  M: Map<number, TextureRef> // dye mask 变体
   N: Map<number, TextureRef> // normal 变体
   O: Map<number, TextureRef> // ORM 变体
   T: Map<number, TextureRef> // tint 调色板变体
@@ -55,6 +58,14 @@ interface MaterialRegistryEntry {
 
 /** 材质注册表：baseName → 各类型变体贴图 */
 type MaterialRegistry = Map<string, MaterialRegistryEntry>
+
+interface ResolvedMaterialTextures {
+  diffuse: Texture | null
+  mask: Texture | null
+  normal: Texture | null
+  orm: Texture | null
+  tint: Texture | null
+}
 
 // ─── 全局 fallback 贴图 ───────────────────────────────────────────────────────
 
@@ -73,11 +84,11 @@ function getWhiteTex(): DataTexture {
 
 interface ParsedMaterialName {
   baseName: string
-  type: 'D' | 'N' | 'O' | 'T'
+  type: 'D' | 'M' | 'N' | 'O' | 'T'
   variantIdx: number
 }
 
-const MATERIAL_NAME_RE = /^(?<baseName>.+)_(?<type>[DNOT])(?<variantIdx>\d+)$/
+const MATERIAL_NAME_RE = /^(?<baseName>.+)_(?<type>[DMNOT])(?<variantIdx>\d+)$/
 
 function parseMaterialName(name: string): ParsedMaterialName | null {
   const trimmed = name.trim()
@@ -101,7 +112,7 @@ function getOrCreateRegistryEntry(
 ): MaterialRegistryEntry {
   let entry = registry.get(baseName)
   if (!entry) {
-    entry = { D: new Map(), N: new Map(), O: new Map(), T: new Map() }
+    entry = { D: new Map(), M: new Map(), N: new Map(), O: new Map(), T: new Map() }
     registry.set(baseName, entry)
   }
   return entry
@@ -114,7 +125,7 @@ function getMaterialDebugName(mat: Material): string {
 function resolveMaterialBaseName(mat: Material): string | null {
   const baseNames = new Set<string>()
   const variantRefs = getMaterialVariantRefs(mat)
-  for (const type of ['D', 'N', 'O', 'T'] as const) {
+  for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
     for (const textureName of variantRefs[type] ?? []) {
       const parsed = parseMaterialName(textureName)
       if (parsed) baseNames.add(parsed.baseName)
@@ -126,7 +137,11 @@ function resolveMaterialBaseName(mat: Material): string | null {
 }
 
 /** 对已解码贴图设置采样参数 */
-function applyTextureSettings(texture: Texture, type: 'D' | 'N' | 'O' | 'T', name: string): void {
+function applyTextureSettings(
+  texture: Texture,
+  type: 'D' | 'M' | 'N' | 'O' | 'T',
+  name: string
+): void {
   texture.flipY = false
   texture.name = name
   texture.wrapS = RepeatWrapping
@@ -179,7 +194,7 @@ function getMaterialVariantRefs(
   const refs: Partial<Record<ParsedMaterialName['type'], string[]>> = {}
   const userData = mat.userData as Record<string, unknown>
 
-  for (const type of ['D', 'N', 'O', 'T'] as const) {
+  for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
     const raw = userData[type]
     if (!Array.isArray(raw)) continue
 
@@ -229,6 +244,118 @@ function extractTexture(mat: Material, type: 'D' | 'N' | 'O'): Texture | null {
   }
 }
 
+/** 从现有材质上提取可复用贴图，作为注册表缺失时的兜底来源。 */
+function getSourceMaterialTextures(sourceMat: Material): ResolvedMaterialTextures {
+  return {
+    diffuse: extractTexture(sourceMat, 'D'),
+    mask: null,
+    normal: extractTexture(sourceMat, 'N'),
+    orm: extractTexture(sourceMat, 'O'),
+    tint: null,
+  }
+}
+
+/** 优先取指定变体，缺失时回退到 0 号默认变体。 */
+function getTextureVariantRef(
+  entry: MaterialRegistryEntry | undefined,
+  type: keyof MaterialRegistryEntry,
+  variantIdx: number
+): TextureRef | undefined {
+  return entry?.[type].get(variantIdx) ?? entry?.[type].get(0)
+}
+
+/** 统一处理“注册表贴图 or 原材质贴图”的解析逻辑。 */
+function resolveOptionalTexture(
+  ref: TextureRef | undefined,
+  fallback: Texture | null
+): Promise<Texture | null> {
+  return ref ? resolveTextureRef(ref) : Promise.resolve(fallback)
+}
+
+/**
+ * 解析某个材质槽位最终要使用的贴图集合。
+ * 这样 plain / dyed 两条路径都走同一套贴图决策，避免重复分支。
+ */
+async function resolveMaterialTextures({
+  sourceMat,
+  registryEntry,
+  patternVariant = 0,
+  tintVariant = 0,
+}: {
+  sourceMat: Material
+  registryEntry?: MaterialRegistryEntry
+  patternVariant?: number
+  tintVariant?: number
+}): Promise<ResolvedMaterialTextures> {
+  const fallbackTextures = getSourceMaterialTextures(sourceMat)
+
+  const [diffuse, mask, normal, orm, tint] = await Promise.all([
+    resolveOptionalTexture(
+      getTextureVariantRef(registryEntry, 'D', patternVariant),
+      fallbackTextures.diffuse
+    ),
+    resolveOptionalTexture(getTextureVariantRef(registryEntry, 'M', patternVariant), null),
+    resolveOptionalTexture(
+      getTextureVariantRef(registryEntry, 'N', patternVariant),
+      fallbackTextures.normal
+    ),
+    resolveOptionalTexture(
+      getTextureVariantRef(registryEntry, 'O', patternVariant),
+      fallbackTextures.orm
+    ),
+    resolveOptionalTexture(getTextureVariantRef(registryEntry, 'T', tintVariant), null),
+  ])
+
+  return { diffuse, mask, normal, orm, tint }
+}
+
+/** 判断是否真的解析出了可用于重建材质的贴图。 */
+function hasResolvedTextures(textures: ResolvedMaterialTextures): boolean {
+  return !!(textures.diffuse || textures.mask || textures.normal || textures.orm || textures.tint)
+}
+
+/** 染色遮罩优先使用独立 M 贴图，其次回退到 ORM 的 alpha。 */
+function getMaterialMaskTexture(textures: ResolvedMaterialTextures): Texture | null {
+  return textures.mask ?? textures.orm ?? null
+}
+
+/** 只有确实需要 tint 或 ORM alpha 蒙版时才挂 shader patch。 */
+function shouldApplyDyeShader(textures: ResolvedMaterialTextures): boolean {
+  return !!(textures.tint || textures.orm)
+}
+
+/**
+ * 统一创建模型材质。
+ * 这里负责基础 PBR 参数、贴图挂载，以及按需启用染色 shader。
+ */
+function createModelMaterial(textures: ResolvedMaterialTextures): MeshStandardMaterial {
+  const params: MeshStandardMaterialParameters = {
+    roughness: 0.8,
+    metalness: 0.1,
+    normalScale: new Vector2(1, 1),
+    aoMapIntensity: 1.0,
+    emissive: new Color(0x222222),
+    emissiveIntensity: 0.03,
+  }
+
+  if (textures.diffuse) params.map = textures.diffuse
+  if (textures.normal) params.normalMap = textures.normal
+  if (textures.orm) {
+    params.roughnessMap = textures.orm
+    params.metalnessMap = textures.orm
+    params.aoMap = textures.orm
+  }
+
+  const mat = new MeshStandardMaterial(params)
+  const maskTex = getMaterialMaskTexture(textures)
+
+  if (shouldApplyDyeShader(textures)) {
+    applyDyeShaderPatch(mat, textures.tint, maskTex)
+  }
+
+  return mat
+}
+
 // ─── Dye Shader（onBeforeCompile patch） ────────────────────────────────────
 
 /**
@@ -236,22 +363,22 @@ function extractTexture(mat: Material, type: 'D' | 'N' | 'O'): Texture | null {
  *
  * Shader 管线（对应 Blender 节点图）：
  *   UV0 → D（albedo）贴图 ┐
- *   UV2 → T（调色板）贴图 ┘ Mix(Multiply, factor = ORM.a) → Base Color → Principled BSDF
+ *   UV2 → T（调色板）贴图 ┘ Mix(Multiply, factor = Mask.a) → Base Color → Principled BSDF
  *   N（法线）→ Normal
- *   O（ORM）→ R=AO, G=Roughness, B=Metallic, A=Tint Mask
+ *   O（ORM，可选）→ R=AO, G=Roughness, B=Metallic, A=ORM Mask
+ *   M（Mask，可选）→ A=Tint Mask
  *
- * O 的 A 通道同时控制三件事：
- *   1) D 与 D*T 的 mix factor（tint 染色强度）
- *   2) G/B 通道的生效遮罩（A=0 的区域不应用 roughness/metalness，保持默认值 1.0）
- *   3) R 通道的生效遮罩（A=0 的区域 AO=1.0，即无遮蔽）
+ * 当前约定：
+ *   1) 染色遮罩优先使用 M 的 A 通道，缺失时回退到 O 的 A 通道
+ *   2) ORM 的 A 通道仅在存在 ORM 时，继续控制 roughness/metalness/AO 的生效区域
  */
 function applyDyeShaderPatch(
   mat: MeshStandardMaterial,
   tTex: Texture | null,
-  oTex: Texture | null
+  maskTex: Texture | null
 ): void {
   const effectiveTint = tTex ?? getWhiteTex()
-  const effectiveMask = oTex ?? getWhiteTex()
+  const effectiveMask = maskTex ?? getWhiteTex()
 
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.dyeTintMap = { value: effectiveTint }
@@ -284,7 +411,7 @@ varying vec2 vTintUv;
 varying vec2 vMeshUv0;`
     )
 
-    // Fragment: Mix(Multiply, factor = ORM.a)（在 map_fragment 之后插入）
+    // Fragment: Mix(Multiply, factor = Mask.a)（在 map_fragment 之后插入）
     // 使用 vMeshUv0 采样 dyeMaskMap，避免依赖仅在 USE_MAP 时才声明的 vMapUv
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <map_fragment>',
@@ -351,40 +478,8 @@ diffuseColor.rgb = mix(baseColor, dyedColor, dyeMask);`
     )
   }
 
-  // 同一套 patch 的所有材质共享编译缓存（shader 代码完全相同）
-  mat.customProgramCacheKey = () => 'dye_shader_v6'
+  mat.customProgramCacheKey = () => 'dye_shader_v7_mask_map'
   mat.needsUpdate = true
-}
-
-/**
- * 根据染色贴图创建新材质
- *
- * @param dTex diffuse 贴图（D{pattern}），null 时无 map
- * @param nTex normal 贴图（N{pattern}），null 时无法线扰动
- * @param oTex ORM 贴图（O{pattern}），null 时不处理 roughness/metalness
- * @param tTex tint 调色板贴图（T{tint}），null 时用白色（无染色效果）
- */
-function buildDyeMaterial(
-  dTex: Texture | null,
-  nTex: Texture | null,
-  oTex: Texture | null,
-  tTex: Texture | null
-): MeshStandardMaterial {
-  const mat = new MeshStandardMaterial({
-    map: dTex ?? undefined,
-    normalMap: nTex ?? undefined,
-    normalScale: new Vector2(1, 1),
-    // ORM：Three.js 负责 UV / 色彩空间，shader patch 叠加 A 通道遮罩
-    roughnessMap: oTex ?? undefined,
-    metalnessMap: oTex ?? undefined,
-    aoMap: oTex ?? undefined,
-    aoMapIntensity: 1.0,
-    emissive: new Color(0x111111),
-    emissiveIntensity: 0.02,
-  })
-
-  applyDyeShaderPatch(mat, tTex, oTex)
-  return mat
 }
 
 function copyMaterialPresentation(target: Material, source: Material): void {
@@ -413,23 +508,14 @@ async function buildDefaultPlainMaterial(
 ): Promise<Material> {
   if (!baseName) return sourceMat
 
-  const regEntry = registry.get(baseName)
-  const d0 = regEntry?.D.get(0)
-  const n0 = regEntry?.N.get(0)
-  const o0 = regEntry?.O.get(0)
-  const t0 = regEntry?.T.get(0)
+  const resolvedTextures = await resolveMaterialTextures({
+    sourceMat,
+    registryEntry: registry.get(baseName),
+  })
 
-  const [dTex, nTex, oTex, tTex] = await Promise.all([
-    d0 ? resolveTextureRef(d0) : Promise.resolve(extractTexture(sourceMat, 'D')),
-    n0 ? resolveTextureRef(n0) : Promise.resolve(extractTexture(sourceMat, 'N')),
-    o0 ? resolveTextureRef(o0) : Promise.resolve(extractTexture(sourceMat, 'O')),
-    t0 ? resolveTextureRef(t0) : Promise.resolve(null),
-  ])
+  if (!hasResolvedTextures(resolvedTextures)) return sourceMat
 
-  // 没有默认贴图可用时，回退原始材质。
-  if (!dTex && !nTex && !oTex && !tTex) return sourceMat
-
-  const resolvedMat = buildDyeMaterial(dTex, nTex, oTex, tTex)
+  const resolvedMat = createModelMaterial(resolvedTextures)
   copyMaterialPresentation(resolvedMat, sourceMat)
   return resolvedMat
 }
@@ -438,8 +524,8 @@ async function buildDefaultPlainMaterial(
  * 为合并几何体的每个材质槽位创建染色材质数组
  *
  * 每个槽位先映射回其源 mesh 索引，再到 dyeMap 中查找该 mesh 的染色配置。
- * 命中 dyeMap → 按 pattern/tint 从注册表取贴图 → buildDyeMaterial
- * 未命中 dyeMap → 复用默认组装材质（D0/N0/O0/T0）
+ * 命中 dyeMap → 按 pattern/tint 从注册表取贴图 → createModelMaterial
+ * 未命中 dyeMap → 复用默认组装材质（D0/M0/N0/O0/T0）
  */
 async function buildDyedMaterials(
   plainMats: Material[],
@@ -465,20 +551,16 @@ async function buildDyedMaterials(
         return plainMat
       }
 
-      const regEntry = registry.get(baseName)
-      const dRef = regEntry?.D.get(dyeEntry.pattern) ?? regEntry?.D.get(0)
-      const nRef = regEntry?.N.get(dyeEntry.pattern) ?? regEntry?.N.get(0)
-      const oRef = regEntry?.O.get(dyeEntry.pattern) ?? regEntry?.O.get(0)
-      const tRef = regEntry?.T.get(dyeEntry.tint) ?? regEntry?.T.get(0)
+      const resolvedTextures = await resolveMaterialTextures({
+        sourceMat: plainMat,
+        registryEntry: registry.get(baseName),
+        patternVariant: dyeEntry.pattern,
+        tintVariant: dyeEntry.tint,
+      })
 
-      const [dTex, nTex, oTex, tTex] = await Promise.all([
-        dRef ? resolveTextureRef(dRef) : Promise.resolve(extractTexture(plainMat, 'D')),
-        nRef ? resolveTextureRef(nRef) : Promise.resolve(extractTexture(plainMat, 'N')),
-        oRef ? resolveTextureRef(oRef) : Promise.resolve(extractTexture(plainMat, 'O')),
-        tRef ? resolveTextureRef(tRef) : Promise.resolve(null),
-      ])
+      if (!hasResolvedTextures(resolvedTextures)) return plainMat
 
-      const dyedMat = buildDyeMaterial(dTex, nTex, oTex, tTex)
+      const dyedMat = createModelMaterial(resolvedTextures)
       copyMaterialPresentation(dyedMat, plainMat)
       return dyedMat
     })
@@ -594,6 +676,7 @@ function reverseGeometryWinding(geometry: BufferGeometry): void {
 
 async function loadGLBModel(
   gltfLoader: GLTFLoader,
+  profile: ModelAssetProfile,
   MODEL_BASE_URL: string,
   meshPath: string,
   hash?: string
@@ -604,7 +687,7 @@ async function loadGLBModel(
   try {
     // 有 hash 时查缓存，key = path，比对 hash 决定是否命中
     if (hash) {
-      const entry = await getGLBCacheEntry(meshPath)
+      const entry = await getGLBCacheEntry(profile, meshPath)
       if (entry?.hash === hash) {
         return (await gltfLoader.parseAsync(entry.buffer, url)) as GLTF
       }
@@ -616,7 +699,7 @@ async function loadGLBModel(
     const buffer = await response.arrayBuffer()
 
     // 异步写入 IDB（hash 变更时覆盖旧记录），不阻塞解析
-    if (hash) putGLBCacheEntry(meshPath, hash, buffer).catch(() => {})
+    if (hash) putGLBCacheEntry(profile, meshPath, hash, buffer).catch(() => {})
 
     return (await gltfLoader.parseAsync(buffer, url)) as GLTF
   } catch (error) {
@@ -629,7 +712,7 @@ async function loadGLBModel(
 
 interface GeometryData {
   geometry: BufferGeometry
-  /** 实际渲染的默认材质（由 registry 的 D0/N0/O0/T0 组装） */
+  /** 实际渲染的默认材质（由 registry 的 D0/M0/N0/O0/T0 组装） */
   plainMaterials: Material[]
   /** plainMaterials 对应的 baseName，用于按槽位查找染色变体 */
   meshBaseNames: (string | null)[]
@@ -653,6 +736,7 @@ async function processGeometryForItem(
   itemId: number,
   config: any,
   gltfLoader: GLTFLoader,
+  profile: ModelAssetProfile,
   MODEL_BASE_URL: string
 ): Promise<GeometryData | undefined> {
   const allGeometries: BufferGeometry[] = []
@@ -668,7 +752,13 @@ async function processGeometryForItem(
   // Phase 1: 并发加载所有 GLB（有 hash 时优先从 IDB 缓存读取）
   const gltfResults: GLTF[] = await Promise.all(
     config.meshes.map((meshConfig: any) =>
-      loadGLBModel(gltfLoader, MODEL_BASE_URL, meshConfig.path, meshConfig.hash)
+      loadGLBModel(
+        gltfLoader,
+        profile,
+        MODEL_BASE_URL,
+        meshConfig.path,
+        meshConfig.hashes?.[profile] ?? meshConfig.hashes?.full ?? meshConfig.hashes?.lite
+      )
     )
   )
 
@@ -760,7 +850,7 @@ async function processGeometryForItem(
     for (const rawMat of rawMaterials) {
       const extras = rawMat.extras
       if (!extras) continue
-      for (const type of ['D', 'N', 'O', 'T'] as const) {
+      for (const type of ['D', 'M', 'N', 'O', 'T'] as const) {
         const raw = extras[type]
         if (!Array.isArray(raw)) continue
         for (const textureName of raw) {
@@ -772,23 +862,12 @@ async function processGeometryForItem(
     }
   }
 
-  // 构建默认材质（只加载 D0/N0/O0/T0，其余变体在染色时按需加载）
+  // 构建默认材质（只加载 D0/M0/N0/O0/T0，其余变体在染色时按需加载）
   const plainMaterials = await Promise.all(
     sourceMaterials.map((sourceMat, idx) =>
       buildDefaultPlainMaterial(sourceMat, meshBaseNames[idx] ?? null, materialRegistry)
     )
   )
-
-  for (const mat of plainMaterials) {
-    if ((mat as any).isMeshStandardMaterial) {
-      const stdMat = mat as MeshStandardMaterial
-      stdMat.roughness = 0.8
-      stdMat.metalness = 0.1
-      stdMat.emissive = new Color(0x222222)
-      stdMat.emissiveIntensity = 0.03
-      stdMat.needsUpdate = true
-    }
-  }
 
   const mergedMaterial: Material | Material[] =
     plainMaterials.length > 1 ? plainMaterials : (plainMaterials[0] ?? new MeshStandardMaterial())
@@ -807,7 +886,11 @@ async function processGeometryForItem(
 
 // ─── Three.js 模型管理器 ──────────────────────────────────────────────────────
 
-export function useThreeModelManager() {
+function getModelBaseUrl(profile: ModelAssetProfile): string {
+  return import.meta.env.BASE_URL + `assets/furniture-model-${profile}/`
+}
+
+export function useThreeModelManager(profile: ModelAssetProfile) {
   const gameDataStore = useGameDataStore()
 
   const gltfLoader = new GLTFLoader()
@@ -815,7 +898,7 @@ export function useThreeModelManager() {
   dracoLoader.setDecoderPath(import.meta.env.BASE_URL + 'draco/')
   gltfLoader.setDRACOLoader(dracoLoader)
 
-  const MODEL_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-model/'
+  const MODEL_BASE_URL = getModelBaseUrl(profile)
 
   /** cacheKey → InstancedMesh */
   const meshMap = new Map<string, InstancedMesh>()
@@ -855,7 +938,13 @@ export function useThreeModelManager() {
         console.warn(`[ModelManager] No model config for itemId: ${itemId}`)
         return null
       }
-      const result = await processGeometryForItem(itemId, config, gltfLoader, MODEL_BASE_URL)
+      const result = await processGeometryForItem(
+        itemId,
+        config,
+        gltfLoader,
+        profile,
+        MODEL_BASE_URL
+      )
       if (!result) return null
       geomData = result
       geometryCache.set(itemId, geomData)
@@ -936,7 +1025,13 @@ export function useThreeModelManager() {
             onProgress?.(completed, unloadedIds.length, failed)
             return
           }
-          const geomData = await processGeometryForItem(itemId, config, gltfLoader, MODEL_BASE_URL)
+          const geomData = await processGeometryForItem(
+            itemId,
+            config,
+            gltfLoader,
+            profile,
+            MODEL_BASE_URL
+          )
           if (geomData) {
             geometryCache.set(itemId, geomData)
           } else {
@@ -1027,6 +1122,7 @@ export function useThreeModelManager() {
   }
 
   return {
+    profile,
     createInstancedMesh,
     getMesh,
     getAllMeshes,
@@ -1043,11 +1139,20 @@ export function useThreeModelManager() {
 // ─── 单例管理 ─────────────────────────────────────────────────────────────────
 
 let managerInstance: ReturnType<typeof useThreeModelManager> | null = null
+let managerProfile: ModelAssetProfile | null = null
 
 export function getThreeModelManager(): ReturnType<typeof useThreeModelManager> {
-  if (!managerInstance) {
-    managerInstance = useThreeModelManager()
-    console.log('[ModelManager] 创建新实例')
+  const settingsStore = useSettingsStore()
+  const desiredProfile = settingsStore.settings.modelAssetProfile
+
+  if (!managerInstance || managerProfile !== desiredProfile) {
+    if (managerInstance) {
+      console.log(`[ModelManager] 资源档位切换 ${managerProfile} -> ${desiredProfile}`)
+      managerInstance.dispose()
+    }
+    managerInstance = useThreeModelManager(desiredProfile)
+    managerProfile = desiredProfile
+    console.log(`[ModelManager] 创建新实例 (${desiredProfile})`)
   }
   return managerInstance
 }
@@ -1057,5 +1162,6 @@ export function disposeThreeModelManager(): void {
     console.log('[ModelManager] 清理资源')
     managerInstance.dispose()
     managerInstance = null
+    managerProfile = null
   }
 }

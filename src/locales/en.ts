@@ -309,6 +309,10 @@ export const enLocale = {
       label: 'Background Image',
       hint: 'Show reference background',
     },
+    modelAssets: {
+      label: 'Load Full Model Assets',
+      hint: 'Adds normal + ORM maps for better material detail; slower load, more VRAM.',
+    },
     modelDye: {
       label: 'Model Dye',
       hint: 'Enable dye texture loading',

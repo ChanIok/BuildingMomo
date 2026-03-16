@@ -14,6 +14,15 @@ const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
 const isSecureModeEnabled = import.meta.env.VITE_ENABLE_SECURE_MODE === 'true'
+const showModelAssetProfileSetting = computed(
+  () => isSecureModeEnabled && settingsStore.isAuthenticated
+)
+const useFullModelAssets = computed({
+  get: () => settingsStore.settings.modelAssetProfile === 'full',
+  set: (value: boolean) => {
+    settingsStore.settings.modelAssetProfile = value ? 'full' : 'lite'
+  },
+})
 
 // FOV 节流处理
 const fovValue = ref(settingsStore.settings.cameraFov)
@@ -462,6 +471,16 @@ const fmt = (n: number, decimals: number = 0) => {
               </p>
             </div>
             <Switch v-model="settingsStore.settings.showBackground" />
+          </div>
+
+          <div v-if="showModelAssetProfileSetting" class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label class="text-xs">{{ t('settings.modelAssets.label') }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('settings.modelAssets.hint') }}
+              </p>
+            </div>
+            <Switch v-model="useFullModelAssets" />
           </div>
 
           <!-- 图标/方块大小控制 -->

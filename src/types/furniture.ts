@@ -63,13 +63,20 @@ export interface FurnitureCache {
 
 // ========== Furniture DB (模型配置) ==========
 
+export type ModelAssetProfile = 'lite' | 'full'
+
+export interface FurnitureMeshHashes {
+  lite: string
+  full: string
+}
+
 /** 单个 Mesh 配置 */
 export interface FurnitureMeshConfig {
   path: string
   rotation: { x: number; y: number; z: number; w: number }
   trans: { x: number; y: number; z: number }
   scale: { x: number; y: number; z: number }
-  hash?: string
+  hashes: FurnitureMeshHashes
 }
 
 /** 单个染色变体的渲染配置 */

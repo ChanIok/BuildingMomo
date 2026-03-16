@@ -620,6 +620,13 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
+  watch(
+    () => settingsStore.settings.modelAssetProfile,
+    () => {
+      scheduleRebuild()
+    }
+  )
+
   // 监听符号缩放变化：在当前模式下更新实例并触发重渲染
   watch(
     () => settingsStore.settings.threeSymbolScale,

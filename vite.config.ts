@@ -68,17 +68,6 @@ export default defineConfig(() => {
               },
             },
             {
-              // 3D 模型文件（GLB/GLTF）：缓存优先
-              urlPattern: /\.(?:glb|gltf)$/,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: '3d-models',
-                expiration: {
-                  maxAgeSeconds: 60 * 60 * 24 * 30, // 30 天
-                },
-              },
-            },
-            {
               // JSON 数据：边用边更新（数据可能更新）
               urlPattern: /\.json$/,
               handler: 'StaleWhileRevalidate',
