@@ -599,6 +599,44 @@ function switchToView(preset: ViewPreset) {
 // 添加物品位置获取函数（屏幕中心射线检测）
 const { getAddPositionFn } = useEditorItemAdd()
 
+// 未命中任何支撑面时，才退回到前方固定距离的“空中摆放”点。
+const ADD_AIR_FALLBACK_DISTANCE = 1000
+// 当屏幕中心射线有足够明显的向下分量时，认为用户是在朝地面/楼板看。
+const GROUND_LOOK_DIRECTION_Z_THRESHOLD = -0.5
+
+// Three.js 世界坐标 → 游戏数据坐标（Y 轴翻转）。
+function worldPointToDataPosition(point: {
+  x: number
+  y: number
+  z: number
+}): [number, number, number] {
+  return [point.x, -point.y, point.z]
+}
+
+// 当射线未命中物体时，尝试把落点投到 z=fallbackHeight 的水平平面。
+// 这样高空俯视时会优先“落地”，而不是落在半空中。
+function tryProjectRayToGround(
+  raycaster: Raycaster,
+  fallbackHeight = 0
+): [number, number, number] | null {
+  const { origin, direction } = raycaster.ray
+
+  if (direction.z >= GROUND_LOOK_DIRECTION_Z_THRESHOLD) {
+    return null
+  }
+
+  const distanceToGround = (fallbackHeight - origin.z) / direction.z
+  if (distanceToGround < 0 || !Number.isFinite(distanceToGround)) {
+    return null
+  }
+
+  const groundPoint = markRaw(new Vector3())
+  groundPoint.copy(origin)
+  groundPoint.addScaledVector(direction, distanceToGround)
+
+  return worldPointToDataPosition(groundPoint)
+}
+
 function getAddPosition(): [number, number, number] | null {
   const camera = activeCameraRef.value
   if (!camera) {
@@ -614,14 +652,27 @@ function getAddPosition(): [number, number, number] | null {
   const mode = currentDisplayMode.value
 
   if (mode === 'model') {
-    // Model 模式：检测所有 mesh，返回最近的交点
+    // Model 模式下可能拆成多个 instanced mesh，需手动取最近交点。
     let closestHit: { point: { x: number; y: number; z: number }; distance: number } | null = null
 
     for (const [, mesh] of modelMeshMap.value.entries()) {
       if (!mesh || mesh.count === 0) continue
       const intersects = raycaster.intersectObject(mesh, false)
       const hit = intersects[0]
-      if (hit && hit.distance <= 3000 && (!closestHit || hit.distance < closestHit.distance)) {
+      if (hit && (!closestHit || hit.distance < closestHit.distance)) {
+        closestHit = {
+          point: hit.point,
+          distance: hit.distance,
+        }
+      }
+    }
+
+    // fallback mesh 承载没有专属模型配置的物品，也要参与放置命中。
+    const fallbackMesh = modelFallbackMesh.value
+    if (fallbackMesh && fallbackMesh.count > 0) {
+      const intersects = raycaster.intersectObject(fallbackMesh, false)
+      const hit = intersects[0]
+      if (hit && (!closestHit || hit.distance < closestHit.distance)) {
         closestHit = {
           point: hit.point,
           distance: hit.distance,
@@ -630,8 +681,7 @@ function getAddPosition(): [number, number, number] | null {
     }
 
     if (closestHit) {
-      // Three.js 坐标系 → 游戏坐标系（Y 取反）
-      return [closestHit.point.x, -closestHit.point.y, closestHit.point.z]
+      return worldPointToDataPosition(closestHit.point)
     }
   } else {
     // Box/Icon/SimpleBox 模式：检测单个 mesh
@@ -643,21 +693,24 @@ function getAddPosition(): [number, number, number] | null {
     if (targetMesh && targetMesh.count > 0) {
       const intersects = raycaster.intersectObject(targetMesh, false)
       const hit = intersects[0]
-      if (hit && hit.distance <= 3000) {
-        // Three.js 坐标系 → 游戏坐标系（Y 取反）
-        return [hit.point.x, -hit.point.y, hit.point.z]
+      if (hit) {
+        return worldPointToDataPosition(hit.point)
       }
     }
   }
 
-  // 没有命中任何物体：使用射线方向上固定距离的位置（支持空中摆放）
-  const fixedDistance = 1000 // 固定距离
+  // 命中已有物体表面优先；只有完全 miss 时才考虑“落地”。
+  const groundPoint = tryProjectRayToGround(raycaster)
+  if (groundPoint) {
+    return groundPoint
+  }
+
+  // 没有命中任何物体，且相机不是朝地面时：使用射线方向上固定距离的位置（支持空中摆放）
   const fallbackPoint = markRaw(new Vector3())
   fallbackPoint.copy(raycaster.ray.origin)
-  fallbackPoint.addScaledVector(raycaster.ray.direction, fixedDistance)
+  fallbackPoint.addScaledVector(raycaster.ray.direction, ADD_AIR_FALLBACK_DISTANCE)
 
-  // Three.js 坐标系 → 游戏坐标系（Y 取反）
-  return [fallbackPoint.x, -fallbackPoint.y, fallbackPoint.z]
+  return worldPointToDataPosition(fallbackPoint)
 }
 
 // 当 3D 视图激活时，注册视图函数和位置获取函数
