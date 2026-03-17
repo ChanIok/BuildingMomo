@@ -7,6 +7,8 @@ import type { ViewPreset } from '@/composables/useThreeCamera'
 
 type Vec3 = [number, number, number]
 
+export const ORTHO_BASE_FRUSTUM_HEIGHT = 3000
+
 // 视图预设配置
 interface ViewPresetConfig {
   direction: Vec3 // 相机相对于目标的方向（单位向量）
@@ -208,8 +210,9 @@ export function computeZoomConversion(
   const isFromPerspective = fromPreset === 'perspective'
   const isToPerspective = toPreset === 'perspective'
 
-  // 视锥体基准大小 (参考 ThreeEditor.vue: size = distance * 0.93)
-  const frustumSize = baseDistance * 0.93
+  // 正交视图使用固定视锥体基准高度，避免视图切换受场景大小影响。
+  // baseDistance 仍保留给透视视图的相机位置计算。
+  const frustumSize = ORTHO_BASE_FRUSTUM_HEIGHT
 
   if (isFromPerspective && !isToPerspective) {
     // 1. 透视 -> 正交

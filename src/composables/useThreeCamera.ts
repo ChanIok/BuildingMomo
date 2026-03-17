@@ -10,10 +10,9 @@ import {
   toValue,
 } from 'vue'
 import { useRafFn, useMagicKeys } from '@vueuse/core'
-import { calculateBounds } from '@/lib/geometry'
+import { getItemsWorldBoundsMetrics } from '@/lib/spatialBounds'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
 import {
@@ -22,6 +21,7 @@ import {
   getForwardVector,
   getRightVector,
   calculateYawPitchFromDirection,
+  ORTHO_BASE_FRUSTUM_HEIGHT,
   scaleVec3,
   addScaled,
   normalize,
@@ -117,7 +117,6 @@ export function useThreeCamera(
   // === 引入 Store ===
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
-  const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
 
   // 获取相机输入配置（统一管理）
@@ -163,50 +162,62 @@ export function useThreeCamera(
   const currentViewPreset = computed(() => uiStore.currentViewPreset)
   const isOrthographic = computed(() => currentViewPreset.value !== 'perspective')
 
-  // 尺寸获取函数：用于更精确的包围盒计算
-  function getItemSizeForBounds(gameId: number): [number, number, number] | null {
-    return gameDataStore.getFurnitureSize(gameId)
+  function toVec3Tuple(vector: { x: number; y: number; z: number }): Vec3 {
+    return [vector.x, vector.y, vector.z]
   }
+
+  // 当前相机只关心“视觉 framing”语义，所以这里取的是选区物品列表，
+  // 后续统一交给世界空间 bounds 工具求 frame center / maxDim。
+  function getSelectedItems() {
+    const scheme = editorStore.activeScheme
+    if (!scheme) return []
+
+    const selectedIds = scheme.selectedItemIds.value
+    if (selectedIds.size === 0) return []
+
+    return scheme.items.value.filter((item) => selectedIds.has(item.internalId))
+  }
+
+  function getSelectedItemsFrameMetrics() {
+    return getItemsWorldBoundsMetrics(getSelectedItems())
+  }
+
+  // 场景级 frame metrics：用于场景中心和正交视锥体基准距离。
+  const sceneFrameMetrics = computed(() => {
+    const items = editorStore.activeScheme?.items.value ?? []
+    return getItemsWorldBoundsMetrics(items)
+  })
 
   // === 场景中心与距离计算 ===
   const sceneCenter = computed<Vec3>(() => {
-    const items = editorStore.activeScheme?.items.value ?? []
-    if (items.length === 0) {
+    if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
       return deps.defaultCenter?.value ?? [0, 0, 0]
     }
 
-    const bounds = calculateBounds(items, getItemSizeForBounds)
-
-    // 安全检查：bounds 可能为 null
-    if (!bounds) {
+    const metrics = sceneFrameMetrics.value
+    if (!metrics) {
       return [0, 0, 0]
     }
 
-    return [
-      bounds.centerX,
-      -bounds.centerY,
-      bounds.centerZ, // Z-up: Z is height
-    ]
+    return toVec3Tuple(metrics.center)
   })
 
   // 默认基准距离 (用于正交视锥体计算等)
   const cameraDistance = ref(40000)
 
   function updateCameraDistance() {
-    const items = editorStore.activeScheme?.items.value ?? []
-    if (items.length === 0) {
+    if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
       cameraDistance.value = 40000
       return
     }
 
-    const bounds = calculateBounds(items, getItemSizeForBounds)
-    if (!bounds) {
+    const metrics = sceneFrameMetrics.value
+    if (!metrics) {
       cameraDistance.value = 3000
       return
     }
 
-    const maxRange = Math.max(bounds.width, bounds.height, bounds.depth)
-    cameraDistance.value = Math.max(maxRange * 1, 3000)
+    cameraDistance.value = Math.max(metrics.maxDim, 3000)
   }
 
   // === 响应式绑定 (Reactive Binding with Store) ===
@@ -504,13 +515,11 @@ export function useThreeCamera(
     const selectedIds = scheme?.selectedItemIds.value
 
     if (selectedIds && selectedIds.size > 0) {
-      // 有选中物品：使用选中物品的包围盒中心
-      const selectedItems = scheme!.items.value.filter((item) => selectedIds.has(item.internalId))
-      const bounds = calculateBounds(selectedItems, getItemSizeForBounds)
+      // Flight -> Orbit 时，如果存在选区，则直接看向选区的 frame center。
+      const frameMetrics = getSelectedItemsFrameMetrics()
 
-      if (bounds) {
-        // 注意：Y 轴需要取反以适配 Three.js 坐标系
-        newTarget = [bounds.centerX, -bounds.centerY, bounds.centerZ]
+      if (frameMetrics) {
+        newTarget = toVec3Tuple(frameMetrics.center)
       } else {
         // 包围盒计算失败，fallback 到原逻辑
         const forward = getForwardVector(state.value.yaw, state.value.pitch)
@@ -931,24 +940,19 @@ export function useThreeCamera(
     const selectedIds = scheme.selectedItemIds.value
     if (selectedIds.size === 0) return
 
-    const selectedItems = scheme.items.value.filter((item) => selectedIds.has(item.internalId))
-    if (selectedItems.length === 0) return
+    const frameMetrics = getSelectedItemsFrameMetrics()
+    if (!frameMetrics) return
 
-    // 使用尺寸信息计算更精确的包围盒
-    const bounds = calculateBounds(selectedItems, getItemSizeForBounds)
-    if (!bounds) return
-
-    // Z-up: Y 取反适配 Three.js 坐标系
-    const target: Vec3 = [bounds.centerX, -bounds.centerY, bounds.centerZ]
-
-    const maxDim = Math.max(bounds.width, bounds.height, bounds.depth)
+    // F 聚焦使用 frame center，而不是 Gizmo pivot，
+    // 这样视觉上更接近主流 3D 编辑器的 Frame Selected 行为。
+    const target = toVec3Tuple(frameMetrics.center)
+    const maxDim = frameMetrics.maxDim
 
     // 特殊处理 Flight 模式：仅瞬移，不切换模式
     if (controlMode.value === 'flight') {
       // 计算理想距离 (复用透视视图计算)
-      const k = Math.tan((FOV.value * Math.PI) / 360)
-      let dist = maxDim / 2 / k
-      dist = Math.max(dist, 260.85) * 1.2
+      const requiredSize = Math.max(maxDim, 1000) * 1.2
+      const dist = requiredSize / (2 * Math.tan((FOV.value * Math.PI) / 360))
 
       // 保持当前相机相对于物体的方向
       // 计算从物体指向相机的向量
@@ -999,12 +1003,11 @@ export function useThreeCamera(
       setPoseFromLookAt(newPos, target)
 
       // 2. 调整 Zoom 适配包围盒
-      // 获取当前视锥体高度基准 (zoom=1时的高度)
-      // 参考 ThreeEditor 中的计算：size = distance * 0.93
-      const frustumHeight = cameraDistance.value * 0.93
+      // 正交聚焦使用固定视锥体高度，避免结果受场景大小影响
+      const frustumHeight = ORTHO_BASE_FRUSTUM_HEIGHT
 
       // 计算目标需要的视口大小
-      const requiredSize = Math.max(maxDim, 100) * 1.2
+      const requiredSize = Math.max(maxDim, 1000) * 1.2
 
       // zoom = 基准高度 / 实际需要高度
       // 限制 zoom 范围防止出错
@@ -1028,10 +1031,8 @@ export function useThreeCamera(
       const backZ = len > 0 ? -dz / len : 1
 
       // 计算合适距离
-      const k = Math.tan((FOV.value * Math.PI) / 360) // tan(fov/2)
-      // distance = (objectSize / 2) / tan(fov/2)
-      let dist = maxDim / 2 / k
-      dist = Math.max(dist, 260.85) * 1.2
+      const requiredSize = Math.max(maxDim, 1000) * 1.2
+      const dist = requiredSize / (2 * Math.tan((FOV.value * Math.PI) / 360))
 
       const newPos: Vec3 = [
         target[0] + backX * dist,

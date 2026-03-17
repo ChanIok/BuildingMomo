@@ -22,6 +22,7 @@ import { useThreePointerRouter } from '@/composables/useThreePointerRouter'
 import { useOrbitControlsInput } from '@/composables/useOrbitControlsInput'
 import { setSceneInvalidate, invalidateScene } from '@/composables/useSceneInvalidate'
 import { useNearbyObjectsCheck } from '@/composables/useNearbyObjectsCheck'
+import { ORTHO_BASE_FRUSTUM_HEIGHT } from '@/lib/cameraUtils'
 import {
   useMagicKeys,
   useElementSize,
@@ -239,7 +240,6 @@ const {
   isViewFocused,
   isNavKeyPressed,
   isCameraMoving,
-  cameraDistance,
   handleNavPointerDown,
   handleNavPointerMove,
   handleNavPointerUp,
@@ -572,9 +572,8 @@ function handleGizmoMouseDown(event?: any) {
 
 // 计算正交相机的视锥体参数
 const orthoFrustum = computed(() => {
-  const distance = cameraDistance.value
-  // 使用距离作为视锥体大小的基准，留一些余量
-  const size = distance * 0.93
+  // 正交视图使用固定视锥体高度，避免 framing 受场景整体大小影响
+  const size = ORTHO_BASE_FRUSTUM_HEIGHT
 
   // 获取容器宽高比（默认 16:9，实际会由 TresCanvas 自动适配）
   const w = containerWidth.value
