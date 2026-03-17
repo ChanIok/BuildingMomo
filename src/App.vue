@@ -155,6 +155,11 @@ onMounted(async () => {
   if (isWorkerActive.value) {
     startMonitoring()
   }
+
+  // 启动时静默恢复文件监控（仅在已授权时生效，不会触发授权弹窗）
+  commandStore.fileOps.restoreWatchModeSilently().catch((error: unknown) => {
+    console.warn('[App] Silent watch mode restore failed:', error)
+  })
 })
 
 onUnmounted(() => {

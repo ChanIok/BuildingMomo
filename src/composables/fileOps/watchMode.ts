@@ -4,6 +4,7 @@ import type { useSettingsStore } from '@/stores/settingsStore'
 import type { useNotification } from '@/composables/useNotification'
 import type { FileWatchState, GameDataFile, GameItem } from '@/types/editor'
 import { WatchHistoryDB } from '@/lib/watchHistoryStore'
+import { WatchHandleStore } from '@/lib/watchHandleStore'
 import {
   SAVE_DATA_FILENAME_REGEX,
   extractUidFromSaveDataFilename,
@@ -21,6 +22,8 @@ const MAX_WATCH_HISTORY = 30
 const POLL_INTERVAL_ACTIVE = 3000
 // 页面隐藏时降低轮询频率以节省资源（10 秒）
 const POLL_INTERVAL_HIDDEN = 10000
+// 目录选择器 ID：让浏览器记住上次打开位置
+const WATCH_DIRECTORY_PICKER_ID = 'momo-watch-root'
 
 type TranslateFn = (key: string, params?: Record<string, string | number>) => string
 
@@ -33,6 +36,14 @@ interface CreateWatchModeOpsParams {
   preloadActiveSchemeResources: () => void
   prepareDataForSave: () => Promise<GameItem[] | null>
 }
+
+interface DirectoryResolveResult {
+  rootDirHandle: FileSystemDirectoryHandle
+  buildDataDir: FileSystemDirectoryHandle
+  buildRecordDirHandle: FileSystemDirectoryHandle | null
+}
+
+type ActivateWatchMode = 'silent' | 'interactive'
 
 /** 从 JSON 字符串中快速读取 PlaceInfo 条目数量，解析失败返回 0 */
 function getItemCountFromContent(content: string): number {
@@ -123,14 +134,193 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   }
 
   /**
-   * 检查并申请文件句柄的读写权限。
+   * 检查并申请句柄的读写权限。
    * 已授权时直接返回 true；未授权时弹出浏览器权限请求对话框。
    */
-  async function verifyPermission(fileHandle: FileSystemFileHandle): Promise<boolean> {
+  async function queryPermissionState(handle: FileSystemHandle): Promise<PermissionState> {
     const options = { mode: 'readwrite' as const }
-    if ((await (fileHandle as any).queryPermission(options)) === 'granted') return true
-    if ((await (fileHandle as any).requestPermission(options)) === 'granted') return true
+    return (await (handle as any).queryPermission(options)) as PermissionState
+  }
+
+  async function verifyPermission(handle: FileSystemHandle): Promise<boolean> {
+    const options = { mode: 'readwrite' as const }
+    if ((await queryPermissionState(handle)) === 'granted') return true
+    if ((await (handle as any).requestPermission(options)) === 'granted') return true
     return false
+  }
+
+  async function tryRestoreWatchDirectories(): Promise<DirectoryResolveResult | null> {
+    const rootDirHandle = await WatchHandleStore.getRootHandle()
+    if (!rootDirHandle) return null
+
+    try {
+      const hasPermission = (await queryPermissionState(rootDirHandle)) === 'granted'
+      if (!hasPermission) {
+        console.log('[FileWatch] Stored directory handle exists but permission was not granted')
+        return null
+      }
+
+      const buildDataDir = await findBuildDataDirectory(rootDirHandle)
+      if (!buildDataDir) {
+        console.warn(
+          '[FileWatch] Stored directory handle no longer contains BuildData, clearing cache'
+        )
+        await WatchHandleStore.clearRootHandle()
+        return null
+      }
+
+      const restoredBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
+      console.log('[FileWatch] Restored directory handle from IndexedDB:', rootDirHandle.name)
+      return {
+        rootDirHandle,
+        buildDataDir,
+        buildRecordDirHandle: restoredBuildRecordDirHandle,
+      }
+    } catch (error) {
+      console.warn('[FileWatch] Failed to restore stored directory handle:', error)
+      await WatchHandleStore.clearRootHandle()
+      return null
+    }
+  }
+
+  async function pickWatchDirectories(): Promise<DirectoryResolveResult | null> {
+    const rootDirHandle = await (window as any).showDirectoryPicker({
+      mode: 'readwrite',
+      id: WATCH_DIRECTORY_PICKER_ID,
+    })
+
+    console.log('[FileWatch] Selected directory for monitoring:', rootDirHandle.name)
+
+    const buildDataDir = await findBuildDataDirectory(rootDirHandle)
+    if (!buildDataDir) {
+      notification.error(t('fileOps.watch.noBuildData'))
+      return null
+    }
+
+    const pickedBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
+    await WatchHandleStore.saveRootHandle(rootDirHandle)
+    return {
+      rootDirHandle,
+      buildDataDir,
+      buildRecordDirHandle: pickedBuildRecordDirHandle,
+    }
+  }
+
+  async function activateWatchModeFromDirectories(
+    resolved: DirectoryResolveResult,
+    mode: ActivateWatchMode
+  ): Promise<void> {
+    const { rootDirHandle, buildDataDir } = resolved
+    buildRecordDirHandle = resolved.buildRecordDirHandle
+
+    // BuildRecord 目录可选，用于更精确的导入与写回
+    if (buildRecordDirHandle) {
+      console.log('[FileWatch] Found BuildRecord directory:', buildRecordDirHandle.name)
+    } else {
+      console.log('[FileWatch] BuildRecord directory not found, fallback to BuildData only')
+    }
+
+    console.log('[FileWatch] Found BuildData directory:', buildDataDir.name)
+
+    // 找到最新存档文件（用于初始导入询问）
+    const result = await findLatestBuildSaveData(buildDataDir)
+
+    const fileHandle = result?.handle ?? null
+    const fileName = result?.file.name ?? ''
+    const lastModified = result?.file.lastModified ?? 0
+
+    if (result) {
+      console.log(`[FileWatch] Found existing file: ${fileName}`)
+    } else {
+      console.log('[FileWatch] No existing file found, will monitor for new files')
+    }
+
+    // 为 BuildData 中所有现有存档建立 fileIndex 快照，作为变更检测基线
+    const fileIndex = new Map<
+      string,
+      { lastModified: number; lastContent: string; itemCount: number; firstDetectedAt: number }
+    >()
+
+    for await (const entry of (buildDataDir as any).values()) {
+      if (entry.kind === 'file' && isBuildSaveDataFile(entry.name)) {
+        const entryHandle = entry as FileSystemFileHandle
+        const file = await entryHandle.getFile()
+        const content = await file.text()
+        fileIndex.set(entry.name, {
+          lastModified: file.lastModified,
+          lastContent: content,
+          itemCount: getItemCountFromContent(content),
+          firstDetectedAt: file.lastModified,
+        })
+      }
+    }
+
+    // fileIndex 扫描已读取了所有文件内容，直接取缓存，避免再次读取磁盘
+    const latestContent = fileName ? fileIndex.get(fileName)?.lastContent : undefined
+
+    // 从 IndexedDB 恢复历史记录（按时间倒序，最多 MAX_WATCH_HISTORY 条）
+    let restoredHistory: typeof watchState.value.updateHistory = []
+    try {
+      const allMetadata = await WatchHistoryDB.getAllMetadata()
+      restoredHistory = allMetadata.slice(0, MAX_WATCH_HISTORY)
+      console.log(`[FileWatch] Restored ${restoredHistory.length} history records from IndexedDB`)
+    } catch (error) {
+      console.error('[FileWatch] Failed to restore history from IndexedDB:', error)
+      restoredHistory = watchState.value.updateHistory
+    }
+
+    // 激活监听状态
+    watchState.value = {
+      isActive: true,
+      dirHandle: buildDataDir,
+      dirPath: buildDataDir.name,
+      lastCheckedTime: Date.now(),
+      fileIndex: fileIndex,
+      updateHistory: restoredHistory,
+      lastImportedFileHandle: fileHandle,
+      lastImportedFileName: fileName,
+    }
+
+    console.log('[FileWatch] Activated monitoring root:', rootDirHandle.name)
+
+    // 启动轮询
+    startPolling()
+
+    if (mode === 'silent') {
+      return
+    }
+
+    // 若最新存档 NeedRestore 为 true，询问用户是否立即导入
+    if (result && latestContent !== undefined) {
+      try {
+        const jsonData = JSON.parse(latestContent)
+
+        if (jsonData.NeedRestore === true) {
+          const shouldImport = await notification.confirm({
+            title: t('fileOps.watch.foundTitle'),
+            description: t('fileOps.watch.foundDesc', {
+              name: fileName,
+              time: new Date(lastModified).toLocaleString(),
+            }),
+            confirmText: t('fileOps.watch.importNow'),
+            cancelText: t('fileOps.watch.later'),
+          })
+
+          if (shouldImport) {
+            await importFromWatchedFile()
+            const itemCount = getItemCountFromContent(latestContent)
+            await addToWatchHistory(fileName, latestContent, itemCount, lastModified)
+          }
+        } else {
+          notification.success(t('fileOps.watch.started'))
+        }
+      } catch (error) {
+        console.error('[FileWatch] Failed to parse JSON:', error)
+        notification.warning(t('fileOps.watch.parseFailed'))
+      }
+    } else {
+      notification.success(t('fileOps.watch.started'))
+    }
   }
 
   /**
@@ -508,8 +698,8 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
   /**
    * 启动监听模式的完整流程：
-   *   1. 弹出目录选择器，要求用户授予读写权限
-   *   2. 在所选目录中定位 BuildData（必须）和 BuildRecord（可选）子目录
+   *   1. 优先从 IndexedDB 恢复已授权目录，非 granted 时直接弹目录选择器
+   *   2. 在目录中定位 BuildData（必须）和 BuildRecord（可选）子目录
    *   3. 扫描并缓存 BuildData 中所有现有存档文件的快照（fileIndex）
    *   4. 从 IndexedDB 恢复历史监听记录
    *   5. 启动轮询
@@ -521,126 +711,22 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       return
     }
 
+    if (watchState.value.isActive) {
+      return
+    }
+
     ensureResourcesReady()
 
     try {
-      // 步骤 1：打开系统目录选择器
-      const dirHandle = await (window as any).showDirectoryPicker({
-        mode: 'readwrite',
-      })
+      // 步骤 1：优先恢复已授权目录；非 granted 时回退到目录选择器
+      const restored = await tryRestoreWatchDirectories()
+      const resolved = restored ?? (await pickWatchDirectories())
+      if (!resolved) return
 
-      console.log('[FileWatch] Selected directory for monitoring:', dirHandle.name)
-
-      // 步骤 2：定位 BuildData 目录（必须存在，否则无法监听）
-      const buildDataDir = await findBuildDataDirectory(dirHandle)
-      if (!buildDataDir) {
-        notification.error(t('fileOps.watch.noBuildData'))
-        return
+      if (!restored) {
+        console.log('[FileWatch] Directory authorization persisted:', resolved.rootDirHandle.name)
       }
-
-      // 步骤 2b：尝试定位 BuildRecord 目录（可选，用于更精确的导入与写回）
-      buildRecordDirHandle = await findBuildRecordDirectory(dirHandle)
-      if (buildRecordDirHandle) {
-        console.log('[FileWatch] Found BuildRecord directory:', buildRecordDirHandle.name)
-      } else {
-        console.log('[FileWatch] BuildRecord directory not found, fallback to BuildData only')
-      }
-
-      console.log('[FileWatch] Found BuildData directory:', buildDataDir.name)
-
-      // 步骤 3a：找到最新存档文件（用于初始导入询问）
-      const result = await findLatestBuildSaveData(buildDataDir)
-
-      const fileHandle = result?.handle ?? null
-      const fileName = result?.file.name ?? ''
-      const lastModified = result?.file.lastModified ?? 0
-
-      if (result) {
-        console.log(`[FileWatch] Found existing file: ${fileName}`)
-      } else {
-        console.log('[FileWatch] No existing file found, will monitor for new files')
-      }
-
-      // 步骤 3b：为 BuildData 中所有现有存档建立 fileIndex 快照，作为变更检测基线
-      const fileIndex = new Map<
-        string,
-        { lastModified: number; lastContent: string; itemCount: number; firstDetectedAt: number }
-      >()
-
-      for await (const entry of (buildDataDir as any).values()) {
-        if (entry.kind === 'file' && isBuildSaveDataFile(entry.name)) {
-          const entryHandle = entry as FileSystemFileHandle
-          const file = await entryHandle.getFile()
-          const content = await file.text()
-          fileIndex.set(entry.name, {
-            lastModified: file.lastModified,
-            lastContent: content,
-            itemCount: getItemCountFromContent(content),
-            firstDetectedAt: file.lastModified,
-          })
-        }
-      }
-
-      // fileIndex 扫描已读取了所有文件内容，直接取缓存，避免再次读取磁盘
-      const latestContent = fileName ? fileIndex.get(fileName)?.lastContent : undefined
-
-      // 步骤 4：从 IndexedDB 恢复历史记录（按时间倒序，最多 MAX_WATCH_HISTORY 条）
-      let restoredHistory: typeof watchState.value.updateHistory = []
-      try {
-        const allMetadata = await WatchHistoryDB.getAllMetadata()
-        restoredHistory = allMetadata.slice(0, MAX_WATCH_HISTORY)
-        console.log(`[FileWatch] Restored ${restoredHistory.length} history records from IndexedDB`)
-      } catch (error) {
-        console.error('[FileWatch] Failed to restore history from IndexedDB:', error)
-        restoredHistory = watchState.value.updateHistory
-      }
-
-      // 激活监听状态
-      watchState.value = {
-        isActive: true,
-        dirHandle: buildDataDir,
-        dirPath: buildDataDir.name,
-        lastCheckedTime: Date.now(),
-        fileIndex: fileIndex,
-        updateHistory: restoredHistory,
-        lastImportedFileHandle: fileHandle,
-        lastImportedFileName: fileName,
-      }
-
-      // 步骤 5：启动轮询
-      startPolling()
-
-      // 步骤 6：若最新存档 NeedRestore 为 true，询问用户是否立即导入
-      if (result && latestContent !== undefined) {
-        try {
-          const jsonData = JSON.parse(latestContent)
-
-          if (jsonData.NeedRestore === true) {
-            const shouldImport = await notification.confirm({
-              title: t('fileOps.watch.foundTitle'),
-              description: t('fileOps.watch.foundDesc', {
-                name: fileName,
-                time: new Date(lastModified).toLocaleString(),
-              }),
-              confirmText: t('fileOps.watch.importNow'),
-              cancelText: t('fileOps.watch.later'),
-            })
-
-            if (shouldImport) {
-              await importFromWatchedFile()
-              const itemCount = getItemCountFromContent(latestContent)
-              await addToWatchHistory(fileName, latestContent, itemCount, lastModified)
-            }
-          } else {
-            notification.success(t('fileOps.watch.started'))
-          }
-        } catch (error) {
-          console.error('[FileWatch] Failed to parse JSON:', error)
-          notification.warning(t('fileOps.watch.parseFailed'))
-        }
-      } else {
-        notification.success(t('fileOps.watch.started'))
-      }
+      await activateWatchModeFromDirectories(resolved, 'interactive')
     } catch (error: any) {
       if (error.name === 'AbortError') {
         // 用户主动取消目录选择，不报错
@@ -651,6 +737,30 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       notification.error(
         t('fileOps.watch.startFailed', { reason: error.message || 'Unknown error' })
       )
+    }
+  }
+
+  async function restoreWatchModeSilently(): Promise<boolean> {
+    if (!('showDirectoryPicker' in window)) {
+      return false
+    }
+
+    if (watchState.value.isActive) {
+      return true
+    }
+
+    ensureResourcesReady()
+
+    try {
+      const restored = await tryRestoreWatchDirectories()
+      if (!restored) return false
+
+      await activateWatchModeFromDirectories(restored, 'silent')
+      console.log('[FileWatch] Silently restored watch mode')
+      return true
+    } catch (error) {
+      console.warn('[FileWatch] Silent restore failed:', error)
+      return false
     }
   }
 
@@ -790,6 +900,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   return {
     watchState,
     startWatchMode,
+    restoreWatchModeSilently,
     stopWatchMode,
     importFromWatchedFile,
     checkFileUpdate,

@@ -86,39 +86,24 @@
       didn't manually click "Recover from Stuck."
     </p>
     <p>
-      <strong>Cause:</strong> This is normal behavior. The game auto-saves building data
-      periodically during construction, and the monitoring mode detects these automatic file
-      changes.
+      <strong>Cause:</strong> This is normal. The game auto-saves building data about every 5
+      minutes, and the monitoring mode detects these file changes.
     </p>
     <p><strong>What to Do:</strong></p>
     <ul>
-      <li>If you're still actively building, click "Later" to dismiss the prompt</li>
       <li>
-        Only import when you've intentionally clicked "Recover from Stuck" to export your complete
-        scheme data
+        To avoid popups, disable <strong>Watch Popup</strong> in settings and use
+        <strong>Monitoring BuildData</strong> in the top-right corner to view history and load the
+        latest scheme
       </li>
     </ul>
 
     <h3>No Import Dialog After 'Recover from Stuck'</h3>
     <p>
-      <strong>Issue:</strong> After clicking "Recover from Stuck" and confirming in-game, no import
-      dialog appears in the editor.
-    </p>
-    <p><strong>Troubleshooting Steps:</strong></p>
-    <ol>
-      <li>Check if the top-right corner displays <strong>"Monitoring BuildData"</strong> status</li>
-      <li>
-        If not displayed, monitoring has stopped—re-link the game folder via
-        <strong>File &gt; Link Game Folder</strong>
-      </li>
-      <li>
-        Note: Refreshing the page or reopening the editor will reset monitoring and require
-        directory re-authorization
-      </li>
-    </ol>
-    <p class="text-sm text-muted-foreground">
-      <strong>Tip:</strong> Monitoring relies on browser file system permissions, which must be
-      re-granted after page refresh.
+      <strong>Troubleshooting:</strong> Check if the top-right corner shows
+      <strong>Monitoring BuildData</strong>. If not, click
+      <strong>File &gt; Link Game Folder</strong> to restart. Monitoring restores automatically
+      after page refresh; re-authorization is usually not needed.
     </p>
 
     <h2>Data Sources</h2>

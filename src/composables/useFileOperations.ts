@@ -283,6 +283,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     isFileSystemAccessSupported,
     watchState: watchOps.watchState,
     startWatchMode: watchOps.startWatchMode,
+    restoreWatchModeSilently: watchOps.restoreWatchModeSilently,
     stopWatchMode: watchOps.stopWatchMode,
     importFromWatchedFile: watchOps.importFromWatchedFile,
     checkFileUpdate: watchOps.checkFileUpdate,
