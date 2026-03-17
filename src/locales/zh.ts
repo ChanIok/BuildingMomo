@@ -306,8 +306,8 @@ export const zhLocale = {
       hint: '显示背景参考图',
     },
     modelAssets: {
-      label: '加载完整版模型资源',
-      hint: '增加法线和 ORM 贴图，材质更细腻；加载更慢、占用更多显存。',
+      label: '完整贴图',
+      hint: '更真实的材质效果',
     },
     modelDye: {
       label: '模型染色显示',

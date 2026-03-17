@@ -310,8 +310,8 @@ export const enLocale = {
       hint: 'Show reference background',
     },
     modelAssets: {
-      label: 'Load Full Model Assets',
-      hint: 'Adds normal + ORM maps for better material detail; slower load, more VRAM.',
+      label: 'Full Textures',
+      hint: 'More realistic materials',
     },
     modelDye: {
       label: 'Model Dye',
