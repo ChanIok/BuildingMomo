@@ -80,8 +80,22 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
   // setTimeout 返回的计时器 ID，null 表示轮询未启动
   let pollTimer: number | null = null
-  // BuildRecord 目录句柄（可选），有效时 saveToGame 会同步写入 .record 文件
+  // 根目录句柄，用于在游戏运行后懒加载发现 BuildRecord 目录
+  let rootDirHandle: FileSystemDirectoryHandle | null = null
+  // BuildRecord 目录句柄（懒加载缓存），首次使用时自动查找
   let buildRecordDirHandle: FileSystemDirectoryHandle | null = null
+
+  /**
+   * 懒加载获取 BuildRecord 目录句柄。
+   * 首次调用时尝试从 rootDirHandle 中查找并缓存，之后直接复用。
+   * 支持游戏启动后 BuildRecord 目录动态出现的场景。
+   */
+  async function getOrFindBuildRecordDir(): Promise<FileSystemDirectoryHandle | null> {
+    if (buildRecordDirHandle) return buildRecordDirHandle
+    if (!rootDirHandle) return null
+    buildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
+    return buildRecordDirHandle
+  }
 
   /**
    * 将一次文件更新记录持久化到 IndexedDB，并同步更新内存中的 updateHistory。
@@ -210,14 +224,15 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     resolved: DirectoryResolveResult,
     mode: ActivateWatchMode
   ): Promise<void> {
-    const { rootDirHandle, buildDataDir } = resolved
+    const { buildDataDir } = resolved
+    rootDirHandle = resolved.rootDirHandle
     buildRecordDirHandle = resolved.buildRecordDirHandle
 
-    // BuildRecord 目录可选，用于更精确的导入与写回
+    // BuildRecord 目录可选，首次未找到时后续操作仍会懒加载重试
     if (buildRecordDirHandle) {
       console.log('[FileWatch] Found BuildRecord directory:', buildRecordDirHandle.name)
     } else {
-      console.log('[FileWatch] BuildRecord directory not found, fallback to BuildData only')
+      console.log('[FileWatch] BuildRecord directory not found, will retry lazily on use')
     }
 
     console.log('[FileWatch] Found BuildData directory:', buildDataDir.name)
@@ -492,10 +507,11 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
         firstDetectedAt: cached?.firstDetectedAt ?? updatedFile.lastModified,
       })
 
-      // 如果有 BuildRecord 目录，同步写入最新的 .record 文件
-      if (buildRecordDirHandle) {
+      // 如果有 BuildRecord 目录，同步写入最新的 .record 文件（懒加载，游戏运行后自动发现）
+      const recordDir = await getOrFindBuildRecordDir()
+      if (recordDir) {
         try {
-          const latestRecord = await findLatestBuildRecord(buildRecordDirHandle)
+          const latestRecord = await findLatestBuildRecord(recordDir)
           if (latestRecord) {
             const recordPermission = await verifyPermission(latestRecord.handle)
             if (recordPermission) {
@@ -767,6 +783,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   /** 停止监听模式，清理状态（保留历史记录列表供 UI 继续显示） */
   function stopWatchMode() {
     stopPolling()
+    rootDirHandle = null
     buildRecordDirHandle = null
     const existingHistory = watchState.value.updateHistory
     watchState.value = {
@@ -795,9 +812,10 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     }
 
     try {
-      // 优先路径：尝试从 BuildRecord 中读取最新的 .record 文件
-      if (buildRecordDirHandle) {
-        const latestRecord = await findLatestBuildRecord(buildRecordDirHandle)
+      // 优先路径：尝试从 BuildRecord 中读取最新的 .record 文件（懒加载，游戏运行后自动发现）
+      const recordDir = await getOrFindBuildRecordDir()
+      if (recordDir) {
+        const latestRecord = await findLatestBuildRecord(recordDir)
         if (latestRecord) {
           try {
             console.log('[FileWatch] Found latest BuildRecord:', latestRecord.file.name)
