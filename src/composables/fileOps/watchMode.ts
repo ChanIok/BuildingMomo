@@ -714,7 +714,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
   /**
    * 启动监听模式的完整流程：
-   *   1. 优先从 IndexedDB 恢复已授权目录，非 granted 时直接弹目录选择器
+   *   1. 主动弹出目录选择器，让用户显式选择监控目录
    *   2. 在目录中定位 BuildData（必须）和 BuildRecord（可选）子目录
    *   3. 扫描并缓存 BuildData 中所有现有存档文件的快照（fileIndex）
    *   4. 从 IndexedDB 恢复历史监听记录
@@ -734,14 +734,10 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     ensureResourcesReady()
 
     try {
-      // 步骤 1：优先恢复已授权目录；非 granted 时回退到目录选择器
-      const restored = await tryRestoreWatchDirectories()
-      const resolved = restored ?? (await pickWatchDirectories())
+      const resolved = await pickWatchDirectories()
       if (!resolved) return
 
-      if (!restored) {
-        console.log('[FileWatch] Directory authorization persisted:', resolved.rootDirHandle.name)
-      }
+      console.log('[FileWatch] Directory authorization persisted:', resolved.rootDirHandle.name)
       await activateWatchModeFromDirectories(resolved, 'interactive')
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -780,8 +776,8 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     }
   }
 
-  /** 停止监听模式，清理状态（保留历史记录列表供 UI 继续显示） */
-  function stopWatchMode() {
+  /** 停止监听模式并清除已保存目录句柄（保留历史记录列表供 UI 继续显示） */
+  async function stopWatchMode(): Promise<void> {
     stopPolling()
     rootDirHandle = null
     buildRecordDirHandle = null
@@ -796,6 +792,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       lastImportedFileHandle: null,
       lastImportedFileName: '',
     }
+    await WatchHandleStore.clearRootHandle()
     console.log('[FileWatch] Watch mode stopped')
   }
 

@@ -2,6 +2,17 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
+## 第一性原理
+
+请使用第一性原理思考。你不能总是假设我非常清楚自己想要什么和该怎么得到。请保持审慎，从原始需求和问题出发，如果动机和目标不清晰，停下来和我讨论。
+
+## 方案规范
+
+当需要你给出修改或重构方案时必须符合以下规范：
+
+- 不允许给出兼容性或补丁性的方案
+- 不允许过度设计，保持最短路径实现且不能违反第一条要求
+
 ## Commands
 
 ### Local setup & development

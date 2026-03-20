@@ -154,9 +154,9 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.file.stopWatchMode'),
       category: 'file',
       enabled: () => fileOps.watchState.value.isActive,
-      execute: () => {
+      execute: async () => {
         console.log('[Command] 停止监控模式')
-        fileOps.stopWatchMode()
+        await fileOps.stopWatchMode()
       },
     },
     {
