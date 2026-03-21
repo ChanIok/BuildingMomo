@@ -115,18 +115,13 @@ export const useUIStore = defineStore('ui', () => {
     enabled: boolean,
     rotation: { x: number; y: number; z: number }
   ) {
-    // 四舍五入到2位小数，避免浮点数精度问题（作为最终防线）
-    const roundedX = Math.round(rotation.x * 100) / 100
-    const roundedY = Math.round(rotation.y * 100) / 100
-    const roundedZ = Math.round(rotation.z * 100) / 100
-
     workingCoordinateSystem.value.enabled = enabled
-    workingCoordinateSystem.value.rotation.x = roundedX
-    workingCoordinateSystem.value.rotation.y = roundedY
-    workingCoordinateSystem.value.rotation.z = roundedZ
+    workingCoordinateSystem.value.rotation.x = rotation.x
+    workingCoordinateSystem.value.rotation.y = rotation.y
+    workingCoordinateSystem.value.rotation.z = rotation.z
     console.log('[UIStore] Working coordinate system updated:', {
       enabled,
-      rotation: { x: roundedX, y: roundedY, z: roundedZ },
+      rotation,
     })
   }
 

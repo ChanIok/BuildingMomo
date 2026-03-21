@@ -7,6 +7,7 @@ import { useI18n } from '../../composables/useI18n'
 import { convertRotationWorkingToGlobal } from '../../lib/coordinateTransform'
 import { matrixTransform } from '../../lib/matrixTransform'
 import type { SelectionInfo } from '../../composables/transform/useTransformSelection'
+import { fmt } from '../../composables/transform/useTransformSelection'
 import TransformAxisInputs from './TransformAxisInputs.vue'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -193,6 +194,11 @@ const rotationValue = computed(() => {
     return props.selectionInfo.rotation
   }
 })
+
+function formatWorkingRotation() {
+  const { rotation } = uiStore.workingCoordinateSystem
+  return `${fmt(rotation.x)}°, ${fmt(rotation.y)}°, ${fmt(rotation.z)}°`
+}
 </script>
 
 <template>
@@ -227,7 +233,7 @@ const rotationValue = computed(() => {
               <div
                 v-html="
                   t('transform.workingCoordTip', {
-                    angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                    angle: formatWorkingRotation(),
                   })
                 "
               ></div>

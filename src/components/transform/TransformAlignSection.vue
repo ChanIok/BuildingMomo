@@ -2,7 +2,7 @@
 import { useUIStore } from '../../stores/uiStore'
 import { useEditorAlignment } from '../../composables/editor/useEditorAlignment'
 import { useI18n } from '../../composables/useI18n'
-import type { SelectionInfo } from '../../composables/transform/useTransformSelection'
+import { fmt, type SelectionInfo } from '../../composables/transform/useTransformSelection'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Toggle } from '@/components/ui/toggle'
 import {
@@ -37,6 +37,11 @@ function startSelectingAlignReference() {
 function clearAlignReference() {
   uiStore.setAlignReferenceItem(null)
 }
+
+function formatWorkingRotation() {
+  const { rotation } = uiStore.workingCoordinateSystem
+  return `${fmt(rotation.x)}°, ${fmt(rotation.y)}°, ${fmt(rotation.z)}°`
+}
 </script>
 
 <template>
@@ -57,7 +62,7 @@ function clearAlignReference() {
               <div
                 v-html="
                   t('transform.workingCoordTip', {
-                    angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                    angle: formatWorkingRotation(),
                   })
                 "
               ></div>

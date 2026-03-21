@@ -58,6 +58,11 @@ const scaleMode = computed({
   },
 })
 
+function formatWorkingRotation() {
+  const { rotation } = uiStore.workingCoordinateSystem
+  return `${fmt(rotation.x)}°, ${fmt(rotation.y)}°, ${fmt(rotation.z)}°`
+}
+
 // 监听选择变化以重置输入
 watch(
   () => editorStore.activeScheme?.selectedItemIds.value,
@@ -223,7 +228,7 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
                   <div
                     v-html="
                       t('transform.workingCoordTip', {
-                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                        angle: formatWorkingRotation(),
                       })
                     "
                   ></div>
@@ -326,7 +331,7 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
                   <div
                     v-html="
                       t('transform.workingCoordTip', {
-                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                        angle: formatWorkingRotation(),
                       })
                     "
                   ></div>
@@ -397,7 +402,7 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
                   <div
                     v-html="
                       t('transform.rangeTip', {
-                        angle: `${uiStore.workingCoordinateSystem.rotation.x}°, ${uiStore.workingCoordinateSystem.rotation.y}°, ${uiStore.workingCoordinateSystem.rotation.z}°`,
+                        angle: formatWorkingRotation(),
                       })
                     "
                   ></div>
