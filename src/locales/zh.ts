@@ -91,6 +91,7 @@ export const zhLocale = {
       copy: '复制',
       duplicate: '复制并粘贴',
       paste: '粘贴',
+      advancedPaste: '高级粘贴',
       delete: '删除',
       selectAll: '全选',
       deselectAll: '取消选择',
@@ -228,6 +229,26 @@ export const zhLocale = {
       notFound: '方案码不存在或已过期',
       networkError: '网络错误: {reason}',
       parseError: '数据解析失败，请确认方案码是否正确',
+    },
+  },
+
+  advancedPaste: {
+    title: '高级粘贴',
+    description: '选择一种高级粘贴方式，用于保留源 ID 或按规律生成多个副本。',
+    confirm: '开始粘贴',
+    repeatCount: '重复次数',
+    positionDelta: '位移增量 (X / Y / Z)',
+    rotationDelta: '旋转增量 (X / Y / Z)',
+    scaleMultiplier: '缩放倍率 (X / Y / Z)',
+    mode: {
+      preserveIds: {
+        title: '保持原 ID',
+        description: '保留源物品的 InstanceID 和 GroupID，并自动处理冲突。',
+      },
+      stepRepeat: {
+        title: '步进复制',
+        description: '连续生成多份副本，并在每一份之上按顺序叠加变换。',
+      },
     },
   },
 

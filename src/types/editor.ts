@@ -199,6 +199,19 @@ export interface ClosedSchemeHistory {
 
 // 剪贴板数据（支持跨方案复制粘贴）
 export interface ClipboardData {
+  sourceSchemeId?: string | null // 剪贴板来源方案 ID，用于判断高级粘贴模式可用性
   items: AppItem[] // 复制的物品列表
   groupOrigins: Map<number, string> // 组原点映射 (groupId -> originItemId)
 }
+
+export interface StepRepeatConfig {
+  repeatCount: number
+  positionDelta: { x: number; y: number; z: number }
+  rotationDelta: { x: number; y: number; z: number }
+  scaleMultiplier: { x: number; y: number; z: number }
+}
+
+// 判别联合类型：mode 决定哪些字段必须存在，避免运行时防御判断
+export type AdvancedPasteOptions =
+  | { mode: 'preserveIds' }
+  | { mode: 'stepRepeat'; stepRepeat: StepRepeatConfig }

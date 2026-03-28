@@ -115,6 +115,7 @@ export const useCommandStore = defineStore('command', () => {
 
   // 工作坐标系对话框状态
   const showCoordinateDialog = ref(false)
+  const showAdvancedPasteDialog = ref(false)
 
   // 背包面板显示状态
   const showFurnitureLibrary = ref(false)
@@ -428,6 +429,17 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 粘贴')
         pasteItems(clipboard.value, 0, 0)
+      },
+    },
+    {
+      id: 'edit.advancedPaste',
+      label: t('command.edit.advancedPaste'),
+      shortcut: 'Ctrl+Shift+V',
+      category: 'edit',
+      enabled: () => clipboard.value.items.length > 0 && editorStore.activeScheme !== null,
+      execute: () => {
+        console.log('[Command] 打开高级粘贴')
+        showAdvancedPasteDialog.value = true
       },
     },
     {
@@ -794,6 +806,7 @@ export const useCommandStore = defineStore('command', () => {
     setViewPresetFunction,
     setToggleCameraModeFunction,
     showCoordinateDialog,
+    showAdvancedPasteDialog,
     showFurnitureLibrary,
     showDyePanel,
   }

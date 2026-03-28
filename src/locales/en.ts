@@ -92,6 +92,7 @@ export const enLocale = {
       copy: 'Copy',
       duplicate: 'Duplicate',
       paste: 'Paste',
+      advancedPaste: 'Advanced Paste',
       delete: 'Delete',
       selectAll: 'Select All',
       deselectAll: 'Deselect All',
@@ -230,6 +231,28 @@ export const enLocale = {
       notFound: 'Scheme code not found or expired',
       networkError: 'Network error: {reason}',
       parseError: 'Failed to parse data, please verify the scheme code',
+    },
+  },
+
+  advancedPaste: {
+    title: 'Advanced Paste',
+    description:
+      'Choose an advanced paste mode to preserve source IDs or generate patterned copies.',
+    confirm: 'Paste',
+    repeatCount: 'Repeat Count',
+    positionDelta: 'Position Delta (X / Y / Z)',
+    rotationDelta: 'Rotation Delta (X / Y / Z)',
+    scaleMultiplier: 'Scale Multiplier (X / Y / Z)',
+    mode: {
+      preserveIds: {
+        title: 'Preserve Source IDs',
+        description:
+          'Preserves source InstanceID and GroupID values and resolves conflicts automatically.',
+      },
+      stepRepeat: {
+        title: 'Step Repeat',
+        description: 'Creates multiple copies in sequence, stacking transforms on each new copy.',
+      },
     },
   },
 

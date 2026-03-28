@@ -12,6 +12,7 @@ import ThreeEditor from './components/ThreeEditor.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import RotateHintDialog from './components/RotateHintDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
+import AdvancedPasteDialog from './components/AdvancedPasteDialog.vue'
 import DocsViewer from './components/DocsViewer.vue'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
@@ -232,6 +233,9 @@ onUnmounted(() => {
 
   <!-- 工作坐标系设置对话框 -->
   <CoordinateDialog v-model:open="commandStore.showCoordinateDialog" />
+
+  <!-- 高级粘贴对话框 -->
+  <AdvancedPasteDialog v-model:open="commandStore.showAdvancedPasteDialog" />
 
   <!-- 全局 AlertDialog -->
   <GlobalAlertDialog />

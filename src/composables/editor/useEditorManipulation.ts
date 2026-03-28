@@ -5,32 +5,15 @@ import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useGameDataStore } from '../../stores/gameDataStore'
 import { calculateBounds } from '../../lib/geometry'
+import { applyTransformToItems } from '../../lib/itemTransform'
 import { useEditorHistory } from './useEditorHistory'
 import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
 import { matrixTransform } from '../../lib/matrixTransform'
 import {
-  rotateItemsInWorkingCoordinate,
-  extractSingleAxisRotation,
-} from '../../lib/rotationTransform'
-import {
   convertRotationGlobalToWorking,
   convertRotationWorkingToGlobal,
 } from '../../lib/coordinateTransform'
-
-/**
- * 应用位置偏移（纯位置变换，不涉及旋转）
- */
-function applyPositionOffset(
-  item: AppItem,
-  positionOffset: { x: number; y: number; z: number }
-): { x: number; y: number; z: number } {
-  return {
-    x: item.x + positionOffset.x,
-    y: item.y + positionOffset.y,
-    z: item.z + positionOffset.z,
-  }
-}
 
 export function useEditorManipulation() {
   const store = useEditorStore()
@@ -113,7 +96,6 @@ export function useEditorManipulation() {
 
     saveHistory('edit')
 
-    const { mode, position, rotation, scale } = params
     const scheme = activeScheme.value
     const ids = scheme.selectedItemIds.value
     if (ids.size === 0) return
@@ -142,192 +124,26 @@ export function useEditorManipulation() {
       positionReferencePoint = getSelectedItemsCenter() || rotationCenter
     }
 
-    // 计算位置偏移量
-    let positionOffset = { x: 0, y: 0, z: 0 }
+    // 这里统一走共享变换核心，确保手动编辑与高级粘贴的数学保持完全一致。
+    const selectedItems = scheme.items.value.filter((item) => ids.has(item.internalId))
+    const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
+      ids,
+      store.itemsMap
+    ) || { x: 0, y: 0, z: 0 }
 
-    if (mode === 'absolute' && position) {
-      // 绝对模式：移动到指定坐标
-      positionOffset = {
-        x: (position.x ?? positionReferencePoint.x) - positionReferencePoint.x,
-        y: (position.y ?? positionReferencePoint.y) - positionReferencePoint.y,
-        z: (position.z ?? positionReferencePoint.z) - positionReferencePoint.z,
-      }
-    } else if (mode === 'relative' && position) {
-      // 相对模式：偏移指定距离
-      positionOffset = {
-        x: position.x ?? 0,
-        y: position.y ?? 0,
-        z: position.z ?? 0,
-      }
-    }
-
-    // 更新物品
-    // 注意：使用 ShallowRef 后，map 返回新数组会直接触发更新
-    activeScheme.value.items.value = activeScheme.value.items.value.map((item) => {
-      if (!activeScheme.value!.selectedItemIds.value.has(item.internalId)) {
-        return item
-      }
-
-      // 处理缩放（独立于位置和旋转）
-      let newScale = item.extra.Scale || { X: 1, Y: 1, Z: 1 }
-      let scalePositionOffset = { x: 0, y: 0, z: 0 } // 缩放导致的位置偏移（多选整体缩放）
-
-      if (scale) {
-        const isLimitEnabled = settingsStore.settings.enableLimitDetection
-
-        if (mode === 'absolute') {
-          // 绝对模式：直接设置缩放值
-          newScale = {
-            X: scale.x !== undefined ? scale.x : newScale.X,
-            Y: scale.y !== undefined ? scale.y : newScale.Y,
-            Z: scale.z !== undefined ? scale.z : newScale.Z,
-          }
-
-          // 应用范围限制
-          if (isLimitEnabled) {
-            const furniture = gameDataStore.getFurniture(item.gameId)
-            if (furniture) {
-              const [min, max] = furniture.scaleRange
-              newScale.X = Math.max(min, Math.min(max, newScale.X))
-              newScale.Y = Math.max(min, Math.min(max, newScale.Y))
-              newScale.Z = Math.max(min, Math.min(max, newScale.Z))
-            }
-          }
-        } else {
-          // 相对模式：简单的局部空间缩放（直接乘以倍数）
-          const scaleMultiplier = {
-            x: scale.x ?? 1,
-            y: scale.y ?? 1,
-            z: scale.z ?? 1,
-          }
-
-          newScale = {
-            X: newScale.X * scaleMultiplier.x,
-            Y: newScale.Y * scaleMultiplier.y,
-            Z: newScale.Z * scaleMultiplier.z,
-          }
-
-          // 应用范围限制
-          if (isLimitEnabled) {
-            const furniture = gameDataStore.getFurniture(item.gameId)
-            if (furniture) {
-              const [min, max] = furniture.scaleRange
-              newScale.X = Math.max(min, Math.min(max, newScale.X))
-              newScale.Y = Math.max(min, Math.min(max, newScale.Y))
-              newScale.Z = Math.max(min, Math.min(max, newScale.Z))
-            }
-          }
-
-          // 多选时：实现整体缩放，同步调整物品相对于中心的位置
-          if (ids.size > 1) {
-            const relativeX = item.x - rotationCenter.x
-            const relativeY = item.y - rotationCenter.y
-            const relativeZ = item.z - rotationCenter.z
-
-            // 注意：游戏坐标系映射（Scale.X 实际控制南北，Scale.Y 实际控制东西）
-            scalePositionOffset = {
-              x: relativeX * (scaleMultiplier.y - 1),
-              y: relativeY * (scaleMultiplier.x - 1),
-              z: relativeZ * (scaleMultiplier.z - 1),
-            }
-          }
-        }
-      }
-
-      // 处理绝对旋转模式 (仅更新旋转，位置不变)
-      if (mode === 'absolute' && rotation) {
-        const newRotation = {
-          x: rotation.x ?? item.rotation.x ?? 0,
-          y: rotation.y ?? item.rotation.y ?? 0,
-          z: rotation.z ?? item.rotation.z ?? 0,
-        }
-
-        // 如果同时也传入了绝对位置更新
-        let newX = item.x
-        let newY = item.y
-        let newZ = item.z
-
-        if (position) {
-          // 如果是绝对位置模式，直接应用位置偏移
-          newX += positionOffset.x
-          newY += positionOffset.y
-          newZ += positionOffset.z
-        }
-
-        // 应用缩放导致的位置偏移（整体缩放）
-        newX += scalePositionOffset.x
-        newY += scalePositionOffset.y
-        newZ += scalePositionOffset.z
-
-        return {
-          ...item,
-          x: newX,
-          y: newY,
-          z: newZ,
-          rotation: newRotation,
-          extra: {
-            ...item.extra,
-            Scale: newScale,
-          },
-        }
-      }
-
-      // 相对模式：检查是否有旋转，且需要在工作坐标系下处理
-      if (mode === 'relative' && rotation) {
-        const rotationInfo = extractSingleAxisRotation(rotation)
-        if (rotationInfo) {
-          // 使用 uiStore 的统一方法获取有效的工作坐标系旋转（视觉空间）
-          const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
-            ids,
-            store.itemsMap
-          ) || { x: 0, y: 0, z: 0 }
-
-          // 直接使用视觉空间的旋转值
-          // rotateItemsInWorkingCoordinate 内部已经对 Z 轴做了正确的取反处理（与 Gizmo 一致）
-
-          // 使用新的工作坐标系旋转函数（单物品情况）
-          // 注意：这里临时使用单物品数组调用，后续会在外层优化为批量处理
-          const rotatedItems = rotateItemsInWorkingCoordinate(
-            [item],
-            rotationInfo.axis,
-            rotationInfo.angle,
-            rotationCenter,
-            effectiveWorkingRotation, // 直接使用视觉空间的旋转值
-            false // 暂不使用模型缩放（box 模式）
-          )
-          const rotatedItem = rotatedItems[0]
-
-          // 应用位置偏移和缩放偏移
-          if (rotatedItem) {
-            return {
-              ...rotatedItem,
-              x: rotatedItem.x + positionOffset.x + scalePositionOffset.x,
-              y: rotatedItem.y + positionOffset.y + scalePositionOffset.y,
-              z: rotatedItem.z + positionOffset.z + scalePositionOffset.z,
-              extra: {
-                ...item.extra,
-                Scale: newScale,
-              },
-            }
-          }
-        }
-      }
-
-      // 相对模式无旋转，仅应用位置偏移
-      const newPos = applyPositionOffset(item, positionOffset)
-
-      return {
-        ...item,
-        x: newPos.x + scalePositionOffset.x,
-        y: newPos.y + scalePositionOffset.y,
-        z: newPos.z + scalePositionOffset.z,
-        // 旋转保持不变
-        extra: {
-          ...item.extra,
-          Scale: newScale,
-        },
-      }
+    const transformedItems = applyTransformToItems(selectedItems, params, {
+      rotationCenter,
+      positionReferencePoint,
+      effectiveWorkingRotation,
+      limitScaleValues: settingsStore.settings.enableLimitDetection,
+      getScaleRange: (gameId) => gameDataStore.getFurniture(gameId)?.scaleRange ?? null,
     })
+    const transformedMap = new Map(transformedItems.map((item) => [item.internalId, item]))
+
+    // 注意：使用 ShallowRef 后，map 返回新数组会直接触发更新。
+    activeScheme.value.items.value = activeScheme.value.items.value.map(
+      (item) => transformedMap.get(item.internalId) ?? item
+    )
 
     // 显式触发更新 (虽然直接赋值 .value = mapResult 也会触发，但保持一致性)
     store.triggerSceneUpdate()

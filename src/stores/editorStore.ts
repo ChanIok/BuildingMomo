@@ -33,6 +33,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   // 全局剪贴板（支持跨方案复制粘贴）- 使用 ShallowRef
   const clipboardRef = shallowRef<ClipboardData>({
+    sourceSchemeId: null,
     items: [],
     groupOrigins: new Map(),
   })
@@ -345,6 +346,7 @@ export const useEditorStore = defineStore('editor', () => {
     schemes.value = []
     activeSchemeId.value = null
     clipboardRef.value = {
+      sourceSchemeId: null,
       items: [],
       groupOrigins: new Map(),
     }
