@@ -501,6 +501,7 @@ export const zhLocale = {
     groupMultiple: '{count} 个组',
     noIcon: '无图标',
     itemDefaultName: '物品 {id}',
+    instanceId: '实例 ID',
     group: '成组',
     ungroup: '取消组合',
     groupOrigin: '组合原点',

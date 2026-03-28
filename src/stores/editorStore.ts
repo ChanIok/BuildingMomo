@@ -385,6 +385,47 @@ export const useEditorStore = defineStore('editor', () => {
 
   // ========== 编辑操作 ==========
 
+  /**
+   * 更新当前方案中指定物品的 InstanceID。
+   *
+   * 规则：
+   * - 仅接受正整数 InstanceID
+   * - 当前被修改的物品优先保留目标 InstanceID
+   * - 若目标 InstanceID 已被其他物品占用，则将所有冲突物品顺序重编号到新的唯一 ID
+   * - 同步更新 maxInstanceId，并触发场景刷新
+   *
+   * @param internalId 目标物品的内部 ID
+   * @param nextInstanceId 期望设置的 InstanceID
+   * @returns 是否实际完成了更新
+   */
+  function setItemInstanceId(internalId: string, nextInstanceId: number): boolean {
+    const scheme = activeScheme.value
+    if (!scheme || !Number.isInteger(nextInstanceId) || nextInstanceId <= 0) {
+      return false
+    }
+
+    const targetItem = scheme.items.value.find((item) => item.internalId === internalId)
+    if (!targetItem || targetItem.instanceId === nextInstanceId) {
+      return false
+    }
+
+    let currentMaxInstanceId = Math.max(scheme.maxInstanceId.value, nextInstanceId)
+    const conflictingItems = scheme.items.value.filter(
+      (item) => item.internalId !== internalId && item.instanceId === nextInstanceId
+    )
+
+    targetItem.instanceId = nextInstanceId
+
+    for (const item of conflictingItems) {
+      currentMaxInstanceId++
+      item.instanceId = currentMaxInstanceId
+    }
+
+    scheme.maxInstanceId.value = currentMaxInstanceId
+    triggerSceneUpdate()
+    return true
+  }
+
   // Gizmo 模式切换（互斥逻辑）
   function setGizmoMode(mode: 'translate' | 'rotate' | null) {
     // 如果点击当前激活的模式，则关闭；否则切换到新模式
@@ -466,6 +507,7 @@ export const useEditorStore = defineStore('editor', () => {
     triggerSceneUpdate,
     triggerSelectionUpdate,
     triggerHistoryUpdate,
+    setItemInstanceId,
 
     // 组合工具函数
     getGroupIdIfEntireGroupSelected,

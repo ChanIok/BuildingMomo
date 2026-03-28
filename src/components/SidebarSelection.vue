@@ -5,6 +5,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useGameDataStore } from '../stores/gameDataStore'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
+import { useEditorHistory } from '../composables/editor/useEditorHistory'
 import { useEditorSelection } from '../composables/editor/useEditorSelection'
 import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
@@ -16,6 +17,7 @@ const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const uiStore = useUIStore()
 const { getGroupItems, groupSelected, ungroupSelected, clearGroupOrigin } = useEditorGroups()
+const { saveHistory } = useEditorHistory()
 const { deselectItems } = useEditorSelection()
 const { t, locale } = useI18n()
 
@@ -61,6 +63,11 @@ const selectedItems = computed(() => {
   return scheme.items.value.filter((item) => ids.has(item.internalId))
 })
 
+const selectedSingleItem = computed(() => {
+  if (selectedItems.value.length !== 1) return null
+  return selectedItems.value[0] ?? null
+})
+
 // 计算属性:选中物品的组信息
 const selectedGroupInfo = computed(() => {
   const items = selectedItems.value
@@ -101,7 +108,7 @@ const selectedItemDetails = computed(() => {
 
   // 单个物品
   if (selected.length === 1) {
-    const item = selected[0]
+    const item = selectedSingleItem.value
     if (!item) return null
 
     const furniture = gameDataStore.getFurniture(item.gameId)
@@ -118,9 +125,11 @@ const selectedItemDetails = computed(() => {
     }
     return {
       type: 'single' as const,
+      internalId: item.internalId,
       name: getFurnitureName(furniture, item.gameId),
       icon: furniture ? gameDataStore.getIconUrl(item.gameId) : null,
       itemId: item.gameId,
+      instanceId: item.instanceId,
       dimensions,
       x: item.x,
       y: item.y,
@@ -163,6 +172,39 @@ const selectedItemDetails = computed(() => {
     items,
   }
 })
+
+const instanceIdInput = ref('')
+
+watch(
+  selectedSingleItem,
+  (item) => {
+    instanceIdInput.value = item ? String(item.instanceId) : ''
+  },
+  { immediate: true }
+)
+
+function applyInstanceIdChange() {
+  const item = selectedSingleItem.value
+  if (!item) {
+    instanceIdInput.value = ''
+    return
+  }
+
+  const nextInstanceId = Number(instanceIdInput.value)
+  if (!Number.isInteger(nextInstanceId) || nextInstanceId <= 0) {
+    instanceIdInput.value = String(item.instanceId)
+    return
+  }
+
+  if (nextInstanceId === item.instanceId) {
+    instanceIdInput.value = String(item.instanceId)
+    return
+  }
+
+  saveHistory('edit')
+  const changed = editorStore.setItemInstanceId(item.internalId, nextInstanceId)
+  instanceIdInput.value = String(changed ? nextInstanceId : item.instanceId)
+}
 
 // 分帧渲染逻辑
 const renderLimit = ref(30)
@@ -327,7 +369,7 @@ function handleIconError(e: Event) {
     <div class="mt-2 flex min-h-0 flex-1 flex-col">
       <ScrollArea class="min-h-0 flex-1">
         <!-- 单个物品 -->
-        <div v-if="selectedItemDetails.type === 'single'" class="space-y-3">
+        <div v-if="selectedItemDetails.type === 'single'" class="space-y-3 pr-2">
           <div class="flex flex-col gap-3">
             <!-- 大图标展示区 -->
             <div
@@ -411,6 +453,20 @@ function handleIconError(e: Event) {
         </div>
         <ScrollBar orientation="vertical" class="!w-1.5" />
       </ScrollArea>
+    </div>
+
+    <div
+      v-if="selectedItemDetails.type === 'single'"
+      class="flex items-center justify-between gap-2 pt-3 pr-2"
+    >
+      <label class="text-xs text-muted-foreground">{{ t('sidebar.instanceId') }}</label>
+      <input
+        v-model="instanceIdInput"
+        type="number"
+        step="1"
+        @change="applyInstanceIdChange"
+        class="w-16 min-w-0 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
     </div>
 
     <!-- 组合原点设置（仅当完整选中一个组时显示） -->

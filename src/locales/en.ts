@@ -508,6 +508,7 @@ export const enLocale = {
     groupMultiple: '{count} Groups',
     noIcon: 'No Icon',
     itemDefaultName: 'Item {id}',
+    instanceId: 'InstanceID',
     group: 'Group',
     ungroup: 'Ungroup',
     groupOrigin: 'Group Origin',
