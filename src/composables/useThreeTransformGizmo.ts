@@ -7,6 +7,11 @@ import { useClipboard } from '@/composables/useClipboard'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { matrixTransform } from '@/lib/matrixTransform'
+import {
+  applyScaleRenderCompensationToWorldMatrix,
+  hasScaleRenderCompensation,
+  resolveDisplayGeometryInfo,
+} from '@/lib/scaleRenderCompensation'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import type { AppItem } from '@/types/editor'
@@ -16,6 +21,7 @@ import {
   createGizmoTouchTranslateController,
   type PatchedTransformControls,
 } from '@/composables/transformGizmo/gizmoTouchTranslate'
+import { getThreeModelManager } from '@/composables/useThreeModelManager'
 
 export function useThreeTransformGizmo(
   pivotRef: Ref<Object3D | null>,
@@ -104,7 +110,7 @@ export function useThreeTransformGizmo(
     },
     onPreviewMatrices: (newWorldMatrices) => {
       lastTranslateMatrices.value = newWorldMatrices
-      updateSelectedInstancesMatrix(newWorldMatrices, true)
+      updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(newWorldMatrices), true)
     },
   })
 
@@ -370,6 +376,54 @@ export function useThreeTransformGizmo(
     return newWorldMatrices
   }
 
+  function buildDisplayWorldMatricesMap(
+    rawWorldMatrices: Map<string, Matrix4>
+  ): Map<string, Matrix4> {
+    // Gizmo 拖拽时，画面要和“静止渲染”看到的一样，
+    // 但 mouseUp 提交仍然要写 raw matrix，所以这里单独生成一份 display matrix。
+    const displayMatrices = new Map<string, Matrix4>()
+    const currentMode = settingsStore.settings.threeDisplayMode
+    // 只有白名单物品才需要 sizeX / modelBox；懒加载避免全选大量非白名单时白跑一遍几何查询。
+    let modelManager: ReturnType<typeof getThreeModelManager> | null = null
+
+    for (const [id, worldMatrix] of rawWorldMatrices.entries()) {
+      const item = editorStore.itemsMap.get(id)
+      if (!item) {
+        displayMatrices.set(id, worldMatrix)
+        continue
+      }
+
+      if (!hasScaleRenderCompensation(item.gameId)) {
+        displayMatrices.set(id, worldMatrix)
+        continue
+      }
+
+      if (currentMode === 'model' && !modelManager) {
+        modelManager = getThreeModelManager()
+      }
+
+      const mgrForModelBox = modelManager
+      const geometry = resolveDisplayGeometryInfo(item, {
+        currentMode,
+        getFurnitureSize: (gameId) => gameDataStore.getFurnitureSize(gameId),
+        getModelConfig: (gameId) => gameDataStore.getFurnitureModelConfig(gameId),
+        getModelBoundingBox: mgrForModelBox
+          ? (gameId) => mgrForModelBox.getModelBoundingBox(gameId)
+          : undefined,
+      })
+
+      displayMatrices.set(
+        id,
+        applyScaleRenderCompensationToWorldMatrix(worldMatrix, item, {
+          sizeX: geometry.sizeX,
+          sizeY: geometry.sizeY,
+        })
+      )
+    }
+
+    return displayMatrices
+  }
+
   async function handleGizmoChange(event?: any) {
     if (!isTransformDragging.value) return
 
@@ -459,7 +513,7 @@ export function useThreeTransformGizmo(
           }
 
           lastRotationMatrices.value = newWorldMatrices
-          updateSelectedInstancesMatrix(newWorldMatrices, true)
+          updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(newWorldMatrices), true)
         }
       }
 
@@ -510,7 +564,7 @@ export function useThreeTransformGizmo(
       hasStartedTransform.value = true
     }
 
-    updateSelectedInstancesMatrix(newWorldMatrices, true)
+    updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(newWorldMatrices), true)
   }
 
   function handleGizmoMouseUp() {
@@ -530,7 +584,7 @@ export function useThreeTransformGizmo(
 
     if (newWorldMatrices) {
       newWorldMatrices = snapEngine.applyCollisionSnap(newWorldMatrices)
-      updateSelectedInstancesMatrix(newWorldMatrices, false)
+      updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(newWorldMatrices), false)
 
       const updates: any[] = []
       for (const [id, worldMatrix] of newWorldMatrices.entries()) {

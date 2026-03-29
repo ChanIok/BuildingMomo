@@ -3,7 +3,6 @@ import { Box3Helper, Color, Euler, Matrix4, Vector3, type Object3D } from 'three
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useGameDataStore } from '@/stores/gameDataStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
-import { matrixTransform } from '@/lib/matrixTransform'
 import {
   OBB,
   OBBHelper,
@@ -13,6 +12,11 @@ import {
   calculateOBBSnapVector,
   transformOBBByMatrix,
 } from '@/lib/collision'
+import {
+  applyScaleRenderCompensationToWorldMatrix,
+  buildDisplayWorldMatrixFromItem,
+  resolveDisplayGeometryInfo,
+} from '@/lib/scaleRenderCompensation'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
 
 interface StaticCollisionData {
@@ -160,20 +164,20 @@ export function createGizmoSnapEngine({
     for (const item of scheme.items.value) {
       if (selectedIds.has(item.internalId)) continue
 
-      const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
-      const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
-      const useModelScale = !!(currentMode === 'model' && hasValidModel)
-      const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
+      const {
+        worldMatrix: matrix,
+        useModelScale,
+        modelBox,
+      } = buildDisplayWorldMatrixFromItem(item, {
+        currentMode,
+        getFurnitureSize: (gameId) => gameDataStore.getFurnitureSize(gameId),
+        getModelConfig: (gameId) => gameDataStore.getFurnitureModelConfig(gameId),
+        getModelBoundingBox: (gameId) => modelManager.getModelBoundingBox(gameId),
+      })
 
-      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
       let obb: OBB
-      if (currentMode === 'model') {
-        const modelBox = modelManager.getModelBoundingBox(item.gameId)
-        if (modelBox) {
-          obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
-        } else {
-          obb = getOBBFromMatrix(matrix, new Vector3(...furnitureSize))
-        }
+      if (useModelScale && modelBox) {
+        obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
       } else {
         obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
       }
@@ -211,13 +215,29 @@ export function createGizmoSnapEngine({
     if (!scheme) return newWorldMatrices
 
     const gizmoWorldAxes = resolveGizmoWorldAxes()
+    const currentMode = settingsStore.settings.threeDisplayMode
+    const modelManager = currentMode === 'model' ? getThreeModelManager() : null
     const selectedOBBs: OBB[] = []
 
     for (const obbInfo of selectedItemsOBBInfo.value) {
       const matrix = newWorldMatrices.get(obbInfo.id)
-      if (!matrix) continue
+      const item = editorStore.itemsMap.get(obbInfo.id)
+      if (!matrix || !item) continue
 
-      const obb = transformOBBByMatrix(matrix, obbInfo.localSize, obbInfo.localCenter)
+      const geometry = resolveDisplayGeometryInfo(item, {
+        currentMode,
+        getFurnitureSize: (gameId) => gameDataStore.getFurnitureSize(gameId),
+        getModelConfig: (gameId) => gameDataStore.getFurnitureModelConfig(gameId),
+        getModelBoundingBox: modelManager
+          ? (gameId) => modelManager.getModelBoundingBox(gameId)
+          : undefined,
+      })
+
+      const displayMatrix = applyScaleRenderCompensationToWorldMatrix(matrix, item, {
+        sizeX: geometry.sizeX,
+        sizeY: geometry.sizeY,
+      })
+      const obb = transformOBBByMatrix(displayMatrix, obbInfo.localSize, obbInfo.localCenter)
       selectedOBBs.push(obb)
     }
 

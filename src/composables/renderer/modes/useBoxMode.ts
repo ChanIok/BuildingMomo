@@ -2,6 +2,7 @@ import { ref, markRaw } from 'vue'
 import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { applyScaleRenderCompensationToPositionInPlace } from '@/lib/scaleRenderCompensation'
 import { createBoxMaterial } from '../shared/materials'
 import {
   scratchMatrix,
@@ -80,6 +81,11 @@ export function useBoxMode() {
         'ZYX'
       )
       scratchQuaternion.setFromEuler(scratchEuler)
+
+      applyScaleRenderCompensationToPositionInPlace(scratchPosition, item, scratchQuaternion, {
+        sizeX,
+        sizeY,
+      })
 
       // 缩放：使用家具实际尺寸
       // Z-up: sizeX=Length, sizeY=Width, sizeZ=Height

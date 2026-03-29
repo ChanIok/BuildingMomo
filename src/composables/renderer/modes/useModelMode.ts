@@ -8,6 +8,10 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager, disposeThreeModelManager } from '@/composables/useThreeModelManager'
 import { createTimeSlicer } from '@/lib/cooperativeTask'
 import { type ModelDyePlan, resolveModelDyePlan, buildModelMeshKey } from '@/lib/modelDye'
+import {
+  applyScaleRenderCompensationToPositionInPlace,
+  resolveDisplayGeometryInfo,
+} from '@/lib/scaleRenderCompensation'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
 import { createBoxMaterial } from '../shared/materials'
 import {
@@ -313,6 +317,11 @@ export function useModelMode() {
       )
       scratchQuaternion.setFromEuler(scratchEuler)
 
+      applyScaleRenderCompensationToPositionInPlace(scratchPosition, item, scratchQuaternion, {
+        sizeX,
+        sizeY,
+      })
+
       scratchScale.set((Scale.Y || 1) * sizeX, (Scale.X || 1) * sizeY, (Scale.Z || 1) * sizeZ)
       scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
       mesh.setMatrixAt(localIndex, scratchMatrix)
@@ -380,6 +389,15 @@ export function useModelMode() {
       activeMeshKeys.add(meshKey)
       progressiveMeshMap.set(meshKey, markRaw(mesh))
       const localIndexMap = new Map<number, string>()
+      const displayGeometry =
+        itemsOfModel.length > 0
+          ? resolveDisplayGeometryInfo(itemsOfModel[0]!, {
+              currentMode: 'model',
+              getFurnitureSize: (gameId) => gameDataStore.getFurnitureSize(gameId),
+              getModelConfig: (gameId) => gameDataStore.getFurnitureModelConfig(gameId),
+              getModelBoundingBox: (gameId) => modelManager.getModelBoundingBox(gameId),
+            })
+          : null
 
       for (let i = 0; i < itemsOfModel.length; i++) {
         const item = itemsOfModel[i]
@@ -396,6 +414,13 @@ export function useModelMode() {
         )
         scratchQuaternion.setFromEuler(scratchEuler)
         scratchScale.set(Scale.Y || 1, Scale.X || 1, Scale.Z || 1)
+
+        if (displayGeometry) {
+          applyScaleRenderCompensationToPositionInPlace(scratchPosition, item, scratchQuaternion, {
+            sizeX: displayGeometry.sizeX,
+            sizeY: displayGeometry.sizeY,
+          })
+        }
 
         scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale)
         mesh.setMatrixAt(i, scratchMatrix)

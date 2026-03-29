@@ -1,9 +1,10 @@
 import { Box3, Vector3 } from 'three'
 import { getThreeModelManager, type ThreeModelManager } from '@/composables/useThreeModelManager'
 import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import type { AppItem } from '@/types/editor'
 import { getAABBFromMatrix, getAABBFromMatrixAndModelBox } from './collision'
-import { matrixTransform } from './matrixTransform'
+import { buildDisplayWorldMatrixFromItem } from './scaleRenderCompensation'
 
 // Box 模式 / fallback 模式使用单位立方体作为基础几何体；
 // 实际尺寸已经编码在 world matrix 的 scale 中。
@@ -32,6 +33,7 @@ export interface WorldBoundsMetrics {
  */
 interface WorldBoundsContext {
   gameDataStore: ReturnType<typeof useGameDataStore>
+  settingsStore: ReturnType<typeof useSettingsStore>
   modelManager: ThreeModelManager | null
 }
 
@@ -41,6 +43,7 @@ interface WorldBoundsContext {
 function createWorldBoundsContext(): WorldBoundsContext {
   return {
     gameDataStore: useGameDataStore(),
+    settingsStore: useSettingsStore(),
     modelManager: null,
   }
 }
@@ -71,8 +74,15 @@ function getItemModelBox(item: AppItem, context: WorldBoundsContext): Box3 | nul
  * 注意这里统一返回的是“世界空间 AABB”，不是数据空间 bounds。
  */
 function getItemWorldBoxWithContext(item: AppItem, context: WorldBoundsContext): Box3 {
-  const modelBox = getItemModelBox(item, context)
-  const worldMatrix = matrixTransform.buildWorldMatrixFromItem(item, modelBox !== null)
+  // 相机 framing / focus 应该和用户“眼睛看到的东西”一致，
+  // 所以这里用 display world matrix，而不是 raw world matrix。
+  const { worldMatrix, modelBox } = buildDisplayWorldMatrixFromItem(item, {
+    currentMode: context.settingsStore.settings.threeDisplayMode,
+    getFurnitureSize: (gameId) => context.gameDataStore.getFurnitureSize(gameId),
+    getModelConfig: (gameId) => context.gameDataStore.getFurnitureModelConfig(gameId),
+    getModelBoundingBox: (gameId) =>
+      gameId === item.gameId ? getItemModelBox(item, context) : null,
+  })
 
   if (modelBox) {
     return getAABBFromMatrixAndModelBox(worldMatrix, modelBox)

@@ -9,6 +9,7 @@ import { useI18n } from '../useI18n'
 import { convertRotationGlobalToWorking } from '../../lib/coordinateTransform'
 import { matrixTransform } from '../../lib/matrixTransform'
 import { getOBBFromMatrix, getOBBFromMatrixAndModelBox, type OBB } from '../../lib/collision'
+import { buildDisplayWorldMatrixFromItem } from '../../lib/scaleRenderCompensation'
 import { getThreeModelManager } from '../useThreeModelManager'
 
 /**
@@ -184,29 +185,25 @@ export function useTransformSelection() {
     if (selected.length > 0) {
       const modelManager = getThreeModelManager()
       const allCorners: { x: number; y: number; z: number }[] = []
+      const currentMode = settingsStore.settings.threeDisplayMode
 
       for (const item of selected) {
-        // 判断是否使用模型包围盒（只有 box 和 model 模式才有准确的体积信息）
-        const currentMode = settingsStore.settings.threeDisplayMode
-        const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
-        const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
-        const useModelScale = !!(currentMode === 'model' && hasValidModel)
-
-        // 复用 matrixTransform 构建世界矩阵（封装了坐标系交换逻辑）
-        const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
+        const {
+          worldMatrix: matrix,
+          useModelScale,
+          modelBox,
+        } = buildDisplayWorldMatrixFromItem(item, {
+          currentMode,
+          getFurnitureSize: (gameId) => gameDataStore.getFurnitureSize(gameId),
+          getModelConfig: (gameId) => gameDataStore.getFurnitureModelConfig(gameId),
+          getModelBoundingBox: (gameId) => modelManager.getModelBoundingBox(gameId),
+        })
 
         // 生成 OBB（封装了 8 角点计算）
         let obb: OBB
-        if (useModelScale) {
-          const modelBox = modelManager.getModelBoundingBox(item.gameId)
-          if (modelBox) {
-            obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
-          } else {
-            // Model 模式但模型未加载，fallback 到 box 模式
-            obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
-          }
+        if (useModelScale && modelBox) {
+          obb = getOBBFromMatrixAndModelBox(matrix, modelBox)
         } else {
-          // Box 模式或其他模式：使用单位立方体
           obb = getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
         }
 

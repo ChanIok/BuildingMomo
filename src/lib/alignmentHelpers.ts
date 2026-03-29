@@ -1,7 +1,7 @@
 import { Vector3, Euler } from 'three'
 import type { AppItem } from '../types/editor'
-import { matrixTransform } from './matrixTransform'
 import { getOBBFromMatrix, getOBBFromMatrixAndModelBox, type OBB } from './collision'
+import { buildDisplayWorldMatrixFromItem } from './scaleRenderCompensation'
 
 /**
  * 对齐计算辅助函数库
@@ -29,25 +29,20 @@ export function buildItemOBB(
   gameDataStore: any,
   modelManager: any
 ): OBB {
-  const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
-  const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
-  const useModelScale = !!(currentMode === 'model' && hasValidModel)
+  const { worldMatrix, useModelScale, modelBox } = buildDisplayWorldMatrixFromItem(item, {
+    currentMode,
+    getFurnitureSize: (gameId) => gameDataStore.getFurnitureSize(gameId),
+    getModelConfig: (gameId) => gameDataStore.getFurnitureModelConfig(gameId),
+    getModelBoundingBox: (gameId) => modelManager.getModelBoundingBox(gameId),
+  })
 
-  const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
-
-  if (useModelScale) {
-    const modelBox = modelManager.getModelBoundingBox(item.gameId)
-    if (modelBox) {
-      return getOBBFromMatrixAndModelBox(matrix, modelBox)
-    } else {
-      // Fallback: box 模式
-      return getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
-    }
-  } else {
-    // Box/Icon/Simple 模式：单位立方体
-    // 注意：Box 模式的 Z 轴原点在底部，getOBBFromMatrix 内部会正确处理
-    return getOBBFromMatrix(matrix, new Vector3(1, 1, 1))
+  if (useModelScale && modelBox) {
+    return getOBBFromMatrixAndModelBox(worldMatrix, modelBox)
   }
+
+  // Box/Icon/Simple 模式：单位立方体
+  // 注意：Box 模式的 Z 轴原点在底部，getOBBFromMatrix 内部会正确处理
+  return getOBBFromMatrix(worldMatrix, new Vector3(1, 1, 1))
 }
 
 // ========== 对齐轴计算 ==========
