@@ -32,6 +32,7 @@ import { Item, ItemContent } from '@/components/ui/item'
 import {
   X,
   Archive as ArchiveIcon,
+  Cloud,
   Settings,
   BookOpen,
   FolderSearch,
@@ -46,6 +47,8 @@ import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 import ImportCodeDialog from './ImportCodeDialog.vue'
 import ArchivePopover from './ArchivePopover.vue'
+import CloudSchemePopover from './CloudSchemePopover.vue'
+import CloudSchemeDialog from './CloudSchemeDialog.vue'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useNotificationStore } from '../stores/notificationStore'
 
@@ -67,6 +70,11 @@ const fileCommands = computed(() => {
   return cmds.filter((cmd) => {
     if (cmd.id === 'file.importFromCode') {
       // 只在 secure 模式且已认证时显示
+      return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
+    }
+
+    if (cmd.id === 'file.joinCloudScheme') {
+      // 与“从方案码导入”保持一致：secure 模式未认证时不显示
       return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
     }
     return true
@@ -137,11 +145,13 @@ const watchState = computed(() => commandStore.fileOps.watchState)
 const watchHistory = computed(() => commandStore.fileOps.getWatchHistory())
 const showWatchButton = computed(() => !!editorStore.activeScheme || watchState.value.isActive)
 const showArchiveButton = computed(() => watchState.value.isActive)
+const showCloudButton = computed(() => editorStore.activeScheme?.source.value === 'cloud')
 const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
 
 // 监控中按钮的简单悬浮提示（自定义实现，避免影响 Popover）
 const isWatchTooltipVisible = ref(false)
 const isArchiveTooltipVisible = ref(false)
+const isCloudTooltipVisible = ref(false)
 
 // 标签容器引用
 const tabsContainer = ref<HTMLElement | null>(null)
@@ -152,12 +162,16 @@ const globalSettingsOpen = ref(false)
 const schemeSettingsOpen = ref(false)
 const schemeSettingsTargetId = ref('')
 const importCodeDialogOpen = ref(false)
+const cloudSchemeDialogOpen = ref(false)
 const importCodeDialogRef = ref<InstanceType<typeof ImportCodeDialog> | null>(null)
 const watchHistoryOpen = ref(false)
 const archivePopoverOpen = ref(false)
-const isToolbarPopoverOpen = computed(() => watchHistoryOpen.value || archivePopoverOpen.value)
+const cloudPopoverOpen = ref(false)
+const isToolbarPopoverOpen = computed(
+  () => watchHistoryOpen.value || archivePopoverOpen.value || cloudPopoverOpen.value
+)
 
-function handleArchivePopoverInteractOutside(event: Event) {
+function handlePopoverInteractOutside(event: Event) {
   if (notificationStore.currentAlert) {
     event.preventDefault()
   }
@@ -178,6 +192,7 @@ watch(isToolbarPopoverOpen, (open) => {
   if (open) {
     isWatchTooltipVisible.value = false
     isArchiveTooltipVisible.value = false
+    isCloudTooltipVisible.value = false
   }
 })
 
@@ -186,6 +201,11 @@ function handleCommand(commandId: string) {
   // 特殊处理：从方案码导入命令打开对话框
   if (commandId === 'file.importFromCode') {
     importCodeDialogOpen.value = true
+    return
+  }
+
+  if (commandId === 'file.joinCloudScheme') {
+    cloudSchemeDialogOpen.value = true
     return
   }
 
@@ -551,6 +571,7 @@ watch(
             <MenubarSeparator
               v-if="
                 cmd.id === 'file.importFromCode' ||
+                cmd.id === 'file.joinCloudScheme' ||
                 cmd.id === 'file.import' ||
                 cmd.id === 'file.saveToGame' ||
                 cmd.id === 'file.startWatchMode'
@@ -728,6 +749,14 @@ watch(
               >
                 <!-- 文档标签图标 -->
                 <BookOpen v-if="tab.type === 'doc'" class="h-3 w-3" />
+                <Cloud
+                  v-else-if="
+                    tab.type === 'scheme' &&
+                    tab.schemeId &&
+                    editorStore.getSchemeById(tab.schemeId)?.source.value === 'cloud'
+                  "
+                  class="h-3 w-3"
+                />
 
                 <span class="max-w-[150px] truncate">
                   {{ tab.title }}
@@ -959,10 +988,43 @@ watch(
           class="w-[640px] p-0"
           align="end"
           :side-offset="8"
-          @pointer-down-outside="handleArchivePopoverInteractOutside"
-          @focus-outside="handleArchivePopoverInteractOutside"
+          @pointer-down-outside="handlePopoverInteractOutside"
+          @focus-outside="handlePopoverInteractOutside"
         >
           <ArchivePopover v-model:open="archivePopoverOpen" />
+        </PopoverContent>
+      </Popover>
+
+      <Popover v-if="showCloudButton" v-model:open="cloudPopoverOpen">
+        <PopoverTrigger as-child>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="relative w-8 flex-none"
+            :aria-label="t('cloudScheme.title')"
+            @mouseenter="isCloudTooltipVisible = true"
+            @mouseleave="isCloudTooltipVisible = false"
+          >
+            <Cloud class="h-4 w-4" />
+            <Transition name="watch-tooltip">
+              <div
+                v-if="isCloudTooltipVisible && !isToolbarPopoverOpen"
+                class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
+              >
+                {{ t('cloudScheme.title') }}
+              </div>
+            </Transition>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          class="w-64 p-0"
+          align="end"
+          :side-offset="8"
+          @open-auto-focus="(e) => e.preventDefault()"
+          @pointer-down-outside="handlePopoverInteractOutside"
+          @focus-outside="handlePopoverInteractOutside"
+        >
+          <CloudSchemePopover v-model:open="cloudPopoverOpen" />
         </PopoverContent>
       </Popover>
 
@@ -997,6 +1059,7 @@ watch(
       v-model:open="importCodeDialogOpen"
       @confirm="handleImportFromCode"
     />
+    <CloudSchemeDialog v-model:open="cloudSchemeDialogOpen" />
   </div>
 </template>
 

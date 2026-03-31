@@ -13,6 +13,7 @@ import type {
   ClipboardData,
 } from '../types/editor'
 import type { ArchivedSchemeSnapshot } from '../types/archive'
+import type { SharedSchemeSnapshot } from '../types/cloudScheme'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
 
@@ -40,6 +41,31 @@ function getSnapshotMaxValues(items: AppItem[]) {
     if (item.groupId > maxGrpId) maxGrpId = item.groupId
   }
   return { maxInstId, maxGrpId }
+}
+
+function buildSchemeFromSharedSnapshot(
+  snapshot: SharedSchemeSnapshot,
+  schemeId: string
+): HomeScheme {
+  const newItems = cloneItems(snapshot.items)
+  const { maxInstId, maxGrpId } = getSnapshotMaxValues(newItems)
+
+  return {
+    id: schemeId,
+    name: ref(snapshot.name),
+    filePath: ref(snapshot.filePath),
+    lastModified: ref(snapshot.lastModified),
+    source: ref('cloud'),
+    cloudRoomCode: ref(undefined),
+    items: shallowRef(newItems),
+    selectedItemIds: shallowRef(new Set()),
+    maxInstanceId: ref(maxInstId),
+    maxGroupId: ref(maxGrpId),
+    currentViewConfig: ref(undefined),
+    viewState: ref(undefined),
+    groupOrigins: shallowRef(new Map(snapshot.groupOrigins)),
+    history: shallowRef(undefined),
+  }
 }
 
 export const useEditorStore = defineStore('editor', () => {
@@ -152,6 +178,8 @@ export const useEditorStore = defineStore('editor', () => {
       name: ref(name || t('scheme.unnamed')),
       filePath: ref(undefined),
       lastModified: ref(undefined),
+      source: ref('local'),
+      cloudRoomCode: ref(undefined),
       items: shallowRef([]),
       selectedItemIds: shallowRef(new Set()),
       maxInstanceId: ref(999), // 初始值，首个物品将从 1000 开始
@@ -229,6 +257,8 @@ export const useEditorStore = defineStore('editor', () => {
       const newScheme: HomeScheme = {
         id: generateUUID(),
         name: ref(schemeName),
+        source: ref('local'),
+        cloudRoomCode: ref(undefined),
         filePath: ref(fileName),
         items: shallowRef(newItems),
         selectedItemIds: shallowRef(new Set()),
@@ -276,6 +306,8 @@ export const useEditorStore = defineStore('editor', () => {
       name: ref(options?.archiveName || snapshot.name || t('scheme.unnamed')),
       filePath: ref(snapshot.filePath),
       lastModified: ref(snapshot.lastModified),
+      source: ref('local'),
+      cloudRoomCode: ref(undefined),
       items: shallowRef(newItems),
       selectedItemIds: shallowRef(new Set()),
       maxInstanceId: ref(maxInstId),
@@ -289,6 +321,76 @@ export const useEditorStore = defineStore('editor', () => {
     schemes.value = [...schemes.value, newScheme]
     tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
     return newScheme.id
+  }
+
+  function openCloudSchemeSnapshot(snapshot: SharedSchemeSnapshot, roomCode: string): string {
+    const schemeId = `cloud:${roomCode}`
+    const existing = getSchemeById(schemeId)
+
+    if (existing) {
+      replaceSchemeSnapshot(schemeId, snapshot, { preserveViewState: true })
+      tabStore.openSchemeTab(existing.id, existing.name.value)
+      return existing.id
+    }
+
+    const newScheme = buildSchemeFromSharedSnapshot(snapshot, schemeId)
+    newScheme.cloudRoomCode.value = roomCode
+    schemes.value = [...schemes.value, newScheme]
+    tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
+    return newScheme.id
+  }
+
+  function setSchemeCloudMeta(
+    schemeId: string,
+    meta: {
+      source: 'local' | 'cloud'
+      cloudRoomCode?: string
+    }
+  ) {
+    const scheme = getSchemeById(schemeId)
+    if (!scheme) return false
+
+    scheme.source.value = meta.source
+    scheme.cloudRoomCode.value = meta.source === 'cloud' ? meta.cloudRoomCode : undefined
+    return true
+  }
+
+  function replaceSchemeSnapshot(
+    schemeId: string,
+    snapshot: SharedSchemeSnapshot,
+    options?: {
+      preserveViewState?: boolean
+    }
+  ) {
+    const scheme = getSchemeById(schemeId)
+    if (!scheme) return false
+
+    scheme.name.value = snapshot.name
+    scheme.filePath.value = snapshot.filePath
+    scheme.lastModified.value = snapshot.lastModified
+    scheme.items.value = cloneItems(snapshot.items)
+    scheme.selectedItemIds.value = new Set()
+    scheme.groupOrigins.value = new Map(snapshot.groupOrigins)
+
+    if (!options?.preserveViewState) {
+      scheme.currentViewConfig.value = undefined
+      scheme.viewState.value = undefined
+    }
+
+    scheme.history.value = undefined
+
+    const { maxInstId, maxGrpId } = getSnapshotMaxValues(scheme.items.value)
+    scheme.maxInstanceId.value = maxInstId
+    scheme.maxGroupId.value = maxGrpId
+
+    tabStore.updateSchemeTabName(schemeId, snapshot.name)
+    triggerRef(scheme.items)
+    triggerRef(scheme.selectedItemIds)
+    triggerRef(scheme.groupOrigins)
+    sceneVersion.value++
+    selectionVersion.value++
+    historyVersion.value++
+    return true
   }
 
   // 方案管理：关闭方案
@@ -520,6 +622,9 @@ export const useEditorStore = defineStore('editor', () => {
     createScheme,
     importJSONAsScheme,
     openArchivedSchemeSnapshot,
+    openCloudSchemeSnapshot,
+    replaceSchemeSnapshot,
+    setSchemeCloudMeta,
     closeScheme,
     getSchemeById,
     renameScheme,

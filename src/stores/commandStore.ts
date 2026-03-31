@@ -14,6 +14,7 @@ import { useI18n } from '../composables/useI18n'
 import { useNotification } from '../composables/useNotification'
 import { matrixTransform } from '../lib/matrixTransform'
 import type { ViewPreset } from '../composables/useThreeCamera'
+import { useCloudSchemeStore } from './cloudSchemeStore'
 
 // 命令接口
 export interface Command {
@@ -42,6 +43,7 @@ export const useCommandStore = defineStore('command', () => {
   const { deleteSelected } = useEditorManipulation()
 
   const uiStore = useUIStore()
+  const cloudSchemeStore = useCloudSchemeStore()
   const { t } = useI18n()
   const notification = useNotification()
 
@@ -183,6 +185,18 @@ export const useCommandStore = defineStore('command', () => {
       execute: async () => {
         console.log('[Command] 重新打开最近关闭的方案')
         await editorStore.reopenClosedScheme(0)
+      },
+    },
+    {
+      id: 'file.joinCloudScheme',
+      label: t('command.file.joinCloudScheme'),
+      category: 'file',
+      enabled: () => {
+        const settingsStore = useSettingsStore()
+        return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
+      },
+      execute: () => {
+        console.log('[Command] 加入云方案')
       },
     },
     {
@@ -361,7 +375,10 @@ export const useCommandStore = defineStore('command', () => {
       shortcut: 'Ctrl+Z',
       category: 'edit',
       // 依赖 historyVersion，使 undo/redo 后（triggerHistoryUpdate）按钮 enabled 能重新计算
-      enabled: () => (void editorStore.historyVersion, canUndo()),
+      enabled: () =>
+        !(
+          cloudSchemeStore.isConnected && cloudSchemeStore.schemeId === editorStore.activeSchemeId
+        ) && (void editorStore.historyVersion, canUndo()),
       execute: () => {
         console.log('[Command] 撤销')
         undo()
@@ -372,7 +389,10 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.redo'),
       shortcut: 'Ctrl+Y',
       category: 'edit',
-      enabled: () => (void editorStore.historyVersion, canRedo()),
+      enabled: () =>
+        !(
+          cloudSchemeStore.isConnected && cloudSchemeStore.schemeId === editorStore.activeSchemeId
+        ) && (void editorStore.historyVersion, canRedo()),
       execute: () => {
         console.log('[Command] 重做')
         redo()

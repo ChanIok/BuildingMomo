@@ -7,9 +7,10 @@ import { useValidationStore } from '../stores/validationStore'
 import { useUIStore } from '../stores/uiStore'
 import { useCommandStore } from '../stores/commandStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useI18n } from '@/composables/useI18n'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Copy, AlertTriangle, Layers, EyeOff, Maximize2, RotateCw } from 'lucide-vue-next'
+import { Copy, AlertTriangle, Layers, EyeOff, Maximize2, RotateCw, Cloud } from 'lucide-vue-next'
 import { MAX_RENDER_INSTANCES } from '@/types/constants'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 
@@ -27,6 +28,7 @@ const {
 const uiStore = useUIStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
+const cloudSchemeStore = useCloudSchemeStore()
 const { t } = useI18n()
 
 // 方案设置对话框状态
@@ -184,6 +186,24 @@ const handleDuplicateClick = () => {
     selectDuplicateItems()
   }
 }
+
+const isCloudSchemeActive = computed(() => editorStore.activeScheme?.source.value === 'cloud')
+
+const currentCloudStatus = computed(() => {
+  if (!isCloudSchemeActive.value) {
+    return 'disconnected'
+  }
+
+  return cloudSchemeStore.schemeId === editorStore.activeSchemeId
+    ? cloudSchemeStore.status
+    : 'disconnected'
+})
+
+const currentCloudUserCount = computed(() =>
+  cloudSchemeStore.schemeId === editorStore.activeSchemeId ? cloudSchemeStore.activeUserCount : 0
+)
+
+const cloudStatusLabel = computed(() => t(`cloudScheme.status.${currentCloudStatus.value}`))
 </script>
 
 <template>
@@ -222,6 +242,22 @@ const handleDuplicateClick = () => {
 
       <!-- 右: 统计信息、组信息、工作坐标系 -->
       <div class="flex shrink-0 items-center gap-4">
+        <Tooltip v-if="isCloudSchemeActive">
+          <TooltipTrigger as-child>
+            <div
+              class="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground"
+            >
+              <Cloud :size="14" />
+              <span>{{ cloudStatusLabel }}</span>
+              <span>·</span>
+              <span>{{ t('cloudScheme.onlineUsers', { n: currentCloudUserCount }) }}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {{ t('cloudScheme.statusHint') }}
+          </TooltipContent>
+        </Tooltip>
+
         <!-- 限制警告：坐标超限 -->
         <Tooltip v-if="limitIssues.outOfBoundsItemIds.length > 0">
           <TooltipTrigger as-child>

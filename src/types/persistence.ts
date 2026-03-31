@@ -1,4 +1,4 @@
-import type { AppItem, ThreeViewState } from './editor'
+import type { AppItem, SchemeSource, ThreeViewState } from './editor'
 import type { Tab } from './tab'
 
 export interface HomeSchemeSnapshot {
@@ -6,6 +6,8 @@ export interface HomeSchemeSnapshot {
   name: string
   filePath?: string
   lastModified?: number
+  source?: SchemeSource
+  cloudRoomCode?: string
   items: AppItem[] // Plain data array
   selectedItemIds: Set<string> // IDB supports Set
   currentViewConfig?: { scale: number; x: number; y: number }

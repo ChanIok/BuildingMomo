@@ -38,6 +38,8 @@ scripts/clean-seo-for-secure.js
 
 # Cloudflare
 .wrangler/
+# Workers
+cloud-sync-worker/
 
 # Local Netlify folder
 .netlify

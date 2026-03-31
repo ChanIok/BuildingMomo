@@ -9,6 +9,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig(() => {
   // 默认使用根路径，如果设置了 VITE_BASE_PATH 环境变量则使用该路径
   const base = process.env.VITE_BASE_PATH || '/'
+  const cloudApiProxyTarget = process.env.VITE_CLOUD_API_PROXY_TARGET || 'http://127.0.0.1:8788'
 
   return {
     plugins: [
@@ -155,6 +156,15 @@ export default defineConfig(() => {
               return 'css-utils'
             }
           },
+        },
+      },
+    },
+    server: {
+      proxy: {
+        '/api/cloud-schemes': {
+          target: cloudApiProxyTarget,
+          changeOrigin: true,
+          ws: true,
         },
       },
     },

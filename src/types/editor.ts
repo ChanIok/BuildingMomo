@@ -1,6 +1,8 @@
 import type { Ref, ShallowRef } from 'vue'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
+export type SchemeSource = 'local' | 'cloud'
+
 // ColorMap 混合格式类型定义
 // 游戏中 ColorMap 有两种格式：
 // 1. 对象格式：{ "0": 0 } 或 { "0": 1 }
@@ -86,6 +88,8 @@ export interface HomeScheme {
   name: Ref<string>
   filePath: Ref<string | undefined>
   lastModified: Ref<number | undefined>
+  source: Ref<SchemeSource>
+  cloudRoomCode: Ref<string | undefined>
 
   // 核心数据 (使用 ShallowRef 优化性能)
   // items.value 是原生数组，AppItem 是原生对象

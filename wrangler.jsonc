@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "buildingmomo-lab",
+  "pages_build_output_dir": "dist",
+  "compatibility_date": "2026-03-31",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CLOUD_SCHEME_ROOM",
+        "class_name": "CloudSchemeRoom",
+        "script_name": "buildingmomo-cloud-sync",
+      },
+    ],
+  },
+}

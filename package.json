@@ -13,6 +13,9 @@
     "prebuild": "npm run fetch-data",
     "prebuild:secure": "npm run fetch-data",
     "prepare": "husky",
+    "dev:cloud-sync-worker": "wrangler dev --config cloud-sync-worker/wrangler.jsonc",
+    "dev:cloudflare-functions": "wrangler pages dev . --port 8788",
+    "deploy:cloud-sync-worker": "wrangler deploy --config cloud-sync-worker/wrangler.jsonc",
     "deploy:cloudflare": "npm run build:secure && wrangler pages deploy dist --project-name buildingmomo-lab",
     "deploy:netlify": "netlify deploy --prod"
   },
