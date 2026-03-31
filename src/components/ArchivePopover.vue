@@ -161,13 +161,16 @@ function canDeleteGroup(groupId: string) {
 async function handleDeleteGroup(groupId: string, groupName: string) {
   if (!canDeleteGroup(groupId)) return
 
-  const confirmed = await notification.confirm({
-    title: t('archive.deleteGroupConfirm.title', { name: groupName }),
-    description: t('archive.deleteGroupConfirm.description'),
-    confirmText: t('common.delete'),
-    cancelText: t('common.cancel'),
-  })
-  if (!confirmed) return
+  const hasEntries = (groupCounts.value.get(groupId) ?? 0) > 0
+  if (hasEntries) {
+    const confirmed = await notification.confirm({
+      title: t('archive.deleteGroupConfirm.title', { name: groupName }),
+      description: t('archive.deleteGroupConfirm.description'),
+      confirmText: t('common.delete'),
+      cancelText: t('common.cancel'),
+    })
+    if (!confirmed) return
+  }
 
   await commandStore.fileOps.deleteArchiveGroup(groupId)
 }

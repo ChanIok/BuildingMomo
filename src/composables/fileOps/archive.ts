@@ -722,7 +722,6 @@ export function createArchiveOps(params: CreateArchiveOpsParams) {
 
       if (!(await writeIndexToDisk(nextIndex))) return false
       syncState(nextIndex)
-      archiveState.value.selectedGroupId = targetGroupId
       notification.success(t('archive.toast.moved', { group: targetGroup.name }))
       return true
     })
