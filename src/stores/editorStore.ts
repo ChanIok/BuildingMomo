@@ -12,6 +12,7 @@ import type {
   ClosedSchemeHistory,
   ClipboardData,
 } from '../types/editor'
+import type { ArchivedSchemeSnapshot } from '../types/archive'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
 
@@ -22,6 +23,23 @@ function generateUUID(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString(16)
   })
+}
+
+function cloneItems(items: AppItem[]): AppItem[] {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(items)
+  }
+  return JSON.parse(JSON.stringify(items)) as AppItem[]
+}
+
+function getSnapshotMaxValues(items: AppItem[]) {
+  let maxInstId = 999
+  let maxGrpId = 0
+  for (const item of items) {
+    if (item.instanceId > maxInstId) maxInstId = item.instanceId
+    if (item.groupId > maxGrpId) maxGrpId = item.groupId
+  }
+  return { maxInstId, maxGrpId }
 }
 
 export const useEditorStore = defineStore('editor', () => {
@@ -228,6 +246,47 @@ export const useEditorStore = defineStore('editor', () => {
       console.error('Failed to import JSON:', error)
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
     }
+  }
+
+  function openArchivedSchemeSnapshot(
+    snapshot: ArchivedSchemeSnapshot,
+    options?: {
+      archiveEntryId?: string
+      archiveName?: string
+    }
+  ): string {
+    const tabStore = useTabStore()
+    const schemeId = options?.archiveEntryId ? `archive:${options.archiveEntryId}` : generateUUID()
+    const existing = schemes.value.find((scheme) => scheme.id === schemeId)
+
+    if (existing) {
+      activeSchemeId.value = existing.id
+      tabStore.openSchemeTab(existing.id, existing.name.value)
+      return existing.id
+    }
+
+    const newItems = cloneItems(snapshot.items)
+    const { maxInstId, maxGrpId } = getSnapshotMaxValues(newItems)
+
+    const newScheme: HomeScheme = {
+      id: schemeId,
+      name: ref(options?.archiveName || snapshot.name || t('scheme.unnamed')),
+      filePath: ref(snapshot.filePath),
+      lastModified: ref(snapshot.lastModified),
+      items: shallowRef(newItems),
+      selectedItemIds: shallowRef(new Set()),
+      maxInstanceId: ref(maxInstId),
+      maxGroupId: ref(maxGrpId),
+      currentViewConfig: ref(snapshot.currentViewConfig),
+      viewState: ref(snapshot.viewState),
+      groupOrigins: shallowRef(new Map(snapshot.groupOrigins)),
+      history: shallowRef(undefined),
+    }
+
+    schemes.value = [...schemes.value, newScheme]
+    activeSchemeId.value = newScheme.id
+    tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
+    return newScheme.id
   }
 
   // 方案管理：关闭方案
@@ -488,6 +547,7 @@ export const useEditorStore = defineStore('editor', () => {
     // 方案管理
     createScheme,
     importJSONAsScheme,
+    openArchivedSchemeSnapshot,
     closeScheme,
     setActiveScheme,
     renameScheme,

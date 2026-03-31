@@ -10,6 +10,20 @@ export type LatestFileResult = {
 
 export { SAVE_DATA_FILENAME_REGEX }
 
+export async function findX6GameDirectory(
+  dirHandle: FileSystemDirectoryHandle
+): Promise<FileSystemDirectoryHandle | null> {
+  if (dirHandle.name === 'X6Game') {
+    return dirHandle
+  }
+
+  try {
+    return await dirHandle.getDirectoryHandle('X6Game')
+  } catch {
+    return null
+  }
+}
+
 /** 从存档文件名中提取 UID（例如 "BUILD_SAVEDATA_123.json" → "123"） */
 export function extractUidFromSaveDataFilename(filename: string): string | null {
   const match = filename.match(SAVE_DATA_FILENAME_REGEX)

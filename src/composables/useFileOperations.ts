@@ -13,6 +13,7 @@ import { useI18n } from './useI18n'
 import backgroundUrl from '@/assets/home.webp'
 import { createCodeImportOps } from './fileOps/codeImport'
 import { createWatchModeOps } from './fileOps/watchMode'
+import { createArchiveOps } from './fileOps/archive'
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -263,6 +264,32 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     prepareDataForSave,
   })
 
+  const archiveOps = createArchiveOps({
+    editorStore,
+    notification,
+    t,
+    isWatchActive: () => watchOps.watchState.value.isActive,
+    getRootDirHandle: watchOps.getRootDirHandle,
+  })
+
+  async function startWatchMode() {
+    await watchOps.startWatchMode()
+
+    if (watchOps.watchState.value.isActive) {
+      await archiveOps.loadArchiveIndex(true)
+    }
+  }
+
+  async function restoreWatchModeSilently(): Promise<boolean> {
+    const restored = await watchOps.restoreWatchModeSilently()
+
+    if (restored && watchOps.watchState.value.isActive) {
+      await archiveOps.loadArchiveIndex(true)
+    }
+
+    return restored
+  }
+
   const { importFromCode } = createCodeImportOps({
     editorStore,
     notification,
@@ -282,8 +309,8 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     saveToGame: watchOps.saveToGame,
     isFileSystemAccessSupported,
     watchState: watchOps.watchState,
-    startWatchMode: watchOps.startWatchMode,
-    restoreWatchModeSilently: watchOps.restoreWatchModeSilently,
+    startWatchMode,
+    restoreWatchModeSilently,
     stopWatchMode: watchOps.stopWatchMode,
     importFromWatchedFile: watchOps.importFromWatchedFile,
     checkFileUpdate: watchOps.checkFileUpdate,
@@ -291,5 +318,19 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     clearWatchHistory: watchOps.clearWatchHistory,
     deleteHistoryRecord: watchOps.deleteHistoryRecord,
     importFromHistory: watchOps.importFromHistory,
+    archiveState: archiveOps.archiveState,
+    loadArchiveIndex: archiveOps.loadArchiveIndex,
+    setArchiveGroup: archiveOps.setSelectedGroup,
+    getArchiveEntries: archiveOps.getArchiveEntries,
+    createArchiveGroup: archiveOps.createGroup,
+    renameArchiveGroup: archiveOps.renameGroup,
+    deleteArchiveGroup: archiveOps.deleteGroup,
+    moveArchiveGroup: archiveOps.moveGroup,
+    archiveScheme: archiveOps.archiveScheme,
+    openArchiveEntry: archiveOps.openArchiveEntry,
+    updateArchiveEntryFromScheme: archiveOps.updateArchiveEntryFromScheme,
+    renameArchiveEntry: archiveOps.renameEntry,
+    deleteArchiveEntry: archiveOps.deleteEntry,
+    moveArchiveEntry: archiveOps.moveEntry,
   }
 }

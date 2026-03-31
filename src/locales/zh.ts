@@ -204,8 +204,8 @@ export const zhLocale = {
     },
     watch: {
       notSupported: '您的浏览器不支持文件系统访问功能，请使用最新版本的 Chrome 或 Edge 浏览器',
-      noBuildData:
-        '未找到 BuildData 目录，请确保选择的是游戏目录的任意位置（InfinityNikki\\X6Game\\Saved\\SavedData\\BuildData）',
+      noX6Game: '未找到 X6Game 目录，请至少选择 InfinityNikki 下包含 X6Game 的目录',
+      noBuildData: '未找到 BuildData 目录，请确保 X6Game\\Saved\\SavedData\\BuildData 存在',
       foundTitle: '找到存档文件',
       foundDesc: '文件：{name}\n最后修改时间：{time}\n\n是否立即导入？',
       importNow: '立即导入',
@@ -229,6 +229,41 @@ export const zhLocale = {
       notFound: '方案码不存在或已过期',
       networkError: '网络错误: {reason}',
       parseError: '数据解析失败，请确认方案码是否正确',
+    },
+    archive: {
+      notReady: '请先连接游戏目录后再使用方案集',
+      noPermission: '没有方案集目录写入权限',
+      loadFailed: '读取方案集失败',
+    },
+  },
+
+  archive: {
+    title: '方案集',
+    groupsTitle: '分组',
+    entriesTitle: '方案',
+    entriesHint: '点击可打开到工作区',
+    defaultGroup: '默认分组',
+    newGroup: '新分组',
+    groupNamePlaceholder: '输入分组名称',
+    archiveToSet: '保存到方案集',
+    archiveToGroup: '保存到当前分组',
+    updateCurrent: '更新此方案',
+    open: '打开到工作区',
+    moveToTop: '移至顶部',
+    moveUp: '上移',
+    moveDown: '下移',
+    emptyGroup: '当前分组暂无方案',
+    loading: '正在读取方案集...',
+    itemCount: '{n} 个物品',
+    defaultGroupLocked: '默认分组不可删除',
+    groupNotEmpty: '分组不为空，请先移走或删除其中的方案',
+    updateConfirm: {
+      title: '更新“{name}”？',
+      description: '会用当前方案覆盖它的内容。',
+    },
+    toast: {
+      saved: '已保存到方案集',
+      updated: '已更新方案集条目',
     },
   },
 

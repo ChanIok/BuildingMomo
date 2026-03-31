@@ -31,6 +31,7 @@ import { useI18n } from '../composables/useI18n'
 import { Item, ItemContent } from '@/components/ui/item'
 import {
   X,
+  Archive as ArchiveIcon,
   Settings,
   BookOpen,
   FolderSearch,
@@ -44,13 +45,16 @@ import {
 import SettingsDialog from './SettingsDialog.vue'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 import ImportCodeDialog from './ImportCodeDialog.vue'
+import ArchivePopover from './ArchivePopover.vue'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useNotificationStore } from '../stores/notificationStore'
 
 // 使用命令系統 Store
 const commandStore = useCommandStore()
 const editorStore = useEditorStore()
 const tabStore = useTabStore()
 const settingsStore = useSettingsStore()
+const notificationStore = useNotificationStore()
 const { t } = useI18n()
 
 // 粗指针（触屏等）：右侧显示复制并粘贴 / 撤销 / 重做，不显示选择游戏目录与监控
@@ -132,10 +136,12 @@ const viewPresetCommands = computed(() =>
 const watchState = computed(() => commandStore.fileOps.watchState)
 const watchHistory = computed(() => commandStore.fileOps.getWatchHistory())
 const showWatchButton = computed(() => !!editorStore.activeScheme || watchState.value.isActive)
+const showArchiveButton = computed(() => watchState.value.isActive)
 const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
 
 // 监控中按钮的简单悬浮提示（自定义实现，避免影响 Popover）
 const isWatchTooltipVisible = ref(false)
+const isArchiveTooltipVisible = ref(false)
 
 // 标签容器引用
 const tabsContainer = ref<HTMLElement | null>(null)
@@ -148,6 +154,14 @@ const schemeSettingsTargetId = ref('')
 const importCodeDialogOpen = ref(false)
 const importCodeDialogRef = ref<InstanceType<typeof ImportCodeDialog> | null>(null)
 const watchHistoryOpen = ref(false)
+const archivePopoverOpen = ref(false)
+const isToolbarPopoverOpen = computed(() => watchHistoryOpen.value || archivePopoverOpen.value)
+
+function handleArchivePopoverInteractOutside(event: Event) {
+  if (notificationStore.currentAlert) {
+    event.preventDefault()
+  }
+}
 
 // 设置按钮 Tooltip 控制（避免与对话框冲突）
 const isSettingsTooltipAllowed = ref(true)
@@ -157,6 +171,13 @@ watch(globalSettingsOpen, (open) => {
   // 对话框打开时禁用 Tooltip 内容
   if (open) {
     isSettingsTooltipAllowed.value = false
+  }
+})
+
+watch(isToolbarPopoverOpen, (open) => {
+  if (open) {
+    isWatchTooltipVisible.value = false
+    isArchiveTooltipVisible.value = false
   }
 })
 
@@ -234,6 +255,11 @@ function handleStartWatchMode() {
 
 function handleClearHistory() {
   commandStore.fileOps.clearWatchHistory()
+}
+
+async function handleArchiveTab(tab: { type: string; schemeId?: string }) {
+  if (tab.type !== 'scheme' || !tab.schemeId) return
+  await commandStore.fileOps.archiveScheme(tab.schemeId)
 }
 
 // 删除单条历史记录
@@ -735,6 +761,10 @@ watch(
                   {{ t('common.rename') }}
                 </ContextMenuItem>
                 <ContextMenuSeparator />
+                <ContextMenuItem :disabled="!watchState.isActive" @click="handleArchiveTab(tab)">
+                  {{ t('archive.archiveToSet') }}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
               </template>
               <ContextMenuItem @click="performCloseTab(tab.id)">
                 {{ t('common.close') }}
@@ -829,14 +859,11 @@ watch(
               <span class="text-xs text-green-600 dark:text-green-300">
                 {{ t('watchMode.monitoring') }}
               </span>
-              <span class="text-xs text-green-600 dark:text-green-300">{{
-                watchState.dirPath
-              }}</span>
 
               <!-- 自定义简单 Tooltip：仅在 hover 时显示，不依赖 Reka Tooltip/Popover -->
               <Transition name="watch-tooltip">
                 <div
-                  v-if="isWatchTooltipVisible && !watchHistoryOpen"
+                  v-if="isWatchTooltipVisible && !isToolbarPopoverOpen"
                   class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
                 >
                   导入和历史
@@ -914,6 +941,38 @@ watch(
         </Popover>
       </template>
 
+      <Popover v-if="showArchiveButton" v-model:open="archivePopoverOpen">
+        <PopoverTrigger as-child>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="relative w-8 flex-none"
+            :aria-label="t('archive.title')"
+            @mouseenter="isArchiveTooltipVisible = true"
+            @mouseleave="isArchiveTooltipVisible = false"
+          >
+            <ArchiveIcon class="h-4 w-4" />
+            <Transition name="watch-tooltip">
+              <div
+                v-if="isArchiveTooltipVisible && !isToolbarPopoverOpen"
+                class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
+              >
+                {{ t('archive.title') }}
+              </div>
+            </Transition>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          class="w-[640px] p-0"
+          align="end"
+          :side-offset="8"
+          @pointer-down-outside="handleArchivePopoverInteractOutside"
+          @focus-outside="handleArchivePopoverInteractOutside"
+        >
+          <ArchivePopover v-model:open="archivePopoverOpen" />
+        </PopoverContent>
+      </Popover>
+
       <!-- 设置按钮 -->
       <Tooltip>
         <TooltipTrigger as-child @mouseenter="isSettingsTooltipAllowed = true">
@@ -921,7 +980,7 @@ watch(
             variant="ghost"
             size="sm"
             @click="openGlobalSettings"
-            class="flex-none"
+            class="w-8 flex-none"
             :aria-label="t('settings.title')"
           >
             <Settings class="h-4 w-4" />
@@ -961,16 +1020,21 @@ watch(
 /* 自定义监控按钮 Tooltip 过渡动画（模仿 TooltipContent 的淡入缩放） */
 .watch-tooltip-enter-active,
 .watch-tooltip-leave-active {
-  transition: opacity 150ms ease-out;
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out;
+  transform-origin: top center;
 }
 
 .watch-tooltip-enter-from,
 .watch-tooltip-leave-to {
   opacity: 0;
+  transform: translateY(-4px) scale(0.95);
 }
 
 .watch-tooltip-enter-to,
 .watch-tooltip-leave-from {
   opacity: 1;
+  transform: translateY(0) scale(1);
 }
 </style>

@@ -8,6 +8,7 @@ import { WatchHandleStore } from '@/lib/watchHandleStore'
 import {
   SAVE_DATA_FILENAME_REGEX,
   extractUidFromSaveDataFilename,
+  findX6GameDirectory,
   findBuildDataDirectory,
   findBuildRecordDirectory,
   findLatestBuildRecord,
@@ -164,13 +165,20 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   }
 
   async function tryRestoreWatchDirectories(): Promise<DirectoryResolveResult | null> {
-    const rootDirHandle = await WatchHandleStore.getRootHandle()
-    if (!rootDirHandle) return null
+    const storedHandle = await WatchHandleStore.getRootHandle()
+    if (!storedHandle) return null
 
     try {
-      const hasPermission = (await queryPermissionState(rootDirHandle)) === 'granted'
+      const hasPermission = (await queryPermissionState(storedHandle)) === 'granted'
       if (!hasPermission) {
         console.log('[FileWatch] Stored directory handle exists but permission was not granted')
+        return null
+      }
+
+      const rootDirHandle = await findX6GameDirectory(storedHandle)
+      if (!rootDirHandle) {
+        console.warn('[FileWatch] Stored directory handle no longer resolves to X6Game')
+        await WatchHandleStore.clearRootHandle()
         return null
       }
 
@@ -198,10 +206,16 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   }
 
   async function pickWatchDirectories(): Promise<DirectoryResolveResult | null> {
-    const rootDirHandle = await (window as any).showDirectoryPicker({
+    const pickedHandle = await (window as any).showDirectoryPicker({
       mode: 'readwrite',
       id: WATCH_DIRECTORY_PICKER_ID,
     })
+
+    const rootDirHandle = await findX6GameDirectory(pickedHandle)
+    if (!rootDirHandle) {
+      notification.error(t('fileOps.watch.noX6Game'))
+      return null
+    }
 
     console.log('[FileWatch] Selected directory for monitoring:', rootDirHandle.name)
 
@@ -288,7 +302,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     watchState.value = {
       isActive: true,
       dirHandle: buildDataDir,
-      dirPath: buildDataDir.name,
+      dirPath: rootDirHandle.name,
       lastCheckedTime: Date.now(),
       fileIndex: fileIndex,
       updateHistory: restoredHistory,
@@ -924,6 +938,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     deleteHistoryRecord,
     importFromHistory,
     saveToGame,
+    getRootDirHandle: () => rootDirHandle,
     cleanup: stopPolling,
   }
 }

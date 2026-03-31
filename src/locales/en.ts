@@ -206,8 +206,10 @@ export const enLocale = {
     },
     watch: {
       notSupported: 'File System Access API not supported. Please use Chrome or Edge.',
+      noX6Game:
+        'X6Game directory not found. Please select InfinityNikki or a folder that contains X6Game.',
       noBuildData:
-        'BuildData directory not found. Please select the game folder (InfinityNikkiGlobal\\X6Game\\Saved\\SavedData\\BuildData).',
+        'BuildData directory not found. Please ensure X6Game\\Saved\\SavedData\\BuildData exists.',
       foundTitle: 'Save File Found',
       foundDesc: 'File: {name}\nLast Modified: {time}\n\nImport now?',
       importNow: 'Import Now',
@@ -231,6 +233,41 @@ export const enLocale = {
       notFound: 'Scheme code not found or expired',
       networkError: 'Network error: {reason}',
       parseError: 'Failed to parse data, please verify the scheme code',
+    },
+    archive: {
+      notReady: 'Link the game folder before using Scheme Sets',
+      noPermission: 'No write permission for Scheme Sets',
+      loadFailed: 'Failed to load Scheme Sets',
+    },
+  },
+
+  archive: {
+    title: 'Scheme Sets',
+    groupsTitle: 'Groups',
+    entriesTitle: 'Schemes',
+    entriesHint: 'Click to open in workspace',
+    defaultGroup: 'Default Group',
+    newGroup: 'New Group',
+    groupNamePlaceholder: 'Enter group name',
+    archiveToSet: 'Save to Scheme Sets',
+    archiveToGroup: 'Save to Current Group',
+    updateCurrent: 'Update This Scheme',
+    open: 'Open to Workspace',
+    moveToTop: 'Move to Top',
+    moveUp: 'Move Up',
+    moveDown: 'Move Down',
+    emptyGroup: 'No schemes in this group',
+    loading: 'Loading Scheme Sets...',
+    itemCount: '{n} items',
+    defaultGroupLocked: 'Default group cannot be deleted',
+    groupNotEmpty: 'Group is not empty. Move or delete its schemes first.',
+    updateConfirm: {
+      title: 'Update "{name}"?',
+      description: 'This will overwrite its contents with the current scheme.',
+    },
+    toast: {
+      saved: 'Saved to Scheme Sets',
+      updated: 'Scheme Set entry updated',
     },
   },
 
