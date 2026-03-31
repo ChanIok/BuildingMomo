@@ -49,7 +49,6 @@ export function useWorkspaceWorker() {
 
     // 1. 准备元数据 (Meta)
     const meta = {
-      activeSchemeId: editorStore.activeSchemeId || '',
       tabs: tabStore.tabs.map((t) => toRaw(t)),
       activeTabId: tabStore.activeTabId || '',
       schemes: editorStore.schemes.map((s) => ({
@@ -289,7 +288,6 @@ export function useWorkspaceWorker() {
     })
 
     editorStore.schemes = restoredSchemes
-    editorStore.activeSchemeId = snapshot.editor.activeSchemeId
 
     tabStore.tabs = snapshot.tab.tabs
     tabStore.activeTabId = snapshot.tab.activeTabId
@@ -343,7 +341,6 @@ export function useWorkspaceWorker() {
       updatedAt: Date.now(),
       editor: {
         schemes: schemesSnapshot,
-        activeSchemeId: editorStore.activeSchemeId,
       },
       tab: {
         tabs: tabStore.tabs.map((t) => toRaw(t)),

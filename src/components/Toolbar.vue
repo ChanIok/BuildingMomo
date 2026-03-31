@@ -437,12 +437,6 @@ function switchTab(tabId: string) {
 
   tabStore.setActiveTab(tabId)
 
-  // 如果是方案标签，同步更新 editorStore
-  const tab = tabStore.tabs.find((t) => t.id === tabId)
-  if (tab?.type === 'scheme' && tab.schemeId) {
-    editorStore.setActiveScheme(tab.schemeId)
-  }
-
   // 复用滚动逻辑
   scrollToActiveTab()
 }
@@ -452,12 +446,11 @@ function performCloseTab(tabId: string) {
   const tab = tabStore.tabs.find((t) => t.id === tabId)
   if (!tab) return
 
-  // 如果是方案标签，关闭方案（会触发 tabStore.closeTab）
+  tabStore.closeTab(tabId)
+
+  // 如果是方案标签，同时删除对应方案数据
   if (tab.type === 'scheme' && tab.schemeId) {
     editorStore.closeScheme(tab.schemeId)
-  } else {
-    // 文档标签直接关闭
-    tabStore.closeTab(tabId)
   }
 }
 

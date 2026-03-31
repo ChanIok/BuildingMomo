@@ -44,10 +44,10 @@ function getSnapshotMaxValues(items: AppItem[]) {
 
 export const useEditorStore = defineStore('editor', () => {
   const { t } = useI18n()
+  const tabStore = useTabStore()
 
   // 多方案状态 - 使用 ShallowRef 优化列表性能
   const schemes = shallowRef<HomeScheme[]>([])
-  const activeSchemeId = ref<string | null>(null)
 
   // 全局剪贴板（支持跨方案复制粘贴）- 使用 ShallowRef
   const clipboardRef = shallowRef<ClipboardData>({
@@ -69,10 +69,19 @@ export const useEditorStore = defineStore('editor', () => {
   // Gizmo 模式：平移/旋转/不显示
   const gizmoMode = ref<'translate' | 'rotate' | null>('translate')
 
+  const activeSchemeId = computed(() => {
+    const activeTab = tabStore.activeTab
+    return activeTab?.type === 'scheme' ? (activeTab.schemeId ?? null) : null
+  })
+
   // 计算属性：当前激活的方案
   const activeScheme = computed(
     () => schemes.value.find((s) => s.id === activeSchemeId.value) ?? null
   )
+
+  function getSchemeById(schemeId: string) {
+    return schemes.value.find((scheme) => scheme.id === schemeId) ?? null
+  }
 
   // 性能优化：建立 itemId -> item 的索引映射
   // 由于 items 是 computed，当 items.value 触发更新时，此映射也会重建
@@ -154,10 +163,8 @@ export const useEditorStore = defineStore('editor', () => {
     }
 
     schemes.value = [...schemes.value, newScheme]
-    activeSchemeId.value = newScheme.id
 
     // 同步到 TabStore
-    const tabStore = useTabStore()
     tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
 
     return newScheme.id
@@ -235,10 +242,8 @@ export const useEditorStore = defineStore('editor', () => {
       }
 
       schemes.value = [...schemes.value, newScheme]
-      activeSchemeId.value = newScheme.id
 
       // 同步到 TabStore
-      const tabStore = useTabStore()
       tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
 
       return { success: true, schemeId: newScheme.id }
@@ -255,12 +260,10 @@ export const useEditorStore = defineStore('editor', () => {
       archiveName?: string
     }
   ): string {
-    const tabStore = useTabStore()
     const schemeId = options?.archiveEntryId ? `archive:${options.archiveEntryId}` : generateUUID()
-    const existing = schemes.value.find((scheme) => scheme.id === schemeId)
+    const existing = getSchemeById(schemeId)
 
     if (existing) {
-      activeSchemeId.value = existing.id
       tabStore.openSchemeTab(existing.id, existing.name.value)
       return existing.id
     }
@@ -284,7 +287,6 @@ export const useEditorStore = defineStore('editor', () => {
     }
 
     schemes.value = [...schemes.value, newScheme]
-    activeSchemeId.value = newScheme.id
     tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
     return newScheme.id
   }
@@ -329,13 +331,6 @@ export const useEditorStore = defineStore('editor', () => {
       console.error('Failed to save scheme snapshot:', error)
     }
 
-    // 先从 TabStore 关闭标签
-    const tabStore = useTabStore()
-    const tab = tabStore.tabs.find((t) => t.schemeId === schemeId)
-    if (tab) {
-      tabStore.closeTab(tab.id)
-    }
-
     const index = schemes.value.findIndex((s) => s.id === schemeId)
     if (index === -1) return
 
@@ -343,37 +338,15 @@ export const useEditorStore = defineStore('editor', () => {
     const newSchemes = [...schemes.value]
     newSchemes.splice(index, 1)
     schemes.value = newSchemes
-
-    // 如果关闭的是当前激活方案，切换到其他方案
-    if (activeSchemeId.value === schemeId) {
-      if (schemes.value.length > 0) {
-        // 优先切换到前一个
-        const newIndex = Math.max(0, index - 1)
-        const nextScheme = schemes.value[newIndex]
-        if (nextScheme) {
-          activeSchemeId.value = nextScheme.id
-        }
-      } else {
-        activeSchemeId.value = null
-      }
-    }
-  }
-
-  // 方案管理：切换激活方案
-  function setActiveScheme(schemeId: string) {
-    if (schemes.value.some((s) => s.id === schemeId)) {
-      activeSchemeId.value = schemeId
-    }
   }
 
   // 方案管理：更新方案信息（名称、文件路径）
   function updateSchemeInfo(schemeId: string, info: { name?: string; filePath?: string }) {
-    const scheme = schemes.value.find((s) => s.id === schemeId)
+    const scheme = getSchemeById(schemeId)
     if (scheme) {
       if (info.name !== undefined) {
         scheme.name.value = info.name
         // 同步到 TabStore
-        const tabStore = useTabStore()
         tabStore.updateSchemeTabName(schemeId, info.name)
       }
 
@@ -403,7 +376,6 @@ export const useEditorStore = defineStore('editor', () => {
   // 清空数据
   function clearData() {
     schemes.value = []
-    activeSchemeId.value = null
     clipboardRef.value = {
       sourceSchemeId: null,
       items: [],
@@ -549,7 +521,7 @@ export const useEditorStore = defineStore('editor', () => {
     importJSONAsScheme,
     openArchivedSchemeSnapshot,
     closeScheme,
-    setActiveScheme,
+    getSchemeById,
     renameScheme,
     updateSchemeInfo,
     saveCurrentViewConfig,

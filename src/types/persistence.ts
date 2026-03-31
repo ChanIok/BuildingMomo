@@ -18,7 +18,6 @@ export interface WorkspaceSnapshot {
   updatedAt: number
   editor: {
     schemes: HomeSchemeSnapshot[]
-    activeSchemeId: string | null
   }
   tab: {
     tabs: Tab[]

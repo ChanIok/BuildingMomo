@@ -253,8 +253,22 @@ const saveSnapshot = async () => {
 }
 
 // 内部辅助：基于当前快照状态运行验证
+function getActiveSchemeIdFromSnapshot(): string | null {
+  if (!currentSnapshot) return null
+
+  const activeTabId = currentSnapshot.tab.activeTabId
+  if (!activeTabId) return null
+
+  const activeTab = currentSnapshot.tab.tabs.find((tab) => tab.id === activeTabId)
+  if (!activeTab || activeTab.type !== 'scheme') return null
+
+  return activeTab.schemeId ?? null
+}
+
 function runValidationOnSnapshot(): ValidationResult {
-  if (!currentSnapshot || !currentSnapshot.editor.activeSchemeId) {
+  const activeSchemeId = getActiveSchemeIdFromSnapshot()
+
+  if (!currentSnapshot || !activeSchemeId) {
     return {
       duplicateGroups: [],
       limitIssues: {
@@ -266,9 +280,7 @@ function runValidationOnSnapshot(): ValidationResult {
     }
   }
 
-  const activeScheme = currentSnapshot.editor.schemes.find(
-    (s) => s.id === currentSnapshot!.editor.activeSchemeId
-  )
+  const activeScheme = currentSnapshot.editor.schemes.find((s) => s.id === activeSchemeId)
 
   if (!activeScheme) {
     return {
@@ -308,7 +320,6 @@ const api = {
   async updateState(payload: {
     // 元数据
     meta: {
-      activeSchemeId: string
       tabs: any[]
       activeTabId: string
       schemes: { id: string; name: string; filePath?: string; lastModified?: number }[]
@@ -330,7 +341,6 @@ const api = {
     }
 
     // 1. 更新元数据 & 结构 (合并方案列表)
-    currentSnapshot.editor.activeSchemeId = payload.meta.activeSchemeId
     currentSnapshot.tab.tabs = payload.meta.tabs
     currentSnapshot.tab.activeTabId = payload.meta.activeTabId
 
