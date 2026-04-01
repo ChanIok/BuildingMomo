@@ -1,5 +1,4 @@
 import { storeToRefs } from 'pinia'
-import { triggerRef } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import type { AppItem } from '../../types/editor'
@@ -147,8 +146,15 @@ export function useEditorGroups() {
     const scheme = activeScheme.value
     if (!scheme) return
 
-    scheme.groupOrigins.value.set(groupId, itemId)
-    triggerRef(scheme.groupOrigins)
+    if (scheme.groupOrigins.value.get(groupId) === itemId) {
+      return
+    }
+
+    recordTransaction('group.origin.set', () => {
+      const nextOrigins = new Map(scheme.groupOrigins.value)
+      nextOrigins.set(groupId, itemId)
+      scheme.groupOrigins.value = nextOrigins
+    })
   }
 
   /**
@@ -158,8 +164,15 @@ export function useEditorGroups() {
     const scheme = activeScheme.value
     if (!scheme) return
 
-    scheme.groupOrigins.value.delete(groupId)
-    triggerRef(scheme.groupOrigins)
+    if (!scheme.groupOrigins.value.has(groupId)) {
+      return
+    }
+
+    recordTransaction('group.origin.clear', () => {
+      const nextOrigins = new Map(scheme.groupOrigins.value)
+      nextOrigins.delete(groupId)
+      scheme.groupOrigins.value = nextOrigins
+    })
   }
 
   /**

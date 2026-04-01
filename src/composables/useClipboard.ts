@@ -12,6 +12,7 @@ import type {
   TransformParams,
 } from '../types/editor'
 
+/** 给每个粘贴出来的家具一个应用里唯一的 internalId（字符串）。 */
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = (Math.random() * 16) | 0
@@ -20,6 +21,7 @@ function generateUUID(): string {
   })
 }
 
+/** 染色数据可能是数组或对象，这里各拷贝一份，避免和场景里别的物品共用一个引用。 */
 function cloneColorMap(colorMap: AppItem['extra']['ColorMap'] | undefined) {
   if (Array.isArray(colorMap)) {
     return [...colorMap]
@@ -32,6 +34,37 @@ function cloneColorMap(colorMap: AppItem['extra']['ColorMap'] | undefined) {
   return undefined
 }
 
+/** 判断两份染色是否一样，给「要不要改 extra」时当比较用。 */
+function isColorMapEqual(
+  left: AppItem['extra']['ColorMap'] | undefined,
+  right: AppItem['extra']['ColorMap'] | undefined
+) {
+  if (left === right) {
+    return true
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false
+    }
+
+    return left.every((value, index) => value === right[index])
+  }
+
+  if (!left || !right) {
+    return left === right
+  }
+
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) {
+    return false
+  }
+
+  return leftKeys.every((key) => left[key] === right[key])
+}
+
+/** 把 extra（缩放、临时信息、染色等）深拷贝一层，防止复制改到原物品。 */
 function cloneItemExtra(extra: AppItem['extra']): AppItem['extra'] {
   return {
     ...extra,
@@ -42,6 +75,7 @@ function cloneItemExtra(extra: AppItem['extra']): AppItem['extra'] {
   }
 }
 
+/** 复制一件家具：旋转角、extra 都拆开拷贝。 */
 function cloneItem(item: AppItem): AppItem {
   return {
     ...item,
@@ -50,6 +84,7 @@ function cloneItem(item: AppItem): AppItem {
   }
 }
 
+/** 整份剪贴板再拷贝一份（步进复制每一轮都要在副本上改，不动用户手上的那份）。 */
 function cloneClipboardData(clipboardData: ClipboardData): ClipboardData {
   return {
     sourceSchemeId: clipboardData.sourceSchemeId ?? null,
@@ -58,7 +93,10 @@ function cloneClipboardData(clipboardData: ClipboardData): ClipboardData {
   }
 }
 
-// 将 ColorMap 中引用的 groupId 按 groupIdMap 重映射，用于 preserve-source 模式下已有物品的组重编号
+/**
+ * 游戏里染色会把「组号」编进数字里。场景里已有家具的组被改过编号时，
+ * 染色里藏着的旧组号也要跟着换，否则颜色会指错组。
+ */
 function remapColorMapGroupIds(
   colorMap: AppItem['extra']['ColorMap'] | undefined,
   groupIdMap: Map<number, number>
@@ -69,7 +107,7 @@ function remapColorMapGroupIds(
 
   if (Array.isArray(colorMap)) {
     return colorMap.map((raw) => {
-      // raw < 10 既排除了无效值（≤0）也排除了无需重映射的单色索引
+      // 小于 10 的数当作「单色槽位」，里面没有组号，不用改
       if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 10) {
         return raw
       }
@@ -101,7 +139,10 @@ function remapColorMapGroupIds(
   return result
 }
 
-// 计算步进复制的基准锚点：单组时取组原点，否则取所有物品的 AABB 中心
+/**
+ * 步进复制要「绕着一个点」旋转、缩放。这里选一个枢轴点：
+ * 只有一组且能查到组原点时，用原点那一件的位置；否则用所有复制项坐标的包围盒中心。
+ */
 function getClipboardPivot(clipboardData: ClipboardData): { x: number; y: number; z: number } {
   const { items, groupOrigins } = clipboardData
   if (items.length === 0) {
@@ -109,7 +150,6 @@ function getClipboardPivot(clipboardData: ClipboardData): { x: number; y: number
   }
 
   if (groupOrigins.size === 1) {
-    // size === 1，for...of 只迭代一次，类型安全且无需下标访问
     for (const [groupId, originItemId] of groupOrigins) {
       const originItem = items.find(
         (item) => item.internalId === originItemId && item.groupId === groupId
@@ -144,11 +184,8 @@ function getClipboardPivot(clipboardData: ClipboardData): { x: number; y: number
 }
 
 /**
- * 计算当前这批剪贴板物品的有效工作坐标系。
- *
- * 说明：
- * - 单选 + local 模式时，坐标系依赖物品自身当前旋转。
- * - 因此步进复制必须每一轮都重新计算，不能只取初始值。
+ * 步进复制用的「工作坐标系」角度（和侧边栏里工作坐标一致）。
+ * 单选且局部坐标时跟那件家具的朝向有关，所以每一轮步进都要重新算，不能死记第一次的值。
  */
 function getClipboardEffectiveWorkingRotation(
   clipboardData: ClipboardData,
@@ -161,6 +198,7 @@ function getClipboardEffectiveWorkingRotation(
 
 type InsertIdMode = 'regenerate' | 'preserve-source'
 
+/** insertClipboardData 的选项：是否记入撤销、是否刷新选中、是否通知场景重绘等。 */
 interface InternalInsertOptions {
   idMode?: InsertIdMode
   offset?: { x: number; y: number; z: number }
@@ -175,6 +213,11 @@ export function useClipboard() {
   const { activeScheme, clipboardList: clipboard } = storeToRefs(store)
   const { recordTransaction } = useEditorHistory()
 
+  /**
+   * 把当前方案里「选中的家具」做成一份剪贴板数据。
+   * 只选一件且它在某个组里时，会脱掉组（groupId 归零），避免贴出来还带半个组。
+   * 多选涉及的组会把「组原点」一并记下来，粘贴后旋转/move 组时行为才正确。
+   */
   function buildClipboardDataFromSelection(): ClipboardData {
     const scheme = activeScheme.value
     if (!scheme) {
@@ -214,11 +257,13 @@ export function useClipboard() {
     }
   }
 
+  /** 根据当前选中内容覆盖内存剪贴板（不写历史）。 */
   function copyToClipboard() {
     if (!activeScheme.value) return
     clipboard.value = buildClipboardDataFromSelection()
   }
 
+  /** 先复制到剪贴板，再删掉选中项；整段包在一笔撤销里，可以一次 Ctrl+Z 找回。 */
   function cutToClipboard() {
     if (!activeScheme.value) return
 
@@ -235,7 +280,7 @@ export function useClipboard() {
     })
   }
 
-  // 将新插入物品设为选中状态；选择更新触发由调用方统一负责
+  /** 清空当前选择，只选中刚插入的这些 internalId。 */
   function selectInsertedItems(ids: string[]) {
     const scheme = activeScheme.value
     if (!scheme) return
@@ -244,7 +289,12 @@ export function useClipboard() {
     ids.forEach((id) => scheme.selectedItemIds.value.add(id))
   }
 
-  // 将剪贴板数据插入当前方案：支持 regenerate（重分配 ID）和 preserve-source（保留源 ID）两种模式
+  /**
+   * 把剪贴板里的家具真正加进当前方案。
+   *
+   * - regenerate：新家具用新的 instanceId / groupId / internalId（日常粘贴、跨方案最省心）。
+   * - preserve-source：尽量沿用剪贴板里的编号（对齐游戏存档）；若和场上已有冲突，会先给「旧家具」改号。
+   */
   function insertClipboardData(
     clipboardData: ClipboardData,
     options: InternalInsertOptions = {}
@@ -263,6 +313,7 @@ export function useClipboard() {
     } = options
 
     const executeInsert = () => {
+      const existingItems = scheme.items.value
       let currentMaxInstanceId = scheme.maxInstanceId.value
       let currentMaxGroupId = scheme.maxGroupId.value
 
@@ -270,7 +321,10 @@ export function useClipboard() {
       const newItems: AppItem[] = []
       const itemIdMap = new Map<string, string>()
       const targetGroupIdMap = new Map<number, number>()
+      let nextExistingItems = existingItems
+      let nextGroupOrigins = new Map(scheme.groupOrigins.value)
 
+      // --- 保留源编号模式：先扫一遍场上，和剪贴板将要用的号冲突的「老家具」必须先改号腾出位置 ---
       if (idMode === 'preserve-source') {
         const sourceInstanceIds = new Set<number>()
         const sourceGroupIds = new Set<number>()
@@ -284,9 +338,8 @@ export function useClipboard() {
 
         const existingInstanceRemap = new Map<number, number>()
         const existingGroupRemap = new Map<number, number>()
-        const existingGroupOrigins = new Map(scheme.groupOrigins.value)
 
-        for (const item of scheme.items.value) {
+        for (const item of existingItems) {
           if (
             sourceInstanceIds.has(item.instanceId) &&
             !existingInstanceRemap.has(item.instanceId)
@@ -305,41 +358,51 @@ export function useClipboard() {
         }
 
         if (existingInstanceRemap.size > 0 || existingGroupRemap.size > 0) {
-          for (const item of scheme.items.value) {
+          nextExistingItems = existingItems.map((item) => {
             const remappedInstanceId = existingInstanceRemap.get(item.instanceId)
             const remappedGroupId =
               item.groupId > 0 ? existingGroupRemap.get(item.groupId) : undefined
-            const shouldRemapColorMap = existingGroupRemap.size > 0
+            const nextColorMap =
+              existingGroupRemap.size > 0
+                ? remapColorMapGroupIds(item.extra.ColorMap, existingGroupRemap)
+                : item.extra.ColorMap
+            const colorMapChanged =
+              existingGroupRemap.size > 0 && !isColorMapEqual(item.extra.ColorMap, nextColorMap)
 
-            if (remappedInstanceId !== undefined) {
-              item.instanceId = remappedInstanceId
+            if (
+              remappedInstanceId === undefined &&
+              remappedGroupId === undefined &&
+              !colorMapChanged
+            ) {
+              return item
             }
 
-            if (shouldRemapColorMap) {
-              item.extra = {
-                ...cloneItemExtra(item.extra),
-                ColorMap: remapColorMapGroupIds(item.extra.ColorMap, existingGroupRemap),
-              }
+            return {
+              ...item,
+              instanceId: remappedInstanceId ?? item.instanceId,
+              groupId: remappedGroupId ?? item.groupId,
+              extra: colorMapChanged
+                ? {
+                    ...cloneItemExtra(item.extra),
+                    ColorMap: nextColorMap,
+                  }
+                : item.extra,
             }
-
-            if (remappedGroupId !== undefined) {
-              item.groupId = remappedGroupId
-            }
-          }
+          })
 
           for (const [oldGroupId, newGroupId] of existingGroupRemap.entries()) {
-            const originItemId = existingGroupOrigins.get(oldGroupId)
-            existingGroupOrigins.delete(oldGroupId)
+            const originItemId = nextGroupOrigins.get(oldGroupId)
+            nextGroupOrigins.delete(oldGroupId)
             if (originItemId) {
-              existingGroupOrigins.set(newGroupId, originItemId)
+              nextGroupOrigins.set(newGroupId, originItemId)
             }
           }
-
-          scheme.groupOrigins.value = existingGroupOrigins
         }
 
+        // 新贴上的家具：组号和剪贴板里一致（identity）。若和场上撞号，已在上面给「老家具」改过号了
         sourceGroupIds.forEach((groupId) => targetGroupIdMap.set(groupId, groupId))
       } else {
+        // --- 日常模式：剪贴板里每个旧 groupId 映射成一个新的 groupId，避免和当前方案里已有组撞车 ---
         for (const item of clipboardData.items) {
           if (item.groupId > 0 && !targetGroupIdMap.has(item.groupId)) {
             currentMaxGroupId++
@@ -348,6 +411,7 @@ export function useClipboard() {
         }
       }
 
+      // 逐件生成新 internalId；instanceId / groupId 由上两种模式之一决定
       for (const item of clipboardData.items) {
         const newInternalId = generateUUID()
         itemIdMap.set(item.internalId, newInternalId)
@@ -375,7 +439,7 @@ export function useClipboard() {
         })
       }
 
-      const nextGroupOrigins = new Map(scheme.groupOrigins.value)
+      // 组原点：粘贴后要用「新组号 → 新原点那件 internalId」
       clipboardData.groupOrigins.forEach((oldOriginItemId, oldGroupId) => {
         const newOriginItemId = itemIdMap.get(oldOriginItemId)
         const newGroupId = targetGroupIdMap.get(oldGroupId)
@@ -385,7 +449,7 @@ export function useClipboard() {
       })
 
       scheme.groupOrigins.value = nextGroupOrigins
-      scheme.items.value.push(...newItems)
+      scheme.items.value = [...nextExistingItems, ...newItems]
       scheme.maxInstanceId.value = currentMaxInstanceId
       scheme.maxGroupId.value = currentMaxGroupId
 
@@ -411,7 +475,10 @@ export function useClipboard() {
     return recordTransaction(`clipboard.insert.${idMode}`, executeInsert)
   }
 
-  // 对剪贴板数据应用一次步进变换，返回变换后的新剪贴板快照（累计调用实现步进复制）
+  /**
+   * 步进复制的一小步：在一份剪贴板副本上做「相对移动 / 旋转 / 缩放」，得到下一批要落盘的形状。
+   * 底层用编辑器的同一套变换逻辑，所以和你在场景里手动拖一次效果一致。
+   */
   function transformClipboardDataStep(
     clipboardData: ClipboardData,
     config: StepRepeatConfig,
@@ -425,8 +492,7 @@ export function useClipboard() {
       scale: { ...config.scaleMultiplier },
     }
 
-    // 关键修复：步进复制改为直接复用编辑器正式变换引擎，
-    // 这样 repeat = 1 时会与“复制后手动执行一次相对变换”严格一致。
+    // 与主界面 Gizmo 使用同一套变换，保证「步进 1 次」=「粘贴后再做一次同样的相对变换」
     nextData.items = applyTransformToItems(nextData.items, params, {
       rotationCenter: pivotData,
       positionReferencePoint: pivotData,
@@ -438,6 +504,7 @@ export function useClipboard() {
     return nextData
   }
 
+  /** 在数据坐标下平移 dx、dy 后插入（Z 不改）；返回新物品的 internalId 列表。 */
   function pasteItems(clipboardData: ClipboardData, offsetX: number, offsetY: number): string[] {
     return insertClipboardData(clipboardData, {
       idMode: 'regenerate',
@@ -445,6 +512,7 @@ export function useClipboard() {
     }).newIds
   }
 
+  /** 有选中则写入内存剪贴板（供 UI / 快捷键调用）。 */
   function copy() {
     if (!activeScheme.value || activeScheme.value.selectedItemIds.value.size === 0) {
       console.warn('[Clipboard] No items selected to copy')
@@ -455,6 +523,7 @@ export function useClipboard() {
     console.log(`[Clipboard] Copied ${clipboard.value.items.length} items`)
   }
 
+  /** 有选中则复制并删除原物（可撤销）。 */
   function cut() {
     if (!activeScheme.value || activeScheme.value.selectedItemIds.value.size === 0) {
       console.warn('[Clipboard] No items selected to cut')
@@ -465,6 +534,7 @@ export function useClipboard() {
     console.log(`[Clipboard] Cut ${clipboard.value.items.length} items`)
   }
 
+  /** 剪贴板有内容则在原位置插入一份副本（新编号）。 */
   function paste() {
     if (clipboard.value.items.length === 0) {
       console.warn('[Clipboard] No items in clipboard to paste')
@@ -475,13 +545,18 @@ export function useClipboard() {
     console.log(`[Clipboard] Pasted ${clipboard.value.items.length} items`)
   }
 
-  // 高级粘贴入口：preserveIds 保留源 ID 并重编号冲突项；stepRepeat 迭代步进变换
+  /**
+   * 两种用途：
+   * 1）preserveIds — 从别的方案拷来时保留存档里的 ID；同方案内不能用来「自己贴自己」。
+   * 2）stepRepeat — 按设定多次「变一点再贴一份」，多轮插入合成一笔撤销。
+   */
   function advancedPaste(options: AdvancedPasteOptions): string[] {
     if (!activeScheme.value || clipboard.value.items.length === 0) {
       return []
     }
 
     if (options.mode === 'preserveIds') {
+      // 来源就是当前标签：贴进来会和现有物品完全同号，逻辑上无意义，直接跳过
       if (clipboard.value.sourceSchemeId === activeScheme.value.id) {
         return []
       }
@@ -503,6 +578,7 @@ export function useClipboard() {
 
       for (let index = 0; index < stepRepeat.repeatCount; index++) {
         currentClipboardData = transformClipboardDataStep(currentClipboardData, stepRepeat, pivot)
+        // 每一轮单独插入但不各占撤销栈一层；最后整段 step_repeat 算一次操作
         const result = insertClipboardData(currentClipboardData, {
           idMode: 'regenerate',
           recordHistory: false,
@@ -523,6 +599,7 @@ export function useClipboard() {
     })
   }
 
+  /** 清空内存里的剪贴板内容。 */
   function clearClipboard() {
     clipboard.value = {
       sourceSchemeId: null,
@@ -533,6 +610,7 @@ export function useClipboard() {
   }
 
   const hasClipboardData = computed(() => clipboard.value.items.length > 0)
+  /** 只有「剪贴板来自另一个方案」时才允许做「保留源 ID」粘贴，否则会和本方案自己冲突。 */
   const canPreserveSourceIds = computed(
     () =>
       !!activeScheme.value &&

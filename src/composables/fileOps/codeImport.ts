@@ -175,7 +175,7 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
         })
       }
 
-      scheme.items.value.push(...insertedItems)
+      scheme.items.value = [...scheme.items.value, ...insertedItems]
       scheme.maxInstanceId.value = currentMaxInstanceId
       scheme.maxGroupId.value = currentMaxGroupId
       scheme.selectedItemIds.value = new Set(newInternalIds)

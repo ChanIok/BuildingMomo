@@ -692,16 +692,36 @@ export const useEditorStore = defineStore('editor', () => {
     }
 
     let currentMaxInstanceId = Math.max(scheme.maxInstanceId.value, nextInstanceId)
-    const conflictingItems = scheme.items.value.filter(
-      (item) => item.internalId !== internalId && item.instanceId === nextInstanceId
+    const conflictingItemIds = new Set(
+      scheme.items.value
+        .filter((item) => item.internalId !== internalId && item.instanceId === nextInstanceId)
+        .map((item) => item.internalId)
     )
 
-    targetItem.instanceId = nextInstanceId
-
-    for (const item of conflictingItems) {
+    const conflictRemap = new Map<string, number>()
+    for (const itemId of conflictingItemIds) {
       currentMaxInstanceId++
-      item.instanceId = currentMaxInstanceId
+      conflictRemap.set(itemId, currentMaxInstanceId)
     }
+
+    scheme.items.value = scheme.items.value.map((item) => {
+      if (item.internalId === internalId) {
+        return {
+          ...item,
+          instanceId: nextInstanceId,
+        }
+      }
+
+      const remappedInstanceId = conflictRemap.get(item.internalId)
+      if (remappedInstanceId === undefined) {
+        return item
+      }
+
+      return {
+        ...item,
+        instanceId: remappedInstanceId,
+      }
+    })
 
     scheme.maxInstanceId.value = currentMaxInstanceId
     triggerSceneUpdate()
