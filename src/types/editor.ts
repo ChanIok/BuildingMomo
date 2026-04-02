@@ -175,12 +175,6 @@ export interface WorkingCoordinateSystem {
   }
 }
 
-export interface SchemeMetaState {
-  name: string
-  filePath?: string
-  lastModified?: number
-}
-
 export interface PatchItemChange {
   itemId: string
   before: AppItem
@@ -208,18 +202,11 @@ export interface SetGroupOriginsOperation {
   after: Array<[number, string]>
 }
 
-export interface SetSchemeMetaOperation {
-  type: 'set_scheme_meta'
-  before: SchemeMetaState
-  after: SchemeMetaState
-}
-
 export type EditorOperation =
   | PatchItemsOperation
   | AddItemsOperation
   | RemoveItemsOperation
   | SetGroupOriginsOperation
-  | SetSchemeMetaOperation
 
 export interface EditorTransaction {
   id: string

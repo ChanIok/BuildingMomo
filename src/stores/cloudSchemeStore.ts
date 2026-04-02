@@ -22,7 +22,10 @@ export const useCloudSchemeStore = defineStore('cloudScheme', () => {
   const historyEvents = ref<CloudHistoryEvent[]>([])
   const lastError = ref<string | null>(null)
 
-  const isConnected = computed(() => status.value === 'connected' || status.value === 'syncing')
+  // conflict：服务端 version_mismatch 下发整包 reset 后仍保持 WS；已与快照对齐，应继续上传待同步事务。
+  const isConnected = computed(
+    () => status.value === 'connected' || status.value === 'syncing' || status.value === 'conflict'
+  )
   const activeUserCount = computed(() => users.value.length)
 
   function startSession(payload: {

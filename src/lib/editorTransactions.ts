@@ -4,7 +4,6 @@ import type {
   EditorTransaction,
   HomeScheme,
   PatchItemChange,
-  SchemeMetaState,
 } from '@/types/editor'
 import type { CloudHistoryItemBuckets } from '@/types/cloudScheme'
 
@@ -20,7 +19,6 @@ import type { CloudHistoryItemBuckets } from '@/types/cloudScheme'
  * 系统就可以 100% 确定这个家具连一根毫毛都没有改过，进而完全跳过漫长的查找对比！
  */
 export interface SchemeTransactionSnapshot {
-  meta: SchemeMetaState
   items: AppItem[] // 数组引用，不拷贝
   groupOrigins: Map<number, string> // Map 引用，不拷贝
 }
@@ -31,11 +29,6 @@ export interface SchemeTransactionSnapshot {
  */
 export function captureSchemeSnapshot(scheme: HomeScheme): SchemeTransactionSnapshot {
   return {
-    meta: {
-      name: scheme.name.value,
-      filePath: scheme.filePath.value,
-      lastModified: scheme.lastModified.value,
-    },
     items: scheme.items.value,
     groupOrigins: scheme.groupOrigins.value,
   }
@@ -51,14 +44,6 @@ export function cloneAppItems(items: AppItem[]): AppItem[] {
   return structuredClone(items)
 }
 
-function cloneSchemeMeta(meta: SchemeMetaState): SchemeMetaState {
-  return {
-    name: meta.name,
-    filePath: meta.filePath,
-    lastModified: meta.lastModified,
-  }
-}
-
 function cloneGroupOriginsToEntries(
   groupOrigins: Map<number, string> | Array<[number, string]>
 ): Array<[number, string]> {
@@ -72,14 +57,6 @@ function cloneGroupOriginsToEntries(
 export { cloneGroupOriginsToEntries as cloneGroupOriginsEntries }
 
 // ========== 事务构建 ==========
-
-function isSchemeMetaEqual(left: SchemeMetaState, right: SchemeMetaState) {
-  return (
-    left.name === right.name &&
-    left.filePath === right.filePath &&
-    left.lastModified === right.lastModified
-  )
-}
 
 /**
  * 【核心算法】通过引用比较（===）来极速抓取哪些内容被用户改了，并生成事务账单 (EditorTransaction)。
@@ -103,16 +80,7 @@ export function buildTransactionByRef(params: {
   const { schemeId, intent, before, after } = params
   const ops: EditorOperation[] = []
 
-  // 1. 检查文档头信息的变更（方案名什么的改没改）
-  if (!isSchemeMetaEqual(before.meta, after.meta)) {
-    ops.push({
-      type: 'set_scheme_meta',
-      before: cloneSchemeMeta(before.meta),
-      after: cloneSchemeMeta(after.meta),
-    })
-  }
-
-  // 2. 检查家具变更（最耗时的重头戏）
+  // 1. 检查家具变更（最耗时的重头戏）
   // 建立前后字典以便通过家具有没有增减 ID 来判定情况
   const beforeMap = new Map(before.items.map((item) => [item.internalId, item]))
   const afterMap = new Map(after.items.map((item) => [item.internalId, item]))
@@ -158,7 +126,9 @@ export function buildTransactionByRef(params: {
     ops.push({ type: 'remove_items', items: removedItems })
   }
 
-  // 3. 检查是否有编组的原点关系变更
+  // 2. 检查是否有编组的原点关系变更。
+  // 组合原点虽然不属于游戏原始存档字段，但它会直接影响后续移动/旋转的编辑行为，
+  // 因此仍然应该进入可撤销/可同步的事务系统。
   if (before.groupOrigins !== after.groupOrigins) {
     ops.push({
       type: 'set_group_origins',
@@ -167,7 +137,7 @@ export function buildTransactionByRef(params: {
     })
   }
 
-  // 4. 一张空头支票不需记录到脑海里，直接返回废弃
+  // 3. 一张空头支票不需记录到脑海里，直接返回废弃
   if (ops.length === 0) {
     return null
   }
@@ -232,12 +202,6 @@ export function invertEditorTransaction(transaction: EditorTransaction): EditorT
           type: 'set_group_origins',
           before: cloneGroupOriginsToEntries(operation.after),
           after: cloneGroupOriginsToEntries(operation.before),
-        }
-      case 'set_scheme_meta':
-        return {
-          type: 'set_scheme_meta',
-          before: cloneSchemeMeta(operation.after),
-          after: cloneSchemeMeta(operation.before),
         }
     }
   })
@@ -415,12 +379,6 @@ export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: 
       }
       case 'set_group_origins': {
         nextGroupOrigins = new Map(operation.after)
-        break
-      }
-      case 'set_scheme_meta': {
-        scheme.name.value = operation.after.name
-        scheme.filePath.value = operation.after.filePath
-        scheme.lastModified.value = operation.after.lastModified
         break
       }
     }
