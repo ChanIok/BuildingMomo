@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://infinitymomo.com/sitemap.xml
+Sitemap: https://build.infinitymomo.com/sitemap.xml

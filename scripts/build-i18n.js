@@ -58,7 +58,7 @@ enHtmlContent = enHtmlContent.replace(
 const canonicalRegex = /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i
 enHtmlContent = enHtmlContent.replace(
   canonicalRegex,
-  '<link rel="canonical" href="https://infinitymomo.com/en/" />'
+  '<link rel="canonical" href="https://build.infinitymomo.com/en/" />'
 )
 
 // 6. Update OG Title
@@ -79,7 +79,7 @@ enHtmlContent = enHtmlContent.replace(
 const ogUrlRegex = /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i
 enHtmlContent = enHtmlContent.replace(
   ogUrlRegex,
-  '<meta property="og:url" content="https://infinitymomo.com/en/" />'
+  '<meta property="og:url" content="https://build.infinitymomo.com/en/" />'
 )
 
 // Write the file
