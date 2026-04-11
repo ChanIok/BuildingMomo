@@ -31,6 +31,7 @@ import { requiredInstanceCount } from '@/lib/renderInstanceBudget'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
 import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
 import { getThreeModelManager } from '../useThreeModelManager'
+import type { ScreenPoint } from '@/lib/interaction/screenGeometry'
 
 // 全局 BVH 初始化标志（确保只初始化一次）
 let bvhInitialized = false
@@ -499,7 +500,12 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const scratchRegionWorldMatrix = new Matrix4()
   const scratchRegionWorldPoint = new Vector3()
   const scratchRegionCameraPoint = new Vector3()
-  const scratchRegionProjectedPoint = new Vector3()
+  /** projectionMatrix * matrixWorldInverse，每轮 mesh 遍历前更新 */
+  const scratchRegionProjView = new Matrix4()
+  /** 相机注视方向（世界空间），与 matrixWorldInverse 第三行约定一致，用于等价于「视图 z>=0」的前方剔除 */
+  const scratchCameraForward = new Vector3()
+  /** 区域选择 visitor 的 center：仅在 visitor 同步回调执行期间有效 */
+  const scratchRegionCenterScreen: ScreenPoint = { x: 0, y: 0 }
 
   function getActiveInstancedMesh(mode: string): InstancedMesh | null {
     if (mode === 'icon') return iconMode.mesh.value
@@ -526,39 +532,43 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     return cachedCenter
   }
 
+  /**
+   * 将实例几何中心投影到屏幕像素；成功时写入 scratchRegionCenterScreen。
+   * 依赖调用方已写入 scratchRegionProjView = P * V 及 scratchCameraForward（每轮 mesh 遍历前）。
+   * 与分步「V * world → z 剔除 → P * view」等价：对 world 只做一次 applyMatrix4(P*V)；
+   * 前方剔除用 (world - camera.position)·forward <= 0，与默认相机下「视图 z >= 0」同侧。
+   */
   function projectMeshInstanceCenter(
     mesh: InstancedMesh,
     instanceId: number,
     camera: Camera,
     viewport: RegionViewport
-  ) {
+  ): boolean {
     const localCenter = getGeometryLocalCenter(mesh)
-    if (!localCenter) return null
+    if (!localCenter) return false
 
     mesh.getMatrixAt(instanceId, scratchRegionInstanceMatrix)
     scratchRegionWorldMatrix.multiplyMatrices(mesh.matrixWorld, scratchRegionInstanceMatrix)
 
-    // 将实例中心从局部空间变换到世界空间，再投影到裁剪空间
     scratchRegionWorldPoint.copy(localCenter).applyMatrix4(scratchRegionWorldMatrix)
-    scratchRegionCameraPoint.copy(scratchRegionWorldPoint).applyMatrix4(camera.matrixWorldInverse)
-    // z >= 0 说明点在相机后方，不可见，跳过
-    if (scratchRegionCameraPoint.z >= 0) {
-      return null
+
+    scratchRegionCameraPoint.subVectors(scratchRegionWorldPoint, camera.position)
+    if (scratchRegionCameraPoint.dot(scratchCameraForward) <= 0) {
+      return false
     }
 
-    scratchRegionProjectedPoint.copy(scratchRegionWorldPoint).project(camera)
+    scratchRegionWorldPoint.applyMatrix4(scratchRegionProjView)
     if (
-      !Number.isFinite(scratchRegionProjectedPoint.x) ||
-      !Number.isFinite(scratchRegionProjectedPoint.y)
+      !Number.isFinite(scratchRegionWorldPoint.x) ||
+      !Number.isFinite(scratchRegionWorldPoint.y)
     ) {
-      return null
+      return false
     }
 
     // NDC [-1,1] 转换为像素坐标
-    return {
-      x: (scratchRegionProjectedPoint.x + 1) * 0.5 * viewport.width,
-      y: (-scratchRegionProjectedPoint.y + 1) * 0.5 * viewport.height,
-    }
+    scratchRegionCenterScreen.x = (scratchRegionWorldPoint.x + 1) * 0.5 * viewport.width
+    scratchRegionCenterScreen.y = (-scratchRegionWorldPoint.y + 1) * 0.5 * viewport.height
+    return true
   }
 
   function forEachMeshRegionCenterCandidate(
@@ -573,17 +583,19 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
     mesh.updateWorldMatrix(true, false)
 
+    scratchRegionProjView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    camera.getWorldDirection(scratchCameraForward)
+
     for (let instanceId = 0; instanceId < mesh.count; instanceId++) {
       const internalId = idMap.get(instanceId)
       if (!internalId) continue
       // seenIds 用于 model 模式：防止同一物品出现在多个 mesh 中时被重复计入
       if (seenIds.has(internalId)) continue
 
-      const center = projectMeshInstanceCenter(mesh, instanceId, camera, viewport)
-      if (!center) continue
+      if (!projectMeshInstanceCenter(mesh, instanceId, camera, viewport)) continue
 
       seenIds.add(internalId)
-      visitor({ internalId, center })
+      visitor({ internalId, center: scratchRegionCenterScreen })
     }
   }
 

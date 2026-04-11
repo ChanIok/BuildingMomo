@@ -37,6 +37,7 @@ export interface RaycastTask {
  */
 export interface RegionCenterCandidate {
   internalId: string
+  /** 仅在 forEachRegionCenterCandidate 的 visitor 同步执行期间有效，勿缓存引用 */
   center: ScreenPoint
 }
 
@@ -73,7 +74,8 @@ export interface InteractionAdapter {
   cancelPick: () => void
 
   /**
-   * 枚举当前模式下可参与区域选择的中心点候选
+   * 枚举当前模式下可参与区域选择的中心点候选。
+   * visitor 收到的 candidate.center 为渲染器复用对象，仅在本次同步回调内有效。
    */
   forEachRegionCenterCandidate: (
     camera: Camera,
