@@ -225,6 +225,13 @@ function handleViewInfoClick() {
       </button>
     </div>
 
+    <div
+      v-if="uiStore.isSelectingQuickAlignTarget"
+      class="flex items-center gap-2 rounded-md border bg-background/90 px-3 py-2 text-xs shadow-xs backdrop-blur-sm"
+    >
+      <span class="font-medium">{{ t('editor.quickAlign.hint') }}</span>
+    </div>
+
     <!-- 加载进度显示（右上角） -->
     <LoadingProgress />
   </div>

@@ -83,6 +83,9 @@ export const useUIStore = defineStore('ui', () => {
   const alignReferenceItemId = ref<string | null>(null)
   const alignReferencePosition = ref<'min' | 'center' | 'max'>('max')
 
+  // 快速对齐目标选择模式（临时状态，不持久化）
+  const isSelectingQuickAlignTarget = ref(false)
+
   // ========== 视图模式管理 ==========
 
   function toggleViewMode() {
@@ -272,6 +275,11 @@ export const useUIStore = defineStore('ui', () => {
   // ========== 组合原点选择管理 ==========
 
   function setSelectingGroupOrigin(selecting: boolean, groupId?: number) {
+    if (selecting) {
+      isSelectingPivotItem.value = false
+      isSelectingAlignReference.value = false
+      isSelectingQuickAlignTarget.value = false
+    }
     isSelectingGroupOrigin.value = selecting
     selectingForGroupId.value = selecting && groupId !== undefined ? groupId : null
   }
@@ -279,6 +287,11 @@ export const useUIStore = defineStore('ui', () => {
   // ========== 定点旋转物品选择管理 ==========
 
   function setSelectingPivotItem(selecting: boolean) {
+    if (selecting) {
+      isSelectingGroupOrigin.value = false
+      isSelectingAlignReference.value = false
+      isSelectingQuickAlignTarget.value = false
+    }
     isSelectingPivotItem.value = selecting
     if (!selecting) {
       // 退出选择模式时不清空结果，等待外部消费后再清空
@@ -292,10 +305,24 @@ export const useUIStore = defineStore('ui', () => {
   // ========== 对齐到参照物管理 ==========
 
   function setSelectingAlignReference(selecting: boolean) {
+    if (selecting) {
+      isSelectingGroupOrigin.value = false
+      isSelectingPivotItem.value = false
+      isSelectingQuickAlignTarget.value = false
+    }
     isSelectingAlignReference.value = selecting
     if (!selecting) {
       // 退出选择模式时不清空参照物，保持用户已选的参照物
     }
+  }
+
+  function setSelectingQuickAlignTarget(selecting: boolean) {
+    if (selecting) {
+      isSelectingGroupOrigin.value = false
+      isSelectingPivotItem.value = false
+      isSelectingAlignReference.value = false
+    }
+    isSelectingQuickAlignTarget.value = selecting
   }
 
   function setAlignReferenceItem(itemId: string | null) {
@@ -372,6 +399,7 @@ export const useUIStore = defineStore('ui', () => {
     isSelectingAlignReference,
     alignReferenceItemId,
     alignReferencePosition,
+    isSelectingQuickAlignTarget,
     statusBarCollapsed,
     sidebarCollapsed,
 
@@ -421,5 +449,6 @@ export const useUIStore = defineStore('ui', () => {
     setSelectingAlignReference,
     setAlignReferenceItem,
     setAlignReferencePosition,
+    setSelectingQuickAlignTarget,
   }
 })

@@ -330,6 +330,19 @@ export const useCommandStore = defineStore('command', () => {
         }
       },
     },
+    {
+      id: 'tool.quickAlign',
+      label: t('command.tool.quickAlign'),
+      shortcut: 'Shift+A',
+      category: 'tool',
+      enabled: () =>
+        uiStore.viewMode === '3d' &&
+        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      execute: () => {
+        console.log('[Command] 快速对齐模式')
+        uiStore.setSelectingQuickAlignTarget(true)
+      },
+    },
 
     // ===== 侧边栏菜单 =====
     {

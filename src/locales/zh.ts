@@ -133,6 +133,7 @@ export const zhLocale = {
       toggleRotate: '旋转模式',
       toggleFurnitureLibrary: '家具背包',
       toggleDyePanel: '染色面板',
+      quickAlign: '快速对齐',
     },
     selectionAction: {
       new: '新选区',
@@ -534,6 +535,10 @@ export const zhLocale = {
       orbit: '左键选择 · {rotate}环绕 · 滚轮缩放 · F 聚焦选中',
       flight: 'WASD 平移 · Space/Q 升降 · 按住{look}转向',
       tabSwitch: 'Tab 切换',
+    },
+    quickAlign: {
+      hint: '快速对齐：请点击需要对齐到的物品',
+      cancel: '取消 (Esc)',
     },
     sizeControl: {
       label: '图标/方块大小',

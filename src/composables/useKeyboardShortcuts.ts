@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import type { Command } from '../stores/commandStore'
 import { hasTextSelection, isTextInputFocused } from '../lib/keyboard'
+import { useUIStore } from '../stores/uiStore'
 
 export interface UseKeyboardShortcutsOptions {
   commands: Command[]
@@ -10,6 +11,7 @@ export interface UseKeyboardShortcutsOptions {
 
 export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
   const { commands, executeCommand } = options
+  const uiStore = useUIStore()
 
   // 构建快捷键映射表（响应式）
   const shortcutMap = computed(() => {
@@ -61,6 +63,13 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
       // 空格键不在这里处理，由各编辑器自行监听
       if (event.code === 'Space') {
         event.preventDefault()
+        return
+      }
+
+      // 快速对齐点选模式下，Esc 仅用于退出该模式
+      if (event.key === 'Escape' && uiStore.isSelectingQuickAlignTarget) {
+        event.preventDefault()
+        uiStore.setSelectingQuickAlignTarget(false)
         return
       }
 

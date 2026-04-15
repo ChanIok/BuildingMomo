@@ -409,6 +409,12 @@ export function useThreeCamera(
     if (ctrl.value || meta.value) {
       return false
     }
+    // 与快捷键 Shift+A（快速对齐）避让：仅该组合按下时不触发相机移动
+    const isQuickAlignChord =
+      shift.value && a.value && !w.value && !s.value && !d.value && !q.value && !space.value
+    if (isQuickAlignChord) {
+      return false
+    }
     return !!(w.value || a.value || s.value || d.value || q.value || space.value)
   }
 

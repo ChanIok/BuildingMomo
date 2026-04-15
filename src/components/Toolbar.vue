@@ -93,6 +93,7 @@ const fileCommands = computed(() => {
 })
 const editCommands = computed(() => commandStore.getCommandsByCategory('edit'))
 const viewCommands = computed(() => commandStore.getCommandsByCategory('view'))
+const quickAlignCommand = computed(() => commandStore.commandMap.get('tool.quickAlign'))
 
 // 视图预设命令（透视 + 正交六视图）
 const VIEW_PRESET_IDS = [
@@ -616,6 +617,17 @@ watch(
               <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>
             </MenubarItem>
           </template>
+          <MenubarSeparator v-if="quickAlignCommand" />
+          <MenubarItem
+            v-if="quickAlignCommand"
+            :disabled="!isEnabled(quickAlignCommand.id)"
+            @click="handleCommand(quickAlignCommand.id)"
+          >
+            {{ quickAlignCommand.label }}
+            <MenubarShortcut v-if="quickAlignCommand.shortcut">{{
+              quickAlignCommand.shortcut
+            }}</MenubarShortcut>
+          </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
 

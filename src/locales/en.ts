@@ -134,6 +134,7 @@ export const enLocale = {
       toggleRotate: 'Rotate Mode',
       toggleFurnitureLibrary: 'Furniture Library',
       toggleDyePanel: 'Dye Panel',
+      quickAlign: 'Quick Align',
     },
     selectionAction: {
       new: 'Set',
@@ -544,6 +545,10 @@ export const enLocale = {
       orbit: 'Left Select · {rotate} Orbit · Wheel Zoom · F Focus',
       flight: 'WASD Move · Space/Q Up/Down · Hold {look} Look',
       tabSwitch: 'Tab Switch',
+    },
+    quickAlign: {
+      hint: 'Quick Align: Please click the target object',
+      cancel: 'Cancel (Esc)',
     },
     sizeControl: {
       label: 'Icon/Block Size',

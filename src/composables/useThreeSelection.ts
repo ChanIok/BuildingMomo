@@ -11,6 +11,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useEditorSelection } from './editor/useEditorSelection'
 import { useEditorGroups } from './editor/useEditorGroups'
 import { useEditorSelectionAction } from './useEditorSelectionAction'
+import { useEditorHistory } from './editor/useEditorHistory'
 import type { InteractionAdapter } from './renderer/types'
 
 type SelectionRect = ScreenRect
@@ -24,6 +25,7 @@ export function useThreeSelection(
   const pointerNdc = markRaw(new Vector2())
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
+  const { recordTransaction } = useEditorHistory()
 
   const selectionRect = ref<SelectionRect | null>(null)
   const isSelecting = ref(false)
@@ -213,6 +215,128 @@ export function useThreeSelection(
     uiStore.setSelectingAlignReference(false)
   }
 
+  function buildQuickAlignMoveSet(selectedIds: Set<string>): Set<string> {
+    const moveIds = new Set<string>()
+    const processedGroups = new Set<number>()
+
+    for (const id of selectedIds) {
+      const item = editorStore.itemsMap.get(id)
+      if (!item) continue
+
+      if (item.groupId > 0) {
+        if (processedGroups.has(item.groupId)) continue
+        processedGroups.add(item.groupId)
+        const groupIds = editorStore.groupsMap.get(item.groupId)
+        if (!groupIds) continue
+        groupIds.forEach((groupItemId) => moveIds.add(groupItemId))
+        continue
+      }
+
+      moveIds.add(id)
+    }
+
+    return moveIds
+  }
+
+  function getQuickAlignSourceAnchor(
+    selectedIds: Set<string>
+  ): { x: number; y: number; z: number } | null {
+    const scheme = editorStore.activeScheme
+    if (!scheme || selectedIds.size === 0) return null
+
+    const singleGroupId = editorStore.getGroupIdIfEntireGroupSelected(selectedIds)
+    if (singleGroupId !== null) {
+      const originId = scheme.groupOrigins.value.get(singleGroupId)
+      if (originId) {
+        const originItem = editorStore.itemsMap.get(originId)
+        if (originItem) {
+          return { x: originItem.x, y: originItem.y, z: originItem.z }
+        }
+      }
+    }
+
+    let sumX = 0
+    let sumY = 0
+    let sumZ = 0
+    let count = 0
+    selectedIds.forEach((id) => {
+      const item = editorStore.itemsMap.get(id)
+      if (!item) return
+      sumX += item.x
+      sumY += item.y
+      sumZ += item.z
+      count += 1
+    })
+
+    if (count === 0) return null
+    return { x: sumX / count, y: sumY / count, z: sumZ / count }
+  }
+
+  function handleQuickAlignClick(evt: any) {
+    const camera = cameraRef.value
+    const scheme = editorStore.activeScheme
+    if (!camera || !scheme) return
+
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+
+    const { rect, x, y } = pos
+    pointerNdc.x = (x / rect.width) * 2 - 1
+    pointerNdc.y = -(y / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointerNdc, camera)
+
+    const hit = interactionAdapter.value.pick(raycaster)
+    if (!hit) {
+      uiStore.setSelectingQuickAlignTarget(false)
+      return
+    }
+
+    const target = editorStore.itemsMap.get(hit.internalId)
+    if (!target) {
+      uiStore.setSelectingQuickAlignTarget(false)
+      return
+    }
+
+    const selectedIds = new Set(scheme.selectedItemIds.value)
+    if (selectedIds.size === 0) {
+      uiStore.setSelectingQuickAlignTarget(false)
+      return
+    }
+
+    const sourceAnchor = getQuickAlignSourceAnchor(selectedIds)
+    if (!sourceAnchor) {
+      uiStore.setSelectingQuickAlignTarget(false)
+      return
+    }
+
+    const delta = {
+      x: target.x - sourceAnchor.x,
+      y: target.y - sourceAnchor.y,
+      z: target.z - sourceAnchor.z,
+    }
+
+    if (delta.x === 0 && delta.y === 0 && delta.z === 0) {
+      uiStore.setSelectingQuickAlignTarget(false)
+      return
+    }
+
+    const moveIds = buildQuickAlignMoveSet(selectedIds)
+    recordTransaction('quickAlign.position', () => {
+      scheme.items.value = scheme.items.value.map((item) => {
+        if (!moveIds.has(item.internalId)) return item
+        return {
+          ...item,
+          x: item.x + delta.x,
+          y: item.y + delta.y,
+          z: item.z + delta.z,
+        }
+      })
+      editorStore.triggerTransformUpdate(moveIds)
+    })
+
+    uiStore.setSelectingQuickAlignTarget(false)
+  }
+
   function performClickSelection(evt: any) {
     if (uiStore.isSelectingPivotItem) {
       handlePivotItemClick(evt)
@@ -226,6 +350,11 @@ export function useThreeSelection(
 
     if (uiStore.isSelectingAlignReference) {
       handleAlignReferenceClick(evt)
+      return
+    }
+
+    if (uiStore.isSelectingQuickAlignTarget) {
+      handleQuickAlignClick(evt)
       return
     }
 
