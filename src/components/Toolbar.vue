@@ -92,8 +92,10 @@ const fileCommands = computed(() => {
   })
 })
 const editCommands = computed(() => commandStore.getCommandsByCategory('edit'))
+const selectionCommands = computed(() => commandStore.getCommandsByCategory('selection'))
 const viewCommands = computed(() => commandStore.getCommandsByCategory('view'))
 const quickAlignCommand = computed(() => commandStore.commandMap.get('tool.quickAlign'))
+const replaceFurnitureCommand = computed(() => commandStore.commandMap.get('tool.replaceFurniture'))
 
 // 视图预设命令（透视 + 正交六视图）
 const VIEW_PRESET_IDS = [
@@ -608,7 +610,6 @@ watch(
                 cmd.id === 'edit.cut' ||
                 cmd.id === 'edit.move' ||
                 cmd.id === 'edit.delete' ||
-                cmd.id === 'edit.selectAll' ||
                 cmd.id === 'edit.group'
               "
             />
@@ -617,7 +618,17 @@ watch(
               <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>
             </MenubarItem>
           </template>
-          <MenubarSeparator v-if="quickAlignCommand" />
+          <MenubarSeparator v-if="quickAlignCommand || replaceFurnitureCommand" />
+          <MenubarItem
+            v-if="replaceFurnitureCommand"
+            :disabled="!isEnabled(replaceFurnitureCommand.id)"
+            @click="handleCommand(replaceFurnitureCommand.id)"
+          >
+            {{ replaceFurnitureCommand.label }}
+            <MenubarShortcut v-if="replaceFurnitureCommand.shortcut">{{
+              replaceFurnitureCommand.shortcut
+            }}</MenubarShortcut>
+          </MenubarItem>
           <MenubarItem
             v-if="quickAlignCommand"
             :disabled="!isEnabled(quickAlignCommand.id)"
@@ -628,6 +639,19 @@ watch(
               quickAlignCommand.shortcut
             }}</MenubarShortcut>
           </MenubarItem>
+        </MenubarContent>
+      </MenubarMenu>
+
+      <!-- 选择菜单（全选 / 取消 / 反选 / 同类） -->
+      <MenubarMenu>
+        <MenubarTrigger class="text-sm font-medium">{{ t('menu.selection') }}</MenubarTrigger>
+        <MenubarContent :sideOffset="10">
+          <template v-for="cmd in selectionCommands" :key="cmd.id">
+            <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
+              {{ cmd.label }}
+              <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>
+            </MenubarItem>
+          </template>
         </MenubarContent>
       </MenubarMenu>
 

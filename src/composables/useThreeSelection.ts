@@ -12,6 +12,8 @@ import { useEditorSelection } from './editor/useEditorSelection'
 import { useEditorGroups } from './editor/useEditorGroups'
 import { useEditorSelectionAction } from './useEditorSelectionAction'
 import { useEditorHistory } from './editor/useEditorHistory'
+import { useGameDataStore } from '@/stores/gameDataStore'
+import type { AppItem } from '@/types/editor'
 import type { InteractionAdapter } from './renderer/types'
 
 type SelectionRect = ScreenRect
@@ -25,6 +27,7 @@ export function useThreeSelection(
   const pointerNdc = markRaw(new Vector2())
   const editorStore = useEditorStore()
   const uiStore = useUIStore()
+  const gameDataStore = useGameDataStore()
   const { recordTransaction } = useEditorHistory()
 
   const selectionRect = ref<SelectionRect | null>(null)
@@ -215,29 +218,6 @@ export function useThreeSelection(
     uiStore.setSelectingAlignReference(false)
   }
 
-  function buildQuickAlignMoveSet(selectedIds: Set<string>): Set<string> {
-    const moveIds = new Set<string>()
-    const processedGroups = new Set<number>()
-
-    for (const id of selectedIds) {
-      const item = editorStore.itemsMap.get(id)
-      if (!item) continue
-
-      if (item.groupId > 0) {
-        if (processedGroups.has(item.groupId)) continue
-        processedGroups.add(item.groupId)
-        const groupIds = editorStore.groupsMap.get(item.groupId)
-        if (!groupIds) continue
-        groupIds.forEach((groupItemId) => moveIds.add(groupItemId))
-        continue
-      }
-
-      moveIds.add(id)
-    }
-
-    return moveIds
-  }
-
   function getQuickAlignSourceAnchor(
     selectedIds: Set<string>
   ): { x: number; y: number; z: number } | null {
@@ -320,7 +300,7 @@ export function useThreeSelection(
       return
     }
 
-    const moveIds = buildQuickAlignMoveSet(selectedIds)
+    const moveIds = new Set(selectedIds)
     recordTransaction('quickAlign.position', () => {
       scheme.items.value = scheme.items.value.map((item) => {
         if (!moveIds.has(item.internalId)) return item
@@ -337,6 +317,77 @@ export function useThreeSelection(
     uiStore.setSelectingQuickAlignTarget(false)
   }
 
+  function replaceItemGameIdInPlace(item: AppItem, newGameId: number): AppItem {
+    const furniture = gameDataStore.getFurniture(newGameId)
+    const newScale = { ...item.extra.Scale }
+    if (furniture?.scaleRange) {
+      const [min, max] = furniture.scaleRange
+      newScale.X = Math.max(min, Math.min(max, newScale.X))
+      newScale.Y = Math.max(min, Math.min(max, newScale.Y))
+      newScale.Z = Math.max(min, Math.min(max, newScale.Z))
+    }
+    const newRotation = { ...item.rotation }
+    if (furniture?.rotationAllowed) {
+      if (!furniture.rotationAllowed.x) newRotation.x = 0
+      if (!furniture.rotationAllowed.y) newRotation.y = 0
+      if (!furniture.rotationAllowed.z) newRotation.z = 0
+    }
+    return {
+      ...item,
+      gameId: newGameId,
+      rotation: newRotation,
+      extra: {
+        ...item.extra,
+        Scale: newScale,
+        ColorMap: { '0': 0 },
+      },
+    }
+  }
+
+  function handleReplaceTargetClick(evt: any) {
+    const camera = cameraRef.value
+    const scheme = editorStore.activeScheme
+    if (!camera || !scheme) return
+
+    const pos = getRelativePosition(evt)
+    if (!pos) return
+
+    const { rect, x, y } = pos
+    pointerNdc.x = (x / rect.width) * 2 - 1
+    pointerNdc.y = -(y / rect.height) * 2 + 1
+    raycaster.setFromCamera(pointerNdc, camera)
+
+    const hit = interactionAdapter.value.pick(raycaster)
+    if (!hit) {
+      uiStore.setSelectingReplaceTarget(false)
+      return
+    }
+
+    const target = editorStore.itemsMap.get(hit.internalId)
+    if (!target) {
+      uiStore.setSelectingReplaceTarget(false)
+      return
+    }
+
+    const replaceIds = new Set(scheme.selectedItemIds.value)
+    if (replaceIds.size === 0) {
+      uiStore.setSelectingReplaceTarget(false)
+      return
+    }
+
+    const newGameId = target.gameId
+
+    recordTransaction('replace.gameId', () => {
+      scheme.items.value = scheme.items.value.map((item) => {
+        if (!replaceIds.has(item.internalId)) return item
+        return replaceItemGameIdInPlace(item, newGameId)
+      })
+      editorStore.triggerSceneUpdate()
+    })
+
+    uiStore.setSelectingReplaceTarget(false)
+  }
+
   function performClickSelection(evt: any) {
     if (uiStore.isSelectingPivotItem) {
       handlePivotItemClick(evt)
@@ -350,6 +401,11 @@ export function useThreeSelection(
 
     if (uiStore.isSelectingAlignReference) {
       handleAlignReferenceClick(evt)
+      return
+    }
+
+    if (uiStore.isSelectingReplaceTarget) {
+      handleReplaceTargetClick(evt)
       return
     }
 

@@ -25,7 +25,7 @@ export interface Command {
   execute: () => void | Promise<void>
 }
 
-export type CommandCategory = 'file' | 'edit' | 'view' | 'help' | 'tool'
+export type CommandCategory = 'file' | 'edit' | 'selection' | 'view' | 'help' | 'tool'
 
 export const useCommandStore = defineStore('command', () => {
   const editorStore = useEditorStore()
@@ -333,7 +333,7 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'tool.quickAlign',
       label: t('command.tool.quickAlign'),
-      shortcut: 'Shift+A',
+      shortcut: 'T',
       category: 'tool',
       enabled: () =>
         uiStore.viewMode === '3d' &&
@@ -341,6 +341,19 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 快速对齐模式')
         uiStore.setSelectingQuickAlignTarget(true)
+      },
+    },
+    {
+      id: 'tool.replaceFurniture',
+      label: t('command.tool.replaceFurniture'),
+      shortcut: 'Ctrl+H',
+      category: 'tool',
+      enabled: () =>
+        uiStore.viewMode === '3d' &&
+        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      execute: () => {
+        console.log('[Command] 替换家具：点选目标')
+        uiStore.setSelectingReplaceTarget(true)
       },
     },
 
@@ -482,7 +495,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'edit.selectAll',
       label: t('command.edit.selectAll'),
       shortcut: 'Ctrl+A',
-      category: 'edit',
+      category: 'selection',
       enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
         console.log('[Command] 全选')
@@ -493,7 +506,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'edit.deselectAll',
       label: t('command.edit.deselectAll'),
       shortcut: 'Escape',
-      category: 'edit',
+      category: 'selection',
       enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 取消选择')
@@ -504,7 +517,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'edit.invertSelection',
       label: t('command.edit.invertSelection'),
       shortcut: 'Ctrl+Shift+I',
-      category: 'edit',
+      category: 'selection',
       enabled: () => (editorStore.activeScheme?.items.value.length ?? 0) > 0,
       execute: () => {
         console.log('[Command] 反选')
@@ -515,7 +528,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'edit.selectSameType',
       label: t('command.edit.selectSameType'),
       shortcut: 'Ctrl+Shift+A',
-      category: 'edit',
+      category: 'selection',
       enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
         console.log('[Command] 选择同类')

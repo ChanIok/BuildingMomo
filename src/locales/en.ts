@@ -69,6 +69,7 @@ export const enLocale = {
   menu: {
     file: 'File',
     edit: 'Edit',
+    selection: 'Selection',
     view: 'View',
     help: 'Help',
   },
@@ -135,6 +136,7 @@ export const enLocale = {
       toggleFurnitureLibrary: 'Furniture Library',
       toggleDyePanel: 'Dye Panel',
       quickAlign: 'Quick Align',
+      replaceFurniture: 'Replace',
     },
     selectionAction: {
       new: 'Set',
@@ -548,6 +550,10 @@ export const enLocale = {
     },
     quickAlign: {
       hint: 'Quick Align: Please click the target object',
+      cancel: 'Cancel (Esc)',
+    },
+    replace: {
+      hint: 'Replace: Click the object to use as the new furniture type',
       cancel: 'Cancel (Esc)',
     },
     sizeControl: {

@@ -73,6 +73,12 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
         return
       }
 
+      if (event.key === 'Escape' && uiStore.isSelectingReplaceTarget) {
+        event.preventDefault()
+        uiStore.setSelectingReplaceTarget(false)
+        return
+      }
+
       // 匹配快捷键命令
       const shortcut = eventToShortcut(event)
       const commandId = shortcutMap.value.get(shortcut)

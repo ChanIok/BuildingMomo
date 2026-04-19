@@ -68,6 +68,7 @@ export const zhLocale = {
   menu: {
     file: '文件',
     edit: '编辑',
+    selection: '选择',
     view: '视图',
     help: '帮助',
   },
@@ -134,6 +135,7 @@ export const zhLocale = {
       toggleFurnitureLibrary: '家具背包',
       toggleDyePanel: '染色面板',
       quickAlign: '快速对齐',
+      replaceFurniture: '替换',
     },
     selectionAction: {
       new: '新选区',
@@ -538,6 +540,10 @@ export const zhLocale = {
     },
     quickAlign: {
       hint: '快速对齐：请点击需要对齐到的物品',
+      cancel: '取消 (Esc)',
+    },
+    replace: {
+      hint: '替换家具：请点击要替换成的目标物品',
       cancel: '取消 (Esc)',
     },
     sizeControl: {
