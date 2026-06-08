@@ -68,6 +68,7 @@ export interface ValidationItem {
 
 // JSON文件根结构
 export interface GameDataFile {
+  Name?: string
   NeedRestore?: boolean
   PlaceInfo: GameItem[]
 }

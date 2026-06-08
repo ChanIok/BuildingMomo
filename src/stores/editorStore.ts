@@ -295,8 +295,8 @@ export const useEditorStore = defineStore('editor', () => {
         if (item.groupId > maxGrpId) maxGrpId = item.groupId
       }
 
-      // 从文件名提取方案名称
-      const schemeName = t('scheme.defaultName', { n: schemes.value.length + 1 })
+      const importedName = typeof data.Name === 'string' ? data.Name.trim() : ''
+      const schemeName = importedName || t('scheme.defaultName', { n: schemes.value.length + 1 })
 
       // 创建新方案
       const newScheme: HomeScheme = {
