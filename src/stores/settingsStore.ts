@@ -26,6 +26,7 @@ export interface AppSettings {
   theme: 'light' | 'dark' | 'auto'
   showFurnitureTooltip: boolean
   showBackground: boolean
+  sidebarWidth: string
 
   // 数据设置
   autoUpdateFurniture: boolean
@@ -76,6 +77,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'light',
   showFurnitureTooltip: true,
   showBackground: true,
+  sidebarWidth: '256px',
   autoUpdateFurniture: true,
   enableDuplicateDetection: true,
   enableLimitDetection: true,

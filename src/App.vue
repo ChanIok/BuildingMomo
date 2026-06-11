@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
-import { useMediaQuery } from '@vueuse/core'
+import { useElementSize, useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
 import { useSettingsStore } from './stores/settingsStore'
@@ -16,6 +16,7 @@ import AdvancedPasteDialog from './components/AdvancedPasteDialog.vue'
 import DocsViewer from './components/DocsViewer.vue'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
+import { Split } from '@/components/ui/split'
 import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
@@ -40,6 +41,51 @@ const isCompactViewport = useMediaQuery('(max-height: 600px)')
 const isNarrowWidth = useMediaQuery('(max-width: 640px)')
 const isRotateHintDismissed = ref(false)
 const hasEnteredFullscreen = ref(false)
+const sidebarLayoutRef = ref<HTMLElement | null>(null)
+const { width: sidebarLayoutWidth } = useElementSize(sidebarLayoutRef)
+
+const SIDEBAR_MIN_WIDTH_PX = 240
+const SIDEBAR_MAX_WIDTH_PX = 480
+const SIDEBAR_DEFAULT_WIDTH_PX = 256
+const SIDEBAR_DIVIDER_SIZE_PX = 4
+const MAIN_CONTENT_MIN_WIDTH_PX = 420
+
+const isResizableSidebarVisible = computed(
+  () => tabStore.activeTab?.type === 'scheme' && !uiStore.sidebarCollapsed
+)
+
+function parsePixelSize(size: string): number | null {
+  if (!size.trim().endsWith('px')) {
+    return null
+  }
+
+  const parsed = parseFloat(size)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function getSidebarMaxWidthPx(containerWidth: number): number {
+  if (containerWidth <= 0) {
+    return SIDEBAR_MAX_WIDTH_PX
+  }
+
+  // 右栏宽度不仅受自身上限约束，还要给主编辑区保留基本可用空间。
+  const maxByLayout = Math.floor(
+    containerWidth - MAIN_CONTENT_MIN_WIDTH_PX - SIDEBAR_DIVIDER_SIZE_PX
+  )
+
+  return Math.min(SIDEBAR_MAX_WIDTH_PX, Math.max(SIDEBAR_MIN_WIDTH_PX, maxByLayout))
+}
+
+function normalizeSidebarWidth(size: string, containerWidth: number): string {
+  const maxWidthPx = getSidebarMaxWidthPx(containerWidth)
+  const parsedWidth = parsePixelSize(size) ?? SIDEBAR_DEFAULT_WIDTH_PX
+  const clampedWidth = Math.max(SIDEBAR_MIN_WIDTH_PX, Math.min(Math.round(parsedWidth), maxWidthPx))
+
+  return `${clampedWidth}px`
+}
+
+const sidebarMinWidth = `${SIDEBAR_MIN_WIDTH_PX}px`
+const sidebarMaxWidth = computed(() => `${getSidebarMaxWidthPx(sidebarLayoutWidth.value)}px`)
 
 const applyTheme = () => {
   const theme = settingsStore.settings.theme
@@ -52,6 +98,21 @@ const applyTheme = () => {
 
 // 监听设置变化
 watch(() => settingsStore.settings.theme, applyTheme, { immediate: true })
+
+watch(
+  sidebarLayoutWidth,
+  (width) => {
+    if (width <= 0) return
+
+    // 持久化宽度需要在每次容器尺寸变化时重新校正，
+    // 避免用户上次保存的宽度在当前窗口下把编辑区挤得过小。
+    const normalizedWidth = normalizeSidebarWidth(settingsStore.settings.sidebarWidth, width)
+    if (settingsStore.settings.sidebarWidth !== normalizedWidth) {
+      settingsStore.settings.sidebarWidth = normalizedWidth
+    }
+  },
+  { immediate: true }
+)
 
 // 监听系统主题变化
 const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -215,10 +276,56 @@ onUnmounted(() => {
       <!-- 主体内容区 -->
       <div class="min-h-0 flex-1 p-2">
         <div
+          ref="sidebarLayoutRef"
           class="flex h-full flex-1 overflow-hidden rounded-md border border-border bg-background shadow"
         >
-          <!-- 画布区域 -->
-          <div class="relative flex min-w-0 flex-1 flex-col">
+          <!-- 可调宽布局：仅方案页且侧边栏展开时启用 -->
+          <Split
+            v-if="isResizableSidebarVisible"
+            v-model:size="settingsStore.settings.sidebarWidth"
+            direction="horizontal"
+            reverse
+            :min="sidebarMinWidth"
+            :max="sidebarMaxWidth"
+            :divider-size="SIDEBAR_DIVIDER_SIZE_PX"
+          >
+            <template #1>
+              <!-- 画布区域 -->
+              <div class="relative flex h-full min-h-0 min-w-0 flex-col">
+                <!-- 0. 初始化加载中 (空白占位) -->
+                <div v-if="!isAppReady" class="flex-1 bg-background"></div>
+
+                <!-- 1. 欢迎界面：没有标签时 -->
+                <WelcomeScreen v-else-if="tabStore.tabs.length === 0" />
+
+                <!-- 2. 有标签时：根据类型渲染 -->
+                <template v-else>
+                  <!-- 方案编辑器 -->
+                  <KeepAlive>
+                    <ThreeEditor
+                      v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme"
+                    />
+                  </KeepAlive>
+
+                  <!-- 文档查看器 -->
+                  <KeepAlive>
+                    <DocsViewer
+                      v-if="tabStore.activeTab?.type === 'doc' && isAppReady"
+                      key="docs-viewer"
+                    />
+                  </KeepAlive>
+                </template>
+              </div>
+            </template>
+
+            <template #2>
+              <!-- 右侧边栏 -->
+              <Sidebar />
+            </template>
+          </Split>
+
+          <!-- 单栏布局：欢迎页、文档页或侧边栏折叠时使用 -->
+          <div v-else class="relative flex min-w-0 flex-1 flex-col">
             <!-- 0. 初始化加载中 (空白占位) -->
             <div v-if="!isAppReady" class="flex-1 bg-background"></div>
 
@@ -242,14 +349,6 @@ onUnmounted(() => {
                 />
               </KeepAlive>
             </template>
-          </div>
-
-          <!-- 右侧边栏：仅方案类型显示，且未折叠时显示 -->
-          <div
-            v-if="tabStore.activeTab?.type === 'scheme' && !uiStore.sidebarCollapsed"
-            class="h-full"
-          >
-            <Sidebar />
           </div>
         </div>
       </div>

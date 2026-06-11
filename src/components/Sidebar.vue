@@ -37,7 +37,7 @@ watch(
 
 <template>
   <div
-    class="flex h-full w-64 flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
+    class="flex h-full w-full flex-col border-l border-sidebar-border bg-sidebar text-sidebar-foreground"
   >
     <!-- 顶部工具栏 -->
     <SidebarHeader v-if="!isHeaderCollapsed" />
