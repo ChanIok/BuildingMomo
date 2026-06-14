@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { AnchoredHint } from '@/components/ui/anchored-hint'
 import { useCommandStore } from '../stores/commandStore'
 import { useEditorStore } from '../stores/editorStore'
 import { useTabStore } from '../stores/tabStore'
@@ -162,10 +163,13 @@ const showArchiveButton = computed(() => watchState.value.isActive)
 const showCloudButton = computed(() => editorStore.activeScheme?.source.value === 'cloud')
 const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
 
-// 监控中按钮的简单悬浮提示（自定义实现，避免影响 Popover）
+// Popover 触发器的 hover 提示（AnchoredHint：手控显隐 + Teleport，避免 Reka Tooltip/Popover 冲突）
 const isWatchTooltipVisible = ref(false)
 const isArchiveTooltipVisible = ref(false)
 const isCloudTooltipVisible = ref(false)
+const watchButtonRef = ref<HTMLElement | null>(null)
+const archiveButtonRef = ref<HTMLElement | null>(null)
+const cloudButtonRef = ref<HTMLElement | null>(null)
 
 // 标签容器引用
 const tabsContainer = ref<HTMLElement | null>(null)
@@ -920,7 +924,8 @@ watch(
         <Popover v-else v-model:open="watchHistoryOpen">
           <PopoverTrigger as-child>
             <button
-              class="relative flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
+              ref="watchButtonRef"
+              class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
               @mouseenter="isWatchTooltipVisible = true"
               @mouseleave="isWatchTooltipVisible = false"
             >
@@ -928,18 +933,14 @@ watch(
               <span class="text-xs text-green-600 dark:text-green-300">
                 {{ t('watchMode.monitoring') }}
               </span>
-
-              <!-- 自定义简单 Tooltip：仅在 hover 时显示，不依赖 Reka Tooltip/Popover -->
-              <Transition name="watch-tooltip">
-                <div
-                  v-if="isWatchTooltipVisible && !isToolbarPopoverOpen"
-                  class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
-                >
-                  导入和历史
-                </div>
-              </Transition>
             </button>
           </PopoverTrigger>
+          <AnchoredHint
+            :visible="isWatchTooltipVisible && !isToolbarPopoverOpen"
+            :anchor="watchButtonRef"
+          >
+            {{ t('watchMode.history.tooltipMonitoringButton') }}
+          </AnchoredHint>
           <PopoverContent class="w-64 p-0" align="end" :side-offset="10">
             <div class="flex flex-col">
               <!-- 顶部操作栏 -->
@@ -1013,24 +1014,23 @@ watch(
       <Popover v-if="showArchiveButton" v-model:open="archivePopoverOpen">
         <PopoverTrigger as-child>
           <Button
+            ref="archiveButtonRef"
             variant="ghost"
             size="sm"
-            class="relative w-8 flex-none"
+            class="w-8 flex-none"
             :aria-label="t('archive.title')"
             @mouseenter="isArchiveTooltipVisible = true"
             @mouseleave="isArchiveTooltipVisible = false"
           >
             <ArchiveIcon class="h-4 w-4" />
-            <Transition name="watch-tooltip">
-              <div
-                v-if="isArchiveTooltipVisible && !isToolbarPopoverOpen"
-                class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
-              >
-                {{ t('archive.title') }}
-              </div>
-            </Transition>
           </Button>
         </PopoverTrigger>
+        <AnchoredHint
+          :visible="isArchiveTooltipVisible && !isToolbarPopoverOpen"
+          :anchor="archiveButtonRef"
+        >
+          {{ t('archive.title') }}
+        </AnchoredHint>
         <PopoverContent
           class="w-[640px] p-0"
           align="end"
@@ -1045,9 +1045,10 @@ watch(
       <Popover v-if="showCloudButton" v-model:open="cloudPopoverOpen">
         <PopoverTrigger as-child>
           <Button
+            ref="cloudButtonRef"
             variant="ghost"
             size="sm"
-            class="relative w-8 flex-none"
+            class="w-8 flex-none"
             :class="
               isActiveCloudStatusDisconnected ? 'text-destructive hover:text-destructive' : ''
             "
@@ -1057,16 +1058,14 @@ watch(
           >
             <CloudAlert v-if="isActiveCloudStatusDisconnected" class="h-4 w-4" />
             <Cloud v-else class="h-4 w-4" />
-            <Transition name="watch-tooltip">
-              <div
-                v-if="isCloudTooltipVisible && !isToolbarPopoverOpen"
-                class="watch-tooltip pointer-events-none absolute top-full left-1/2 mt-1 -translate-x-1/2 rounded-md bg-primary px-3 py-1.5 text-xs whitespace-nowrap text-primary-foreground"
-              >
-                {{ t('cloudScheme.title') }}
-              </div>
-            </Transition>
           </Button>
         </PopoverTrigger>
+        <AnchoredHint
+          :visible="isCloudTooltipVisible && !isToolbarPopoverOpen"
+          :anchor="cloudButtonRef"
+        >
+          {{ t('cloudScheme.title') }}
+        </AnchoredHint>
         <PopoverContent
           class="w-64 p-0"
           align="end"
@@ -1122,26 +1121,5 @@ watch(
 /* 正在被拖拽的元素不应该有过渡动画，否则会感觉迟滞 */
 .tab-list-move.cursor-grabbing {
   transition: none;
-}
-
-/* 自定义监控按钮 Tooltip 过渡动画（模仿 TooltipContent 的淡入缩放） */
-.watch-tooltip-enter-active,
-.watch-tooltip-leave-active {
-  transition:
-    opacity 150ms ease-out,
-    transform 150ms ease-out;
-  transform-origin: top center;
-}
-
-.watch-tooltip-enter-from,
-.watch-tooltip-leave-to {
-  opacity: 0;
-  transform: translateY(-4px) scale(0.95);
-}
-
-.watch-tooltip-enter-to,
-.watch-tooltip-leave-from {
-  opacity: 1;
-  transform: translateY(0) scale(1);
 }
 </style>
