@@ -426,7 +426,7 @@ function clearSearch() {
                 >
                   <img
                     :src="item.icon"
-                    class="aspect-square w-full max-w-20 rounded border bg-muted object-cover"
+                    class="aspect-square w-full rounded border bg-muted object-cover"
                     :alt="item.name"
                     loading="lazy"
                     @error="(e) => ((e.target as HTMLImageElement).style.display = 'none')"
