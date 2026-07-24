@@ -132,6 +132,8 @@ export const zhLocale = {
       hand: '拖拽工具',
       toggleTranslate: '平移模式',
       toggleRotate: '旋转模式',
+      toggleScale: '缩放模式',
+      scaleUniformHint: '按住 Shift 拖动可等比缩放',
       toggleFurnitureLibrary: '家具背包',
       toggleDyePanel: '染色面板',
       quickAlign: '快速对齐',

@@ -11,6 +11,11 @@ import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
 import { matrixTransform } from '../../lib/matrixTransform'
 import {
+  constrainSelectionScaleFactors,
+  scaleItemsAroundPivot,
+  type SelectionScaleAxis,
+} from '../../lib/selectionScaleTransform'
+import {
   convertRotationGlobalToWorking,
   convertRotationWorkingToGlobal,
 } from '../../lib/coordinateTransform'
@@ -22,6 +27,29 @@ export function useEditorManipulation() {
   const gameDataStore = useGameDataStore()
   const { activeScheme } = storeToRefs(store)
   const { recordTransaction } = useEditorHistory()
+
+  /**
+   * 侧栏相对缩放一次只提交一个存档轴；这里将它还原为视觉/Gizmo 轴。
+   * 多轴或混合变换返回 null，继续交给原有通用变换流程处理。
+   */
+  function getRelativeScaleAxis(params: TransformParams): SelectionScaleAxis | null {
+    if (
+      params.mode !== 'relative' ||
+      !params.scale ||
+      params.position !== undefined ||
+      params.rotation !== undefined
+    ) {
+      return null
+    }
+
+    const definedAxes = [
+      params.scale.y !== undefined ? 'X' : null,
+      params.scale.x !== undefined ? 'Y' : null,
+      params.scale.z !== undefined ? 'Z' : null,
+    ].filter((axis): axis is 'X' | 'Y' | 'Z' => axis !== null)
+
+    return definedAxes.length === 1 ? definedAxes[0]! : null
+  }
 
   /**
    * 获取选中物品的中心坐标（包围盒中心）
@@ -124,13 +152,55 @@ export function useEditorManipulation() {
         store.itemsMap
       ) || { x: 0, y: 0, z: 0 }
 
-      const transformedItems = applyTransformToItems(selectedItems, params, {
-        rotationCenter,
-        positionReferencePoint,
-        effectiveWorkingRotation,
-        limitScaleValues: settingsStore.settings.enableLimitDetection,
-        getScaleRange: (gameId) => gameDataStore.getFurniture(gameId)?.scaleRange ?? null,
-      })
+      const relativeScaleAxis = getRelativeScaleAxis(params)
+      let transformedItems: AppItem[]
+
+      if (relativeScaleAxis && params.scale) {
+        // 第一步：把侧栏已交叉映射的存档轴重新转换成视觉/Gizmo 倍率。
+        const requestedFactors = {
+          x: params.scale.y ?? 1,
+          y: params.scale.x ?? 1,
+          z: params.scale.z ?? 1,
+        }
+        // 第二步：开启限制检测时使用共同家具范围；关闭时 Input 不施加 Gizmo 的 0.01 下限。
+        const factors = constrainSelectionScaleFactors(
+          requestedFactors,
+          relativeScaleAxis,
+          selectedItems,
+          (item) =>
+            settingsStore.settings.enableLimitDetection
+              ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+              : null
+        )
+        // 第三步：将数据空间 Pivot 转换到与 Gizmo 相同的 Three.js 世界空间。
+        const pivotWorldData = matrixTransform.dataPositionToWorld(rotationCenter)
+        const pivotWorldPosition = new Vector3(pivotWorldData.x, pivotWorldData.y, pivotWorldData.z)
+        // 第四步：按项目统一的 ZYX 与 Z 取反约定构建工作坐标系旋转。
+        const pivotWorldQuaternion = new Quaternion().setFromEuler(
+          new Euler(
+            MathUtils.degToRad(effectiveWorkingRotation.x),
+            MathUtils.degToRad(effectiveWorkingRotation.y),
+            -MathUtils.degToRad(effectiveWorkingRotation.z),
+            'ZYX'
+          )
+        )
+        // 第五步：复用 Gizmo 的纯函数，统一 Pivot、工作坐标系和局部 Scale 语义。
+        transformedItems = scaleItemsAroundPivot(
+          selectedItems,
+          pivotWorldPosition,
+          pivotWorldQuaternion,
+          factors
+        )
+      } else {
+        // 绝对缩放、组合变换和高级粘贴继续沿用原有通用变换流程。
+        transformedItems = applyTransformToItems(selectedItems, params, {
+          rotationCenter,
+          positionReferencePoint,
+          effectiveWorkingRotation,
+          limitScaleValues: settingsStore.settings.enableLimitDetection,
+          getScaleRange: (gameId) => gameDataStore.getFurniture(gameId)?.scaleRange ?? null,
+        })
+      }
       const transformedMap = new Map(transformedItems.map((item) => [item.internalId, item]))
 
       activeScheme.value!.items.value = activeScheme.value!.items.value.map(
@@ -523,16 +593,17 @@ export function useEditorManipulation() {
     })
   }
 
-  // 批量提交变换（优化性能，用于 Gizmo 拖拽结束）
+  // 批量提交变换（优化性能，用于 Gizmo 拖拽结束；缩放可只提交位置和 Scale）
   function commitBatchedTransform(
     items: {
       id: string
       x: number
       y: number
       z: number
-      rotation: { x: number; y: number; z: number }
+      rotation?: { x: number; y: number; z: number }
+      scale?: { X: number; Y: number; Z: number }
     }[],
-    options: { recordHistory?: boolean } = { recordHistory: true }
+    options: { recordHistory?: boolean; action?: string } = { recordHistory: true }
   ) {
     if (!activeScheme.value) return
 
@@ -542,15 +613,30 @@ export function useEditorManipulation() {
       // 这里必须重产新引用以便事务引擎抓包
       activeScheme.value!.items.value = activeScheme.value!.items.value.map((item) => {
         const update = updateMap.get(item.internalId)
-        return update
-          ? { ...item, x: update.x, y: update.y, z: update.z, rotation: update.rotation }
-          : item
+        if (!update) return item
+
+        // 位置始终来自本次批量结果；未参与的旋转或缩放字段保留原引用/原值。
+        return {
+          ...item,
+          x: update.x,
+          y: update.y,
+          z: update.z,
+          rotation: update.rotation ?? item.rotation,
+          // 缩放存放在 extra.Scale，必须连同 extra 一起生成新引用供历史事务检测。
+          extra: update.scale
+            ? {
+                ...item.extra,
+                Scale: update.scale,
+              }
+            : item.extra,
+        }
       })
       store.triggerSceneUpdate()
     }
 
     if (options.recordHistory) {
-      recordTransaction('transform.batch_commit', doCommit)
+      // 调用方可传入 transform.scale 等明确动作名，便于撤销历史区分变换类型。
+      recordTransaction(options.action ?? 'transform.batch_commit', doCommit)
     } else {
       doCommit()
     }

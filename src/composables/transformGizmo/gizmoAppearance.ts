@@ -11,6 +11,16 @@ const AXIS_COLORS = {
   z: 0x3b82f6, // blue-500
 }
 
+// 极简缩放只保留 X/Y/Z：前三项是双轴平面，后三项是重复的等比缩放入口。
+const HIDDEN_SCALE_HANDLES = new Set(['XY', 'YZ', 'XZ', 'XYZX', 'XYZY', 'XYZZ'])
+
+function shouldRemoveHandle(name: string, mode: string): boolean {
+  // 旋转模式继续移除自由旋转环，保持项目原有的三轴旋转交互。
+  if (name === 'E' || name === 'XYZE') return true
+  // 缩放模式移除所有非单轴手柄，等比缩放改由 Shift 修饰键提供。
+  return mode === 'scale' && HIDDEN_SCALE_HANDLES.has(name)
+}
+
 export function createGizmoAppearanceManager(
   editorStore: ReturnType<typeof useEditorStore>,
   gameDataStore: ReturnType<typeof useGameDataStore>,
@@ -71,7 +81,8 @@ export function createGizmoAppearanceManager(
       const visualGizmo = gizmoObj.gizmo?.[currentMode]
       if (visualGizmo) {
         visualGizmo.traverse((obj: any) => {
-          if (obj.name === 'E' || obj.name === 'XYZE') {
+          // 第一步：收集需要隐藏的可见几何体，遍历结束后再移除以免破坏遍历。
+          if (shouldRemoveHandle(obj.name, currentMode)) {
             objectsToRemove.push(obj)
             return
           }
@@ -126,12 +137,14 @@ export function createGizmoAppearanceManager(
       const pickerContainer = gizmoObj?.picker?.[currentMode]
       if (pickerContainer) {
         pickerContainer.traverse((obj: any) => {
-          if (obj.name === 'E' || obj.name === 'XYZE') {
+          // 第二步：同步移除透明拾取体，防止看不见的旧手柄仍可被鼠标拖动。
+          if (shouldRemoveHandle(obj.name, currentMode)) {
             objectsToRemove.push(obj)
           }
         })
       }
 
+      // 第三步：直接脱离父节点，避免 TransformControls 每帧重新把手柄设为可见。
       objectsToRemove.forEach((obj) => {
         if (obj.parent) {
           obj.parent.remove(obj)

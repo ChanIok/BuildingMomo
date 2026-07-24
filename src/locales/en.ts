@@ -133,6 +133,8 @@ export const enLocale = {
       hand: 'Hand',
       toggleTranslate: 'Translate Mode',
       toggleRotate: 'Rotate Mode',
+      toggleScale: 'Scale Mode',
+      scaleUniformHint: 'Hold Shift while dragging to scale uniformly',
       toggleFurnitureLibrary: 'Furniture Library',
       toggleDyePanel: 'Dye Panel',
       quickAlign: 'Quick Align',

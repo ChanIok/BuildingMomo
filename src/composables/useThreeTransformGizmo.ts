@@ -1,6 +1,16 @@
 import { computed, ref, watchEffect, markRaw, watch, onUnmounted, type Ref } from 'vue'
 import { useMagicKeys } from '@vueuse/core'
-import { Object3D, Vector3, Euler, Matrix4, Plane, Raycaster, Vector2, type Camera } from 'three'
+import {
+  Object3D,
+  Vector3,
+  Euler,
+  Matrix4,
+  Plane,
+  Quaternion,
+  Raycaster,
+  Vector2,
+  type Camera,
+} from 'three'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useClipboard } from '@/composables/useClipboard'
@@ -23,6 +33,14 @@ import {
   type PatchedTransformControls,
 } from '@/composables/transformGizmo/gizmoTouchTranslate'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
+import {
+  constrainSelectionScaleFactors,
+  scaleItemsAroundPivot,
+  type SelectionScaleAxis,
+} from '@/lib/selectionScaleTransform'
+
+// 关闭家具限制检测时，仅 Gizmo 使用 0.01 作为最终绝对 Scale 下限。
+const DEFAULT_GIZMO_MIN_SCALE = 0.01
 
 interface SlidePathGizmoBridge {
   updateItemWorldMatrices: (idToWorldMatrixMap: Map<string, Matrix4>) => void
@@ -53,6 +71,15 @@ export function useThreeTransformGizmo(
   const hasInitializedRotation = ref(false)
   const lastRotationMatrices = ref<Map<string, Matrix4> | null>(null)
   const lastTranslateMatrices = ref<Map<string, Matrix4> | null>(null)
+  // 缩放拖拽始终基于 mouseDown 时的数据快照计算，避免逐帧累乘产生精度漂移。
+  const scaleStartItems = ref<AppItem[]>([])
+  // 保存最后一次合法预览，mouseUp 时直接提交同一份结果，保证预览与落盘一致。
+  const lastScalePreviewItems = ref<AppItem[] | null>(null)
+  // Pivot 的起始缩放用于把 TransformControls 的绝对 scale 还原为本次相对倍率。
+  const gizmoStartScale = markRaw(new Vector3(1, 1, 1))
+  // 固定拖拽开始时的 Pivot 世界姿态，多选位置始终围绕同一个参考系缩放。
+  const scalePivotPosition = markRaw(new Vector3())
+  const scalePivotQuaternion = markRaw(new Quaternion())
 
   const altDragCopyPending = ref(false)
   const altDragCopyExecuted = ref(false)
@@ -78,7 +105,8 @@ export function useThreeTransformGizmo(
   const { recordTransaction } = useEditorHistory()
   const { pasteItems, buildClipboardDataFromSelection } = useClipboard()
 
-  const { Alt, Control, Meta } = useMagicKeys()
+  // Shift 仅在缩放拖拽中把单轴倍率转换为 XYZ 等比倍率。
+  const { Alt, Control, Meta, Shift } = useMagicKeys()
 
   function isSnapTemporarilyDisabled(): boolean {
     return (Control?.value ?? false) || (Meta?.value ?? false)
@@ -258,7 +286,7 @@ export function useThreeTransformGizmo(
   const transformSpace = computed<'local' | 'world'>(() => 'local')
 
   // 选区变化或方案切换时，如果当前编辑的节点不再有效则自动清除
-  // 飞花道节点只支持 translate，切换到 rotate 时强制回退
+  // 飞花道节点只支持 translate，切换到其他模式时强制回退
   watch(
     [
       () => uiStore.activeSlidePathPoint,
@@ -275,7 +303,7 @@ export function useThreeTransformGizmo(
 
       if (!isActiveItemSelected || !getActiveSlidePathPointTarget()) {
         uiStore.setActiveSlidePathPoint(null)
-      } else if (editorStore.gizmoMode === 'rotate') {
+      } else if (editorStore.gizmoMode !== 'translate') {
         editorStore.gizmoMode = 'translate'
       }
     },
@@ -291,8 +319,8 @@ export function useThreeTransformGizmo(
     const activeSlidePathPoint = getActiveSlidePathPointTarget()
     const pivot = pivotRef.value
     if (activeSlidePathPoint && pivot) {
-      // 节点编辑只支持 translate，阻止切换到 rotate 模式
-      if (editorStore.gizmoMode === 'rotate') {
+      // 节点编辑只支持 translate，阻止切换到其他模式
+      if (editorStore.gizmoMode !== 'translate') {
         editorStore.gizmoMode = 'translate'
       }
       pivot.position.copy(activeSlidePathPoint.worldPoint)
@@ -327,6 +355,7 @@ export function useThreeTransformGizmo(
       return
     }
 
+    pivot.scale.set(1, 1, 1)
     pivot.position.set(center.x, -center.y, center.z)
 
     const effectiveRotation = getEffectiveGizmoRotation()
@@ -392,7 +421,13 @@ export function useThreeTransformGizmo(
     }
 
     const scheme = editorStore.activeScheme
-    if (Alt && Alt.value && scheme && scheme.selectedItemIds.value.size > 0) {
+    if (
+      editorStore.gizmoMode === 'translate' &&
+      Alt &&
+      Alt.value &&
+      scheme &&
+      scheme.selectedItemIds.value.size > 0
+    ) {
       altDragCopyPending.value = true
       altDragCopyExecuted.value = false
     } else {
@@ -401,8 +436,13 @@ export function useThreeTransformGizmo(
     }
 
     pivot.updateMatrixWorld(true)
+    // 第一步：记录通用矩阵和位置快照，继续供移动/旋转沿用。
     gizmoStartMatrix.copy(pivot.matrixWorld)
     gizmoStartPosition.setFromMatrixPosition(pivot.matrixWorld)
+    // 第二步：记录缩放专用的起始倍率和 Pivot 世界姿态。
+    gizmoStartScale.copy(pivot.scale)
+    scalePivotPosition.setFromMatrixPosition(pivot.matrixWorld)
+    pivot.getWorldQuaternion(scalePivotQuaternion)
 
     touchTranslateController.beginSession(startEvent, gizmoStartPosition)
 
@@ -423,8 +463,16 @@ export function useThreeTransformGizmo(
     }
 
     if (scheme) {
+      // 第三步：保存选中物品的世界矩阵，供原有移动/旋转预览使用。
       itemStartWorldMatrices.value = buildItemWorldMatricesMap(scheme, scheme.selectedItemIds.value)
-      snapEngine.prepareCollisionData(scheme)
+      // 第四步：保存不可变物品快照，所有缩放帧都从相同起点重新计算。
+      scaleStartItems.value = scheme.items.value.filter((item: AppItem) =>
+        scheme.selectedItemIds.value.has(item.internalId)
+      )
+      // 碰撞吸附只属于平移，缩放和旋转无需准备静态碰撞数据。
+      if (editorStore.gizmoMode === 'translate') {
+        snapEngine.prepareCollisionData(scheme)
+      }
     }
 
     setOrbitControlsEnabled(false)
@@ -443,7 +491,12 @@ export function useThreeTransformGizmo(
     hasInitializedRotation.value = false
     lastRotationMatrices.value = null
     lastTranslateMatrices.value = null
+    // 清除缩放快照和预览，防止下一次拖拽复用旧选区。
+    scaleStartItems.value = []
+    lastScalePreviewItems.value = null
     cachedSlidePathPoint = null
+    // TransformControls 会直接改写 Pivot.scale，结束时必须恢复单位缩放。
+    pivotRef.value?.scale.set(1, 1, 1)
 
     slidePathBridge?.clearPreview()
     snapEngine.clearCollisionData()
@@ -481,7 +534,8 @@ export function useThreeTransformGizmo(
   }
 
   function buildDisplayWorldMatricesMap(
-    rawWorldMatrices: Map<string, Matrix4>
+    rawWorldMatrices: Map<string, Matrix4>,
+    previewItems?: Map<string, AppItem>
   ): Map<string, Matrix4> {
     // Gizmo 拖拽时，画面要和“静止渲染”看到的一样，
     // 但 mouseUp 提交仍然要写 raw matrix，所以这里单独生成一份 display matrix。
@@ -491,7 +545,8 @@ export function useThreeTransformGizmo(
     let modelManager: ReturnType<typeof getThreeModelManager> | null = null
 
     for (const [id, worldMatrix] of rawWorldMatrices.entries()) {
-      const item = editorStore.itemsMap.get(id)
+      // 缩放预览优先读取临时物品，否则补偿逻辑会错误使用 Store 中的旧 Scale。
+      const item = previewItems?.get(id) ?? editorStore.itemsMap.get(id)
       if (!item) {
         displayMatrices.set(id, worldMatrix)
         continue
@@ -546,6 +601,74 @@ export function useThreeTransformGizmo(
         cachedSlidePathPoint.pointIndex,
         worldPoint
       )
+      return
+    }
+
+    if (editorStore.gizmoMode === 'scale') {
+      // 第一步：只接受极简 Gizmo 保留的 X/Y/Z 单轴手柄。
+      const controls =
+        transformRef?.value?.instance || transformRef?.value?.value || transformRef?.value
+      const axis = controls?.axis as SelectionScaleAxis | null
+      if (!axis || !['X', 'Y', 'Z'].includes(axis)) return
+
+      // 第二步：将 Pivot 当前 scale 与起始 scale 相除，得到本次拖拽请求的相对倍率。
+      const requestedFactors = {
+        x: pivot.scale.x / gizmoStartScale.x,
+        y: pivot.scale.y / gizmoStartScale.y,
+        z: pivot.scale.z / gizmoStartScale.z,
+      }
+      // 第三步：按住 Shift 时取活动轴倍率，并复制到 XYZ 形成等比缩放请求。
+      const shouldScaleUniformly = Shift?.value ?? false
+      const draggedFactor =
+        axis === 'X' ? requestedFactors.x : axis === 'Y' ? requestedFactors.y : requestedFactors.z
+      const effectiveRequestedFactors = shouldScaleUniformly
+        ? { x: draggedFactor, y: draggedFactor, z: draggedFactor }
+        : requestedFactors
+      // 第四步：按全部选中家具的共同 scaleRange 裁剪最终倍率。
+      const factors = constrainSelectionScaleFactors(
+        effectiveRequestedFactors,
+        shouldScaleUniformly ? 'XYZ' : axis,
+        scaleStartItems.value,
+        (item) =>
+          settingsStore.settings.enableLimitDetection
+            ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+            : [DEFAULT_GIZMO_MIN_SCALE, Infinity]
+      )
+
+      // 第五步：把裁剪后的倍率同步回 Pivot，确保手柄位置与真实预览一致。
+      pivot.scale.set(
+        gizmoStartScale.x * factors.x,
+        gizmoStartScale.y * factors.y,
+        gizmoStartScale.z * factors.z
+      )
+
+      // 第六步：从拖拽起点重新计算全部物品的位置和 extra.Scale。
+      const previewItems = scaleItemsAroundPivot(
+        scaleStartItems.value,
+        scalePivotPosition,
+        scalePivotQuaternion,
+        factors
+      )
+      // 第七步：使用临时物品构建原始矩阵和补偿矩阵，保持各显示模式预览一致。
+      const previewItemsMap = new Map(previewItems.map((item) => [item.internalId, item]))
+      const previewMatrices = buildWorldMatricesFromItems(previewItems)
+      lastScalePreviewItems.value = previewItems
+
+      // 第八步：只有倍率实际偏离 1 时才标记为发生过变换。
+      const hasChanged =
+        Math.abs(factors.x - 1) > 0.0001 ||
+        Math.abs(factors.y - 1) > 0.0001 ||
+        Math.abs(factors.z - 1) > 0.0001
+      if (hasChanged) {
+        hasStartedTransform.value = true
+      }
+
+      // 第九步：拖拽中跳过 BVH 全量重建，mouseUp 时再进行最终更新。
+      updateSelectedInstancesMatrix(
+        buildDisplayWorldMatricesMap(previewMatrices, previewItemsMap),
+        true
+      )
+      slidePathBridge?.updateItemWorldMatrices(previewMatrices)
       return
     }
 
@@ -734,6 +857,52 @@ export function useThreeTransformGizmo(
       return
     }
 
+    if (editorStore.gizmoMode === 'scale' && lastScalePreviewItems.value) {
+      // 第一步：比较起始快照和最终预览，拖回原位时不产生空的撤销事务。
+      const previewItems = lastScalePreviewItems.value
+      const startItemsMap = new Map(scaleStartItems.value.map((item) => [item.internalId, item]))
+      const hasScaleChange = previewItems.some((item) => {
+        const startItem = startItemsMap.get(item.internalId)
+        if (!startItem) return true
+
+        return (
+          Math.abs(item.x - startItem.x) > 0.0001 ||
+          Math.abs(item.y - startItem.y) > 0.0001 ||
+          Math.abs(item.z - startItem.z) > 0.0001 ||
+          Math.abs(item.extra.Scale.X - startItem.extra.Scale.X) > 0.0001 ||
+          Math.abs(item.extra.Scale.Y - startItem.extra.Scale.Y) > 0.0001 ||
+          Math.abs(item.extra.Scale.Z - startItem.extra.Scale.Z) > 0.0001
+        )
+      })
+      if (!hasScaleChange) {
+        endTransform()
+        return
+      }
+
+      // 第二步：用最终临时物品完成一次正式矩阵更新，确保 BVH 与画面同步。
+      const previewItemsMap = new Map(previewItems.map((item) => [item.internalId, item]))
+      const previewMatrices = buildWorldMatricesFromItems(previewItems)
+
+      updateSelectedInstancesMatrix(
+        buildDisplayWorldMatricesMap(previewMatrices, previewItemsMap),
+        false
+      )
+      slidePathBridge?.updateItemWorldMatrices(previewMatrices)
+      // 第三步：一次性提交位置和 extra.Scale；整个拖拽只形成一个历史事务。
+      commitBatchedTransform(
+        previewItems.map((item) => ({
+          id: item.internalId,
+          x: item.x,
+          y: item.y,
+          z: item.z,
+          scale: { ...item.extra.Scale },
+        })),
+        { recordHistory: true, action: 'transform.scale' }
+      )
+      endTransform()
+      return
+    }
+
     if (!hasStartedTransform.value) {
       endTransform()
       return
@@ -787,6 +956,21 @@ export function useThreeTransformGizmo(
         const matrix = matrixTransform.buildWorldMatrixFromItem(item, useModelScale)
         map.set(id, matrix)
       }
+    }
+
+    return map
+  }
+
+  function buildWorldMatricesFromItems(items: AppItem[]): Map<string, Matrix4> {
+    const map = new Map<string, Matrix4>()
+    const currentMode = settingsStore.settings.threeDisplayMode
+
+    for (const item of items) {
+      // Model 模式使用模型自身尺寸，其他模式让 matrixTransform 注入家具基础尺寸。
+      const modelConfig = gameDataStore.getFurnitureModelConfig(item.gameId)
+      const hasValidModel = modelConfig && modelConfig.meshes && modelConfig.meshes.length > 0
+      const useModelScale = !!(currentMode === 'model' && hasValidModel)
+      map.set(item.internalId, matrixTransform.buildWorldMatrixFromItem(item, useModelScale))
     }
 
     return map

@@ -3,6 +3,8 @@ import { ref, computed, shallowRef, triggerRef } from 'vue'
 
 // 选择动作类型
 export type SelectionAction = 'new' | 'add' | 'subtract' | 'intersect' | 'toggle'
+// Gizmo 三种互斥变换模式；null 表示暂时隐藏操作器。
+export type GizmoMode = 'translate' | 'rotate' | 'scale' | null
 
 import type {
   AppItem,
@@ -86,8 +88,8 @@ export const useEditorStore = defineStore('editor', () => {
   const selectionMode = ref<'box' | 'lasso'>('box')
   // 选择行为：新选区/加选/减选/交叉/切换
   const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect' | 'toggle'>('new')
-  // Gizmo 模式：平移/旋转/不显示
-  const gizmoMode = ref<'translate' | 'rotate' | null>('translate')
+  // Gizmo 模式：平移/旋转/缩放/不显示
+  const gizmoMode = ref<GizmoMode>('translate')
 
   const activeSchemeId = computed(() => {
     const activeTab = tabStore.activeTab
@@ -729,7 +731,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   // Gizmo 模式切换（互斥逻辑）
-  function setGizmoMode(mode: 'translate' | 'rotate' | null) {
+  function setGizmoMode(mode: GizmoMode) {
     // 如果点击当前激活的模式，则关闭；否则切换到新模式
     if (gizmoMode.value === mode) {
       gizmoMode.value = null

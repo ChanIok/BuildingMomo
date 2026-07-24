@@ -21,6 +21,7 @@ import {
   Hand,
   Move,
   RotateCw,
+  Scaling,
   ChevronDown,
   Package,
   Palette,
@@ -276,10 +277,39 @@ const showDyePanel = computed({
         </TooltipContent>
       </Tooltip>
 
+      <!-- 5. 缩放 Gizmo Toggle -->
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <div class="inline-flex">
+            <Toggle
+              size="sm"
+              :model-value="editorStore.gizmoMode === 'scale'"
+              @update:model-value="
+                (v) => {
+                  editorStore.gizmoMode = v ? 'scale' : null
+                }
+              "
+            >
+              <Scaling class="h-4 w-4" />
+            </Toggle>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" class="text-xs">
+          <div>
+            {{ t('command.tool.toggleScale') }}
+            <Kbd class="ml-1">Shift+R</Kbd>
+          </div>
+          <!-- 极简 Gizmo 不显示独立等比手柄，因此在工具提示中公开 Shift 操作。 -->
+          <div class="mt-1 text-muted-foreground">
+            {{ t('command.tool.scaleUniformHint') }}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+
       <!-- 分割线 -->
       <div class="h-6 w-px bg-border"></div>
 
-      <!-- 5. 家具背包 Toggle -->
+      <!-- 6. 家具背包 Toggle -->
       <Tooltip>
         <TooltipTrigger as-child>
           <div class="inline-flex">
@@ -294,7 +324,7 @@ const showDyePanel = computed({
         </TooltipContent>
       </Tooltip>
 
-      <!-- 6. 染色面板 Toggle -->
+      <!-- 7. 染色面板 Toggle -->
       <Tooltip>
         <TooltipTrigger as-child>
           <div class="inline-flex">

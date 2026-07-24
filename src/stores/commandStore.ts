@@ -291,6 +291,19 @@ export const useCommandStore = defineStore('command', () => {
         editorStore.gizmoMode = editorStore.gizmoMode === 'rotate' ? null : 'rotate'
       },
     },
+    // 缩放沿用工具命令总线，确保菜单、快捷键和画布按钮使用同一状态入口。
+    {
+      id: 'tool.toggleScale',
+      label: t('command.tool.toggleScale'),
+      // 避开相机持续监听的 WASD；Shift+R 与旋转 R 组成同一变换快捷键族。
+      shortcut: 'Shift+R',
+      category: 'tool',
+      enabled: () => uiStore.viewMode === '3d',
+      execute: () => {
+        console.log('[Command] 切换缩放模式')
+        editorStore.gizmoMode = editorStore.gizmoMode === 'scale' ? null : 'scale'
+      },
+    },
     {
       id: 'tool.toggleFurnitureLibrary',
       label: t('command.tool.toggleFurnitureLibrary'),
