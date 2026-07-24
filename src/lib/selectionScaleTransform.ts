@@ -10,6 +10,8 @@ export interface SelectionScaleFactors {
   z: number
 }
 
+export type VisualScaleAxis = 'x' | 'y' | 'z'
+
 export type ScaleRangeResolver = (
   item: AppItem,
   dataAxis: 'X' | 'Y' | 'Z'
@@ -17,6 +19,14 @@ export type ScaleRangeResolver = (
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+/**
+ * 将界面/Gizmo 的视觉轴映射到游戏存档的 Scale 轴。
+ */
+export function visualScaleAxisToDataAxis(axis: VisualScaleAxis): 'X' | 'Y' | 'Z' {
+  // 渲染矩阵约定视觉 X/Y 分别对应存档 Scale.Y/X，Z 轴保持不变。
+  return axis === 'x' ? 'Y' : axis === 'y' ? 'X' : 'Z'
 }
 
 function getFactorRange(
@@ -128,6 +138,38 @@ export function scaleItemsAroundPivot(
           X: currentScale.X * factors.y,
           Y: currentScale.Y * factors.x,
           Z: currentScale.Z * factors.z,
+        },
+      },
+    }
+  })
+}
+
+/**
+ * 以视觉轴语义绝对设置一批物品的自身缩放。
+ */
+export function setItemsAbsoluteScale(
+  items: AppItem[],
+  axis: VisualScaleAxis,
+  requestedValue: number,
+  resolveScaleRange: ScaleRangeResolver
+): AppItem[] {
+  // 第一步：轴映射只在共享缩放模块内发生，调用方始终使用界面所见的 x/y/z。
+  const dataAxis = visualScaleAxisToDataAxis(axis)
+
+  return items.map((item) => {
+    // 第二步：仅约束本次明确设置的轴，不顺带修正其他轴上的既有数据。
+    const range = resolveScaleRange(item, dataAxis)
+    const nextValue = range ? clamp(requestedValue, range[0], range[1]) : requestedValue
+    const currentScale = item.extra.Scale ?? { X: 1, Y: 1, Z: 1 }
+
+    // 第三步：生成新的 item、extra 和 Scale 引用，供历史事务按引用捕获差异。
+    return {
+      ...item,
+      extra: {
+        ...item.extra,
+        Scale: {
+          ...currentScale,
+          [dataAxis]: nextValue,
         },
       },
     }

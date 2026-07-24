@@ -3,13 +3,15 @@ import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorHistory } from './editor/useEditorHistory'
-import { applyTransformToItems } from '../lib/itemTransform'
+import {
+  applyRelativeSelectionTransform,
+  createSelectionTransformFrame,
+} from '../lib/selectionTransform'
 import type {
   AppItem,
   AdvancedPasteOptions,
   ClipboardData,
   StepRepeatConfig,
-  TransformParams,
 } from '../types/editor'
 
 /** 给每个粘贴出来的家具一个应用里唯一的 internalId（字符串）。 */
@@ -485,21 +487,19 @@ export function useClipboard() {
     pivotData: { x: number; y: number; z: number }
   ): ClipboardData {
     const nextData = cloneClipboardData(clipboardData)
-    const params: TransformParams = {
-      mode: 'relative',
-      position: uiStore.workingDeltaToData(config.positionDelta),
-      rotation: { ...config.rotationDelta },
-      scale: { ...config.scaleMultiplier },
-    }
-
-    // 与主界面 Gizmo 使用同一套变换，保证「步进 1 次」=「粘贴后再做一次同样的相对变换」
-    nextData.items = applyTransformToItems(nextData.items, params, {
-      rotationCenter: pivotData,
-      positionReferencePoint: pivotData,
-      effectiveWorkingRotation: getClipboardEffectiveWorkingRotation(nextData, uiStore),
-      limitScaleValues: false,
-      getScaleRange: () => null,
-    })
+    // 第一步：每一轮根据当前副本解析有效坐标系，并围绕固定步进 Pivot 建立共享 Frame。
+    const workingRotation = getClipboardEffectiveWorkingRotation(nextData, uiStore)
+    const frame = createSelectionTransformFrame(pivotData, workingRotation)
+    // 第二步：统一执行 Scale → Rotate → Translate，倍率始终采用界面视觉 x/y/z。
+    nextData.items = applyRelativeSelectionTransform(
+      nextData.items,
+      {
+        positionDelta: uiStore.workingDeltaToData(config.positionDelta),
+        rotationDelta: { ...config.rotationDelta },
+        scaleFactors: { ...config.scaleMultiplier },
+      },
+      frame
+    )
 
     return nextData
   }

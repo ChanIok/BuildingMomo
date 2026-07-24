@@ -28,7 +28,8 @@ const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
 const {
-  updateSelectedItemsTransform,
+  rotateSelectedItemsRelative,
+  setSelectedRotation,
   rotateSelectionAroundOrigin,
   setSelectedItemsAbsoluteRotationInWorking,
   getRotationCenter,
@@ -96,13 +97,8 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
     const delta = value
     if (delta === 0) return
 
-    const rotationArgs: any = {}
-    rotationArgs[axis] = delta
-
-    updateSelectedItemsTransform({
-      mode: 'relative',
-      rotation: rotationArgs,
-    })
+    // 相对旋转通过明确入口统一使用选择 Pivot 和当前有效坐标系。
+    rotateSelectedItemsRelative({ [axis]: delta })
 
     // 重置输入为0
     rotationState.value[axis] = 0
@@ -125,10 +121,8 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
         globalRotation = convertRotationWorkingToGlobal(effectiveRotation, coordRotation)
       }
 
-      updateSelectedItemsTransform({
-        mode: 'absolute',
-        rotation: matrixTransform.visualRotationToData(globalRotation),
-      })
+      // 单选绝对角度转换回数据空间后直接写入，不进入相对变换管线。
+      setSelectedRotation(matrixTransform.visualRotationToData(globalRotation))
     } else if (originItemId) {
       // 多选有原点：以原点物品为基准旋转
       rotateSelectionAroundOrigin(originItemId, axis, value)
@@ -140,13 +134,8 @@ function updateRotation(axis: 'x' | 'y' | 'z', value: number) {
       const delta = value
       if (delta === 0) return
 
-      const rotationArgs: any = {}
-      rotationArgs[axis] = delta
-
-      updateSelectedItemsTransform({
-        mode: 'relative',
-        rotation: rotationArgs,
-      })
+      // 定点模式仍使用同一个相对旋转入口，Pivot 由编辑器状态统一解析。
+      rotateSelectedItemsRelative({ [axis]: delta })
 
       // 重置输入为0
       rotationState.value[axis] = 0

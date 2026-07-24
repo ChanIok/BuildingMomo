@@ -5,16 +5,17 @@ import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useGameDataStore } from '../../stores/gameDataStore'
 import { calculateBounds } from '../../lib/geometry'
-import { applyTransformToItems } from '../../lib/itemTransform'
 import { useEditorHistory } from './useEditorHistory'
-import type { TransformParams } from '../../types/editor'
 import type { AppItem } from '../../types/editor'
 import { matrixTransform } from '../../lib/matrixTransform'
 import {
   constrainSelectionScaleFactors,
   scaleItemsAroundPivot,
-  type SelectionScaleAxis,
+  setItemsAbsoluteScale,
+  type VisualScaleAxis,
 } from '../../lib/selectionScaleTransform'
+import { createSelectionTransformFrame, translateItems } from '../../lib/selectionTransform'
+import { rotateItemsInWorkingCoordinate } from '../../lib/rotationTransform'
 import {
   convertRotationGlobalToWorking,
   convertRotationWorkingToGlobal,
@@ -27,29 +28,6 @@ export function useEditorManipulation() {
   const gameDataStore = useGameDataStore()
   const { activeScheme } = storeToRefs(store)
   const { recordTransaction } = useEditorHistory()
-
-  /**
-   * 侧栏相对缩放一次只提交一个存档轴；这里将它还原为视觉/Gizmo 轴。
-   * 多轴或混合变换返回 null，继续交给原有通用变换流程处理。
-   */
-  function getRelativeScaleAxis(params: TransformParams): SelectionScaleAxis | null {
-    if (
-      params.mode !== 'relative' ||
-      !params.scale ||
-      params.position !== undefined ||
-      params.rotation !== undefined
-    ) {
-      return null
-    }
-
-    const definedAxes = [
-      params.scale.y !== undefined ? 'X' : null,
-      params.scale.x !== undefined ? 'Y' : null,
-      params.scale.z !== undefined ? 'Z' : null,
-    ].filter((axis): axis is 'X' | 'Y' | 'Z' => axis !== null)
-
-    return definedAxes.length === 1 ? definedAxes[0]! : null
-  }
 
   /**
    * 获取选中物品的中心坐标（包围盒中心）
@@ -118,125 +96,198 @@ export function useEditorManipulation() {
     })
   }
 
-  // 精确变换选中物品（位置、旋转和缩放）
-  function updateSelectedItemsTransform(params: TransformParams) {
-    if (!activeScheme.value) return
+  /**
+   * 用纯函数计算结果替换当前选中项，并保持未选中项引用不变。
+   */
+  function replaceSelectedItems(selectedIds: Set<string>, transformedItems: AppItem[]) {
+    // 第一步：按 internalId 建立结果索引，避免遍历场景时重复搜索。
+    const transformedMap = new Map(transformedItems.map((item) => [item.internalId, item]))
+    // 第二步：只替换选中且确实产生结果的物品，维持历史事务的引用比较效率。
+    activeScheme.value!.items.value = activeScheme.value!.items.value.map((item) =>
+      selectedIds.has(item.internalId) ? (transformedMap.get(item.internalId) ?? item) : item
+    )
+    store.triggerSceneUpdate()
+  }
 
-    recordTransaction('transform.update', () => {
-      const scheme = activeScheme.value!
-      const ids = scheme.selectedItemIds.value
-      if (ids.size === 0) return
-
-      const rotationCenter = getRotationCenter()
-      if (!rotationCenter) return
-
-      let positionReferencePoint: { x: number; y: number; z: number } | null = null
-      const groupId = store.getGroupIdIfEntireGroupSelected(ids)
-      if (groupId !== null) {
-        const originItemId = scheme.groupOrigins.value.get(groupId)
-        if (originItemId) {
-          const originItem = store.itemsMap.get(originItemId)
-          if (originItem) {
-            positionReferencePoint = { x: originItem.x, y: originItem.y, z: originItem.z }
-          }
-        }
+  /**
+   * 获取绝对位置输入所使用的参考点：完整组合优先使用组合原点，否则使用选择中心。
+   */
+  function getSelectedPositionReferencePoint(
+    selectedIds: Set<string>
+  ): { x: number; y: number; z: number } | null {
+    // 第一步：完整选中组合时，绝对位置代表组合原点的位置。
+    const groupId = store.getGroupIdIfEntireGroupSelected(selectedIds)
+    if (groupId !== null && activeScheme.value) {
+      const originItemId = activeScheme.value.groupOrigins.value.get(groupId)
+      const originItem = originItemId ? store.itemsMap.get(originItemId) : null
+      if (originItem) {
+        return { x: originItem.x, y: originItem.y, z: originItem.z }
       }
+    }
+    // 第二步：普通选择使用几何中心，与侧栏当前显示值保持一致。
+    return getSelectedItemsCenter()
+  }
 
-      if (!positionReferencePoint) {
-        positionReferencePoint = getSelectedItemsCenter() || rotationCenter
-      }
+  /**
+   * 按数据空间增量平移当前选择。
+   */
+  function translateSelectedItems(delta: { x: number; y: number; z: number }) {
+    if (!activeScheme.value || (delta.x === 0 && delta.y === 0 && delta.z === 0)) return
 
-      const selectedItems = scheme.items.value.filter((item) => ids.has(item.internalId))
-      const effectiveWorkingRotation = uiStore.getEffectiveCoordinateRotation(
-        ids,
-        store.itemsMap
-      ) || { x: 0, y: 0, z: 0 }
-
-      const relativeScaleAxis = getRelativeScaleAxis(params)
-      let transformedItems: AppItem[]
-
-      if (relativeScaleAxis && params.scale) {
-        // 第一步：把侧栏已交叉映射的存档轴重新转换成视觉/Gizmo 倍率。
-        const requestedFactors = {
-          x: params.scale.y ?? 1,
-          y: params.scale.x ?? 1,
-          z: params.scale.z ?? 1,
-        }
-        // 第二步：开启限制检测时使用共同家具范围；关闭时 Input 不施加 Gizmo 的 0.01 下限。
-        const factors = constrainSelectionScaleFactors(
-          requestedFactors,
-          relativeScaleAxis,
-          selectedItems,
-          (item) =>
-            settingsStore.settings.enableLimitDetection
-              ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
-              : null
-        )
-        // 第三步：将数据空间 Pivot 转换到与 Gizmo 相同的 Three.js 世界空间。
-        const pivotWorldData = matrixTransform.dataPositionToWorld(rotationCenter)
-        const pivotWorldPosition = new Vector3(pivotWorldData.x, pivotWorldData.y, pivotWorldData.z)
-        // 第四步：按项目统一的 ZYX 与 Z 取反约定构建工作坐标系旋转。
-        const pivotWorldQuaternion = new Quaternion().setFromEuler(
-          new Euler(
-            MathUtils.degToRad(effectiveWorkingRotation.x),
-            MathUtils.degToRad(effectiveWorkingRotation.y),
-            -MathUtils.degToRad(effectiveWorkingRotation.z),
-            'ZYX'
-          )
-        )
-        // 第五步：复用 Gizmo 的纯函数，统一 Pivot、工作坐标系和局部 Scale 语义。
-        transformedItems = scaleItemsAroundPivot(
-          selectedItems,
-          pivotWorldPosition,
-          pivotWorldQuaternion,
-          factors
-        )
-      } else {
-        // 绝对缩放、组合变换和高级粘贴继续沿用原有通用变换流程。
-        transformedItems = applyTransformToItems(selectedItems, params, {
-          rotationCenter,
-          positionReferencePoint,
-          effectiveWorkingRotation,
-          limitScaleValues: settingsStore.settings.enableLimitDetection,
-          getScaleRange: (gameId) => gameDataStore.getFurniture(gameId)?.scaleRange ?? null,
-        })
-      }
-      const transformedMap = new Map(transformedItems.map((item) => [item.internalId, item]))
-
-      activeScheme.value!.items.value = activeScheme.value!.items.value.map(
-        (item) => transformedMap.get(item.internalId) ?? item
+    recordTransaction('transform.translate', () => {
+      // 第一步：读取当前选择快照，避免把未选中物品交给变换函数。
+      const selectedIds = activeScheme.value!.selectedItemIds.value
+      const selectedItems = activeScheme.value!.items.value.filter((item) =>
+        selectedIds.has(item.internalId)
       )
-
-      store.triggerSceneUpdate()
+      // 第二步：通过共享平移纯函数生成结果并统一写回。
+      replaceSelectedItems(selectedIds, translateItems(selectedItems, delta))
     })
   }
 
-  // 移动选中物品（XYZ）
-  function moveSelectedItems(
-    dx: number,
-    dy: number,
-    dz: number,
-    options: { recordHistory?: boolean } = { recordHistory: true }
-  ) {
+  /**
+   * 把当前选择的参考点移动到指定数据空间坐标。
+   */
+  function setSelectedPosition(target: { x: number; y: number; z: number }) {
     if (!activeScheme.value) return
 
-    const doMove = () => {
-      const selected = activeScheme.value!.selectedItemIds.value
-      // 【关键性能提升】返回新数组 + 返回新解构包裹对象 `{ ...item }`
-      // 以维系引用地址(`===`)不变动，使撤销/重做系统的自动比对能“光速跳过”未变更的成千上万个对象
-      activeScheme.value!.items.value = activeScheme.value!.items.value.map((item) =>
-        selected.has(item.internalId)
-          ? { ...item, x: item.x + dx, y: item.y + dy, z: item.z + dz }
-          : item
+    recordTransaction('transform.set_position', () => {
+      const selectedIds = activeScheme.value!.selectedItemIds.value
+      if (selectedIds.size === 0) return
+      // 第一步：由组合原点或选择中心求出绝对目标对应的数据空间位移。
+      const referencePoint = getSelectedPositionReferencePoint(selectedIds)
+      if (!referencePoint) return
+      const delta = {
+        x: target.x - referencePoint.x,
+        y: target.y - referencePoint.y,
+        z: target.z - referencePoint.z,
+      }
+      // 第二步：绝对位置最终仍复用唯一的平移纯函数。
+      const selectedItems = activeScheme.value!.items.value.filter((item) =>
+        selectedIds.has(item.internalId)
       )
-      store.triggerSceneUpdate()
+      replaceSelectedItems(selectedIds, translateItems(selectedItems, delta))
+    })
+  }
+
+  /**
+   * 在当前有效坐标系内围绕选择 Pivot 相对旋转。
+   */
+  function rotateSelectedItemsRelative(rotationDelta: { x?: number; y?: number; z?: number }) {
+    if (!activeScheme.value) return
+    if (
+      (rotationDelta.x ?? 0) === 0 &&
+      (rotationDelta.y ?? 0) === 0 &&
+      (rotationDelta.z ?? 0) === 0
+    ) {
+      return
     }
 
-    if (options.recordHistory) {
-      recordTransaction('transform.move', doMove)
-    } else {
-      doMove()
-    }
+    recordTransaction('transform.rotate', () => {
+      const selectedIds = activeScheme.value!.selectedItemIds.value
+      const pivot = getRotationCenter()
+      if (selectedIds.size === 0 || !pivot) return
+      // 第一步：读取视觉工作坐标系，它与 Gizmo 的旋转语义一致。
+      const workingRotation = uiStore.getEffectiveCoordinateRotation(
+        selectedIds,
+        store.itemsMap
+      ) || { x: 0, y: 0, z: 0 }
+      // 第二步：围绕同一选择 Pivot 调用唯一的相对旋转纯函数。
+      const selectedItems = activeScheme.value!.items.value.filter((item) =>
+        selectedIds.has(item.internalId)
+      )
+      const transformedItems = rotateItemsInWorkingCoordinate(
+        selectedItems,
+        rotationDelta,
+        pivot,
+        workingRotation,
+        false
+      )
+      replaceSelectedItems(selectedIds, transformedItems)
+    })
+  }
+
+  /**
+   * 直接设置当前选择的数据空间绝对旋转。
+   */
+  function setSelectedRotation(rotation: { x: number; y: number; z: number }) {
+    if (!activeScheme.value) return
+
+    recordTransaction('transform.set_rotation', () => {
+      const selectedIds = activeScheme.value!.selectedItemIds.value
+      // 绝对旋转不经过相对变换管线，直接生成带目标 rotation 的新对象。
+      const transformedItems = activeScheme
+        .value!.items.value.filter((item) => selectedIds.has(item.internalId))
+        .map((item) => ({ ...item, rotation: { ...rotation } }))
+      replaceSelectedItems(selectedIds, transformedItems)
+    })
+  }
+
+  /**
+   * 以视觉轴语义围绕选择 Pivot 做相对整体缩放。
+   */
+  function scaleSelectedItemsRelative(axis: VisualScaleAxis, multiplier: number) {
+    if (!activeScheme.value || multiplier === 1) return
+
+    recordTransaction(`transform.scale.${axis}`, () => {
+      const selectedIds = activeScheme.value!.selectedItemIds.value
+      const pivot = getRotationCenter()
+      if (selectedIds.size === 0 || !pivot) return
+      const selectedItems = activeScheme.value!.items.value.filter((item) =>
+        selectedIds.has(item.internalId)
+      )
+      // 第一步：调用方使用视觉 x/y/z，构造 Gizmo 共享的视觉倍率。
+      const requestedFactors = {
+        x: axis === 'x' ? multiplier : 1,
+        y: axis === 'y' ? multiplier : 1,
+        z: axis === 'z' ? multiplier : 1,
+      }
+      const controlAxis = axis === 'x' ? 'X' : axis === 'y' ? 'Y' : 'Z'
+      // 第二步：Input 只在开启限制检测时使用家具范围，不应用 Gizmo 的 0.01 下限。
+      const factors = constrainSelectionScaleFactors(
+        requestedFactors,
+        controlAxis,
+        selectedItems,
+        (item) =>
+          settingsStore.settings.enableLimitDetection
+            ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+            : null
+      )
+      // 第三步：用共享 Frame 和缩放纯函数统一 Pivot、坐标系与轴映射。
+      const workingRotation = uiStore.getEffectiveCoordinateRotation(
+        selectedIds,
+        store.itemsMap
+      ) || { x: 0, y: 0, z: 0 }
+      const frame = createSelectionTransformFrame(pivot, workingRotation)
+      const transformedItems = scaleItemsAroundPivot(
+        selectedItems,
+        frame.pivotWorldPosition,
+        frame.pivotWorldQuaternion,
+        factors
+      )
+      replaceSelectedItems(selectedIds, transformedItems)
+    })
+  }
+
+  /**
+   * 以视觉轴语义绝对设置当前选择的自身 Scale。
+   */
+  function setSelectedScale(axis: VisualScaleAxis, value: number) {
+    if (!activeScheme.value) return
+
+    recordTransaction(`transform.set_scale.${axis}`, () => {
+      const selectedIds = activeScheme.value!.selectedItemIds.value
+      const selectedItems = activeScheme.value!.items.value.filter((item) =>
+        selectedIds.has(item.internalId)
+      )
+      // 绝对缩放只设置物品自身 Scale，不改变物品之间的位置。
+      const transformedItems = setItemsAbsoluteScale(selectedItems, axis, value, (item) =>
+        settingsStore.settings.enableLimitDetection
+          ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+          : null
+      )
+      replaceSelectedItems(selectedIds, transformedItems)
+    })
   }
 
   /**
@@ -646,8 +697,12 @@ export function useEditorManipulation() {
     getSelectedItemsCenter,
     getRotationCenter,
     deleteSelected,
-    updateSelectedItemsTransform,
-    moveSelectedItems,
+    translateSelectedItems,
+    setSelectedPosition,
+    rotateSelectedItemsRelative,
+    setSelectedRotation,
+    scaleSelectedItemsRelative,
+    setSelectedScale,
     mirrorSelectedItems,
     rotateSelectionAroundOrigin,
     setSelectedItemsAbsoluteRotationInWorking,

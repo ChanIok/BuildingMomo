@@ -17,7 +17,13 @@ const editorStore = useEditorStore()
 const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
-const { updateSelectedItemsTransform, mirrorSelectedItems } = useEditorManipulation()
+const {
+  translateSelectedItems,
+  setSelectedPosition,
+  scaleSelectedItemsRelative,
+  setSelectedScale,
+  mirrorSelectedItems,
+} = useEditorManipulation()
 
 // 使用抽取的 composable
 const {
@@ -129,10 +135,8 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     // 使用 uiStore 统一转换：工作坐标系增量 -> 数据空间增量
     const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
-    updateSelectedItemsTransform({
-      mode: 'relative',
-      position: dataDelta,
-    })
+    // 通过明确的平移入口提交数据空间增量。
+    translateSelectedItems(dataDelta)
 
     // 重置输入为0
     positionState.value[axis] = 0
@@ -146,42 +150,28 @@ function updatePosition(axis: 'x' | 'y' | 'z', value: number) {
     // 使用 uiStore 统一转换：工作坐标系 -> 数据空间
     const newDataPos = uiStore.workingToData(newWorkingPos)
 
-    updateSelectedItemsTransform({
-      mode: 'absolute',
-      position: newDataPos,
-    })
+    // 绝对位置入口负责把目标参考点转换为整组选中物品的位移。
+    setSelectedPosition(newDataPos)
   }
 }
 
-// 更新缩放（UI 轴 → 存档 Scale 轴，x/y 与 scaleValue 一致）
+// 更新缩放：组件始终传递视觉轴，存档轴映射集中在共享缩放模块内。
 function updateScale(axis: 'x' | 'y' | 'z', value: number) {
   if (!selectionInfo.value) return
-  const dataAxis = axis === 'x' ? 'y' : axis === 'y' ? 'x' : 'z'
 
   if (isScaleRelative.value) {
     // 相对模式：值为乘数（例如 1.5 表示放大到 1.5 倍）
     const multiplier = value
     if (multiplier === 1) return // 乘以 1 无变化
 
-    const scaleArgs: Record<string, number> = {}
-    scaleArgs[dataAxis] = multiplier
-
-    updateSelectedItemsTransform({
-      mode: 'relative',
-      scale: scaleArgs,
-    })
+    // 相对缩放与 Gizmo 共用 Pivot、工作坐标系和纯计算函数。
+    scaleSelectedItemsRelative(axis, multiplier)
 
     // 重置输入为1
     scaleState.value[axis] = 1
   } else {
-    // 绝对模式：直接设置缩放值
-    const scaleArgs: Record<string, number> = {}
-    scaleArgs[dataAxis] = value
-
-    updateSelectedItemsTransform({
-      mode: 'absolute',
-      scale: scaleArgs,
-    })
+    // 绝对模式只设置指定视觉轴的自身 Scale，不改变选择内的相对位置。
+    setSelectedScale(axis, value)
   }
 }
 
@@ -206,10 +196,8 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
   // 使用 uiStore 统一转换：工作坐标系增量 -> 数据空间增量
   const dataDelta = uiStore.workingDeltaToData(workingDelta)
 
-  updateSelectedItemsTransform({
-    mode: 'relative',
-    position: dataDelta,
-  })
+  // 范围输入最终也是一次明确的数据空间平移。
+  translateSelectedItems(dataDelta)
 }
 </script>
 
