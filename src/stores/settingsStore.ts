@@ -126,8 +126,8 @@ export const useSettingsStore = defineStore('settings', () => {
     mergeDefaults: true, // 自动合并默认值
   })
 
-  // 认证状态
-  const isAuthenticated = ref<boolean>(false)
+  // 认证状态：已有本地口令即视为已验证，启动时不再请求服务器。
+  const isAuthenticated = ref<boolean>(localStorage.getItem(PASSWORD_STORAGE_KEY) !== null)
   const isVerifying = ref<boolean>(false)
 
   // 重置为默认设置
@@ -258,9 +258,23 @@ export const useSettingsStore = defineStore('settings', () => {
         credentials: 'include', // 允许发送和接收 Cookie
       })
 
-      const data = await response.json()
+      // 登录接口使用 401 明确表示口令错误；这个结果不能使用本地口令兜底。
+      if (response.status === 401) {
+        isAuthenticated.value = false
+        if (!persistPassword) {
+          localStorage.removeItem(PASSWORD_STORAGE_KEY)
+        }
+        return false
+      }
 
-      if (data.success) {
+      let data: { success?: boolean } | null = null
+      try {
+        data = await response.json()
+      } catch {
+        // 非 401 的无效响应视为服务不可用，交由本地口令兜底。
+      }
+
+      if (response.ok && data?.success) {
         isAuthenticated.value = true
         if (persistPassword) {
           localStorage.setItem(PASSWORD_STORAGE_KEY, password)
@@ -268,12 +282,18 @@ export const useSettingsStore = defineStore('settings', () => {
         return true
       }
 
-      // 验证失败：如果是静默验证，清理旧密码
-      if (!persistPassword) {
-        localStorage.removeItem(PASSWORD_STORAGE_KEY)
+      // 只有静默验证才允许使用已保存口令兜底；手动输入仍需服务器明确验证成功。
+      if (!persistPassword && localStorage.getItem(PASSWORD_STORAGE_KEY) !== null) {
+        isAuthenticated.value = true
+        return true
       }
       return false
     } catch {
+      // 网络断开、DNS 失败或 Cloudflare 不可达：已有本地口令时视为已验证。
+      if (!persistPassword && localStorage.getItem(PASSWORD_STORAGE_KEY) !== null) {
+        isAuthenticated.value = true
+        return true
+      }
       return false
     } finally {
       isVerifying.value = false
@@ -281,7 +301,8 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   /**
-   * 应用启动时的初始化验证
+   * 应用启动时静默验证已保存的口令。
+   * 网络不可用时保留本地授权；服务器返回 401 时撤销本地授权。
    */
   async function initializeAuth(): Promise<void> {
     const savedPassword = localStorage.getItem(PASSWORD_STORAGE_KEY)
