@@ -17,6 +17,7 @@ import type {
 } from '../types/editor'
 import type { ArchivedSchemeSnapshot } from '../types/archive'
 import type { SharedSchemeSnapshot } from '../types/cloudScheme'
+import { parseGameDataContent } from '../lib/gameDataFormat'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
 
@@ -252,25 +253,10 @@ export const useEditorStore = defineStore('editor', () => {
     fileLastModified?: number
   ): Promise<{ success: boolean; schemeId?: string; error?: string }> {
     try {
-      const data: GameDataFile = JSON.parse(fileContent)
-
-      // 检查基本结构
-      if (!data.hasOwnProperty('PlaceInfo')) {
-        throw new Error('Invalid JSON format: PlaceInfo field not found')
-      }
-
-      // 处理 PlaceInfo 的不同格式
-      let placeInfoArray: GameItem[] = []
-      if (Array.isArray(data.PlaceInfo)) {
-        placeInfoArray = data.PlaceInfo
-      } else if (typeof data.PlaceInfo === 'object' && data.PlaceInfo !== null) {
-        placeInfoArray = []
-      } else {
-        throw new Error('Invalid JSON format: PlaceInfo must be an array or object')
-      }
+      const data = parseGameDataContent(fileContent)
 
       // 转换为内部数据格式（允许空数组，创建空白方案）
-      const newItems: AppItem[] = placeInfoArray.map((gameItem: GameItem) => {
+      const newItems: AppItem[] = data.items.map((gameItem: GameItem) => {
         const { Location, Rotation, GroupID, ItemID, InstanceID, ...others } = gameItem
         return {
           internalId: generateUUID(),
@@ -297,7 +283,7 @@ export const useEditorStore = defineStore('editor', () => {
         if (item.groupId > maxGrpId) maxGrpId = item.groupId
       }
 
-      const importedName = typeof data.Name === 'string' ? data.Name.trim() : ''
+      const importedName = data.name ?? ''
       const schemeName = importedName || t('scheme.defaultName', { n: schemes.value.length + 1 })
 
       // 创建新方案

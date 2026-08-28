@@ -66,7 +66,8 @@ export interface ValidationItem {
   rotation: { Pitch: number; Yaw: number; Roll: number }
 }
 
-// JSON文件根结构
+// 旧版/方案码使用的扁平数据结构。
+// 游戏文件的兼容解析与新格式序列化由 lib/gameDataFormat 负责。
 export interface GameDataFile {
   Name?: string
   NeedRestore?: boolean

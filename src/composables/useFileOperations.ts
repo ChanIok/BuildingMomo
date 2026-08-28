@@ -1,6 +1,6 @@
 import { ref, onUnmounted } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
-import type { GameDataFile, GameItem } from '../types/editor'
+import type { GameItem } from '../types/editor'
 import { useNotification } from './useNotification'
 import { useSettingsStore } from '../stores/settingsStore'
 import type { AlertDetailItem } from '../stores/notificationStore'
@@ -14,6 +14,7 @@ import backgroundUrl from '@/assets/home.webp'
 import { createCodeImportOps } from './fileOps/codeImport'
 import { createWatchModeOps } from './fileOps/watchMode'
 import { createArchiveOps } from './fileOps/archive'
+import { serializeBuildData } from '@/lib/gameDataFormat'
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -245,12 +246,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     const gameItems = await prepareDataForSave()
     if (!gameItems) return
 
-    const exportData: GameDataFile = {
-      NeedRestore: true,
-      PlaceInfo: gameItems,
-    }
-
-    const jsonString = JSON.stringify(exportData)
+    const jsonString = serializeBuildData(gameItems)
     const blob = new Blob([jsonString], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
 

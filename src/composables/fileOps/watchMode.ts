@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
 import type { useNotification } from '@/composables/useNotification'
-import type { FileWatchState, GameDataFile, GameItem } from '@/types/editor'
+import type { FileWatchState, GameItem } from '@/types/editor'
 import { WatchHistoryDB } from '@/lib/watchHistoryStore'
 import { WatchHandleStore } from '@/lib/watchHandleStore'
 import {
@@ -18,7 +18,11 @@ import {
   isBuildSaveDataFile,
   isValidSaveDataExportFileName,
 } from './watchMode.fs'
-import { buildRecordPayloadFromGameItems, parseBuildRecordToGameData } from './watchMode.record'
+import {
+  parseGameDataContent,
+  serializeBuildData,
+  serializeBuildRecord,
+} from '@/lib/gameDataFormat'
 
 // 监听历史最多保留 30 条
 const MAX_WATCH_HISTORY = 30
@@ -49,11 +53,10 @@ interface DirectoryResolveResult {
 
 type ActivateWatchMode = 'silent' | 'interactive'
 
-/** 从 JSON 字符串中快速读取 PlaceInfo 条目数量，解析失败返回 0 */
+/** 从游戏数据字符串中读取条目数量，解析失败返回 0。 */
 function getItemCountFromContent(content: string): number {
   try {
-    const jsonData = JSON.parse(content)
-    return Array.isArray(jsonData?.PlaceInfo) ? jsonData.PlaceInfo.length : 0
+    return parseGameDataContent(content).items.length
   } catch {
     return 0
   }
@@ -320,9 +323,9 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     // 若最新存档 NeedRestore 为 true，询问用户是否立即导入
     if (result && latestContent !== undefined) {
       try {
-        const jsonData = JSON.parse(latestContent)
+        const parsed = parseGameDataContent(latestContent)
 
-        if (jsonData.NeedRestore === true) {
+        if (parsed.needRestore === true) {
           const shouldImport = await notification.confirm({
             title: t('fileOps.watch.foundTitle'),
             description: t('fileOps.watch.foundDesc', {
@@ -353,19 +356,19 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   /**
    * 将已读取的文件内容导入为 scheme 的核心实现。
    *
-   * @param updateWatchState 为 true 时更新 fileIndex 与 lastImportedFile*，
-   *   从 BuildRecord 导入时传 false 以避免污染 BuildData 的文件索引。
+   * @param importMode 区分 BuildData 导入和 BuildRecord 导入。
+   *   BuildRecord 导入不会更新 BuildData 的 fileIndex，失败时交给调用方回退。
    */
   async function importFromContentInternal(
     content: string,
     fileName: string,
     lastModified: number,
-    itemCount?: number,
-    updateWatchState: boolean = true
-  ): Promise<void> {
+    importMode: 'build-data' | 'record',
+    itemCount?: number
+  ): Promise<boolean> {
     if (!watchState.value.isActive) {
       notification.warning(t('fileOps.importWatched.notStarted'))
-      return
+      return false
     }
 
     try {
@@ -377,7 +380,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
       if (importResult.success) {
         console.log(`[FileWatch] Successfully imported: ${fileName}`)
-        if (updateWatchState) {
+        if (importMode === 'build-data') {
           const cached = watchState.value.fileIndex.get(fileName)
           const finalItemCount = itemCount ?? getItemCountFromContent(content)
           watchState.value.fileIndex.set(fileName, {
@@ -391,35 +394,41 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
         notification.success(t('fileOps.import.success'))
         // 提前预加载当前 scheme 所需的 3D 资源
         preloadActiveSchemeResources()
+        return true
       } else {
-        notification.error(
-          t('fileOps.import.failed', { reason: importResult.error || 'Unknown error' })
-        )
+        if (importMode === 'build-data') {
+          notification.error(
+            t('fileOps.import.failed', { reason: importResult.error || 'Unknown error' })
+          )
+        }
       }
     } catch (error: any) {
       console.error('[FileWatch] Failed to import:', error)
-      notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
+      if (importMode === 'build-data') {
+        notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
+      }
     }
+
+    return false
   }
 
   /** 从 BuildData JSON 文件内容导入（更新 fileIndex） */
-  async function importFromContent(
+  function importFromContent(
     content: string,
     fileName: string,
     lastModified: number,
     itemCount?: number
-  ): Promise<void> {
-    await importFromContentInternal(content, fileName, lastModified, itemCount, true)
+  ): Promise<boolean> {
+    return importFromContentInternal(content, fileName, lastModified, 'build-data', itemCount)
   }
 
   /** 从 BuildRecord 文件内容导入（不更新 fileIndex，避免污染 BuildData 索引） */
-  async function importFromRecordContent(
+  function importFromRecordContent(
     content: string,
     fileName: string,
-    lastModified: number,
-    itemCount?: number
-  ): Promise<void> {
-    await importFromContentInternal(content, fileName, lastModified, itemCount, false)
+    lastModified: number
+  ): Promise<boolean> {
+    return importFromContentInternal(content, fileName, lastModified, 'record')
   }
 
   /**
@@ -445,11 +454,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     // 准备经过验证、修正后的导出数据
     const gameItems = await prepareDataForSave()
     if (!gameItems) return
-
-    const exportData: GameDataFile = {
-      NeedRestore: true,
-      PlaceInfo: gameItems,
-    }
 
     let handle: FileSystemFileHandle | null = null
     let finalFileName = ''
@@ -480,7 +484,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
         return
       }
 
-      const jsonString = JSON.stringify(exportData)
+      const jsonString = serializeBuildData(gameItems)
 
       // 写入前确保拥有写权限
       const permission = await verifyPermission(handle)
@@ -512,9 +516,9 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
           if (latestRecord) {
             const recordPermission = await verifyPermission(latestRecord.handle)
             if (recordPermission) {
-              const recordPayload = buildRecordPayloadFromGameItems(gameItems)
+              const recordString = serializeBuildRecord(gameItems)
               const recordWritable = await latestRecord.handle.createWritable()
-              await recordWritable.write(JSON.stringify(recordPayload))
+              await recordWritable.write(recordString)
               await recordWritable.close()
               console.log(`[FileOps] Synced save to latest BuildRecord: ${latestRecord.file.name}`)
             } else {
@@ -597,10 +601,10 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
         }
 
         try {
-          const jsonData = JSON.parse(content)
-          const itemCount = Array.isArray(jsonData?.PlaceInfo) ? jsonData.PlaceInfo.length : 0
+          const parsed = parseGameDataContent(content)
+          const itemCount = parsed.items.length
           // 只有 NeedRestore === true 的文件才视为有效的游戏存档变更
-          if (jsonData.NeedRestore === true) {
+          if (parsed.needRestore === true) {
             if (file.lastModified > latestModified) {
               latestModified = file.lastModified
               latestFile = { name, file, handle, content, itemCount }
@@ -811,16 +815,13 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
           try {
             console.log('[FileWatch] Found latest BuildRecord:', latestRecord.file.name)
             const recordContent = await latestRecord.file.text()
-            // 将 .record 格式转换为标准 GameDataFile 后导入
-            const parsed = parseBuildRecordToGameData(recordContent)
-            const content = JSON.stringify(parsed)
-            await importFromRecordContent(
-              content,
+            // 导入失败时回退到 BuildData，record 内容只解析一次。
+            const imported = await importFromRecordContent(
+              recordContent,
               latestRecord.file.name,
-              latestRecord.file.lastModified,
-              parsed.PlaceInfo.length
+              latestRecord.file.lastModified
             )
-            return
+            if (imported) return
           } catch (recordParseError) {
             console.warn(
               '[FileWatch] Failed to parse latest BuildRecord, fallback to BuildData:',
