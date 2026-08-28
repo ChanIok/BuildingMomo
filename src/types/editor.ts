@@ -3,8 +3,8 @@ import type { ViewPreset } from '../composables/useThreeCamera'
 
 export type SchemeSource = 'local' | 'cloud'
 
-// ColorMap 混合格式类型定义
-// 游戏中 ColorMap 有两种格式：
+// 内部 ColorMap 的兼容格式；导出到新版游戏时由 gameDataFormat 统一写成 colors 数组。
+// 导入数据中的 ColorMap/colors 有两种格式：
 // 1. 对象格式：{ "0": 0 } 或 { "0": 1 }
 // 2. 数组格式：[10, 20] 或 [null, 22]
 export type GameColorMap = Record<string, number> | (number | null)[]

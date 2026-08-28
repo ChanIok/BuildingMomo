@@ -19,7 +19,7 @@ interface BuildSnapshot {
       position: { y: number; x: number; z: number }
       scale: { y: number; x: number; z: number }
     }
-    colors: GameColorMap
+    colors: number[]
     cfg_item_id: number
     attach_id: number
   }
@@ -62,6 +62,21 @@ function normalizeColorMap(value: unknown): GameColorMap | undefined {
   }
 
   return undefined
+}
+
+/** 取出内部 ColorMap 中的颜色编码，兼容旧对象和新数组。 */
+function colorMapToColors(value: GameColorMap | undefined): number[] {
+  const entries = Array.isArray(value) ? value : value ? Object.values(value) : []
+
+  return entries.filter(
+    (entry): entry is number => typeof entry === 'number' && entry > 0 && entry % 10 !== 0
+  )
+}
+
+/** 新版游戏无有效染色时统一写入 [0]，避免写出对象格式或默认编码。 */
+function serializeGameColors(value: GameColorMap | undefined): number[] {
+  const colors = colorMapToColors(value)
+  return colors.length > 0 ? colors : [0]
 }
 
 function createGameItem(fields: {
@@ -269,7 +284,7 @@ function toBuildSnapshot(item: GameItem): BuildSnapshot {
           z: Scale.Z,
         },
       },
-      colors: ColorMap ?? {},
+      colors: serializeGameColors(ColorMap),
       cfg_item_id: ItemID,
       attach_id: AttachID,
     },
