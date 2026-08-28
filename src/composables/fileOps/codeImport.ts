@@ -3,6 +3,7 @@ import type { useNotification } from '@/composables/useNotification'
 import type { AppItem, GameDataFile, GameItem } from '@/types/editor'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
+import { parseGameDataContent } from '@/lib/gameDataFormat'
 
 type SchemeCodeType = 'island' | 'combination'
 type TranslateFn = (key: string, params?: Record<string, string | number>) => string
@@ -215,9 +216,20 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
       }
 
       const codeType = normalizeSchemeCodeType(jsonData.type)
-      const gameItems = jsonData.data as GameItem[]
+      const gameDataContent = JSON.stringify({
+        NeedRestore: true,
+        Snapshots: jsonData.data,
+      })
 
       if (codeType === 'combination') {
+        let gameItems: GameItem[]
+        try {
+          gameItems = parseGameDataContent(gameDataContent).items
+        } catch {
+          notification.error(t('fileOps.importCode.parseError'))
+          return
+        }
+
         const result = importCombinationIntoActiveScheme(gameItems)
 
         if (result.success) {
@@ -232,13 +244,8 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
         return
       }
 
-      const gameDataFile: GameDataFile = {
-        NeedRestore: true,
-        PlaceInfo: gameItems,
-      }
-
       const result = await editorStore.importJSONAsScheme(
-        JSON.stringify(gameDataFile),
+        gameDataContent,
         `Scheme_${code}`,
         Date.now()
       )
