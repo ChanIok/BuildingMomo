@@ -692,6 +692,8 @@ export const zhLocale = {
       surfaceSnap: '表面吸附',
       surfaceSnapHint: '移动时自动检测碰撞，防止物品重叠',
       surfaceSnapThreshold: '吸附阈值',
+      allowEdgeSnap: '允许边角吸附',
+      allowEdgeSnapHint: '允许仅在边缘或角点接触时触发吸附',
       disabled: '关闭',
     },
   },

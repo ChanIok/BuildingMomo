@@ -113,6 +113,7 @@ export function createGizmoSnapEngine({
       targets,
       movementAxes,
       threshold,
+      allowEdgeSnap: settingsStore.settings.allowEdgeSnap,
       preferredContact: activeContact,
       releaseThreshold: threshold * SNAP_RELEASE_MULTIPLIER,
     })

@@ -704,6 +704,8 @@ export const enLocale = {
       surfaceSnap: 'Surface Snap',
       surfaceSnapHint: 'Auto-detect collision when moving to prevent overlapping',
       surfaceSnapThreshold: 'Snap Threshold',
+      allowEdgeSnap: 'Allow Edge and Corner Snapping',
+      allowEdgeSnapHint: 'Allow snapping when objects touch only at an edge or corner',
       disabled: 'Off',
     },
   },

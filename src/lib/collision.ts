@@ -338,6 +338,43 @@ export function mergeOBBs(obbs: OBB[], referenceAxes?: [Vector3, Vector3, Vector
   ])
 }
 
+/** 判断平移后的 OBB 是否有面与面接触，排除仅有边或角的接触。 */
+export function hasOBBFaceContactAfterTranslation(
+  moving: OBB,
+  target: OBB,
+  offset: Vector3,
+  tolerance = 1e-6
+): boolean {
+  const delta = target.center.clone().sub(moving.center).sub(offset)
+  for (let i = 0; i < 3; i++) {
+    const normal = moving.axes[i]!
+    for (let j = 0; j < 3; j++) {
+      if (new Vector3().crossVectors(normal, target.axes[j]!).lengthSq() > 1e-12) continue
+      const separation = Math.abs(delta.dot(normal))
+      const radius = moving.halfExtents.getComponent(i) + target.halfExtents.getComponent(j)
+      if (Math.abs(separation - radius) > tolerance) continue
+
+      // 共面矩形在双方四条面内轴上都严格重叠，等价于交集有正面积。
+      // 无需构建交集多边形；容差排除浮点误差产生的极窄伪接触。
+      const tangents = [
+        ...moving.axes.filter((_, index) => index !== i),
+        ...target.axes.filter((_, index) => index !== j),
+      ]
+      if (
+        tangents.every(
+          (axis) =>
+            getOBBProjectionRadius(moving, axis) +
+              getOBBProjectionRadius(target, axis) -
+              Math.abs(delta.dot(axis)) >
+            tolerance
+        )
+      )
+        return true
+    }
+  }
+  return false
+}
+
 /** OBB 在单位轴上的投影半径，不需要生成角点。 */
 export function getOBBProjectionRadius(obb: OBB, axis: Vector3): number {
   return (

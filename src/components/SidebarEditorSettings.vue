@@ -293,6 +293,20 @@ const fmt = (n: number, decimals: number = 0) => {
             <Switch v-model="settingsStore.settings.enableSurfaceSnap" />
           </div>
 
+          <!-- 边角吸附开关 -->
+          <div
+            v-if="settingsStore.settings.enableSurfaceSnap"
+            class="flex items-center justify-between"
+          >
+            <div class="mr-2 space-y-0.5">
+              <Label class="text-xs">{{ t('sidebar.snap.allowEdgeSnap') }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.snap.allowEdgeSnapHint') }}
+              </p>
+            </div>
+            <Switch v-model="settingsStore.settings.allowEdgeSnap" />
+          </div>
+
           <!-- 吸附阈值滑块 -->
           <div class="flex flex-col gap-2">
             <div class="flex items-center justify-between gap-2">

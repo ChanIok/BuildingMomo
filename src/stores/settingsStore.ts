@@ -60,6 +60,7 @@ export interface AppSettings {
   translationSnap: number // 平移步进值（0 表示禁用）
   rotationSnap: number // 旋转步进值，单位：弧度（0 表示禁用）
   enableSurfaceSnap: boolean // 启用表面碰撞吸附
+  allowEdgeSnap: boolean // 允许仅边缘或角点接触的吸附
   surfaceSnapThreshold: number // 表面吸附距离（单位）
 
   // 调试
@@ -99,6 +100,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   translationSnap: 0,
   rotationSnap: 0,
   enableSurfaceSnap: false,
+  allowEdgeSnap: true,
   surfaceSnapThreshold: 20,
   showFpsMonitor: false,
   language: 'zh',

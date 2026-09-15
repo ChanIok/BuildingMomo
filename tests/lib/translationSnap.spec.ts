@@ -45,6 +45,92 @@ function floors(prefix: string, columns: number, xStart: number) {
 }
 
 describe('solveTranslationSnap', () => {
+  it('关闭边角吸附后拒绝错层搭边和角点，交换双方保持一致', () => {
+    for (const center of [
+      [110, 0, 10],
+      [110, 100, 10],
+    ]) {
+      const moving = box('m', center)
+      const target = box('t', [0, 0, 0])
+      for (const [a, b] of [
+        [moving, target],
+        [target, moving],
+      ]) {
+        expect(snap([a!], [b!])).not.toBeNull()
+        expect(snap([a!], [b!], { allowEdgeSnap: false })).toBeNull()
+      }
+    }
+    const rotation = new Matrix4().makeRotationZ(Math.PI / 4)
+    const basis = basisOf(axes.map((axis) => axis.clone().applyMatrix4(rotation)))
+    const moving = box('m', [60 + 50 * Math.SQRT2, 0, 0], [50, 50, 5], basis)
+    const target = box('t', [0, 0, 0])
+    expect(snap([moving], [target], { allowEdgeSnap: false })).toBeNull()
+    expect(snap([target], [moving], { allowEdgeSnap: false })).toBeNull()
+  })
+
+  it('关闭边角吸附仍保留部分面贴合、多选和输入不可变性', () => {
+    const moving = [box('m', [110, 25, 5]), box('m2', [110, 125, 5])]
+    const targets = [box('t', [0, 0, 0])]
+    const before = JSON.stringify({ moving, targets })
+    near(snap(moving, targets, { allowEdgeSnap: false })!.offset.x, -10)
+    near(snap(targets, moving, { allowEdgeSnap: false })!.offset.x, 10)
+    expect(JSON.stringify({ moving, targets })).toBe(before)
+  })
+
+  it('面内旋转的矩形仍可面贴合，整体三维旋转不改变判断', () => {
+    const spin = new Quaternion().setFromAxisAngle(axes[2], Math.PI / 4)
+    const world = new Quaternion().setFromEuler(new Euler(0.4, 0.7, 0.2))
+    const movingBasis = basisOf(
+      axes.map((a) => a.clone().applyQuaternion(spin).applyQuaternion(world))
+    )
+    const targetBasis = basisOf(axes.map((a) => a.clone().applyQuaternion(world)))
+    const moving = box(
+      'm',
+      new Vector3(25, 0, 20).applyQuaternion(world).toArray(),
+      [50, 50, 5],
+      movingBasis
+    )
+    const target = box('t', [0, 0, 0], [50, 50, 5], targetBasis)
+    for (const movementAxes of [[targetBasis[2]], targetBasis]) {
+      const options = { allowEdgeSnap: false, movementAxes }
+      const forward = snap([moving], [target], options)!
+      const reverse = snap([target], [moving], options)!
+      near(forward.distance, 10)
+      near(forward.offset.clone().add(reverse.offset).length(), 0)
+    }
+  })
+
+  it('过滤正在保持的边角候选后继续寻找可用面接触', () => {
+    const moving = box('m', [110, 0, 10])
+    const edge = box('edge', [0, 0, 0])
+    const face = box('face', [-5, 0, 10])
+    const held = snap([moving], [edge])!
+    const options = { allowEdgeSnap: false, preferredContact: held.contact, releaseThreshold: 30 }
+    expect(snap([moving], [edge], options)).toBeNull()
+    const result = snap([moving], [edge, face], options)!
+    expect(result.contact.targetId).toBe('face')
+    near(result.offset.x, -15)
+  })
+
+  it('平面拖拽同样过滤搭边，数值噪声不构成面接触', () => {
+    const target = box('t', [0, 0, 0])
+    for (const z of [10, 10 - 1e-8, 10 + 1e-8]) {
+      const moving = box('m', [110, 0, z])
+      expect(
+        snap([moving], [target], {
+          allowEdgeSnap: false,
+          movementAxes: [axes[0], axes[1]],
+        })
+      ).toBeNull()
+    }
+    expect(
+      snap([box('m', [110, 0, 9.99])], [target], {
+        allowEdgeSnap: false,
+        movementAxes: [axes[0], axes[1]],
+      })
+    ).not.toBeNull()
+  })
+
   it('2×10 接 4×10，选区整体修正 10，数量和遍历顺序不影响位移', () => {
     const moving = floors('m', 2, -160)
     const targets = floors('t', 4, 50)

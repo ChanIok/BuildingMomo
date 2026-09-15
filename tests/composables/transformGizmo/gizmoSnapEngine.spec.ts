@@ -146,6 +146,20 @@ describe('createGizmoSnapEngine', () => {
     expect(fixture.engine.applyCollisionSnap(raw)).toBe(raw)
   })
 
+  it('拖拽中关闭边角吸附立即释放错层边缘，再开启可重新捕获', () => {
+    const fixture = engineFixture()
+    fixture.scheme.items.value = fixture.items.map((item) =>
+      item.internalId.startsWith('t') ? { ...item, z: 10 } : item
+    )
+    fixture.prepare()
+    const raw = fixture.translate(50)
+    near(fixture.engine.applyCollisionSnap(raw).get('m')!.elements[12]!, -100)
+    fixture.settingsStore.settings.allowEdgeSnap = false
+    expect(fixture.engine.applyCollisionSnap(raw)).toBe(raw)
+    fixture.settingsStore.settings.allowEdgeSnap = true
+    near(fixture.engine.applyCollisionSnap(raw).get('m')!.elements[12]!, -100)
+  })
+
   it('模型包围盒偏心、模型回退和普通盒子采用一致的动静边界', () => {
     const cases: Array<['box' | 'model', Box3 | null]> = [
       ['box', null],

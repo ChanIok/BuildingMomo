@@ -2,6 +2,7 @@ import { Box3, Vector3 } from 'three'
 import {
   getOBBProjectionRadius,
   getOBBSeparatingAxes,
+  hasOBBFaceContactAfterTranslation,
   intersectsOBBAfterTranslation,
   type OBB,
 } from './collision'
@@ -32,6 +33,7 @@ interface TranslationSnapOptions {
   /** 当前允许移动的世界空间正交单位向量；单轴一个，平面两个。 */
   movementAxes: readonly Vector3[]
   threshold: number
+  allowEdgeSnap?: boolean
   preferredContact?: TranslationSnapContact | null
   releaseThreshold?: number
 }
@@ -137,6 +139,7 @@ export function solveTranslationSnap({
   targets,
   movementAxes,
   threshold,
+  allowEdgeSnap = true,
   preferredContact,
   releaseThreshold = threshold,
 }: TranslationSnapOptions): TranslationSnapResult | null {
@@ -170,6 +173,8 @@ export function solveTranslationSnap({
         const distance = offset.length()
         if (distance > limit) continue
         if (!preferred && best && distance >= best.distance - EPSILON) continue
+        if (!allowEdgeSnap && !hasOBBFaceContactAfterTranslation(body.obb, target.obb, offset))
+          continue
 
         const result = { offset, contact, distance }
         if (preferred) return result
