@@ -135,7 +135,6 @@ export function useThreeTransformGizmo(
     settingsStore,
     pivotRef,
     transformRef,
-    getEffectiveGizmoRotation,
     isSnapTemporarilyDisabled,
   })
 
@@ -149,17 +148,7 @@ export function useThreeTransformGizmo(
     itemStartWorldMatrices,
     isTransformDragging,
     isSnapTemporarilyDisabled,
-    applyCollisionSnap: (newWorldMatrices) => snapEngine.applyCollisionSnap(newWorldMatrices),
-    onFirstTransform: () => {
-      if (!hasStartedTransform.value) {
-        hasStartedTransform.value = true
-      }
-    },
-    onPreviewMatrices: (newWorldMatrices) => {
-      lastTranslateMatrices.value = newWorldMatrices
-      updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(newWorldMatrices), true)
-      slidePathBridge?.updateItemWorldMatrices(newWorldMatrices)
-    },
+    onTranslate: previewTranslation,
   })
 
   const setupGizmoAppearance = createGizmoAppearanceManager(
@@ -471,7 +460,7 @@ export function useThreeTransformGizmo(
       )
       // 碰撞吸附只属于平移，缩放和旋转无需准备静态碰撞数据。
       if (editorStore.gizmoMode === 'translate') {
-        snapEngine.prepareCollisionData(scheme)
+        snapEngine.prepareCollisionData(scheme, itemStartWorldMatrices.value)
       }
     }
 
@@ -531,6 +520,27 @@ export function useThreeTransformGizmo(
     }
 
     return newWorldMatrices
+  }
+
+  function previewTranslation(rawMatrices: Map<string, Matrix4>) {
+    const matrices = snapEngine.applyCollisionSnap(rawMatrices)
+    lastTranslateMatrices.value = matrices
+    hasStartedTransform.value = true
+    updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(matrices), true)
+    slidePathBridge?.updateItemWorldMatrices(matrices)
+
+    // 鼠标与触控共用最终预览。下一帧原始位移仍由各自的拖拽起点计算。
+    const firstEntry = itemStartWorldMatrices.value.entries().next()
+    const pivot = pivotRef.value
+    if (firstEntry.done || !pivot) return
+    const [id, startMatrix] = firstEntry.value
+    const matrix = matrices.get(id)
+    if (!matrix) return
+    const delta = new Vector3()
+      .setFromMatrixPosition(matrix)
+      .sub(new Vector3().setFromMatrixPosition(startMatrix))
+    pivot.position.copy(gizmoStartPosition).add(delta)
+    pivot.updateMatrixWorld(true)
   }
 
   function buildDisplayWorldMatricesMap(
@@ -789,6 +799,8 @@ export function useThreeTransformGizmo(
               scheme,
               scheme.selectedItemIds.value
             )
+            // 复制后选择 ID 已改变，吸附会话必须以副本为移动对象、原件为静态目标。
+            snapEngine.prepareCollisionData(scheme, itemStartWorldMatrices.value)
           }
         }
       } else {
@@ -796,10 +808,13 @@ export function useThreeTransformGizmo(
       }
     }
 
-    let newWorldMatrices = calculateCurrentTransforms()
+    const newWorldMatrices = calculateCurrentTransforms()
     if (!newWorldMatrices) return
 
-    newWorldMatrices = snapEngine.applyCollisionSnap(newWorldMatrices)
+    if (editorStore.gizmoMode === 'translate') {
+      previewTranslation(newWorldMatrices)
+      return
+    }
 
     if (!hasStartedTransform.value) {
       hasStartedTransform.value = true
@@ -911,19 +926,35 @@ export function useThreeTransformGizmo(
     let newWorldMatrices: Map<string, Matrix4> | null = null
     if (isRotateMode.value && lastRotationMatrices.value) {
       newWorldMatrices = lastRotationMatrices.value
-    } else if (editorStore.gizmoMode === 'translate' && lastTranslateMatrices.value) {
+    } else if (editorStore.gizmoMode === 'translate') {
       newWorldMatrices = lastTranslateMatrices.value
     } else {
       newWorldMatrices = calculateCurrentTransforms()
     }
 
     if (newWorldMatrices) {
-      newWorldMatrices = snapEngine.applyCollisionSnap(newWorldMatrices)
+      // 直接提交最后一帧，不在 mouseUp 对已经吸附的结果再次求解。
       updateSelectedInstancesMatrix(buildDisplayWorldMatricesMap(newWorldMatrices), false)
       slidePathBridge?.updateItemWorldMatrices(newWorldMatrices)
 
-      const updates: any[] = []
+      const updates: Parameters<typeof commitBatchedTransform>[0] = []
       for (const [id, worldMatrix] of newWorldMatrices.entries()) {
+        if (editorStore.gizmoMode === 'translate') {
+          // 平移只提交位置，避免矩阵分解改写未变化的旋转；拖回起点不产生空事务。
+          const position = matrixTransform.worldPositionToData(
+            new Vector3().setFromMatrixPosition(worldMatrix)
+          )
+          const item = editorStore.itemsMap.get(id)
+          if (
+            item &&
+            (Math.abs(position.x - item.x) > 1e-6 ||
+              Math.abs(position.y - item.y) > 1e-6 ||
+              Math.abs(position.z - item.z) > 1e-6)
+          ) {
+            updates.push({ id, ...position })
+          }
+          continue
+        }
         const itemData = matrixTransform.extractItemDataFromWorldMatrix(worldMatrix)
         updates.push({ id, ...itemData })
       }

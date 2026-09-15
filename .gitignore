@@ -44,5 +44,8 @@ cloud-sync-worker/
 # Local Netlify folder
 .netlify
 
+# AI
+.workbuddy
+
 # env
 .env.secure

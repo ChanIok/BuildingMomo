@@ -48,9 +48,7 @@ interface CreateGizmoTouchTranslateControllerOptions {
   itemStartWorldMatrices: Ref<Map<string, Matrix4>>
   isTransformDragging: Ref<boolean>
   isSnapTemporarilyDisabled: () => boolean
-  applyCollisionSnap: (newWorldMatrices: Map<string, Matrix4>) => Map<string, Matrix4>
-  onFirstTransform: () => void
-  onPreviewMatrices: (newWorldMatrices: Map<string, Matrix4>) => void
+  onTranslate: (rawMatrices: Map<string, Matrix4>) => void
 }
 
 export function createGizmoTouchTranslateController({
@@ -63,9 +61,7 @@ export function createGizmoTouchTranslateController({
   itemStartWorldMatrices,
   isTransformDragging,
   isSnapTemporarilyDisabled,
-  applyCollisionSnap,
-  onFirstTransform,
-  onPreviewMatrices,
+  onTranslate,
 }: CreateGizmoTouchTranslateControllerOptions) {
   const touchRaycaster = markRaw(new Raycaster())
   const touchPointerNdc = markRaw(new Vector2())
@@ -315,28 +311,6 @@ export function createGizmoTouchTranslateController({
     return newWorldMatrices
   }
 
-  function syncPivotToNewMatrices(
-    newWorldMatrices: Map<string, Matrix4>,
-    gizmoStartPosition: Vector3
-  ) {
-    if (!touchTranslateState.value?.active) return
-    const firstEntry = itemStartWorldMatrices.value.entries().next()
-    if (firstEntry.done) return
-
-    const [firstId, firstStartMatrix] = firstEntry.value
-    const firstNewMatrix = newWorldMatrices.get(firstId)
-    const pivot = pivotRef.value
-    if (!firstNewMatrix || !pivot) return
-
-    const startPos = new Vector3().setFromMatrixPosition(firstStartMatrix)
-    const newPos = new Vector3().setFromMatrixPosition(firstNewMatrix)
-    const offset = newPos.sub(startPos)
-    const pivotPos = gizmoStartPosition.clone().add(offset)
-
-    pivot.position.copy(pivotPos)
-    pivot.updateMatrixWorld(true)
-  }
-
   function applyCustomTouchTranslate(event: any, gizmoStartPosition: Vector3): boolean {
     const state = touchTranslateState.value
     if (!state?.active) return false
@@ -397,12 +371,7 @@ export function createGizmoTouchTranslateController({
       translation = localDelta.applyQuaternion(state.pivotQuaternion)
     }
 
-    let newWorldMatrices = buildTouchTranslateMatrices(translation)
-    newWorldMatrices = applyCollisionSnap(newWorldMatrices)
-
-    onFirstTransform()
-    onPreviewMatrices(newWorldMatrices)
-    syncPivotToNewMatrices(newWorldMatrices, gizmoStartPosition)
+    onTranslate(buildTouchTranslateMatrices(translation))
     return true
   }
 

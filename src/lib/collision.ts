@@ -76,117 +76,6 @@ export function mergeBoxes(boxes: Box3[]): Box3 {
 }
 
 /**
- * 计算吸附向量：双向检测吸附逻辑
- *
- * 策略：
- * 1. 每个轴同时检测两个对立的面（min 和 max）
- * 2. 选择距离最近且在阈值范围内的面进行吸附
- * 3. 无论从哪个方向移动，都能自动找到最合适的对齐面
- * 4. 只在 enabledAxes 指定的轴上进行吸附（尊重 Gizmo 的轴约束）
- *
- * 优势：
- * - 解决了从重叠状态拖出时无法吸附的问题
- * - 无需考虑移动方向，用户体验更好
- * - 符合游戏编辑器的使用习惯
- * - 只影响正在拖动的轴，不会干扰其他轴
- *
- * @param movingBox 移动物体的包围盒
- * @param staticBox 静止物体的包围盒
- * @param snapThreshold 吸附触发距离阈值
- * @param enabledAxes 启用吸附的轴，默认全部启用 { x: true, y: true, z: true }
- * @returns 吸附向量，未触发吸附返回 null
- */
-export function calculateSnapVector(
-  movingBox: Box3,
-  staticBox: Box3,
-  snapThreshold: number,
-  enabledAxes: { x: boolean; y: boolean; z: boolean } = { x: true, y: true, z: true }
-): Vector3 | null {
-  const snapVector = new Vector3()
-  let hasSnap = false
-
-  // ✅ X 轴：双向检测，选择距离最近的面（仅当该轴启用时）
-  if (enabledAxes.x) {
-    // 🔍 预检查：其他轴（Y、Z）必须有重叠，才允许X轴吸附
-    // 这样可以避免物体只是从旁边"路过"就被吸住
-    const yOverlap =
-      Math.min(movingBox.max.y, staticBox.max.y) - Math.max(movingBox.min.y, staticBox.min.y)
-    const zOverlap =
-      Math.min(movingBox.max.z, staticBox.max.z) - Math.max(movingBox.min.z, staticBox.min.z)
-
-    // 只有当Y和Z都有重叠时（或至少边界接触，容忍0.1的误差），才检测X轴吸附
-    if (yOverlap >= -0.1 && zOverlap >= -0.1) {
-      const distToLeftFace = Math.abs(staticBox.min.x - movingBox.max.x) // 吸附到左侧面
-      const distToRightFace = Math.abs(staticBox.max.x - movingBox.min.x) // 吸附到右侧面
-
-      if (distToLeftFace < distToRightFace && distToLeftFace <= snapThreshold) {
-        // 吸附到 staticBox 的左侧面 (min.x)
-        // movingBox.max.x → staticBox.min.x
-        snapVector.x = staticBox.min.x - movingBox.max.x
-        hasSnap = true
-      } else if (distToRightFace <= snapThreshold) {
-        // 吸附到 staticBox 的右侧面 (max.x)
-        // movingBox.min.x → staticBox.max.x
-        snapVector.x = staticBox.max.x - movingBox.min.x
-        hasSnap = true
-      }
-    }
-  }
-
-  // ✅ Y 轴：双向检测，选择距离最近的面（仅当该轴启用时）
-  if (enabledAxes.y) {
-    // 🔍 预检查：其他轴（X、Z）必须有重叠
-    const xOverlap =
-      Math.min(movingBox.max.x, staticBox.max.x) - Math.max(movingBox.min.x, staticBox.min.x)
-    const zOverlap =
-      Math.min(movingBox.max.z, staticBox.max.z) - Math.max(movingBox.min.z, staticBox.min.z)
-
-    if (xOverlap >= -0.1 && zOverlap >= -0.1) {
-      const distToBottomFace = Math.abs(staticBox.min.y - movingBox.max.y) // 吸附到底部
-      const distToTopFace = Math.abs(staticBox.max.y - movingBox.min.y) // 吸附到顶部
-
-      if (distToBottomFace < distToTopFace && distToBottomFace <= snapThreshold) {
-        // 吸附到 staticBox 的底部 (min.y)
-        snapVector.y = staticBox.min.y - movingBox.max.y
-        hasSnap = true
-      } else if (distToTopFace <= snapThreshold) {
-        // 吸附到 staticBox 的顶部 (max.y)
-        snapVector.y = staticBox.max.y - movingBox.min.y
-        hasSnap = true
-      }
-    }
-  }
-
-  // ✅ Z 轴：双向检测，选择距离最近的面（高度）（仅当该轴启用时）
-  if (enabledAxes.z) {
-    // 🔍 预检查：其他轴（X、Y）必须有重叠
-    const xOverlap =
-      Math.min(movingBox.max.x, staticBox.max.x) - Math.max(movingBox.min.x, staticBox.min.x)
-    const yOverlap =
-      Math.min(movingBox.max.y, staticBox.max.y) - Math.max(movingBox.min.y, staticBox.min.y)
-
-    if (xOverlap >= -0.1 && yOverlap >= -0.1) {
-      const distToLowerFace = Math.abs(staticBox.min.z - movingBox.max.z) // 吸附到下表面
-      const distToUpperFace = Math.abs(staticBox.max.z - movingBox.min.z) // 吸附到上表面
-
-      if (distToLowerFace < distToUpperFace && distToLowerFace <= snapThreshold) {
-        // 吸附到 staticBox 的下表面 (min.z)
-        snapVector.z = staticBox.min.z - movingBox.max.z
-        hasSnap = true
-      } else if (distToUpperFace <= snapThreshold) {
-        // 吸附到 staticBox 的上表面 (max.z)
-        snapVector.z = staticBox.max.z - movingBox.min.z
-        hasSnap = true
-      }
-    }
-  }
-
-  return hasSnap ? snapVector : null
-}
-
-// ==================== OBB（定向包围盒）实现 ====================
-
-/**
  * OBB (Oriented Bounding Box) - 定向包围盒
  *
  * 与 AABB 不同，OBB 可以旋转，能更精确地包围旋转后的物体
@@ -449,109 +338,43 @@ export function mergeOBBs(obbs: OBB[], referenceAxes?: [Vector3, Vector3, Vector
   ])
 }
 
-/**
- * 计算点在轴上的投影范围
- *
- * @param corners OBB 的 8 个角点（预计算或实时计算）
- * @param axis 投影轴
- * @returns 投影范围的 min/max
- */
-function projectOBBOnAxis(corners: Vector3[], axis: Vector3): { min: number; max: number } {
-  let min = Infinity
-  let max = -Infinity
-
-  for (const corner of corners) {
-    const projection = corner.dot(axis)
-    min = Math.min(min, projection)
-    max = Math.max(max, projection)
-  }
-
-  return { min, max }
+/** OBB 在单位轴上的投影半径，不需要生成角点。 */
+export function getOBBProjectionRadius(obb: OBB, axis: Vector3): number {
+  return (
+    Math.abs(obb.axes[0].dot(axis)) * obb.halfExtents.x +
+    Math.abs(obb.axes[1].dot(axis)) * obb.halfExtents.y +
+    Math.abs(obb.axes[2].dot(axis)) * obb.halfExtents.z
+  )
 }
 
-/**
- * 使用分离轴定理（SAT）计算 OBB vs OBB 吸附向量
- *
- * 策略：
- * 1. 只测试静态物体的面法线（3 个轴）
- *    - 吸附的本质是"贴到目标表面"，移动物体的朝向不应影响吸附行为
- * 2. 对于每个轴，计算两个 OBB 的投影范围
- * 3. 找到最小间隙的轴，计算吸附向量
- * 4. 将吸附向量投影到 Gizmo 允许的移动轴上
- *
- * @param movingOBB 移动物体的 OBB
- * @param staticOBB 静止物体的 OBB（吸附目标）
- * @param snapThreshold 吸附阈值
- * @param enabledAxes 启用的世界轴（Gizmo 约束）
- * @param movingCorners 可选：预计算的移动物体角点（性能优化）
- * @param staticCorners 可选：预计算的静止物体角点（性能优化）
- * @returns 吸附向量，或 null
- */
-export function calculateOBBSnapVector(
-  movingOBB: OBB,
-  staticOBB: OBB,
-  snapThreshold: number,
-  _enabledAxes?: { x: boolean; y: boolean; z: boolean }, // 保留用于未来扩展，当前由调用方处理轴约束
-  movingCorners?: Vector3[],
-  staticCorners?: Vector3[]
-): Vector3 | null {
-  // 收集需要测试的分离轴：只使用静态物体的面法线
-  // 吸附的本质是"贴到目标表面"，移动物体的朝向不应影响"吸到哪里"
-  const testAxes: Vector3[] = []
-
-  // 只添加静态物体的局部轴（它的表面法线）
-  for (const axis of staticOBB.axes) {
-    testAxes.push(axis.clone().normalize())
-  }
-
-  // staticOBB 的三个轴本身就是正交的，不需要去重
-  const uniqueAxes = testAxes
-
-  // 获取角点（使用预计算值或实时计算）
-  const corners1 = movingCorners || movingOBB.getCorners()
-  const corners2 = staticCorners || staticOBB.getCorners()
-
-  // 查找最小间隙的轴
-  let bestAxis: Vector3 | null = null
-  let bestGap = Infinity
-  let bestCorrection = 0
-
-  for (const axis of uniqueAxes) {
-    // 🚀 性能优化：直接传入角点数组，避免在每次循环中重复调用 getCorners()
-    const proj1 = projectOBBOnAxis(corners1, axis)
-    const proj2 = projectOBBOnAxis(corners2, axis)
-
-    // 计算重叠或间隙
-    const overlap = Math.min(proj1.max, proj2.max) - Math.max(proj1.min, proj2.min)
-    const gap = -overlap
-
-    // 只关注有间隙且在阈值内的情况
-    if (gap > 0 && gap <= snapThreshold && gap < bestGap) {
-      bestGap = gap
-      bestAxis = axis
-
-      // 决定吸附方向
-      if (proj1.max < proj2.min) {
-        // moving 在 static 的负方向
-        bestCorrection = proj2.min - proj1.max
-      } else if (proj1.min > proj2.max) {
-        // moving 在 static 的正方向
-        bestCorrection = proj2.max - proj1.min
-      }
+/** 双方的面法线及边方向叉积；保留平行边的零向量，使轴索引在平移期间稳定。 */
+export function getOBBSeparatingAxes(moving: OBB, target: OBB): Vector3[] {
+  const axes = [...target.axes, ...moving.axes]
+  for (const movingAxis of moving.axes) {
+    for (const targetAxis of target.axes) {
+      const cross = new Vector3().crossVectors(movingAxis, targetAxis)
+      if (cross.lengthSq() < 1e-12) cross.set(0, 0, 0)
+      else cross.normalize()
+      axes.push(cross)
     }
   }
+  return axes
+}
 
-  if (!bestAxis) {
-    return null // 没有找到合适的吸附轴
-  }
+/** 完整的 15 轴 SAT 检查；接触算相交，offset 只应用于 moving，不修改输入。 */
+export function intersectsOBBAfterTranslation(
+  moving: OBB,
+  target: OBB,
+  offset: Vector3,
+  tolerance = 1e-6
+): boolean {
+  const centerDelta = moving.center.clone().add(offset).sub(target.center)
+  const separated = (axis: Vector3) =>
+    Math.abs(centerDelta.dot(axis)) >
+    getOBBProjectionRadius(moving, axis) + getOBBProjectionRadius(target, axis) + tolerance
 
-  // 计算吸附向量（在最佳轴方向）
-  // 直接返回原始吸附向量，不做 enabledAxes 过滤
-  // 投影约束由调用方（applyCollisionSnap）统一处理
-  // 这样可以避免吸附力被多次投影而削弱
-  const snapDirection = bestAxis.clone().multiplyScalar(bestCorrection)
-
-  return snapDirection.length() > 0.1 ? snapDirection : null
+  for (const axis of getOBBSeparatingAxes(moving, target)) if (separated(axis)) return false
+  return true
 }
 
 /**
