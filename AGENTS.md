@@ -22,10 +22,11 @@ BuildingMomo 是一个 Vue 3、TypeScript、Pinia、Three.js/TresJS 构建的无
 - `npx vue-tsc -b`：TypeScript 类型检查。
 - `npm run build`：生产构建并生成英文入口。
 - `npm run fetch-data`：更新 `public/assets` 下的游戏数据和图标。
+- `npm test`：运行单元测试（Vitest，仅覆盖核心不变式，不追求覆盖率）。
 
 注意：
 
-- 当前没有测试运行器或 `npm test` 脚本。
+- 测试运行器是 Vitest（`vitest.config.ts`，node 环境，不加载 PWA 插件）。测试文件位于顶层 `tests/`，镜像 `src/` 结构。
 - 格式化由 Husky 的 pre-commit `lint-staged` 统一执行。不要主动运行 Prettier 或制造与任务无关的格式化 diff。
 - TypeScript 使用 strict 模式，`@/` 指向 `src/`。
 
@@ -126,4 +127,9 @@ BuildingMomo 是一个 Vue 3、TypeScript、Pinia、Three.js/TresJS 构建的无
 - 仅文档修改：检查 `git diff --check`。
 - TypeScript/Vue 修改：运行 `npx vue-tsc -b`。
 - 构建配置、资源路径、PWA、部署或产物相关修改：再运行对应的完整 build。
-- 仓库没有自动化测试时，应按变更风险检查关键交互、撤销/重做、坐标转换和多选行为，并在交付时说明验证范围。
+- 改动下列模块时必须先跑 `npm test`，测试失败先弄清是契约变了还是实现坏了，不要直接改断言：
+  - `src/lib/editorTransactions.ts` → `tests/lib/editorTransactions.spec.ts`（事务可逆、未变更项保持引用、分配器只增不减）
+  - `src/lib/gameDataFormat.ts` → `tests/lib/gameDataFormat.spec.ts`（三格式解析一致、往返不丢字段）
+  - `src/lib/matrixTransform.ts`、`src/lib/coordinateTransform.ts`、`src/lib/selectionScaleTransform.ts` → `tests/lib/` 同名 spec（坐标往返、视觉轴到存档轴的唯一映射）
+  - `src/lib/translationSnap.ts`、`src/composables/transformGizmo/`、`src/composables/useThreeTransformGizmo.ts` → `tests/lib/translationSnap.spec.ts`、`tests/composables/`（吸附求解不修改输入、预览不落库、松手只提交一帧）
+- 没有测试覆盖的部分，按变更风险检查关键交互、撤销/重做、坐标转换和多选行为，并在交付时说明验证范围。
