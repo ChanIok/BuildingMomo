@@ -53,7 +53,10 @@ export function useNotification() {
      * dismiss()
      */
     loading: (message: string) => {
-      return toast.loading(message)
+      // loading 类 toast 不会自动消失（vue-sonner 对 type=loading 跳过关闭定时器），
+      // 调用方必须显式 dismiss，否则提示会一直停在界面上。
+      const id = toast.loading(message)
+      return () => toast.dismiss(id)
     },
 
     // ===== AlertDialog 确认框 =====

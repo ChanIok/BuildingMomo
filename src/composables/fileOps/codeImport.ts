@@ -266,6 +266,9 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
   }
 
   async function importFromPublicSchemeCode(schemeCode: string): Promise<void> {
+    // 云端请求通常要数秒，此时界面可能仍是白屏或欢迎页，必须显式告知用户正在加载。
+    const dismissLoading = notification.loading(t('fileOps.importCode.importing'))
+
     try {
       ensureResourcesReady()
 
@@ -306,6 +309,8 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
       notification.error(
         t('fileOps.importCode.networkError', { reason: error.message || 'Unknown error' })
       )
+    } finally {
+      dismissLoading()
     }
   }
 
