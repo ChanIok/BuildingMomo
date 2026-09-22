@@ -24,6 +24,7 @@ import { useWorkspaceWorker } from './composables/useWorkspaceWorker'
 import { useCloudSchemeSync } from './composables/useCloudSchemeSync'
 import { useUIStore } from './stores/uiStore'
 import { useCommandStore } from './stores/commandStore'
+import { removeLegacyWatchHistoryDatabase } from './lib/legacyIdbCleanup'
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
@@ -211,6 +212,9 @@ async function importStartupSchemeCode(schemeCode: string | null) {
 
 // 初始化
 onMounted(async () => {
+  // 旧版「监控导入历史」的 IndexedDB 已废弃，历史改为写入 BuildingMomo/history 目录
+  void removeLegacyWatchHistoryDatabase()
+
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   handleFullscreenChange()
   const startupSchemeCode = consumeStartupSchemeCode()

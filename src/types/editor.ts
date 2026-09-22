@@ -124,15 +124,6 @@ export interface FileWatchIndexEntry {
   firstDetectedAt: number
 }
 
-export interface FileWatchHistoryEntry {
-  id: string // IndexedDB 的 key: `${fileName}_${lastModified}`
-  name: string
-  lastModified: number
-  itemCount: number
-  detectedAt: number
-  size: number // 内容大小（字节）
-}
-
 export interface FileWatchState {
   isActive: boolean // 是否正在监控
   dirHandle: FileSystemDirectoryHandle | null // 监控的目录句柄
@@ -140,8 +131,6 @@ export interface FileWatchState {
   lastCheckedTime: number // 上次检查的时间戳
   // 目录内所有文件的索引 Map<文件名, 监控条目>
   fileIndex: Map<string, FileWatchIndexEntry>
-  // 变动历史（仅本次会话，不持久化）
-  updateHistory: FileWatchHistoryEntry[]
 }
 
 // 工作坐标系配置

@@ -14,6 +14,7 @@ import backgroundUrl from '@/assets/home.webp'
 import { createCodeImportOps } from './fileOps/codeImport'
 import { createWatchModeOps } from './fileOps/watchMode'
 import { createArchiveOps } from './fileOps/archive'
+import { createSchemeHistoryOps } from './fileOps/schemeHistory'
 import { serializeBuildData } from '@/lib/gameDataFormat'
 
 // 检查浏览器是否支持 File System Access API
@@ -237,6 +238,16 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     getRootDirHandle: watchOps.getRootDirHandle,
   })
 
+  // 方案历史：目录句柄就绪后自动把编辑过的方案落盘到 BuildingMomo/history
+  const schemeHistoryOps = createSchemeHistoryOps({
+    editorStore,
+    settingsStore,
+    notification,
+    t,
+    getRootDirHandle: watchOps.getRootDirHandle,
+  })
+  schemeHistoryOps.start()
+
   async function exportJSON(filename?: string): Promise<void> {
     if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
       notification.warning(t('fileOps.export.noData'))
@@ -291,6 +302,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
   onUnmounted(() => {
     watchOps.cleanup()
+    schemeHistoryOps.stop()
   })
 
   return {
@@ -306,10 +318,13 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     stopWatchMode: watchOps.stopWatchMode,
     importFromWatchedFile: watchOps.importFromWatchedFile,
     checkFileUpdate: watchOps.checkFileUpdate,
-    getWatchHistory: watchOps.getWatchHistory,
-    clearWatchHistory: watchOps.clearWatchHistory,
-    deleteHistoryRecord: watchOps.deleteHistoryRecord,
-    importFromHistory: watchOps.importFromHistory,
+    schemeHistoryState: schemeHistoryOps.entries,
+    schemeHistoryLoading: schemeHistoryOps.isLoading,
+    schemeHistoryAvailable: schemeHistoryOps.isDirectoryAvailable,
+    loadSchemeHistory: schemeHistoryOps.loadHistoryList,
+    openSchemeHistory: schemeHistoryOps.openHistoryFile,
+    deleteSchemeHistory: schemeHistoryOps.deleteHistoryFile,
+    clearSchemeHistory: schemeHistoryOps.clearHistory,
     archiveState: archiveOps.archiveState,
     loadArchiveIndex: archiveOps.loadArchiveIndex,
     setArchiveGroup: archiveOps.setSelectedGroup,

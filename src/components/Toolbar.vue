@@ -53,6 +53,7 @@ import CloudSchemePopover from './CloudSchemePopover.vue'
 import CloudSchemeDialog from './CloudSchemeDialog.vue'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useNotificationStore } from '../stores/notificationStore'
+import { useNotification } from '../composables/useNotification'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 
 // 使用命令系統 Store
@@ -61,6 +62,7 @@ const editorStore = useEditorStore()
 const tabStore = useTabStore()
 const settingsStore = useSettingsStore()
 const notificationStore = useNotificationStore()
+const notification = useNotification()
 const cloudSchemeStore = useCloudSchemeStore()
 const { t } = useI18n()
 
@@ -157,7 +159,9 @@ const viewPresetCommands = computed(() =>
 
 // 监控状态
 const watchState = computed(() => commandStore.fileOps.watchState)
-const watchHistory = computed(() => commandStore.fileOps.getWatchHistory())
+const schemeHistory = computed(() => commandStore.fileOps.schemeHistoryState)
+const schemeHistoryLoading = computed(() => commandStore.fileOps.schemeHistoryLoading)
+const schemeHistoryAvailable = computed(() => commandStore.fileOps.schemeHistoryAvailable)
 const showWatchButton = computed(() => !!editorStore.activeScheme || watchState.value.isActive)
 const showArchiveButton = computed(() => watchState.value.isActive)
 const showCloudButton = computed(() => editorStore.activeScheme?.source.value === 'cloud')
@@ -214,6 +218,13 @@ watch(isToolbarPopoverOpen, (open) => {
   }
 })
 
+// 打开面板时才读取磁盘上的方案历史
+watch(watchHistoryOpen, (open) => {
+  if (open) {
+    void commandStore.fileOps.loadSchemeHistory()
+  }
+})
+
 // 执行命令
 function handleCommand(commandId: string) {
   // 特殊处理：从方案码导入命令打开对话框
@@ -263,10 +274,10 @@ async function handleImportLatest() {
   await commandStore.fileOps.importFromWatchedFile()
 }
 
-// 从历史记录导入
-async function handleImportFromHistory(historyId: string) {
+// 从方案历史打开（新建标签）
+async function handleOpenFromHistory(fileName: string) {
   watchHistoryOpen.value = false
-  await commandStore.fileOps.importFromHistory(historyId)
+  await commandStore.fileOps.openSchemeHistory(fileName)
 }
 
 function formatRelativeTime(timestamp: number): string {
@@ -291,23 +302,25 @@ function handleStartWatchMode() {
   handleCommand('file.startWatchMode')
 }
 
-function handleClearHistory() {
-  commandStore.fileOps.clearWatchHistory()
+async function handleClearHistory() {
+  const confirmed = await notification.confirm({
+    title: t('watchMode.history.clearTitle'),
+    confirmText: t('common.delete'),
+    cancelText: t('common.cancel'),
+  })
+  if (!confirmed) return
+  await commandStore.fileOps.clearSchemeHistory()
+}
+
+// 删除单条历史文件
+async function handleDeleteHistoryRecord(fileName: string, event: Event) {
+  event.stopPropagation() // 阻止触发打开操作
+  await commandStore.fileOps.deleteSchemeHistory(fileName)
 }
 
 async function handleArchiveTab(tab: { type: string; schemeId?: string }) {
   if (tab.type !== 'scheme' || !tab.schemeId) return
   await commandStore.fileOps.archiveScheme(tab.schemeId)
-}
-
-// 删除单条历史记录
-async function handleDeleteHistoryRecord(historyId: string, event: Event) {
-  event.stopPropagation() // 阻止触发导入操作
-  try {
-    await commandStore.fileOps.deleteHistoryRecord(historyId)
-  } catch (error) {
-    console.error('[Toolbar] Failed to delete history record:', error)
-  }
 }
 
 // --- 拖拽逻辑 (Pointer Events) ---
@@ -925,7 +938,7 @@ watch(
           <PopoverTrigger as-child>
             <button
               ref="watchButtonRef"
-              class="flex items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
+              class="flex cursor-pointer items-center gap-2 rounded-md bg-green-50 px-3 py-1.5 transition-colors hover:bg-green-100 dark:bg-green-950/60 dark:hover:bg-green-950/80"
               @mouseenter="isWatchTooltipVisible = true"
               @mouseleave="isWatchTooltipVisible = false"
             >
@@ -941,13 +954,13 @@ watch(
           >
             {{ t('watchMode.history.tooltipMonitoringButton') }}
           </AnchoredHint>
-          <PopoverContent class="w-64 p-0" align="end" :side-offset="10">
+          <PopoverContent class="w-80 p-0" align="end" :side-offset="10">
             <div class="flex flex-col">
               <!-- 顶部操作栏 -->
               <div class="flex items-center justify-between gap-2 p-3 pb-0">
                 <Button
                   size="sm"
-                  class="h-8 text-xs"
+                  class="h-8 cursor-pointer text-xs"
                   :disabled="!hasWatchedFiles"
                   @click="handleImportLatest"
                 >
@@ -957,8 +970,8 @@ watch(
                 <Button
                   variant="outline"
                   size="icon"
-                  class="h-8 w-8 flex-none text-muted-foreground hover:text-foreground"
-                  :disabled="watchHistory.length === 0"
+                  class="h-8 w-8 flex-none cursor-pointer text-muted-foreground hover:text-foreground"
+                  :disabled="schemeHistory.length === 0"
                   @click="handleClearHistory"
                   :title="t('watchMode.history.clear')"
                 >
@@ -966,36 +979,51 @@ watch(
                 </Button>
               </div>
 
-              <!-- 历史记录列表 -->
+              <!-- 方案历史列表 -->
               <ScrollArea class="max-h-64">
                 <div class="p-2">
                   <div
-                    v-if="watchHistory.length === 0"
+                    v-if="schemeHistoryLoading && schemeHistory.length === 0"
+                    class="px-4 py-8 text-center text-xs text-muted-foreground"
+                  >
+                    {{ t('watchMode.history.loading') }}
+                  </div>
+                  <div
+                    v-else-if="!schemeHistoryAvailable"
+                    class="px-4 py-8 text-center text-xs text-muted-foreground"
+                  >
+                    {{ t('watchMode.history.backupPaused') }}
+                  </div>
+                  <div
+                    v-else-if="schemeHistory.length === 0"
                     class="px-4 py-8 text-center text-xs text-muted-foreground"
                   >
                     {{ t('watchMode.history.noHistory') }}
                   </div>
                   <Item
-                    v-for="record in watchHistory"
-                    :key="record.id"
+                    v-for="record in schemeHistory"
+                    :key="record.fileName"
                     size="sm"
                     as="button"
-                    class="group w-full cursor-pointer p-2 hover:bg-accent"
-                    @click="handleImportFromHistory(record.id)"
+                    class="group w-full cursor-pointer p-2 text-left hover:bg-accent"
+                    @click="handleOpenFromHistory(record.fileName)"
                   >
-                    <ItemContent class="flex w-full flex-row items-center justify-between text-sm">
-                      <span class="text-xs">{{
-                        t('watchMode.history.itemCount', { n: record.itemCount })
+                    <ItemContent class="flex w-full flex-row items-center gap-2 text-sm">
+                      <span class="min-w-0 flex-1 truncate text-xs">{{
+                        record.name || t('scheme.unnamed')
                       }}</span>
-                      <div class="relative ml-auto flex items-center justify-end">
-                        <span class="text-xs transition-opacity group-hover:opacity-0">{{
-                          formatRelativeTime(record.detectedAt)
-                        }}</span>
+                      <div class="relative flex flex-none items-center justify-end">
+                        <span
+                          class="text-xs text-muted-foreground transition-opacity group-hover:opacity-0"
+                        >
+                          {{ t('watchMode.history.itemCount', { n: record.itemCount }) }} ·
+                          {{ formatRelativeTime(record.updatedAt) }}
+                        </span>
                         <Button
                           variant="ghost"
                           size="icon"
                           class="absolute right-0 h-5 w-5 cursor-pointer rounded-sm opacity-0 transition-all group-hover:opacity-100 hover:bg-accent"
-                          @click="handleDeleteHistoryRecord(record.id, $event)"
+                          @click="handleDeleteHistoryRecord(record.fileName, $event)"
                           :title="t('common.delete')"
                         >
                           <X class="h-3 w-3" />

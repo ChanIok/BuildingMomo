@@ -230,7 +230,12 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
           <div class="text-sm font-medium">{{ t('archive.title') }}</div>
           <div class="text-xs text-muted-foreground">{{ t('archive.groupsTitle') }}</div>
         </div>
-        <Button variant="outline" size="icon" class="h-8 w-8" @click="startCreateGroup">
+        <Button
+          variant="outline"
+          size="icon"
+          class="h-8 w-8 cursor-pointer"
+          @click="startCreateGroup"
+        >
           <FolderPlus class="h-4 w-4" />
         </Button>
       </div>
@@ -244,10 +249,15 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
           @keydown.escape="cancelCreateGroup"
         />
         <div class="mt-2 flex justify-end gap-2">
-          <Button variant="ghost" size="sm" class="h-7 text-xs" @click="cancelCreateGroup">
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 cursor-pointer text-xs"
+            @click="cancelCreateGroup"
+          >
             {{ t('common.cancel') }}
           </Button>
-          <Button size="sm" class="h-7 text-xs" @click="submitCreateGroup">
+          <Button size="sm" class="h-7 cursor-pointer text-xs" @click="submitCreateGroup">
             {{ t('common.confirm') }}
           </Button>
         </div>
@@ -258,7 +268,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
           <div
             v-for="(group, index) in groups"
             :key="group.id"
-            class="group rounded-md border border-transparent px-2 py-2 transition-colors"
+            class="group cursor-pointer rounded-md border border-transparent px-2 py-2 transition-colors"
             :class="
               selectedGroupId === group.id
                 ? 'border-border bg-accent text-accent-foreground'
@@ -279,12 +289,16 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="h-7 text-xs"
+                    class="h-7 cursor-pointer text-xs"
                     @click="editingGroupId = null"
                   >
                     {{ t('common.cancel') }}
                   </Button>
-                  <Button size="sm" class="h-7 text-xs" @click="submitRenameGroup(group.id)">
+                  <Button
+                    size="sm"
+                    class="h-7 cursor-pointer text-xs"
+                    @click="submitRenameGroup(group.id)"
+                  >
                     {{ t('common.confirm') }}
                   </Button>
                 </div>
@@ -306,7 +320,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          class="h-6 w-6 text-muted-foreground hover:text-foreground"
+                          class="h-6 w-6 cursor-pointer text-muted-foreground hover:text-foreground"
                         >
                           <MoreHorizontal class="h-3.5 w-3.5" />
                         </Button>
@@ -369,7 +383,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
         </div>
         <Button
           size="sm"
-          class="h-8 text-xs"
+          class="h-8 cursor-pointer text-xs"
           :disabled="!canSaveCurrentScheme"
           @click="handleSaveCurrentScheme"
         >
@@ -390,7 +404,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
           <Button
             variant="outline"
             size="sm"
-            class="mt-3 h-7 text-xs"
+            class="mt-3 h-7 cursor-pointer text-xs"
             @click="handleRetryLoadArchive"
           >
             {{ t('archive.retryLoad') }}
@@ -406,7 +420,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
           <div
             v-for="(entry, index) in selectedEntries"
             :key="entry.id"
-            class="group rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
+            class="group cursor-pointer rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
             @click="handleOpenEntry(entry.id)"
           >
             <template v-if="editingEntryId === entry.id">
@@ -422,12 +436,16 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="h-7 text-xs"
+                    class="h-7 cursor-pointer text-xs"
                     @click="editingEntryId = null"
                   >
                     {{ t('common.cancel') }}
                   </Button>
-                  <Button size="sm" class="h-7 text-xs" @click="submitRenameEntry(entry.id)">
+                  <Button
+                    size="sm"
+                    class="h-7 cursor-pointer text-xs"
+                    @click="submitRenameEntry(entry.id)"
+                  >
                     {{ t('common.confirm') }}
                   </Button>
                 </div>
@@ -446,7 +464,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    class="h-7 w-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    class="h-7 w-7 cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground"
                     :disabled="!canUpdateCurrentScheme"
                     :title="t('archive.updateCurrent')"
                     @click="handleUpdateArchiveEntry(entry.id)"
@@ -458,7 +476,7 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                       <Button
                         variant="ghost"
                         size="icon"
-                        class="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        class="h-7 w-7 cursor-pointer text-muted-foreground hover:text-foreground"
                       >
                         <MoreHorizontal class="h-3.5 w-3.5" />
                       </Button>

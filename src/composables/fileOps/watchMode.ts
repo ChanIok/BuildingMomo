@@ -3,7 +3,6 @@ import type { useEditorStore } from '@/stores/editorStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
 import type { useNotification } from '@/composables/useNotification'
 import type { FileWatchState, GameItem } from '@/types/editor'
-import { WatchHistoryDB } from '@/lib/watchHistoryStore'
 import { WatchHandleStore } from '@/lib/watchHandleStore'
 import {
   SAVE_DATA_FILENAME_REGEX,
@@ -24,8 +23,6 @@ import {
   serializeBuildRecord,
 } from '@/lib/gameDataFormat'
 
-// 监听历史最多保留 30 条
-const MAX_WATCH_HISTORY = 30
 // 页面可见时的轮询间隔（3 秒）
 const POLL_INTERVAL_ACTIVE = 3000
 // 页面隐藏时降低轮询频率以节省资源（10 秒）
@@ -80,7 +77,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     dirPath: '',
     lastCheckedTime: 0,
     fileIndex: new Map(), // 文件名 → 上次已知内容快照，用于变更检测
-    updateHistory: [],
   })
 
   // setTimeout 返回的计时器 ID，null 表示轮询未启动
@@ -100,56 +96,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     if (!rootDirHandle) return null
     buildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
     return buildRecordDirHandle
-  }
-
-  /**
-   * 将一次文件更新记录持久化到 IndexedDB，并同步更新内存中的 updateHistory。
-   * 若同一 id 已存在于内存历史中则跳过插入，超出上限时移除最旧一条。
-   */
-  async function addToWatchHistory(
-    fileName: string,
-    content: string,
-    itemCount: number,
-    lastModified: number
-  ): Promise<void> {
-    const historyId = `${fileName}_${lastModified}`
-    const detectedAt = Date.now()
-    const size = new Blob([content]).size
-
-    try {
-      await WatchHistoryDB.save({
-        id: historyId,
-        fileName,
-        content,
-        itemCount,
-        lastModified,
-        detectedAt,
-        size,
-      })
-      console.log(`[FileWatch] Saved to history DB: ${historyId}`)
-    } catch (error) {
-      console.error('[FileWatch] Failed to save to history DB:', error)
-    }
-
-    const history = watchState.value.updateHistory
-    if (!history.some((h) => h.id === historyId)) {
-      history.unshift({
-        id: historyId,
-        name: fileName,
-        lastModified,
-        itemCount,
-        detectedAt,
-        size,
-      })
-      if (history.length > MAX_WATCH_HISTORY) {
-        history.pop()
-      }
-    }
-
-    // 异步清理 IndexedDB 中超出上限的旧记录
-    WatchHistoryDB.clearOld(MAX_WATCH_HISTORY).catch((err) =>
-      console.error('[FileWatch] Failed to clean old history:', err)
-    )
   }
 
   /**
@@ -290,17 +236,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     // fileIndex 扫描已读取了所有文件内容，直接取缓存，避免再次读取磁盘
     const latestContent = fileName ? fileIndex.get(fileName)?.lastContent : undefined
 
-    // 从 IndexedDB 恢复历史记录（按时间倒序，最多 MAX_WATCH_HISTORY 条）
-    let restoredHistory: typeof watchState.value.updateHistory = []
-    try {
-      const allMetadata = await WatchHistoryDB.getAllMetadata()
-      restoredHistory = allMetadata.slice(0, MAX_WATCH_HISTORY)
-      console.log(`[FileWatch] Restored ${restoredHistory.length} history records from IndexedDB`)
-    } catch (error) {
-      console.error('[FileWatch] Failed to restore history from IndexedDB:', error)
-      restoredHistory = watchState.value.updateHistory
-    }
-
     // 激活监听状态
     watchState.value = {
       isActive: true,
@@ -308,7 +243,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       dirPath: rootDirHandle.name,
       lastCheckedTime: Date.now(),
       fileIndex: fileIndex,
-      updateHistory: restoredHistory,
     }
 
     console.log('[FileWatch] Activated monitoring root:', rootDirHandle.name)
@@ -338,8 +272,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
           if (shouldImport) {
             await importFromWatchedFile()
-            const itemCount = getItemCountFromContent(latestContent)
-            await addToWatchHistory(fileName, latestContent, itemCount, lastModified)
           }
         } else {
           notification.success(t('fileOps.watch.started'))
@@ -629,14 +561,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       }
 
       if (latestFile) {
-        // 持久化到历史记录
-        await addToWatchHistory(
-          latestFile.name,
-          latestFile.content,
-          latestFile.itemCount,
-          latestFile.file.lastModified
-        )
-
         console.log(
           `[FileWatch] File updated: ${latestFile.name}, lastModified: ${new Date(latestFile.file.lastModified).toLocaleString()}`
         )
@@ -776,19 +700,17 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     }
   }
 
-  /** 停止监听模式并清除已保存目录句柄（保留历史记录列表供 UI 继续显示） */
+  /** 停止监听模式并清除已保存目录句柄 */
   async function stopWatchMode(): Promise<void> {
     stopPolling()
     rootDirHandle = null
     buildRecordDirHandle = null
-    const existingHistory = watchState.value.updateHistory
     watchState.value = {
       isActive: false,
       dirHandle: null,
       dirPath: '',
       lastCheckedTime: 0,
       fileIndex: new Map(),
-      updateHistory: existingHistory,
     }
     await WatchHandleStore.clearRootHandle()
     console.log('[FileWatch] Watch mode stopped')
@@ -846,31 +768,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     }
   }
 
-  /** 返回内存中的监听历史列表（响应式数组引用） */
-  function getWatchHistory() {
-    return watchState.value.updateHistory
-  }
-
-  /** 清空内存中的监听历史列表（不影响 IndexedDB） */
-  function clearWatchHistory() {
-    watchState.value.updateHistory = []
-  }
-
-  /** 删除指定历史记录（同时从 IndexedDB 和内存列表中移除） */
-  async function deleteHistoryRecord(historyId: string): Promise<void> {
-    try {
-      await WatchHistoryDB.delete(historyId)
-      const index = watchState.value.updateHistory.findIndex((h) => h.id === historyId)
-      if (index !== -1) {
-        watchState.value.updateHistory.splice(index, 1)
-      }
-      console.log(`[FileWatch] Deleted history record: ${historyId}`)
-    } catch (error) {
-      console.error('[FileWatch] Failed to delete history record:', error)
-      throw error
-    }
-  }
-
   /**
    * 解析手动导出时的下载文件名。
    * 优先级：合法存档名 → 监听目录最新 BUILD 存档 → 时间戳兜底。
@@ -890,38 +787,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     return createDefaultManualExportFileName()
   }
 
-  /**
-   * 从历史记录中导入指定快照。
-   * 从 IndexedDB 读取完整内容后走正常的 importFromContent 流程。
-   */
-  async function importFromHistory(historyId: string): Promise<void> {
-    if (!watchState.value.isActive || !watchState.value.dirHandle) {
-      notification.warning(t('fileOps.importWatched.notStarted'))
-      return
-    }
-
-    try {
-      const snapshot = await WatchHistoryDB.get(historyId)
-
-      if (!snapshot) {
-        notification.warning(t('fileOps.importWatched.notFound'))
-        return
-      }
-
-      await importFromContent(
-        snapshot.content,
-        snapshot.fileName,
-        snapshot.lastModified,
-        snapshot.itemCount
-      )
-
-      console.log(`[FileWatch] Imported from history: ${historyId}`)
-    } catch (error: any) {
-      console.error('[FileWatch] Failed to import from history:', error)
-      notification.error(t('fileOps.import.failed', { reason: error.message || 'Unknown error' }))
-    }
-  }
-
   return {
     watchState,
     startWatchMode,
@@ -929,10 +794,6 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     stopWatchMode,
     importFromWatchedFile,
     checkFileUpdate,
-    getWatchHistory,
-    clearWatchHistory,
-    deleteHistoryRecord,
-    importFromHistory,
     saveToGame,
     resolveManualExportFileName,
     getRootDirHandle: () => rootDirHandle,

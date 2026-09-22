@@ -245,6 +245,12 @@ export const enLocale = {
       noPermission: 'No write permission for Scheme Sets',
       loadFailed: 'Failed to load Scheme Sets',
     },
+    schemeHistory: {
+      noPermission: 'No access to the history folder; scheme history is paused',
+      readFailed: 'Failed to read the history scheme',
+      openFailed: 'Failed to open the history scheme: {reason}',
+      deleteFailed: 'Failed to delete the history scheme',
+    },
   },
 
   archive: {
@@ -512,11 +518,15 @@ export const enLocale = {
     monitoring: 'Monitoring',
     stop: 'Stop Watching',
     history: {
-      title: 'History',
+      title: 'Scheme History',
       loadLatest: 'Load Latest Scheme',
       noHistory: 'No history schemes',
+      loading: 'Loading history schemes...',
+      backupPaused: 'Scheme history paused: game folder not linked or permission missing',
       itemCount: '{n} items',
       clear: 'Clear History',
+      clearTitle:
+        'Clear all history schemes? This deletes the history files in the folder and cannot be undone.',
       justNow: 'Just now',
       minutesAgo: '{n} minutes ago',
       hoursAgo: '{n} hours ago',

@@ -241,6 +241,12 @@ export const zhLocale = {
       noPermission: '没有方案集目录写入权限',
       loadFailed: '读取方案集失败',
     },
+    schemeHistory: {
+      noPermission: '没有历史目录访问权限，方案历史已暂停',
+      readFailed: '读取历史方案失败',
+      openFailed: '打开历史方案失败: {reason}',
+      deleteFailed: '删除历史方案失败',
+    },
   },
 
   archive: {
@@ -502,11 +508,14 @@ export const zhLocale = {
     monitoring: '监控中',
     stop: '停止监控',
     history: {
-      title: '变动历史',
+      title: '方案历史',
       loadLatest: '读取最新方案',
       noHistory: '暂无历史方案',
+      loading: '正在读取历史方案...',
+      backupPaused: '方案历史已暂停：未连接游戏目录或权限不足',
       itemCount: '{n} 个物品',
       clear: '清空历史',
+      clearTitle: '确定清空全部历史方案？此操作会删除文件夹中的历史文件，且不可撤销。',
       justNow: '刚刚',
       minutesAgo: '{n} 分钟前',
       hoursAgo: '{n} 小时前',

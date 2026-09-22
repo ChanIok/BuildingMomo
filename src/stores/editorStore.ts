@@ -321,9 +321,13 @@ export const useEditorStore = defineStore('editor', () => {
     options?: {
       archiveEntryId?: string
       archiveName?: string
+      /** 直接指定方案 id；用于方案历史复用原 id，保证再次写入仍命中同一个文件 */
+      schemeId?: string
     }
   ): string {
-    const schemeId = options?.archiveEntryId ? `archive:${options.archiveEntryId}` : generateUUID()
+    // 直接复用归档条目 id / 云房间码作为方案 id：确定性 id 让重复打开命中同一方案，
+    // 不需要任何前缀——全项目从不解析 id 的格式。
+    const schemeId = options?.schemeId ?? options?.archiveEntryId ?? generateUUID()
     const existing = getSchemeById(schemeId)
 
     if (existing) {
@@ -361,7 +365,7 @@ export const useEditorStore = defineStore('editor', () => {
     roomCode: string,
     options?: { resetHistory?: boolean }
   ) {
-    const targetSchemeId = `cloud:${roomCode}`
+    const targetSchemeId = roomCode
     const scheme = getSchemeById(schemeId)
     if (!scheme) return null
 
@@ -445,7 +449,7 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function openCloudSchemeSnapshot(snapshot: SharedSchemeSnapshot, roomCode: string): string {
-    const schemeId = `cloud:${roomCode}`
+    const schemeId = roomCode
     const existing = getSchemeById(schemeId)
 
     if (existing) {
