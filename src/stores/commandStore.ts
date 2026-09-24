@@ -194,6 +194,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => editorStore.closedSchemesHistory.length > 0,
       execute: async () => {
         console.log('[Command] 重新打开最近关闭的方案')
+        // 不写方案历史：内容在关闭前已落盘，且恢复会复用原 id，重复写入只会刷新时间戳
         await editorStore.reopenClosedScheme(0)
       },
     },

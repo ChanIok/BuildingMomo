@@ -250,7 +250,11 @@ export const useEditorStore = defineStore('editor', () => {
   async function importJSONAsScheme(
     fileContent: string,
     fileName: string,
-    fileLastModified?: number
+    fileLastModified?: number,
+    options?: {
+      /** 直接指定方案 id；用于恢复误关闭的方案时复用原 id，避免历史目录里出现重复文件 */
+      schemeId?: string
+    }
   ): Promise<{ success: boolean; schemeId?: string; error?: string }> {
     try {
       const data = parseGameDataContent(fileContent)
@@ -286,9 +290,10 @@ export const useEditorStore = defineStore('editor', () => {
       const importedName = data.name ?? ''
       const schemeName = importedName || t('scheme.defaultName', { n: schemes.value.length + 1 })
 
-      // 创建新方案
+      // 创建新方案；指定了 id 且当前未被占用时复用它（关闭的方案已从 schemes 移除，通常可用）
       const newScheme: HomeScheme = {
-        id: generateUUID(),
+        id:
+          options?.schemeId && !getSchemeById(options.schemeId) ? options.schemeId : generateUUID(),
         name: ref(schemeName),
         source: ref('local'),
         cloudRoomCode: ref(undefined),
@@ -627,7 +632,9 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   // 重新打开已关闭的方案
-  async function reopenClosedScheme(historyIndex: number = 0) {
+  async function reopenClosedScheme(
+    historyIndex: number = 0
+  ): Promise<{ success: boolean; schemeId?: string; error?: string }> {
     const history = closedSchemesHistory.value[historyIndex]
     if (!history) return { success: false, error: 'No history found' }
 
@@ -635,11 +642,12 @@ export const useEditorStore = defineStore('editor', () => {
       // 将 GameDataFile 转换为 JSON 字符串
       const fileContent = JSON.stringify(history.gameData, null, 2)
 
-      // 复用现有的导入逻辑
+      // 复用现有的导入逻辑；沿用关闭时的 id，保证历史目录里仍是同一个文件
       const result = await importJSONAsScheme(
         fileContent,
         history.fileName || history.name,
-        history.lastModified
+        history.lastModified,
+        { schemeId: history.id }
       )
 
       if (result.success) {

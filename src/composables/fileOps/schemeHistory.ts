@@ -106,7 +106,8 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
 
   /**
    * 标记方案为待写。
-   * immediate 用于改名等低频显式操作：内容没变，等 30 秒节流没有必要。
+   * immediate 用于低频显式操作（改名、导入）：内容没变或是第一次进入工作台，
+   * 等 30 秒节流没有必要。
    */
   function markDirty(schemeId: string, immediate = false) {
     dirtySchemeIds.add(schemeId)
@@ -115,6 +116,14 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
     urgentSchemeIds.add(schemeId)
     // 不等后台轮询的 10 秒间隔，立刻落盘；flush 内部仍会跳过未到点的节流方案
     void flush()
+  }
+
+  /**
+   * 数据第一次进入工作台（文件导入、方案码导入、监控导入、恢复误关闭的方案）。
+   * 这些方案此前在磁盘上没有备份，立即写一份；后续编辑走正常的变更检测。
+   */
+  function markImported(schemeId: string) {
+    markDirty(schemeId, true)
   }
 
   /**
@@ -453,6 +462,7 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
     start,
     stop,
     markDirty,
+    markImported,
     flushNow: flush,
     loadHistoryList,
     openHistoryFile,

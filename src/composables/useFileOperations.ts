@@ -199,6 +199,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
             console.log(`[FileOps] Successfully imported scheme: ${file.name}`)
             notification.success(t('fileOps.import.success'))
             preloadActiveSchemeResources()
+            if (result.schemeId) schemeHistoryOps.markImported(result.schemeId)
           } else {
             notification.error(
               t('fileOps.import.failed', { reason: result.error || 'Unknown error' })
@@ -220,6 +221,17 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     })
   }
 
+  // 方案历史：目录句柄就绪后自动把编辑过的方案落盘到 BuildingMomo/history。
+  // 先于 watchOps 创建，好把「导入即备份」的回调传给下面两个工厂。
+  const schemeHistoryOps = createSchemeHistoryOps({
+    editorStore,
+    settingsStore,
+    notification,
+    t,
+    getRootDirHandle: () => watchOps.getRootDirHandle(),
+  })
+  schemeHistoryOps.start()
+
   const watchOps = createWatchModeOps({
     editorStore,
     settingsStore,
@@ -228,6 +240,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     ensureResourcesReady,
     preloadActiveSchemeResources,
     prepareDataForSave,
+    onSchemeImported: schemeHistoryOps.markImported,
   })
 
   const archiveOps = createArchiveOps({
@@ -237,16 +250,6 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     isWatchActive: () => watchOps.watchState.value.isActive,
     getRootDirHandle: watchOps.getRootDirHandle,
   })
-
-  // 方案历史：目录句柄就绪后自动把编辑过的方案落盘到 BuildingMomo/history
-  const schemeHistoryOps = createSchemeHistoryOps({
-    editorStore,
-    settingsStore,
-    notification,
-    t,
-    getRootDirHandle: watchOps.getRootDirHandle,
-  })
-  schemeHistoryOps.start()
 
   async function exportJSON(filename?: string): Promise<void> {
     if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
@@ -298,6 +301,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     t,
     ensureResourcesReady,
     preloadActiveSchemeResources,
+    onSchemeImported: schemeHistoryOps.markImported,
   })
 
   onUnmounted(() => {

@@ -40,6 +40,8 @@ interface CreateWatchModeOpsParams {
   ensureResourcesReady: () => void
   preloadActiveSchemeResources: () => void
   prepareDataForSave: () => Promise<GameItem[] | null>
+  /** 导入成功后回调：让方案历史立即备份这份新进入工作台的数据 */
+  onSchemeImported?: (schemeId: string) => void
 }
 
 interface DirectoryResolveResult {
@@ -68,6 +70,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     ensureResourcesReady,
     preloadActiveSchemeResources,
     prepareDataForSave,
+    onSchemeImported,
   } = params
 
   // 监听模式的全局响应式状态
@@ -326,6 +329,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
         notification.success(t('fileOps.import.success'))
         // 提前预加载当前 scheme 所需的 3D 资源
         preloadActiveSchemeResources()
+        if (importResult.schemeId) onSchemeImported?.(importResult.schemeId)
         return true
       } else {
         if (importMode === 'build-data') {

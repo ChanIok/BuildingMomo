@@ -14,6 +14,8 @@ interface CreateCodeImportOpsParams {
   t: TranslateFn
   ensureResourcesReady: () => void
   preloadActiveSchemeResources: () => void
+  /** 导入成功后回调：让方案历史立即备份这份新进入工作台的数据 */
+  onSchemeImported?: (schemeId: string) => void
 }
 
 function generateUUID(): string {
@@ -73,8 +75,14 @@ function convertGameItemToAppItem(gameItem: GameItem): AppItem {
 }
 
 export function createCodeImportOps(params: CreateCodeImportOpsParams) {
-  const { editorStore, notification, t, ensureResourcesReady, preloadActiveSchemeResources } =
-    params
+  const {
+    editorStore,
+    notification,
+    t,
+    ensureResourcesReady,
+    preloadActiveSchemeResources,
+    onSchemeImported,
+  } = params
   const { recordTransaction } = useEditorHistory()
   const { getAddPositionFn } = useEditorItemAdd()
 
@@ -254,6 +262,7 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
         console.log(`[FileOps] Successfully imported island scheme from code: ${code}`)
         notification.success(t('fileOps.importCode.success'))
         preloadActiveSchemeResources()
+        if (result.schemeId) onSchemeImported?.(result.schemeId)
       } else {
         notification.error(t('fileOps.import.failed', { reason: result.error || 'Unknown error' }))
       }
@@ -301,6 +310,7 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
         console.log(`[FileOps] Successfully imported public scheme code: ${schemeCode}`)
         notification.success(t('fileOps.importCode.success'))
         preloadActiveSchemeResources()
+        if (result.schemeId) onSchemeImported?.(result.schemeId)
       } else {
         notification.error(t('fileOps.import.failed', { reason: result.error || 'Unknown error' }))
       }
