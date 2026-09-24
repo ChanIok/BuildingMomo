@@ -64,6 +64,55 @@
 
     <h2>Troubleshooting</h2>
 
+    <h3>Furniture Replaced by Old Scheme After Restoring In-Game</h3>
+    <p>
+      <strong>Issue:</strong>
+      After the version 2.9 update, when selecting <strong>"Restore Build"</strong> in-game,
+      furniture items in the scheme are largely replaced by items from your previous scheme.
+    </p>
+    <p>
+      <strong>Cause:</strong>
+      The game updated its build restore mechanism. When furniture IDs (Instance ID) in the scheme
+      saved from the editor overlap with IDs used in the current in-game scheme, the game mistakenly
+      retains the old furniture entries.
+    </p>
+    <p><strong>Solutions (choose one):</strong></p>
+    <ol>
+      <li>
+        <strong>Method 1: Clear and save in-game (Easiest)</strong>
+        <ul>
+          <li>Enter building mode in-game and use <strong>"Clear All"</strong>.</li>
+          <li>
+            <strong>"Save"</strong> and exit building mode (to fully release ID allocations
+            in-game).
+          </li>
+          <li>
+            Return to the editor, <strong>"Save to Game"</strong>, and restore the build in-game
+            again.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <strong>Method 2: Reassign IDs in the editor (No in-game clearing needed)</strong>
+        <ul>
+          <li>Import your currently active in-game scheme into the editor.</li>
+          <li>
+            Press <code>Ctrl + A</code> to select all, then press <code>Delete</code> to remove
+            them.
+          </li>
+          <li>
+            Switch to the target scheme tab, press <code>Ctrl + A</code> to select all, and press
+            <code>Ctrl + C</code> to copy.
+          </li>
+          <li>
+            Switch back to the cleared tab, press <code>Ctrl + V</code> to paste, and
+            <strong>"Save to Game"</strong> (new non-conflicting IDs will be automatically
+            assigned).
+          </li>
+        </ul>
+      </li>
+    </ol>
+
     <h3>"Can't Open This Folder" (Contains System Files)</h3>
     <p>
       <strong>Issue:</strong> After clicking <strong>File &gt; Link Game Folder</strong>, the

@@ -56,6 +56,44 @@
 
     <h2>使用中的常见问题</h2>
 
+    <h3>在游戏中恢复建造后家具类型错乱</h3>
+    <p>
+      <strong>问题描述：</strong>
+      游戏 2.9
+      版本更新后，在游戏中<strong>恢复建造</strong>时，方案中的家具大量变成了当前家园中已有的旧家具。
+    </p>
+    <p>
+      <strong>原因：</strong>
+      游戏更新了建造数据的恢复机制。当从编辑器保存的方案中，家具编号（Instance
+      ID）与当前游戏家园占用的编号发生重叠时，游戏恢复时会错误地沿用旧家具。
+    </p>
+    <p><strong>解决方法（任选其一）：</strong></p>
+    <ol>
+      <li>
+        <strong>方法一：在游戏中清空并保存（最简单）</strong>
+        <ul>
+          <li>在游戏中进入建造模式，执行<strong>「一键清空」</strong>。</li>
+          <li><strong>「保存」</strong>并退出建造模式（彻底释放游戏占用的家具编号）。</li>
+          <li>回到编辑器中重新<strong>「保存到游戏」</strong>，再次进入游戏恢复建造即可。</li>
+        </ul>
+      </li>
+      <li>
+        <strong>方法二：在编辑器中重新分配编号（无需清空游戏）</strong>
+        <ul>
+          <li>在编辑器中导入当前游戏正在使用的方案。</li>
+          <li>按 <code>Ctrl + A</code> 全选后按 <code>Delete</code> 删除场景中的所有家具。</li>
+          <li>
+            切换到目标方案标签页，按 <code>Ctrl + A</code> 全选并 <code>Ctrl + C</code> 复制。
+          </li>
+          <li>
+            切换回已清空的标签页，按
+            <code>Ctrl + V</code>
+            粘贴并<strong>「保存到游戏」</strong>（此时家具会被分配全新的不冲突编号）。
+          </li>
+        </ul>
+      </li>
+    </ol>
+
     <h3>选择游戏目录时提示「含有系统文件」</h3>
     <p>
       <strong>问题描述：</strong>点击
