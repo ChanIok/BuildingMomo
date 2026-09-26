@@ -205,7 +205,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           simpleBoxMeshTarget,
           modelMode.indexToIdMap.value,
           modelMode.meshMap.value,
-          modelMode.internalIdToMeshInfo.value
+          modelMode.internalIdToMeshInfo.value,
+          modelMode.fallbackMesh.value
         )
 
         invalidateScene()
@@ -722,6 +723,27 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   )
 
+  // 监听模型组合配色开关：仅重算实例颜色，不重建模型
+  watch(
+    () => settingsStore.settings.modelGroupColorTint,
+    () => {
+      if (settingsStore.settings.threeDisplayMode !== 'model') return
+
+      colorManager.updateInstancesColor(
+        'model',
+        null,
+        null,
+        null,
+        modelMode.indexToIdMap.value,
+        modelMode.meshMap.value,
+        modelMode.internalIdToMeshInfo.value,
+        modelMode.fallbackMesh.value
+      )
+
+      invalidateScene()
+    }
+  )
+
   // 监听符号缩放变化：在当前模式下更新实例并触发重渲染
   watch(
     () => settingsStore.settings.threeSymbolScale,
@@ -781,7 +803,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         simpleBoxMeshTarget,
         currentIndexToIdMap,
         mode === 'model' ? modelMode.meshMap.value : undefined,
-        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined,
+        mode === 'model' ? modelMode.fallbackMesh.value : undefined
       )
 
       invalidateScene()
@@ -846,7 +869,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         simpleBoxMeshTarget,
         currentIndexToIdMap,
         mode === 'model' ? modelMode.meshMap.value : undefined,
-        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined,
+        mode === 'model' ? modelMode.fallbackMesh.value : undefined
       )
 
       invalidateScene()
@@ -891,7 +915,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           simpleBoxMeshTarget,
           currentIdToIndexMap,
           mode === 'model' ? modelMode.meshMap.value : undefined,
-          mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+          mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined,
+          mode === 'model' ? modelMode.fallbackMesh.value : undefined
         )
       }
 
@@ -915,7 +940,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           simpleBoxMeshTarget,
           currentIdToIndexMap,
           mode === 'model' ? modelMode.meshMap.value : undefined,
-          mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined
+          mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined,
+          mode === 'model' ? modelMode.fallbackMesh.value : undefined
         )
       }
 

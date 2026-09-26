@@ -1,9 +1,11 @@
 import { ref } from 'vue'
-import type { InstancedMesh } from 'three'
+import type { Color, InstancedMesh } from 'three'
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
+import { MODEL_FALLBACK_MESH_KEY } from '../modes/useModelMode'
 import { scratchColor } from './scratchObjects'
 import {
   ALIGN_REFERENCE_ITEM_COLOR,
@@ -14,12 +16,19 @@ import {
 } from './interactionColors'
 
 /**
+ * Model 模式组色亮度归一化的亮度下限。
+ * 防止高饱和组色被过度提亮，取值与 materialPipeline 的染色 boost 一致。
+ */
+const MODEL_GROUP_TINT_MIN_LUMINANCE = 0.4
+
+/**
  * 实例颜色管理
  *
  * 负责根据状态（hover/选中/分组/参照物）计算和更新实例颜色
  */
 export function useInstanceColor() {
   const editorStore = useEditorStore()
+  const settingsStore = useSettingsStore()
   const uiStore = useUIStore()
   const { getGroupColor } = useEditorGroups()
 
@@ -39,13 +48,17 @@ export function useInstanceColor() {
   }
 
   function getItemColor(item: AppItem, mode?: string): number {
-    // Model 模式特殊处理：只有参照物需要颜色叠加，其他状态保持白色（由描边系统处理）
+    // Model 模式特殊处理：默认只有参照物需要颜色叠加，其余状态保持白色（由描边系统处理）
     if (mode === 'model') {
-      // 参照物高亮（唯一需要颜色叠加的状态）
+      // 参照物高亮（始终需要颜色叠加）
       if (uiStore.alignReferenceItemId === item.internalId) {
         return ALIGN_REFERENCE_ITEM_COLOR
       }
-      // 其他状态（hover/选中/组合）都返回白色，不影响纹理原色
+      // 组合配色开关打开时，同组家具叠加组色（hover/选中仍由描边表达，不占用颜色）
+      if (settingsStore.settings.modelGroupColorTint && item.groupId > 0) {
+        return convertColorToHex(getGroupColor(item.groupId))
+      }
+      // 其他状态都返回白色，不影响纹理原色
       return 0xffffff
     }
 
@@ -65,6 +78,30 @@ export function useInstanceColor() {
   }
 
   /**
+   * 计算实例颜色并写入共享 scratchColor。
+   *
+   * Model 模式下 instanceColor 会被 three 内建管线乘进贴图，直接乘组色会让模型明显发暗，
+   * 因此按亮度归一化后再写（与 materialPipeline 的染色 boost 同款），保留贴图明暗层次。
+   * fallback 方块使用 box 材质（组色即面色），保持原始组色不做归一化。
+   */
+  function resolveItemColor(item: AppItem, mode: string, isFallbackBox: boolean): Color {
+    scratchColor.setHex(getItemColor(item, mode))
+
+    if (
+      mode === 'model' &&
+      !isFallbackBox &&
+      settingsStore.settings.modelGroupColorTint &&
+      item.groupId > 0 &&
+      uiStore.alignReferenceItemId !== item.internalId
+    ) {
+      const luminance = 0.299 * scratchColor.r + 0.587 * scratchColor.g + 0.114 * scratchColor.b
+      scratchColor.multiplyScalar(1 / Math.max(luminance, MODEL_GROUP_TINT_MIN_LUMINANCE))
+    }
+
+    return scratchColor
+  }
+
+  /**
    * 更新所有实例颜色（用于选中状态变化或 hover 变化时的刷新）
    */
   function updateInstancesColor(
@@ -75,7 +112,8 @@ export function useInstanceColor() {
     indexToIdMap: Map<number, string>,
     // Model 模式额外参数
     modelMeshMap?: Map<string, InstancedMesh>,
-    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>
+    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>,
+    modelFallbackMesh?: InstancedMesh | null
   ) {
     const items = editorStore.activeScheme?.items.value ?? []
     if (!indexToIdMap || indexToIdMap.size === 0) return
@@ -85,29 +123,30 @@ export function useInstanceColor() {
       itemById.set(item.internalId, item)
     }
 
+    // Model 模式下 '-1' 对应 fallbackMesh（无模型配置的物品渲染为方块）
+    const resolveModelMesh = (meshKey: string): InstancedMesh | null | undefined =>
+      meshKey === MODEL_FALLBACK_MESH_KEY ? modelFallbackMesh : modelMeshMap?.get(meshKey)
+
     // 仅更新当前可见的 Mesh
     if (mode === 'box' && meshTarget) {
       for (const [index, id] of indexToIdMap.entries()) {
         const item = itemById.get(id)
         if (!item) continue
-        scratchColor.setHex(getItemColor(item, mode))
-        meshTarget.setColorAt(index, scratchColor)
+        meshTarget.setColorAt(index, resolveItemColor(item, mode, false))
       }
       if (meshTarget.instanceColor) meshTarget.instanceColor.needsUpdate = true
     } else if (mode === 'icon' && iconMeshTarget) {
       for (const [index, id] of indexToIdMap.entries()) {
         const item = itemById.get(id)
         if (!item) continue
-        scratchColor.setHex(getItemColor(item, mode))
-        iconMeshTarget.setColorAt(index, scratchColor)
+        iconMeshTarget.setColorAt(index, resolveItemColor(item, mode, false))
       }
       if (iconMeshTarget.instanceColor) iconMeshTarget.instanceColor.needsUpdate = true
     } else if (mode === 'simple-box' && simpleBoxMeshTarget) {
       for (const [index, id] of indexToIdMap.entries()) {
         const item = itemById.get(id)
         if (!item) continue
-        scratchColor.setHex(getItemColor(item, mode))
-        simpleBoxMeshTarget.setColorAt(index, scratchColor)
+        simpleBoxMeshTarget.setColorAt(index, resolveItemColor(item, mode, false))
       }
       if (simpleBoxMeshTarget.instanceColor) simpleBoxMeshTarget.instanceColor.needsUpdate = true
     } else if (mode === 'model' && modelMeshMap && modelInternalIdToMeshInfo) {
@@ -119,11 +158,11 @@ export function useInstanceColor() {
         const meshInfo = modelInternalIdToMeshInfo.get(id)
         if (!meshInfo) continue
 
-        const mesh = modelMeshMap.get(meshInfo.meshKey)
+        const mesh = resolveModelMesh(meshInfo.meshKey)
         if (!mesh) continue
 
-        scratchColor.setHex(getItemColor(item, mode))
-        mesh.setColorAt(meshInfo.localIndex, scratchColor)
+        const isFallbackBox = meshInfo.meshKey === MODEL_FALLBACK_MESH_KEY
+        mesh.setColorAt(meshInfo.localIndex, resolveItemColor(item, mode, isFallbackBox))
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
       }
     }
@@ -141,7 +180,8 @@ export function useInstanceColor() {
     idToIndexMap: Map<string, number>,
     // Model 模式额外参数
     modelMeshMap?: Map<string, InstancedMesh>,
-    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>
+    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>,
+    modelFallbackMesh?: InstancedMesh | null
   ) {
     const item = editorStore.activeScheme?.items.value.find((it) => it.internalId === id)
     if (!item) return
@@ -149,31 +189,28 @@ export function useInstanceColor() {
     if (mode === 'box' && meshTarget) {
       const index = idToIndexMap.get(id)
       if (index === undefined) return
-      scratchColor.setHex(getItemColor(item, mode))
-      meshTarget.setColorAt(index, scratchColor)
+      meshTarget.setColorAt(index, resolveItemColor(item, mode, false))
       if (meshTarget.instanceColor) meshTarget.instanceColor.needsUpdate = true
     } else if (mode === 'icon' && iconMeshTarget) {
       const index = idToIndexMap.get(id)
       if (index === undefined) return
-      scratchColor.setHex(getItemColor(item, mode))
-      iconMeshTarget.setColorAt(index, scratchColor)
+      iconMeshTarget.setColorAt(index, resolveItemColor(item, mode, false))
       if (iconMeshTarget.instanceColor) iconMeshTarget.instanceColor.needsUpdate = true
     } else if (mode === 'simple-box' && simpleBoxMeshTarget) {
       const index = idToIndexMap.get(id)
       if (index === undefined) return
-      scratchColor.setHex(getItemColor(item, mode))
-      simpleBoxMeshTarget.setColorAt(index, scratchColor)
+      simpleBoxMeshTarget.setColorAt(index, resolveItemColor(item, mode, false))
       if (simpleBoxMeshTarget.instanceColor) simpleBoxMeshTarget.instanceColor.needsUpdate = true
     } else if (mode === 'model' && modelMeshMap && modelInternalIdToMeshInfo) {
       // Model 模式：通过 internalId 找到对应的 mesh 和 localIndex
       const meshInfo = modelInternalIdToMeshInfo.get(id)
       if (!meshInfo) return
 
-      const mesh = modelMeshMap.get(meshInfo.meshKey)
+      const isFallbackBox = meshInfo.meshKey === MODEL_FALLBACK_MESH_KEY
+      const mesh = isFallbackBox ? modelFallbackMesh : modelMeshMap.get(meshInfo.meshKey)
       if (!mesh) return
 
-      scratchColor.setHex(getItemColor(item, mode))
-      mesh.setColorAt(meshInfo.localIndex, scratchColor)
+      mesh.setColorAt(meshInfo.localIndex, resolveItemColor(item, mode, isFallbackBox))
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     }
   }
@@ -190,7 +227,8 @@ export function useInstanceColor() {
     idToIndexMap: Map<string, number>,
     // Model 模式额外参数
     modelMeshMap?: Map<string, InstancedMesh>,
-    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>
+    modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>,
+    modelFallbackMesh?: InstancedMesh | null
   ) {
     // 如果当前有被抑制的 hover ID，且传入的 ID 依然是它，则忽略（保持选中状态的颜色）
     if (suppressedHoverId.value && id === suppressedHoverId.value) {
@@ -215,7 +253,8 @@ export function useInstanceColor() {
         simpleBoxMeshTarget,
         idToIndexMap,
         modelMeshMap,
-        modelInternalIdToMeshInfo
+        modelInternalIdToMeshInfo,
+        modelFallbackMesh
       )
     }
 
@@ -228,7 +267,8 @@ export function useInstanceColor() {
         simpleBoxMeshTarget,
         idToIndexMap,
         modelMeshMap,
-        modelInternalIdToMeshInfo
+        modelInternalIdToMeshInfo,
+        modelFallbackMesh
       )
     }
   }

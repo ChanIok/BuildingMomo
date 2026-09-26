@@ -479,6 +479,10 @@ export const enLocale = {
       label: 'Model Dye',
       hint: 'Enable dye texture loading',
     },
+    modelGroupColor: {
+      label: 'Group Tint In Model Mode',
+      hint: 'Tint models with their group color',
+    },
     editAssist: 'Editor Assistance',
     duplicateDetection: {
       label: 'Duplicate Detection',

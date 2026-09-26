@@ -36,6 +36,11 @@ const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]
 const PROGRESSIVE_GROUPS_PER_COMMIT = 4
 // 渐进构建时每轮给主线程预留的时间预算（ms）
 const PROGRESSIVE_REBUILD_BUDGET_MS = 8
+/**
+ * 回退实例使用的 meshKey（无模型配置或模型加载失败的物品）。
+ * 颜色系统与描边系统都靠它把 '-1' 解析到 fallbackMesh。
+ */
+export const MODEL_FALLBACK_MESH_KEY = '-1'
 
 /** 模型分组元数据 */
 interface GroupMeta {
@@ -185,9 +190,6 @@ export function useModelMode() {
     // 这样每组可以共用一个 InstancedMesh，减少 draw call
     const groups = new Map<string, AppItem[]>()
     const groupMeta = new Map<string, GroupMeta>()
-    // 特殊组：无模型配置的物品，后面只在必要时才走 fallback
-    const fallbackKey = '-1'
-
     for (let i = 0; i < instanceCount; i++) {
       const item = items[i]
       if (!item) continue
@@ -206,7 +208,7 @@ export function useModelMode() {
           groupMeta.set(key, { gameId: item.gameId, dyePlan })
         }
       } else {
-        key = fallbackKey
+        key = MODEL_FALLBACK_MESH_KEY
       }
 
       if (!groups.has(key)) groups.set(key, [])
@@ -214,10 +216,10 @@ export function useModelMode() {
     }
 
     const modelGroupEntries = Array.from(groups.entries()).filter(
-      ([meshKey]) => meshKey !== fallbackKey
+      ([meshKey]) => meshKey !== MODEL_FALLBACK_MESH_KEY
     )
     // 静态 fallback：配置本身缺失（不是加载失败）
-    const staticFallbackItems = groups.get(fallbackKey) ?? []
+    const staticFallbackItems = groups.get(MODEL_FALLBACK_MESH_KEY) ?? []
     const modelItemIds = Array.from(new Set(Array.from(groupMeta.values()).map((m) => m.gameId)))
     const unloadedIds = modelItemIds.length > 0 ? modelManager.getUnloadedModels(modelItemIds) : []
 
@@ -372,7 +374,10 @@ export function useModelMode() {
 
       progressiveIndexToIdMap.set(globalIndex, item.internalId)
       progressiveIdToIndexMap.set(item.internalId, globalIndex)
-      progressiveInternalIdToMeshInfo.set(item.internalId, { meshKey: '-1', localIndex })
+      progressiveInternalIdToMeshInfo.set(item.internalId, {
+        meshKey: MODEL_FALLBACK_MESH_KEY,
+        localIndex,
+      })
       globalIndex++
     }
 

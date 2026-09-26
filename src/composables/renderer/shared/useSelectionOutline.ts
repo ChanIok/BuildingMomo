@@ -19,6 +19,7 @@ import {
   type WebGLRenderer,
   type Camera,
 } from 'three'
+import { MODEL_FALLBACK_MESH_KEY } from '../modes/useModelMode'
 import { scratchColor } from './scratchObjects'
 
 // 颜色配置
@@ -274,7 +275,7 @@ export function useSelectionOutline() {
   ) {
     const activeKeys = new Set<string>(meshMap.keys())
     if (fallbackMesh) {
-      activeKeys.add('-1')
+      activeKeys.add(MODEL_FALLBACK_MESH_KEY)
     }
 
     // 先清理 stale mask，避免长期累积
@@ -290,7 +291,7 @@ export function useSelectionOutline() {
     }
 
     if (fallbackMesh) {
-      initMaskMesh('-1', fallbackMesh)
+      initMaskMesh(MODEL_FALLBACK_MESH_KEY, fallbackMesh)
     }
   }
 
@@ -328,7 +329,7 @@ export function useSelectionOutline() {
 
     for (const [meshKey, maskMesh] of maskMeshMap.value.entries()) {
       let originalMesh: InstancedMesh | null = null
-      if (meshKey === '-1' && fallbackMesh) {
+      if (meshKey === MODEL_FALLBACK_MESH_KEY && fallbackMesh) {
         originalMesh = fallbackMesh
       } else {
         originalMesh = meshMap.get(meshKey) || null

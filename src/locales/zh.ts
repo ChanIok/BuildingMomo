@@ -469,6 +469,10 @@ export const zhLocale = {
       label: '模型染色显示',
       hint: '开启染色纹理加载',
     },
+    modelGroupColor: {
+      label: '模型组合配色',
+      hint: '模型模式下用组合配色标记同组家具',
+    },
     editAssist: '编辑辅助',
     duplicateDetection: {
       label: '重复物品检测',
