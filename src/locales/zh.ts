@@ -488,7 +488,7 @@ export const zhLocale = {
     },
     watchNotification: {
       label: '文件监控弹窗',
-      hint: '文件变化时弹窗询问是否导入，关闭后仅记录历史。',
+      hint: '文件变化时弹窗询问是否导入。',
     },
     fpsMonitor: '显示 FPS',
     experimental: {

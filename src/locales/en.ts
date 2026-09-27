@@ -498,7 +498,7 @@ export const enLocale = {
     },
     watchNotification: {
       label: 'Watch Popup',
-      hint: 'Show a popup when the file changes; disabled will only record history.',
+      hint: 'Show a popup when the file changes.',
     },
     fpsMonitor: 'Show FPS',
     experimental: {

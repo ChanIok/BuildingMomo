@@ -45,7 +45,7 @@
     <ul>
       <li>Data corruption or loss</li>
       <li>Scheme failing in-game review</li>
-      <li>Account restrictions (though unlikely for local file edits)</li>
+      <li>Account restrictions</li>
     </ul>
 
     <h3>Disclaimer</h3>
