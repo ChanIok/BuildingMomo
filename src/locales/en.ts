@@ -189,6 +189,12 @@ export const enLocale = {
       invalidScale: '{n} items with scale values exceeding limits (will be clamped)',
       invalidRotation: '{n} items rotated on prohibited axes (will be reset to zero)',
     },
+    color: {
+      title: 'Invalid Furniture Colors',
+      desc: 'Saving removes unsupported color schemes and keeps only the last valid scheme in each dye area:',
+      invalidColor: '{n} items use color schemes missing from the furniture configuration',
+      conflictingColor: '{n} items use multiple color schemes in the same dye area',
+    },
     save: {
       confirmTitle: 'Confirm Save',
       confirmDesc: 'Issues detected. Continue saving?',
@@ -644,6 +650,11 @@ export const enLocale = {
         '{count} items have scale values exceeding furniture limits - Click to select',
       invalidRotation: '{count} Invalid rotation',
       invalidRotationTip: '{count} items are rotated on prohibited axes - Click to select',
+      invalidColor: '{count} Invalid colors',
+      invalidColorTip: '{count} items use unsupported color schemes - Click to select',
+      conflictingColor: '{count} Color conflicts',
+      conflictingColorTip:
+        '{count} items use multiple color schemes in one dye area - Click to select',
     },
     render: {
       limited: 'Render Limited',

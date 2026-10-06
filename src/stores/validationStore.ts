@@ -12,16 +12,13 @@ export const useValidationStore = defineStore('validation', () => {
 
   // 响应式状态
   const duplicateGroups = ref<string[][]>([])
-  const limitIssues = ref<{
-    outOfBoundsItemIds: string[]
-    oversizedGroups: number[]
-    invalidScaleItemIds: string[]
-    invalidRotationItemIds: string[]
-  }>({
+  const limitIssues = ref<ValidationResult['limitIssues']>({
     outOfBoundsItemIds: [],
     oversizedGroups: [],
     invalidScaleItemIds: [],
     invalidRotationItemIds: [],
+    invalidColorItemIds: [],
+    conflictingColorItemIds: [],
   })
   const isValidating = ref(false)
 
@@ -39,7 +36,9 @@ export const useValidationStore = defineStore('validation', () => {
       limitIssues.value.outOfBoundsItemIds.length > 0 ||
       limitIssues.value.oversizedGroups.length > 0 ||
       limitIssues.value.invalidScaleItemIds.length > 0 ||
-      limitIssues.value.invalidRotationItemIds.length > 0
+      limitIssues.value.invalidRotationItemIds.length > 0 ||
+      limitIssues.value.invalidColorItemIds.length > 0 ||
+      limitIssues.value.conflictingColorItemIds.length > 0
     )
   })
 
@@ -56,6 +55,8 @@ export const useValidationStore = defineStore('validation', () => {
       oversizedGroups: [],
       invalidScaleItemIds: [],
       invalidRotationItemIds: [],
+      invalidColorItemIds: [],
+      conflictingColorItemIds: [],
     }
   }
 
@@ -73,6 +74,8 @@ export const useValidationStore = defineStore('validation', () => {
           oversizedGroups: [],
           invalidScaleItemIds: [],
           invalidRotationItemIds: [],
+          invalidColorItemIds: [],
+          conflictingColorItemIds: [],
         },
       })
       // 新方案的验证结果会随后由 Persistence 的 syncScheme 带回
@@ -155,6 +158,14 @@ export const useValidationStore = defineStore('validation', () => {
     editorStore.triggerSelectionUpdate()
   }
 
+  function selectColorIssueItems(key: 'invalidColorItemIds' | 'conflictingColorItemIds') {
+    if (!activeScheme.value || limitIssues.value[key].length === 0) return
+
+    recordSelectionChange()
+    activeScheme.value.selectedItemIds.value = new Set(limitIssues.value[key])
+    editorStore.triggerSelectionUpdate()
+  }
+
   return {
     duplicateGroups,
     hasDuplicate,
@@ -169,5 +180,6 @@ export const useValidationStore = defineStore('validation', () => {
     selectOversizedGroupItems,
     selectInvalidScaleItems,
     selectInvalidRotationItems,
+    selectColorIssueItems,
   }
 })

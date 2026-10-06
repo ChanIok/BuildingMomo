@@ -187,6 +187,12 @@ export const zhLocale = {
       invalidScale: '{n} 个物品缩放值超出允许范围 (将自动截断到限制内)',
       invalidRotation: '{n} 个物品在禁止的轴上有旋转 (违规轴将置零)',
     },
+    color: {
+      title: '染色不合规',
+      desc: '保存时将移除无效色盘，同一染色区域只保留最后一个合法色盘：',
+      invalidColor: '{n} 个物品使用了家具配置中不存在的色盘',
+      conflictingColor: '{n} 个物品在同一染色区域使用了多个色盘',
+    },
     save: {
       confirmTitle: '保存确认',
       confirmDesc: '检测到以下问题，请确认是否继续保存？',
@@ -632,6 +638,10 @@ export const zhLocale = {
       invalidScaleTip: '{count} 个物品的缩放值超出家具允许范围 - 点击选中',
       invalidRotation: '{count} 个旋转违规',
       invalidRotationTip: '{count} 个物品在禁止的轴上进行了旋转 - 点击选中',
+      invalidColor: '{count} 个色盘无效',
+      invalidColorTip: '{count} 个物品使用了家具配置中不存在的色盘 - 点击选中',
+      conflictingColor: '{count} 个染色冲突',
+      conflictingColorTip: '{count} 个物品在同一染色区域使用了多个色盘 - 点击选中',
     },
     render: {
       limited: '渲染受限',

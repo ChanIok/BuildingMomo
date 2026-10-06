@@ -386,13 +386,14 @@ export const useGameDataStore = defineStore('gameData', () => {
 
   /**
    * 获取所有家具的约束信息映射（用于 Worker 验证）
-   * @returns Map<gameId, {scaleRange, rotationAllowed}>
+   * @returns Map<gameId, {scaleRange, rotationAllowed, colorSchemes}>
    */
   function getFurnitureConstraintsMap(): Map<
     string,
     {
       scaleRange: [number, number]
       rotationAllowed: { x: boolean; y: boolean; z: boolean }
+      colorSchemes: number[]
     }
   > {
     const map = new Map()
@@ -401,6 +402,9 @@ export const useGameDataStore = defineStore('gameData', () => {
       map.set(gameId, {
         scaleRange: toRaw(furniture.scaleRange),
         rotationAllowed: toRaw(furniture.rotationAllowed),
+        colorSchemes: Object.entries(furniture.colors ?? {}).flatMap(([area, colors]) =>
+          Object.keys(colors).map((slot) => Number(area) * 10 + Number(slot))
+        ),
       })
     }
 
