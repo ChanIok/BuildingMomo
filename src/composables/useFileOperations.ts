@@ -174,7 +174,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
         const finalScale = { ...item.extra.Scale }
         let finalColors = item.extra.ColorMap
-        // 14 位边界向内取整，完整精度下也不能超出配置范围。
+        // 保留转成 float32 后合法的原值，仅裁剪服务端会拒绝的缩放。
         if (settingsStore.settings.enableLimitDetection) {
           const furniture = gameDataStore.getFurniture(item.gameId)
           if (furniture) finalColors = cleanFurnitureColors(finalColors, furniture.colors)

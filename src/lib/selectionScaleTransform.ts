@@ -1,6 +1,7 @@
 import { Quaternion, Vector3 } from 'three'
 import type { AppItem } from '@/types/editor'
 import { matrixTransform } from '@/lib/matrixTransform'
+import { nextFloat64 } from '@/lib/scaleLimits'
 
 export type SelectionScaleAxis = 'X' | 'Y' | 'Z' | 'XYZ'
 
@@ -47,9 +48,19 @@ function getFactorRange(
     const currentScale = item.extra.Scale?.[dataAxis] ?? 1
     if (currentScale <= 0) continue
 
+    // 除法再乘回当前 Scale 可能跨过边界，修正到最终乘积仍合法的倍率。
+    let itemMinFactor = range[0] / currentScale
+    let itemMaxFactor = range[1] / currentScale
+    if (currentScale * itemMinFactor < range[0]) {
+      itemMinFactor = nextFloat64(itemMinFactor, 1)
+    }
+    if (currentScale * itemMaxFactor > range[1]) {
+      itemMaxFactor = nextFloat64(itemMaxFactor, -1)
+    }
+
     // 第四步：对所有选中物品取交集，任一物品到达限制后整体停止。
-    minFactor = Math.max(minFactor, range[0] / currentScale)
-    maxFactor = Math.min(maxFactor, range[1] / currentScale)
+    minFactor = Math.max(minFactor, itemMinFactor)
+    maxFactor = Math.min(maxFactor, itemMaxFactor)
   }
 
   // 已经超限的旧数据不能在触发缩放时被自动改写；始终允许倍率 1，

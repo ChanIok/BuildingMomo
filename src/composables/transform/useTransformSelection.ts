@@ -304,8 +304,9 @@ export function useTransformSelection() {
     for (const item of selected) {
       const furniture = gameDataStore.getFurniture(item.gameId)
       if (furniture) {
-        scaleMin = Math.max(scaleMin, furniture.scaleRange[0])
-        scaleMax = Math.min(scaleMax, furniture.scaleRange[1])
+        const range = gameDataStore.getFurnitureScaleRange(item.gameId)!
+        scaleMin = Math.max(scaleMin, range[0])
+        scaleMax = Math.min(scaleMax, range[1])
         canRotateX &&= furniture.rotationAllowed.x
         canRotateY &&= furniture.rotationAllowed.y
       }
@@ -314,7 +315,7 @@ export function useTransformSelection() {
     return {
       scaleRange: [scaleMin, scaleMax] as [number, number],
       rotationAllowed: { x: canRotateX, y: canRotateY, z: true },
-      isScaleLocked: scaleMin >= scaleMax,
+      isScaleLocked: Math.fround(scaleMin) >= Math.fround(scaleMax),
     }
   })
 

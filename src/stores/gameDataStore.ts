@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, toRaw } from 'vue'
+import { getSafeScaleRange } from '../lib/scaleLimits'
 import type {
   FurnitureItem,
   FurnitureCategory,
@@ -355,6 +356,11 @@ export const useGameDataStore = defineStore('gameData', () => {
     return furnitureData.value[itemId.toString()] || null
   }
 
+  function getFurnitureScaleRange(itemId: number): [number, number] | null {
+    const furniture = getFurniture(itemId)
+    return furniture ? getSafeScaleRange(furniture.scaleRange) : null
+  }
+
   // 获取家具尺寸（游戏坐标系：[X, Y, Z] = [长, 宽, 高]）
   function getFurnitureSize(itemId: number): [number, number, number] | null {
     const furniture = getFurniture(itemId)
@@ -443,6 +449,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     // 方法
     initialize,
     getFurniture,
+    getFurnitureScaleRange,
     getFurnitureSize,
     getIconUrl,
     getCategoryIconUrl,

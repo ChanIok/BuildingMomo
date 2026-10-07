@@ -165,7 +165,7 @@ function checkLimits(
       if (colors.invalidColor) invalidColorItemIds.push(item.internalId)
       if (colors.conflictingColor) conflictingColorItemIds.push(item.internalId)
 
-      // 与导出共用向内收至 14 位的边界，不使用缩放容差。
+      // 与编辑、导出共用 float32 舍入后的合法区间。
       if (constraints.scaleRange) {
         const scale = item.extra.Scale
         const [min, max] = getSafeScaleRange(constraints.scaleRange)

@@ -328,8 +328,9 @@ export function useThreeSelection(
     const newRotation = { ...item.rotation }
     if (settingsStore.settings.enableLimitDetection) {
       const furniture = gameDataStore.getFurniture(newGameId)
-      if (furniture?.scaleRange) {
-        const [min, max] = furniture.scaleRange
+      const scaleRange = gameDataStore.getFurnitureScaleRange(newGameId)
+      if (scaleRange) {
+        const [min, max] = scaleRange
         newScale.X = Math.max(min, Math.min(max, newScale.X))
         newScale.Y = Math.max(min, Math.min(max, newScale.Y))
         newScale.Z = Math.max(min, Math.min(max, newScale.Z))

@@ -250,7 +250,7 @@ export function useEditorManipulation() {
         selectedItems,
         (item) =>
           settingsStore.settings.enableLimitDetection
-            ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+            ? gameDataStore.getFurnitureScaleRange(item.gameId)
             : null
       )
       // 第三步：用共享 Frame 和缩放纯函数统一 Pivot、坐标系与轴映射。
@@ -283,7 +283,7 @@ export function useEditorManipulation() {
       // 绝对缩放只设置物品自身 Scale，不改变物品之间的位置。
       const transformedItems = setItemsAbsoluteScale(selectedItems, axis, value, (item) =>
         settingsStore.settings.enableLimitDetection
-          ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+          ? gameDataStore.getFurnitureScaleRange(item.gameId)
           : null
       )
       replaceSelectedItems(selectedIds, transformedItems)

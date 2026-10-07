@@ -8,6 +8,7 @@ import {
   type ScaleRangeResolver,
 } from '@/lib/selectionScaleTransform'
 import { makeAppItem } from '../fixtures/item'
+import { getSafeScaleRange } from '@/lib/scaleLimits'
 
 /** 所有家具的所有轴都限制在 [0.1, 5]。 */
 const uniformRange: ScaleRangeResolver = () => [0.1, 5]
@@ -25,6 +26,22 @@ describe('视觉轴到存档轴的映射', () => {
 })
 
 describe('setItemsAbsoluteScale', () => {
+  it('保留服务端接受的原始精度，只裁剪舍入后超限的输入', () => {
+    const range = getSafeScaleRange([Math.fround(0.7), Math.fround(1.3)])
+    const item = withScale({ X: 1, Y: 1, Z: 1 })
+    for (const value of [0.699999958277, 0.7, 1.3, 1.30000001192]) {
+      const next = setItemsAbsoluteScale([item], 'x', value, () => range)[0]!
+      expect(next.extra.Scale.Y).toBe(value)
+    }
+
+    const lower = setItemsAbsoluteScale([item], 'x', 0.699999958276, () => range)[0]!
+    const upper = setItemsAbsoluteScale([item], 'x', 1.300000011921, () => range)[0]!
+    expect(lower.extra.Scale.Y).toBe(range[0])
+    expect(upper.extra.Scale.Y).toBe(range[1])
+    expect(Math.fround(lower.extra.Scale.Y)).toBe(Math.fround(0.7))
+    expect(Math.fround(upper.extra.Scale.Y)).toBe(Math.fround(1.3))
+  })
+
   it('调用方只给视觉轴，写入时交叉映射到存档轴', () => {
     const item = withScale({ X: 1, Y: 1, Z: 1 })
 
@@ -67,6 +84,45 @@ describe('setItemsAbsoluteScale', () => {
 })
 
 describe('constrainSelectionScaleFactors', () => {
+  it('相对缩放也接受配置边界外、舍入后合法的输入', () => {
+    const range = getSafeScaleRange([Math.fround(0.7), Math.fround(1.3)])
+    const items = [withScale({ X: 1, Y: 1, Z: 1 })]
+    for (const value of [0.699999958277, 1.30000001192]) {
+      const factors = constrainSelectionScaleFactors(
+        { x: value, y: 1, z: 1 },
+        'X',
+        items,
+        () => range
+      )
+      expect(factors.x).toBe(value)
+    }
+  })
+
+  it('共同倍率乘回不同初始 Scale 后仍在服务端接受的范围内', () => {
+    const config: [number, number] = [Math.fround(0.7), Math.fround(1.3)]
+    const range = getSafeScaleRange(config)
+    // 非二进制整倍数会触发除法与乘法在边界上的二次舍入。
+    for (let i = 0; i <= 300; i++) {
+      const current = 0.7 + i * 0.002
+      const items = [withScale({ X: 1, Y: current, Z: 1 })]
+      for (const requested of [0.01, 10]) {
+        const factors = constrainSelectionScaleFactors(
+          { x: requested, y: requested, z: requested },
+          'XYZ',
+          items,
+          () => range
+        )
+        const [next] = scaleItemsAroundPivot(items, new Vector3(), new Quaternion(), factors)
+        for (const value of Object.values(next!.extra.Scale)) {
+          expect(Math.fround(value)).toBeGreaterThanOrEqual(config[0])
+          expect(Math.fround(value)).toBeLessThanOrEqual(config[1])
+        }
+        expect(factors.x).toBe(factors.y)
+        expect(factors.x).toBe(factors.z)
+      }
+    }
+  })
+
   it('单轴拖拽只影响该轴，其余保持倍率 1', () => {
     const factors = constrainSelectionScaleFactors(
       { x: 2, y: 2, z: 2 },
