@@ -2,11 +2,10 @@ import * as Comlink from 'comlink'
 import { saveWorkspaceSnapshot } from '../lib/workspaceSnapshotStore'
 import type { AppItem } from '../types/editor'
 import type { WorkspaceSnapshot, ValidationResult } from '../types/persistence'
+import { checkFurnitureColors } from '../lib/furnitureColorValidation'
+import { getSafeScaleRange } from '../lib/scaleLimits'
 
-// 浮点数容差常量
-// 用于处理浮点数存储精度误差，避免误报
-// - 缩放验证：如 0.699999988079071 vs 0.69999998807907
-// - 旋转验证：如 0.0000001 应视为 0（禁止旋转的轴）
+// 旋转容差：如 0.0000001 应视为 0（禁止旋转的轴）。
 const EPSILON = 1e-6 // 0.000001
 
 // 状态
@@ -17,6 +16,7 @@ let furnitureConstraints: Map<
   {
     scaleRange?: [number, number]
     rotationAllowed?: { x: boolean; y: boolean; z: boolean }
+    colorSchemes: number[]
   }
 > | null = null
 let settings = {
@@ -85,16 +85,13 @@ function checkLimits(
   items: AppItem[],
   config: { enableLimitDetection: boolean },
   skipCoordinateChecks: boolean = false
-): {
-  outOfBoundsItemIds: string[]
-  oversizedGroups: number[]
-  invalidScaleItemIds: string[]
-  invalidRotationItemIds: string[]
-} {
+): ValidationResult['limitIssues'] {
   const outOfBoundsItemIds: string[] = []
   const oversizedGroups: number[] = []
   const invalidScaleItemIds: string[] = []
   const invalidRotationItemIds: string[] = []
+  const invalidColorItemIds: string[] = []
+  const conflictingColorItemIds: string[] = []
 
   if (!config.enableLimitDetection) {
     return {
@@ -102,6 +99,8 @@ function checkLimits(
       oversizedGroups,
       invalidScaleItemIds,
       invalidRotationItemIds,
+      invalidColorItemIds,
+      conflictingColorItemIds,
     }
   }
 
@@ -156,27 +155,22 @@ function checkLimits(
     }
   }
 
-  // 3. 家具约束检查（缩放和旋转）
+  // 3. 家具约束检查（缩放、旋转和染色）
   if (furnitureConstraints) {
     for (const item of items) {
       const constraints = furnitureConstraints.get(item.gameId.toString())
       if (!constraints) continue
 
-      // 检查缩放是否在允许范围内（使用 epsilon 容差处理浮点数精度）
+      const colors = checkFurnitureColors(item.extra.ColorMap, constraints.colorSchemes)
+      if (colors.invalidColor) invalidColorItemIds.push(item.internalId)
+      if (colors.conflictingColor) conflictingColorItemIds.push(item.internalId)
+
+      // 与编辑、导出共用 float32 舍入后的合法区间。
       if (constraints.scaleRange) {
         const scale = item.extra.Scale
-        const [min, max] = constraints.scaleRange
+        const [min, max] = getSafeScaleRange(constraints.scaleRange)
 
-        // 使用容差比较：只有超出范围 epsilon 以上才算违规
-        // 例如：min=0.699999988, max=1.299999952, 实际值=1.2999999 → 合规
-        if (
-          scale.X < min - EPSILON ||
-          scale.X > max + EPSILON ||
-          scale.Y < min - EPSILON ||
-          scale.Y > max + EPSILON ||
-          scale.Z < min - EPSILON ||
-          scale.Z > max + EPSILON
-        ) {
+        if ([scale.X, scale.Y, scale.Z].some((value) => value < min || value > max)) {
           invalidScaleItemIds.push(item.internalId)
         }
       }
@@ -204,6 +198,8 @@ function checkLimits(
     oversizedGroups,
     invalidScaleItemIds,
     invalidRotationItemIds,
+    invalidColorItemIds,
+    conflictingColorItemIds,
   }
 }
 
@@ -274,6 +270,8 @@ function runValidationOnSnapshot(): ValidationResult {
         oversizedGroups: [],
         invalidScaleItemIds: [],
         invalidRotationItemIds: [],
+        invalidColorItemIds: [],
+        conflictingColorItemIds: [],
       },
     }
   }
@@ -288,6 +286,8 @@ function runValidationOnSnapshot(): ValidationResult {
         oversizedGroups: [],
         invalidScaleItemIds: [],
         invalidRotationItemIds: [],
+        invalidColorItemIds: [],
+        conflictingColorItemIds: [],
       },
     }
   }
@@ -307,11 +307,12 @@ const api = {
   // 2. 纯验证 (无状态)
   validate(
     items: AppItem[],
-    config?: { enableDuplicateDetection: boolean; enableLimitDetection: boolean }
+    config?: { enableDuplicateDetection: boolean; enableLimitDetection: boolean },
+    schemeFilePath?: string
   ): ValidationResult {
     // 使用传入的配置，或者回退到 Worker 内部状态的配置
     const effectiveConfig = config ? { ...settings, ...config } : settings
-    return runValidation(items, effectiveConfig)
+    return runValidation(items, effectiveConfig, schemeFilePath)
   },
 
   // 3. 统一增量同步 (结构 + 内容)
@@ -469,13 +470,14 @@ const api = {
     return {}
   },
 
-  // 8. 更新家具约束 (缩放和旋转限制)
+  // 8. 更新家具约束 (缩放、旋转和染色限制)
   updateFurnitureConstraints(
     constraintsObj: Record<
       string,
       {
         scaleRange?: [number, number]
         rotationAllowed?: { x: boolean; y: boolean; z: boolean }
+        colorSchemes: number[]
       }
     > | null
   ) {

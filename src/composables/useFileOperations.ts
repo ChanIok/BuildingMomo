@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, toRaw } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
 import type { GameItem } from '../types/editor'
 import { useNotification } from './useNotification'
@@ -16,6 +16,9 @@ import { createWatchModeOps } from './fileOps/watchMode'
 import { createArchiveOps } from './fileOps/archive'
 import { createSchemeHistoryOps } from './fileOps/schemeHistory'
 import { serializeBuildData } from '@/lib/gameDataFormat'
+import { getSafeScaleRange } from '@/lib/scaleLimits'
+import { cleanFurnitureColors } from '@/lib/furnitureColorValidation'
+import { workerApi } from '@/workers/client'
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -59,6 +62,25 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   }
 
   async function prepareDataForSave(): Promise<GameItem[] | null> {
+    // 保存不能依赖防抖中的旧检测结果，否则提示与实际修正可能不一致。
+    if (settingsStore.settings.enableLimitDetection) {
+      await gameDataStore.initialize()
+      await workerApi.updateFurnitureConstraints(
+        Object.fromEntries(gameDataStore.getFurnitureConstraintsMap())
+      )
+    }
+    const scheme = editorStore.activeScheme
+    validationStore.setValidationResults(
+      await workerApi.validate(
+        toRaw(scheme?.items.value ?? []),
+        {
+          enableDuplicateDetection: settingsStore.settings.enableDuplicateDetection,
+          enableLimitDetection: settingsStore.settings.enableLimitDetection,
+        },
+        scheme?.filePath.value
+      )
+    )
+
     const details: AlertDetailItem[] = []
 
     if (settingsStore.settings.enableDuplicateDetection && hasDuplicate.value) {
@@ -97,6 +119,26 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       }
     }
 
+    const colorMsgs: string[] = []
+    if (limitIssues.value.invalidColorItemIds.length > 0) {
+      colorMsgs.push(
+        t('fileOps.color.invalidColor', { n: limitIssues.value.invalidColorItemIds.length })
+      )
+    }
+    if (limitIssues.value.conflictingColorItemIds.length > 0) {
+      colorMsgs.push(
+        t('fileOps.color.conflictingColor', { n: limitIssues.value.conflictingColorItemIds.length })
+      )
+    }
+    if (colorMsgs.length > 0) {
+      details.push({
+        type: 'warning',
+        title: t('fileOps.color.title'),
+        text: t('fileOps.color.desc'),
+        list: colorMsgs,
+      })
+    }
+
     if (details.length > 0 && !suppressSaveWarning.value) {
       const { confirmed, checked } = await notification.confirmWithCheckbox({
         title: t('fileOps.save.confirmTitle'),
@@ -118,7 +160,6 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
     const outOfBoundsIds = new Set(limitIssues.value.outOfBoundsItemIds)
     const oversizedGroupIds = new Set(limitIssues.value.oversizedGroups)
-    const invalidScaleIds = new Set(limitIssues.value.invalidScaleItemIds)
     const invalidRotationIds = new Set(limitIssues.value.invalidRotationItemIds)
 
     const gameItems: GameItem[] = (editorStore.activeScheme?.items.value ?? [])
@@ -131,11 +172,14 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
           newGroupId = 0
         }
 
-        let finalScale = { ...item.extra.Scale }
-        if (invalidScaleIds.has(item.internalId)) {
+        const finalScale = { ...item.extra.Scale }
+        let finalColors = item.extra.ColorMap
+        // 保留转成 float32 后合法的原值，仅裁剪服务端会拒绝的缩放。
+        if (settingsStore.settings.enableLimitDetection) {
           const furniture = gameDataStore.getFurniture(item.gameId)
+          if (furniture) finalColors = cleanFurnitureColors(finalColors, furniture.colors)
           if (furniture?.scaleRange) {
-            const [min, max] = furniture.scaleRange
+            const [min, max] = getSafeScaleRange(furniture.scaleRange)
             finalScale.X = Math.max(min, Math.min(max, finalScale.X))
             finalScale.Y = Math.max(min, Math.min(max, finalScale.Y))
             finalScale.Z = Math.max(min, Math.min(max, finalScale.Z))
@@ -167,6 +211,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
             Yaw: finalRotation.z,
           },
           Scale: finalScale,
+          ColorMap: finalColors,
         }
       })
 

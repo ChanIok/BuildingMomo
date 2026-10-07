@@ -38,6 +38,7 @@ const {
   selectOversizedGroupItems,
   selectInvalidScaleItems,
   selectInvalidRotationItems,
+  selectColorIssueItems,
 } = validationStore
 const uiStore = useUIStore()
 const commandStore = useCommandStore()
@@ -441,6 +442,25 @@ async function handleCloudStatusClick() {
             }}
           </TooltipContent>
         </Tooltip>
+
+        <template v-for="issue in ['invalidColor', 'conflictingColor'] as const" :key="issue">
+          <Tooltip v-if="limitIssues[`${issue}ItemIds`].length > 0">
+            <TooltipTrigger as-child>
+              <div
+                class="flex shrink-0 cursor-pointer items-center gap-1 rounded px-2 py-0.5 font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-500/90"
+                @click="selectColorIssueItems(`${issue}ItemIds`)"
+              >
+                <AlertTriangle :size="14" />
+                <span class="text-xs">{{
+                  t(`status.limit.${issue}`, { count: limitIssues[`${issue}ItemIds`].length })
+                }}</span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>{{
+              t(`status.limit.${issue}Tip`, { count: limitIssues[`${issue}ItemIds`].length })
+            }}</TooltipContent>
+          </Tooltip>
+        </template>
 
         <!-- 限制警告：组超限 -->
         <Tooltip v-if="limitIssues.oversizedGroups.length > 0">

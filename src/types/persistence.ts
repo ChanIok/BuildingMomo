@@ -34,5 +34,7 @@ export interface ValidationResult {
     oversizedGroups: number[]
     invalidScaleItemIds: string[]
     invalidRotationItemIds: string[]
+    invalidColorItemIds: string[]
+    conflictingColorItemIds: string[]
   }
 }

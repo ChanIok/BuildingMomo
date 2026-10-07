@@ -247,6 +247,8 @@ export function useWorkspaceWorker() {
     )
     cleanupFns.push(unwatchAreas)
 
+    cleanupFns.push(watch(() => gameDataStore.isInitialized, syncFurnitureConstraints))
+
     // 初始同步
     debouncedSyncWorkspace()
   }

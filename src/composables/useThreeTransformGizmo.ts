@@ -641,7 +641,7 @@ export function useThreeTransformGizmo(
         scaleStartItems.value,
         (item) =>
           settingsStore.settings.enableLimitDetection
-            ? (gameDataStore.getFurniture(item.gameId)?.scaleRange ?? null)
+            ? gameDataStore.getFurnitureScaleRange(item.gameId)
             : [DEFAULT_GIZMO_MIN_SCALE, Infinity]
       )
 

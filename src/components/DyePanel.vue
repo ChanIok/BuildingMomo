@@ -9,6 +9,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import type { AppItem, GameColorMap } from '@/types/editor'
 import type { FurnitureCombinationColorPreset } from '@/types/furniture'
 import { decodeColorMapToGroupMap } from '@/lib/colorMap'
+import { cleanFurnitureColors } from '@/lib/furnitureColorValidation'
 
 interface ColorOption {
   colorIndex: number
@@ -228,11 +229,16 @@ function applyCombinationColorPreset(preset: FurnitureCombinationColorPreset) {
 
   const nextColorMaps = new Map<string, Record<string, number>>()
   match.items.forEach((item, index) => {
-    nextColorMaps.set(item.internalId, preset.colorMaps[match.memberIndexes[index]!] ?? {})
+    nextColorMaps.set(
+      item.internalId,
+      finalizeColorMapObject(
+        toEditableColorMapObject(preset.colorMaps[match.memberIndexes[index]!] ?? {}, item.gameId)
+      )
+    )
   })
   if (
     match.items.every((item) =>
-      areEffectiveColorMapsEqual(item.extra.ColorMap, nextColorMaps.get(item.internalId))
+      areColorMapsEqual(item.extra.ColorMap, nextColorMaps.get(item.internalId)!)
     )
   ) {
     return
@@ -291,17 +297,11 @@ function isGroupOptionActive(groupKey: string, colorIndex: number | null): boole
   return state.mode === 'selected' && state.colorIndex === colorIndex
 }
 
-function toEditableColorMapObject(colorMap: GameColorMap | undefined): Record<string, number> {
-  const result: Record<string, number> = {}
-  const groupMap = decodeColorMapToGroupMap(colorMap)
-
-  for (const [groupId, colorIndex] of groupMap.entries()) {
-    if (!Number.isFinite(colorIndex) || colorIndex <= 0) continue
-    const groupKey = String(groupId)
-    result[groupKey] = groupId === 0 ? colorIndex : groupId * 10 + colorIndex
-  }
-
-  return result
+function toEditableColorMapObject(
+  colorMap: GameColorMap | undefined,
+  itemId: number
+): Record<string, number> {
+  return cleanFurnitureColors(colorMap, gameDataStore.getFurniture(itemId)?.colors)
 }
 
 function finalizeColorMapObject(colorMapObject: Record<string, number>): Record<string, number> {
@@ -339,14 +339,10 @@ function areColorMapsEqual(
     return false
   }
 
-  const current = finalizeColorMapObject(toEditableColorMapObject(currentColorMap))
-  const next = finalizeColorMapObject(nextColorMap)
-
-  const currentKeys = Object.keys(current)
-  const nextKeys = Object.keys(next)
-
-  if (currentKeys.length !== nextKeys.length) return false
-  return currentKeys.every((key) => current[key] === next[key])
+  // 比较原始数据，避免把重复/无效色盘折叠后误判为无需修正。
+  const current = Object.entries(currentColorMap)
+  if (current.length !== Object.keys(nextColorMap).length) return false
+  return current.every(([key, value]) => nextColorMap[key] === value)
 }
 
 function withNextColorMap(item: AppItem, nextColorMap: Record<string, number>): AppItem {
@@ -374,7 +370,7 @@ function applyGroupColor(groupId: number, colorIndex: number | null) {
     const newItems = scheme.items.value.map((item) => {
       if (!selectedIds.has(item.internalId)) return item
 
-      const editableColorMap = toEditableColorMapObject(item.extra.ColorMap)
+      const editableColorMap = toEditableColorMapObject(item.extra.ColorMap, item.gameId)
       if (colorIndex === null) {
         // 关闭该组染色
         if (isSimpleMode.value && groupId === 0) {
