@@ -140,7 +140,7 @@ export function createHomeSky(renderer: WebGLRenderer) {
       skyCameraWorld: { value: new Matrix4() },
       sunDirection: { value: new Vector3() },
       sunColor: { value: new Vector3() },
-      sunVisible: { value: 1 },
+      sunVisible: { value: 0 },
     },
   })
   const dome = new Mesh(new PlaneGeometry(2, 2), sky)
@@ -148,6 +148,7 @@ export function createHomeSky(renderer: WebGLRenderer) {
   dome.frustumCulled = false
   dome.renderOrder = -10000
   dome.raycast = () => {}
+  dome.visible = false
   dome.onBeforeRender = (_renderer, _scene, camera) => {
     sky.uniforms.skyProjectionInverse!.value.copy(camera.projectionMatrixInverse)
     sky.uniforms.skyCameraWorld!.value.copy(camera.matrixWorld)
@@ -158,8 +159,8 @@ export function createHomeSky(renderer: WebGLRenderer) {
     ...output,
     ...todCurve,
     cloudAtlas: { value: null as Texture | null },
-    cloudShade: { value: new Vector3() },
-    cloudLight: { value: new Vector3() },
+    cloudShade: { value: new Vector3(1, 1, 1) },
+    cloudLight: { value: new Vector3(1, 1, 1) },
   }
   const materials = [0.001, 0.3333].map(
     (maskThreshold) =>
@@ -178,6 +179,7 @@ export function createHomeSky(renderer: WebGLRenderer) {
   let packedScene: Group | null = null
   let packedCurve: Texture | null = null
   const cloudGeometries: BufferGeometry[] = []
+  const cloudMeshes: Mesh[] = []
 
   function load() {
     if (pending) return pending
@@ -252,6 +254,8 @@ export function createHomeSky(renderer: WebGLRenderer) {
         mesh.frustumCulled = false
         mesh.renderOrder = -9999 + index
         mesh.raycast = () => {}
+        mesh.visible = atmosphereMinute >= 0
+        cloudMeshes.push(mesh)
         root.add(mesh)
       })
       mountains.setAssets(sources)
@@ -319,8 +323,6 @@ export function createHomeSky(renderer: WebGLRenderer) {
     root,
     load,
     async update(sample: HomeTodSample) {
-      await prepareAtmosphere(sample)
-      if (disposed || atmosphereMinute !== sample.minute) return
       todCurve.editorCloudTODTime.value = sample.minute / 1440
       sky.uniforms.sunDirection!.value.fromArray(sample.sunDirectionWorld)
       sky.uniforms.sunColor!.value.fromArray(sample.sunColor)
@@ -328,12 +330,19 @@ export function createHomeSky(renderer: WebGLRenderer) {
       cloudUniforms.cloudShade.value.fromArray(sample.cloudShade)
       cloudUniforms.cloudLight.value.fromArray(sample.cloudLight)
       mountains.update(sample)
+
+      await prepareAtmosphere(sample)
+      if (disposed || atmosphereMinute !== sample.minute) return
+      dome.visible = true
+      mountains.root.visible = true
+      cloudMeshes.forEach((mesh) => (mesh.visible = true))
     },
     dispose() {
       disposed = true
       mountains.dispose()
       root.removeFromParent()
       cloudGeometries.forEach((geometry) => geometry.dispose())
+      cloudMeshes.length = 0
       dome.geometry.dispose()
       if (packedScene) disposePackedAssets(packedScene, packedCurve)
       packedScene = null

@@ -1042,7 +1042,7 @@ onDeactivated(() => {
               backgroundTexture &&
               shouldShowBackground &&
               !isWorldBuildScheme &&
-              !(terrainEnabled && terrainObject)
+              (!terrainEnabled || terrainError)
             "
             :position="backgroundPosition"
             :rotation="backgroundRotation"

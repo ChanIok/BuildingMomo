@@ -36,6 +36,7 @@ export function createHomeMountains() {
   const root = new Group()
   root.name = 'home-distant-mountains'
   root.userData.excludeFromHomeCapture = true
+  root.visible = false
   const uniforms = {
     homeFogLayer: { value: new Vector3() },
     homeSecondFogLayer: { value: new Vector3() },
