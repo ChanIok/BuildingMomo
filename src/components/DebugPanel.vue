@@ -5,7 +5,7 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getThreeModelManager } from '@/composables/useThreeModelManager'
 import { decodeColorMapToGroupMap } from '@/lib/colorMap'
-import { buildModelMeshKey, resolveModelDyePlan } from '@/lib/modelDye'
+import { resolveCustomData } from '@nuan5-pro/render/furniture'
 import { useI18n } from '@/composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 
@@ -35,22 +35,15 @@ const showPanel = ref(false)
 const rendererDebugInfo = computed(() => {
   const isModelMode = settingsStore.settings.threeDisplayMode === 'model'
   const managerStats = isModelMode ? getThreeModelManager().getStats() : null
-  const manifestStatus =
-    settingsStore.settings.modelAssetProfile !== 'lite'
-      ? 'n/a'
-      : !gameDataStore.liteTextureManifestMeta
-        ? 'none'
-        : gameDataStore.isLiteTextureManifestLoaded
-          ? 'loaded'
-          : 'pending'
+  const catalogStatus =
+    gameDataStore.furnitureDBError ?? (gameDataStore.isFurnitureDBLoaded ? 'loaded' : 'pending')
 
   return {
     displayMode: settingsStore.settings.threeDisplayMode,
-    assetProfile: settingsStore.settings.modelAssetProfile,
-    manifestStatus,
+    assetProfile: `geometry=${settingsStore.settings.modelAssetProfile} material=${settingsStore.settings.materialAssetProfile}`,
+    catalogStatus,
     activeMeshes: managerStats?.activeMeshes ?? 0,
     cachedGeometries: managerStats?.cachedGeometries ?? 0,
-    cachedColoredMaterials: managerStats?.cachedColoredMaterials ?? 0,
   }
 })
 
@@ -82,28 +75,18 @@ const modelDebugInfo = computed(() => {
           .join(', ')
       : 'N/A'
 
-  const dyePlan = resolveModelDyePlan({ item, colorsConfig: furniture?.colors })
-  const dyeEntries =
-    dyePlan.mode === 'dyed' ? Array.from(dyePlan.dyeMap.entries()).sort(([a], [b]) => a - b) : []
-  const meshKey = buildModelMeshKey(item.gameId, dyePlan)
+  const dyeEntries = config ? [...resolveCustomData(config, decodedColorMap).entries()] : []
   const meshPaths = (config?.meshes ?? [])
-    .map((mesh) => mesh.path?.trim())
+    .map((mesh) => mesh.models[settingsStore.settings.modelAssetProfile]?.path)
     .filter((path): path is string => !!path)
-  const textureSummary =
-    debugInfo?.textureSourceMode === 'external'
-      ? `external (${debugInfo.externalTextureRefs} ext)`
-      : debugInfo?.textureSourceMode === 'embedded'
-        ? `embedded (${debugInfo.embeddedTextureRefs} emb)`
-        : debugInfo?.textureSourceMode === 'mixed'
-          ? `mixed (${debugInfo.externalTextureRefs} ext / ${debugInfo.embeddedTextureRefs} emb)`
-          : 'unknown'
+  const textureSummary = debugInfo
+    ? `${debugInfo.textureReferences} declared image references`
+    : 'pending'
 
   return {
-    name: furniture?.name_cn ?? config?.name ?? 'Unknown',
+    name: furniture?.name_cn ?? 'Unknown',
     gameId: item.gameId,
-    meshKey,
     colorDisplay: colorDisplay !== 'N/A' ? colorDisplay : null,
-    dyeMode: dyePlan.mode,
     dyeEntries,
     meshPaths,
     textureSummary,
@@ -192,9 +175,9 @@ function fmtSize(v: number): string {
               <span class="text-muted-foreground">Assets:</span>
               {{ rendererDebugInfo.assetProfile }}
             </div>
-            <div v-if="rendererDebugInfo.assetProfile === 'lite'">
-              <span class="text-muted-foreground">Manifest:</span>
-              {{ rendererDebugInfo.manifestStatus }}
+            <div>
+              <span class="text-muted-foreground">Catalog:</span>
+              {{ rendererDebugInfo.catalogStatus }}
             </div>
             <div v-if="rendererDebugInfo.displayMode === 'model'">
               <span class="text-muted-foreground">Meshes:</span>
@@ -203,10 +186,6 @@ function fmtSize(v: number): string {
             <div v-if="rendererDebugInfo.displayMode === 'model'">
               <span class="text-muted-foreground">Geom Cache:</span>
               {{ rendererDebugInfo.cachedGeometries }}
-            </div>
-            <div v-if="rendererDebugInfo.displayMode === 'model'">
-              <span class="text-muted-foreground">Dyed Mats:</span>
-              {{ rendererDebugInfo.cachedColoredMaterials }}
             </div>
           </div>
         </div>
@@ -245,13 +224,12 @@ function fmtSize(v: number): string {
                 </div>
               </div>
               <div
-                v-if="modelDebugInfo.dyeMode === 'dyed'"
                 v-for="[meshIdx, entry] in modelDebugInfo.dyeEntries"
                 :key="meshIdx"
                 class="pl-2 text-xs"
               >
                 <span class="text-muted-foreground">[{{ meshIdx }}]</span>
-                D{{ entry.pattern }} T{{ entry.tint }}
+                Dye {{ entry }}
               </div>
 
               <!-- Geometry -->

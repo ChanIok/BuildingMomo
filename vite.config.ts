@@ -1,12 +1,17 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
+import { resolve } from 'node:path'
 import { templateCompilerOptions } from '@tresjs/core'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  // Config-only variable in ignored .env.local; never exposed to client code.
+  const localRender = loadEnv(mode, process.cwd(), 'NUAN5_').NUAN5_RENDER_SOURCE
+  const renderSource = localRender ? resolve(localRender, 'src') : null
+
   // 默认使用根路径，如果设置了 VITE_BASE_PATH 环境变量则使用该路径
   const base = process.env.VITE_BASE_PATH || '/'
   const cloudApiProxyTarget = process.env.VITE_CLOUD_API_PROXY_TARGET || 'http://127.0.0.1:8788'
@@ -77,6 +82,28 @@ export default defineConfig(() => {
               },
             },
             {
+              // 带 Hash 的材质打包
+              urlPattern: ({ url }) => url.pathname.startsWith('/assets/furniture-v2/textures/'),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'model-textures',
+                cacheableResponse: {
+                  statuses: [200],
+                },
+              },
+            },
+            {
+              // 先获取当前目录，避免版本更新后继续引用已下线的资源。
+              urlPattern: ({ url }) => url.pathname.endsWith('/assets/furniture-v2/manifest.json'),
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'furniture-catalog',
+                cacheableResponse: {
+                  statuses: [200],
+                },
+              },
+            },
+            {
               // JSON 数据：边用边更新（数据可能更新）
               urlPattern: /\.json$/,
               handler: 'StaleWhileRevalidate',
@@ -120,9 +147,15 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
+        ...(renderSource
+          ? {
+              '@nuan5-pro/render/furniture': resolve(renderSource, 'furniture/index.ts'),
+              '@nuan5-pro/render': resolve(renderSource, 'index.ts'),
+            }
+          : {}),
       },
       // 强制使用单一 Three.js 实例，避免多版本冲突
-      dedupe: ['three'],
+      dedupe: ['three', 'three-mesh-bvh'],
     },
     build: {
       rollupOptions: {
@@ -168,6 +201,13 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // Render assets publish in bulk; refresh explicitly after generation.
+      watch: { ignored: ['**/public/assets/furniture-v2/**'] },
+      ...(renderSource
+        ? {
+            fs: { allow: [searchForWorkspaceRoot(process.cwd()), renderSource] },
+          }
+        : {}),
       // 本地联调：另开 `npm run dev:cloudflare-functions`（wrangler pages dev，默认 8788）。
       // 将 /api 全部转发到 Pages Functions，否则仅 Vite 时 /api/login、/api/cloud-schemes 会 404。
       proxy: {

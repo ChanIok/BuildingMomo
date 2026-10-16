@@ -1,7 +1,10 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source(none);
 @import "tw-animate-css";
 @import "@fontsource-variable/inter/wght.css";
 @import './styles/docs.css';
+
+@source './';
+@source '../index.html';
 
 @custom-variant dark (&:is(.dark *));
 

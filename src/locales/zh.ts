@@ -601,13 +601,18 @@ export const zhLocale = {
 
   // 加载进度
   loading: {
+    error: '渲染准备失败，可重新导入或切换方案',
     icon: '正在加载图标',
     model: '正在加载模型',
+    environment: '正在更新光照与阴影',
     complete: '加载完成',
     failed: '个失败',
     phase: {
-      network: '正在下载...',
-      processing: '正在准备渲染...',
+      network: '加载模型资源...',
+      processing: '准备渲染...',
+      shaders: '编译着色器...',
+      shadows: '准备阴影...',
+      environment: '预处理环境光...',
     },
   },
 

@@ -164,6 +164,7 @@ export function useEditorHistory() {
 
     // [第①步]：零开销缓存当前的引用状态
     const before = captureSchemeSnapshot(scheme)
+    const renderVersion = store.sceneVersion
     const selectionBefore = cloneSelection(scheme.selectedItemIds.value)
 
     // [第②步]：执行副作用操作，真正修改 activeScheme 里的内容或指针
@@ -182,6 +183,7 @@ export function useEditorHistory() {
     })
 
     if (transaction) {
+      store.recordRenderTransaction(transaction, renderVersion)
       const history = ensureHistoryStack()
       if (!history) return result
 
@@ -293,6 +295,7 @@ export function useEditorHistory() {
    * @param entry 我们希望倒回的那笔交易记录
    */
   function undoTransaction(entry: TransactionHistoryEntry) {
+    const renderVersion = store.sceneVersion
     const scheme = activeScheme.value!
     const history = scheme.history.value!
 
@@ -315,6 +318,7 @@ export function useEditorHistory() {
     // [收尾工作] 最后必须重置回当时操作发生前的选区，以便使用者能清晰明确他们回退了什么物体
     scheme.selectedItemIds.value = cloneSelection(entry.selectionBefore)
     store.triggerSceneUpdate()
+    store.recordRenderTransaction(invertEditorTransaction(entry.transaction), renderVersion)
     store.triggerSelectionUpdate()
     store.triggerHistoryUpdate()
   }
@@ -324,6 +328,7 @@ export function useEditorHistory() {
    * 和 undo 极为神似。
    */
   function redoTransaction(entry: TransactionHistoryEntry) {
+    const renderVersion = store.sceneVersion
     const scheme = activeScheme.value!
     const history = scheme.history.value!
 
@@ -361,6 +366,7 @@ export function useEditorHistory() {
     // 由于是快进，所以把选区设置为当时的改变结束后（selectionAfter）的样子
     scheme.selectedItemIds.value = cloneSelection(entry.selectionAfter)
     store.triggerSceneUpdate()
+    store.recordRenderTransaction(entry.transaction, renderVersion)
     store.triggerSelectionUpdate()
     store.triggerHistoryUpdate()
   }

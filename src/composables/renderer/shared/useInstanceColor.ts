@@ -168,6 +168,26 @@ export function useInstanceColor() {
     }
   }
 
+  function updateModelItems(
+    items: readonly AppItem[],
+    meshes: Map<string, InstancedMesh>,
+    indices: Map<string, { meshKey: string; localIndex: number }>,
+    fallback: InstancedMesh | null
+  ) {
+    const changed = new Set<InstancedMesh>()
+    for (const item of items) {
+      const info = indices.get(item.internalId)
+      if (!info) continue
+      const isFallback = info.meshKey === MODEL_FALLBACK_MESH_KEY
+      const mesh = isFallback ? fallback : meshes.get(info.meshKey)
+      if (!mesh) continue
+      mesh.setColorAt(info.localIndex, resolveItemColor(item, 'model', isFallback))
+      mesh.instanceColor!.addUpdateRange(info.localIndex * 3, 3)
+      changed.add(mesh)
+    }
+    for (const mesh of changed) mesh.instanceColor!.needsUpdate = true
+  }
+
   /**
    * 局部更新单个物品的颜色（用于 hover 状态变化）
    */
@@ -287,6 +307,7 @@ export function useInstanceColor() {
     suppressedHoverId,
     getItemColor,
     updateInstancesColor,
+    updateModelItems,
     updateInstanceColorById,
     setHoveredItemId,
     setSidebarHoveredItemIds,

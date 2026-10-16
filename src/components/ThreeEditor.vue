@@ -1,8 +1,30 @@
 <script setup lang="ts">
-import { ref, computed, markRaw, onActivated, onDeactivated, onMounted, toRef, watch } from 'vue'
+import { installFurnitureRender } from '@/composables/useFurnitureRender'
+import {
+  ref,
+  shallowRef,
+  computed,
+  markRaw,
+  toRaw,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onUnmounted,
+  toRef,
+  watch,
+} from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls } from '@tresjs/cientos'
-import { Object3D, Raycaster, Vector2, Vector3, type WebGLRenderer, type Camera } from 'three'
+import {
+  Color,
+  Object3D,
+  PCFShadowMap,
+  Raycaster,
+  Vector2,
+  Vector3,
+  type WebGLRenderer,
+  type Camera,
+} from 'three'
 import backgroundUrl from '@/assets/home.webp'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
@@ -75,17 +97,18 @@ useResizeObserver(threeContainerRef, (entries) => {
   }
 })
 
-const cameraRef = ref<any | null>(null) // 透视相机
-const orthoCameraRef = ref<any | null>(null) // 正交相机
-const orbitControlsRef = ref<any | null>(null)
-const transformRef = ref()
-const axesRef = ref()
+// Tres 实例必须保留原始身份；深层代理会让 controls 的构造参数混入同一相机的 raw/proxy。
+const cameraRef = shallowRef<any | null>(null) // 透视相机
+const orthoCameraRef = shallowRef<any | null>(null) // 正交相机
+const orbitControlsRef = shallowRef<any | null>(null)
+const transformRef = shallowRef()
+const axesRef = shallowRef()
 const gizmoPivot = ref<Object3D | null>(markRaw(new Object3D()))
 let isWritingOrbitRuntimePose = false
 
 function unwrapTresInstance<T>(raw: any): T | null {
   if (!raw) return null
-  return (raw.instance || raw.value || raw) as T
+  return toRaw(raw.instance || raw.value || raw) as T
 }
 
 function getOrbitControlsInstance() {
@@ -407,31 +430,61 @@ onMounted(() => {
 })
 
 // 从 TresCanvas ready 事件初始化
+let restoreRenderFunction: (() => void) | null = null
+let furnitureContext: ReturnType<typeof installFurnitureRender> | null = null
+onUnmounted(() => {
+  furnitureContext?.dispose()
+  furnitureContext = null
+  restoreRenderFunction?.()
+  restoreRenderFunction = null
+})
+
 function handleTresReady(context: any) {
+  furnitureContext?.dispose()
+  furnitureContext = null
   console.log('[ThreeEditor] TresCanvas ready')
 
-  // 配置渲染器
-  const renderer = context.renderer?.instance
-  const scene = context.scene?.value || context.scene
-
+  const renderer = toRaw(context.renderer?.instance)
+  const scene = toRaw(context.scene.value)
   if (renderer && scene) {
-    // 1. 初始化 IBL 环境光 (为哑光材质提供关键的漫反射填充)
-    // 参数 3：强度。觉得暗就调高 (例如 1.2, 1.5)，觉得亮就调低 (0.8)
     setupEnvironment(renderer, scene, 0.3)
-
-    // 2. 色调映射
     renderer.toneMapping = 3
     renderer.toneMappingExposure = 0.8
-
-    // 确保输出色彩空间正确
     renderer.outputColorSpace = 'srgb'
     renderer.shadowMap.enabled = true
-    // 禁用阴影自动更新：移动时跳过 shadow pass，停止后手动触发一次
     renderer.shadowMap.autoUpdate = false
     renderer.shadowMap.needsUpdate = true
+
+    // Match the existing studio sun declared below; the host owns its lighting.
+    const direction = new Vector3(1500, 2000, 3000).normalize()
+    const color = new Color(0xfff4e6).multiplyScalar(2)
+    furnitureContext = installFurnitureRender({
+      renderer,
+      scene,
+      getCamera: () => toRaw(context.camera.activeCamera.value),
+      invalidate: () => context.renderer.invalidate(),
+      lighting: () => ({
+        primaryDirection: direction.toArray(),
+        primaryColor: [color.r, color.g, color.b],
+        tod: { minute: 720, sunDirectionWorld: direction.toArray(), swapLightFactor: 1 },
+      }),
+    })
+
+    restoreRenderFunction?.()
+    const renderMainScene = (notifyFrameRendered: () => void) => {
+      const camera = toRaw(context.camera.activeCamera.value)
+      if (!camera) return
+      renderer.render(context.scene.value, camera)
+      notifyFrameRendered()
+    }
+    restoreRenderFunction = () => context.renderer.replaceRenderFunction(renderMainScene)
+    context.renderer.replaceRenderFunction((notifyFrameRendered: () => void) => {
+      if (!toRaw(context.camera.activeCamera.value)) return
+      furnitureContext?.beforeRender()
+      renderMainScene(notifyFrameRendered)
+    })
   }
 
-  // 连接按需渲染的 invalidate 函数
   if (context.renderer?.invalidate) {
     setSceneInvalidate(context.renderer.invalidate)
   }
@@ -471,11 +524,8 @@ function handlePostRender(context: any) {
   _prevCamZ = cz
 
   if (moved) {
-    // 移动中：继续请求下一帧，但仅跳过阴影更新
+    // 移动中：继续请求下一帧，阴影由光源/投影物的脏状态独立更新
     invalidateScene()
-  } else {
-    // 常规静止帧：更新阴影贴图
-    renderer.shadowMap.needsUpdate = true
   }
 
   if (currentDisplayMode.value !== 'model') return
@@ -808,6 +858,7 @@ onDeactivated(() => {
     >
       <TresCanvas
         render-mode="on-demand"
+        :shadow-map-type="PCFShadowMap"
         :clear-color="canvasClearColor"
         logarithmic-depth-buffer
         power-preference="high-performance"
@@ -919,7 +970,6 @@ onDeactivated(() => {
           />
           <!-- Model 模式：渲染所有模型 Mesh -->
           <template v-if="shouldShowModelMesh">
-            <primitive v-for="[modelName, mesh] in modelMeshMap" :key="modelName" :object="mesh" />
             <!-- 渲染回退 Mesh（用于缺少模型数据的物品，count=0 时 GPU 不渲染） -->
             <primitive v-if="modelFallbackMesh" :object="modelFallbackMesh" />
           </template>

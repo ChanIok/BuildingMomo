@@ -9,8 +9,6 @@ const SUPPRESSED_THREE_WARNING_MATCHERS = [
       'THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.'
     ),
   (message: string) =>
-    message.includes('PCFSoftShadowMap has been deprecated. Using PCFShadowMap instead.'),
-  (message: string) =>
     message.includes('THREE.GLTFLoader: Ignoring primitive type .extras') &&
     message.includes('{"targetNames": []}'),
 ]

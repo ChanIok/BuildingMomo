@@ -1,5 +1,6 @@
 import { ref, watch, onUnmounted, computed, type Ref } from 'vue'
 import { Matrix4, Vector3, type Camera, type Raycaster, type InstancedMesh } from 'three'
+import { ObjectBVH } from 'three-mesh-bvh'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -13,12 +14,7 @@ import { useModelMode } from './modes/useModelMode'
 import { useInstanceColor } from './shared/useInstanceColor'
 import { useInstanceMatrix } from './shared/useInstanceMatrix'
 import { useSelectionOutline } from './shared/useSelectionOutline'
-import {
-  createRaycastTask,
-  cancelTask,
-  raycastMultipleMeshesAsync,
-  raycastInstancedMeshAsync,
-} from './shared/asyncRaycast'
+import { createRaycastTask, cancelTask, raycastInstancedMeshAsync } from './shared/asyncRaycast'
 import type {
   InteractionAdapter,
   RaycastHit,
@@ -27,6 +23,7 @@ import type {
   RegionCenterCandidate,
 } from './types'
 import { initBVH } from './bvh'
+import { initEulerMatrixCache } from '@nuan5-pro/render'
 import { requiredInstanceCount } from '@/lib/renderInstanceBudget'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
 import type { ScreenPoint } from '@/lib/interaction/screenGeometry'
@@ -45,6 +42,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     initBVH()
     bvhInitialized = true
   }
+  initEulerMatrixCache()
 
   // 初始化各模式 composables
   const boxMode = useBoxMode()
@@ -70,6 +68,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   let rebuildPending = false
   let rebuildRunner: Promise<void> | null = null
   let requestedRebuildSeq = 0
+  let modelPickBVH: ObjectBVH | null = null
+  let modelPickMeshMap: Map<string, InstancedMesh> | null = null
+  let modelPickBoundsDirty = false
 
   function buildSidebarHoveredItemIds(): Set<string> | null {
     const scheme = editorStore.activeScheme
@@ -115,6 +116,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     if (isDisposed) return
 
     requestedRebuildSeq++
+    modelMode.cancelPending()
     rebuildPending = true
     if (rebuildRunner) return
 
@@ -153,9 +155,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       simpleBoxMeshTarget.count = 0
     }
     if (mode !== 'model') {
-      for (const [, mesh] of modelMode.meshMap.value.entries()) {
-        mesh.count = 0
-      }
+      modelMode.setVisible(false)
       if (modelMode.fallbackMesh.value) {
         modelMode.fallbackMesh.value.count = 0
       }
@@ -181,6 +181,21 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         if (!committed || isDisposed || seq !== requestedRebuildSeq) {
           return
         }
+
+        if (!modelMode.structureChanged) {
+          colorManager.updateModelItems(
+            modelMode.changedItems,
+            modelMode.meshMap.value,
+            modelMode.internalIdToMeshInfo.value,
+            modelMode.fallbackMesh.value
+          )
+          modelPickBoundsDirty = true
+          selectionOutline.updateMatrices(modelMode.meshMap.value, modelMode.fallbackMesh.value)
+          invalidateScene()
+          return
+        }
+
+        rebuildModelPickIndex()
 
         const fallbackMesh = modelMode.fallbackMesh.value
 
@@ -266,8 +281,18 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     // Model 模式使用独立的索引映射
     const currentIdToIndexMap = mode === 'model' ? modelMode.idToIndexMap.value : idToIndexMap.value
 
+    if (mode === 'model') modelMode.updateMatrices(idToWorldMatrixMap)
+
+    const directMatrices =
+      mode === 'model'
+        ? new Map(
+            [...idToWorldMatrixMap].filter(
+              ([id]) => modelMode.internalIdToMeshInfo.value.get(id)?.meshKey === '-1'
+            )
+          )
+        : idToWorldMatrixMap
     matrixUpdater.updateSelectedInstancesMatrix(
-      idToWorldMatrixMap,
+      directMatrices,
       mode,
       meshTarget,
       iconMeshTarget,
@@ -283,9 +308,14 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       skipBVHRefit
     )
 
-    // Model 模式：同步更新 mask
-    // 拖拽帧（skipBVHRefit=true）跳过：选中状态未变，位置由共享 instanceMatrix 自动同步
-    if (mode === 'model' && !skipBVHRefit) {
+    // Packed masks have their own matrices, so preview transforms must also
+    // update their highlighted subset. Refit picking bounds on the next pick.
+    if (mode === 'model') {
+      modelPickBoundsDirty = true
+    }
+    if (mode === 'model' && skipBVHRefit) {
+      selectionOutline.updateMatrices(modelMode.meshMap.value, modelMode.fallbackMesh.value)
+    } else if (mode === 'model') {
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
       selectionOutline.updateMasks(
         selectedItemIds,
@@ -303,6 +333,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
    * 设置 hover 物品 ID（用于高亮显示）
    */
   function setHoveredItemId(id: string | null) {
+    if (colorManager.hoveredItemId.value === id && !colorManager.suppressedHoverId.value) return
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
@@ -555,8 +586,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   /**
    * 返回 model 模式下所有可遍历的 mesh 及其局部索引映射（含 fallbackMesh）。
-   * 统一封装"meshMap + fallbackMesh"的迭代逻辑，避免在 pick / pickAsync /
-   * forEachRegionCenterCandidate 各处重复相同的遍历代码。
+   * 拾取索引和区域选择共用这份模型 / fallback 遍历。
    */
   function getModelMeshesWithIndexMap(): Array<{
     mesh: InstancedMesh
@@ -578,6 +608,40 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     return result
   }
 
+  function rebuildModelPickIndex() {
+    const meshes = getModelMeshesWithIndexMap()
+      .filter(({ mesh }) => mesh.count > 0)
+      .map(({ mesh }) => mesh)
+    for (const mesh of meshes) mesh.updateWorldMatrix(true, false)
+    modelPickBVH = meshes.length > 0 ? new ObjectBVH(meshes) : null
+    modelPickMeshMap = modelMode.meshMap.value
+    modelPickBoundsDirty = false
+  }
+
+  function pickModel(raycaster: Raycaster): RaycastHit | null {
+    // Progressive loading also commits new mesh-map snapshots before the
+    // final rebuild completes; never pick against an older instance topology.
+    if (!modelPickBVH || modelPickMeshMap !== modelMode.meshMap.value) rebuildModelPickIndex()
+    if (!modelPickBVH) return null
+    if (modelPickBoundsDirty) {
+      modelPickBVH.refit()
+      modelPickBoundsDirty = false
+    }
+
+    const firstHitOnly = raycaster.firstHitOnly
+    raycaster.firstHitOnly = true
+    try {
+      const hit = modelPickBVH.raycast(raycaster)[0]
+      if (!hit || hit.instanceId === undefined) return null
+      const internalId = modelMode.meshToLocalIndexMap.value
+        .get(hit.object as InstancedMesh)
+        ?.get(hit.instanceId)
+      return internalId ? { instanceId: hit.instanceId, internalId, distance: hit.distance } : null
+    } finally {
+      raycaster.firstHitOnly = firstHitOnly
+    }
+  }
+
   /**
    * 获取当前模式的交互适配器（统一点击 / hover / 区域选择接口）
    */
@@ -588,23 +652,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       // 同步射线检测（用于点击等需要立即结果的场景）
       pick: (raycaster: Raycaster) => {
         if (mode === 'model') {
-          // Model 模式：遍历所有 mesh（含 fallback），返回距离最近的交点
-          // hit.instanceId 是 mesh 内的局部索引（0, 1, 2...），需通过 indexMap 转换
-          let closestHit: RaycastHit | null = null
-
-          for (const { mesh, indexMap } of getModelMeshesWithIndexMap()) {
-            if (mesh.count === 0) continue
-            const intersects = raycaster.intersectObject(mesh, false)
-            const hit = intersects[0]
-            if (!hit || hit.instanceId === undefined) continue
-
-            const internalId = indexMap.get(hit.instanceId)
-            if (internalId && (!closestHit || hit.distance < closestHit.distance)) {
-              closestHit = { instanceId: hit.instanceId, internalId, distance: hit.distance }
-            }
-          }
-
-          return closestHit
+          return pickModel(raycaster)
         } else {
           // Box/Icon/SimpleBox 模式：单 mesh 检测
           const targetMesh = getActiveInstancedMesh(mode)
@@ -629,23 +677,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
         const task = createRaycastTask()
         activeRaycastTask = task
 
-        // 根据模式决定单轮检查的实例数：
-        // model 模式几何体复杂，减小批次以更频繁地检查时间预算，降低卡帧风险
-        const instancesPerCheck = mode === 'model' ? 200 : 500
-
         if (mode === 'model') {
-          // Model 模式：收集所有非空 mesh（含 fallback），使用可中断的实例级射线检测
-          const meshesToTest = getModelMeshesWithIndexMap()
-            .filter(({ mesh }) => mesh.count > 0)
-            .map(({ mesh }) => mesh)
-
-          return await raycastMultipleMeshesAsync(
-            meshesToTest,
-            raycaster,
-            task,
-            (mesh) => modelMode.meshToLocalIndexMap.value.get(mesh),
-            instancesPerCheck
-          )
+          const hit = pickModel(raycaster)
+          // Preserve cancellation across the async adapter boundary.
+          await Promise.resolve()
+          return task.cancelled ? null : hit
         } else {
           // Box/Icon/SimpleBox 模式：单 mesh，也使用可中断检测（实例数多时同样会卡）
           const targetMesh = getActiveInstancedMesh(mode)
@@ -656,7 +692,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
             raycaster,
             task,
             indexToIdMap.value,
-            instancesPerCheck
+            500
           )
         }
       },
@@ -693,14 +729,39 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // Watchers
   watch(
+    () => editorStore.activeScheme,
+    () => {
+      // Scheme identity, not sceneVersion: transforms, dyes and camera changes
+      // keep their visible meshes. A different scheme must never inherit them.
+      requestedRebuildSeq++
+      cancelTask(activeRaycastTask)
+      activeRaycastTask = null
+      for (const mesh of [boxMode.mesh.value, iconMode.mesh.value, simpleBoxMode.mesh.value]) {
+        if (mesh) mesh.count = 0
+      }
+      modelMode.clearScene()
+      indexToIdMap.value = new Map()
+      idToIndexMap.value = new Map()
+      modelPickBVH = null
+      modelPickMeshMap = null
+      colorManager.hoveredItemId.value = null
+      colorManager.suppressedHoverId.value = null
+      colorManager.setSidebarHoveredItemIds(null)
+      selectionOutline.reconcileMaskMeshes(new Map(), null)
+      invalidateScene()
+    },
+    { flush: 'sync' }
+  )
+
+  watch(
     [
       () => editorStore.activeSchemeId, // 切换方案时重建
       () => editorStore.sceneVersion, // 任何已提交场景变更都触发全量重建
       () => gameDataStore.isInitialized, // 监听游戏数据加载状态（延迟加载支持）
     ],
-    () => {
+    ([schemeId], previous) => {
       // 拖拽时不触发全量更新，由 handleGizmoChange 直接更新实例矩阵
-      if (isTransformDragging?.value) {
+      if (isTransformDragging?.value && schemeId === previous?.[0]) {
         return
       }
       scheduleRebuild()
@@ -717,7 +778,11 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   )
 
   watch(
-    () => settingsStore.settings.modelAssetProfile,
+    () => [
+      settingsStore.settings.modelAssetProfile,
+      settingsStore.settings.materialAssetProfile,
+      gameDataStore.furnitureDBRevision,
+    ],
     () => {
       scheduleRebuild()
     }
@@ -953,6 +1018,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   onUnmounted(() => {
     isDisposed = true
     rebuildPending = false
+    modelPickBVH = null
+    modelPickMeshMap = null
     console.log('[ThreeInstancedRenderer] Disposing resources')
     boxMode.dispose()
     iconMode.dispose()

@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-export type LoadingType = 'icon' | 'model'
-export type LoadingPhase = 'network' | 'processing'
+export type LoadingType = 'icon' | 'model' | 'environment'
+export type LoadingPhase = 'network' | 'processing' | 'shaders' | 'shadows'
 export type LoadingMode = 'simple' | 'staged' // 新增：加载模式
 export interface LoadingDisplayOptions {
   showDelayMs?: number
@@ -20,6 +20,7 @@ export const useLoadingStore = defineStore('loading', () => {
   const current = ref(0)
   const total = ref(0)
   const failedCount = ref(0)
+  const error = ref<string | null>(null)
 
   // 当前加载阶段
   const phase = ref<LoadingPhase>('network')
@@ -50,6 +51,7 @@ export const useLoadingStore = defineStore('loading', () => {
     current.value = 0
     total.value = 0
     failedCount.value = 0
+    error.value = null
     loadingType.value = null
   }
 
@@ -84,6 +86,7 @@ export const useLoadingStore = defineStore('loading', () => {
     loadingMode: LoadingMode = 'simple',
     displayOptions: LoadingDisplayOptions = {}
   ) {
+    loadingSessionId++
     if (totalCount <= 0) {
       clearTimers()
       resetState()
@@ -92,7 +95,6 @@ export const useLoadingStore = defineStore('loading', () => {
 
     const showDelayMs = Math.max(0, displayOptions.showDelayMs ?? DEFAULT_SHOW_DELAY_MS)
     activeCompleteHoldMs = Math.max(0, displayOptions.completeHoldMs ?? DEFAULT_COMPLETE_HOLD_MS)
-    loadingSessionId++
     const sessionId = loadingSessionId
 
     clearTimers()
@@ -103,6 +105,7 @@ export const useLoadingStore = defineStore('loading', () => {
     current.value = 0
     total.value = totalCount
     failedCount.value = 0
+    error.value = null
     phase.value = 'network' // 重置为网络阶段
     mode.value = loadingMode // 设置加载模式
 
@@ -110,7 +113,7 @@ export const useLoadingStore = defineStore('loading', () => {
 
     if (showDelayMs === 0) {
       isVisible.value = true
-      return
+      return sessionId
     }
 
     showTimer = window.setTimeout(() => {
@@ -119,37 +122,47 @@ export const useLoadingStore = defineStore('loading', () => {
       isVisible.value = true
       showTimer = null
     }, showDelayMs)
+    return sessionId
   }
 
   /**
    * 设置加载阶段（仅在staged模式下有效）
    */
-  function setPhase(newPhase: LoadingPhase) {
+  function setPhase(newPhase: LoadingPhase, totalCount?: number, sessionId?: number) {
+    if (sessionId !== undefined && sessionId !== loadingSessionId) return
     if (mode.value !== 'staged') {
       console.warn(`[LoadingStore] setPhase仅在staged模式下生效，当前模式: ${mode.value}`)
       return
     }
 
+    if (totalCount !== undefined) total.value = totalCount
+    if (phase.value === newPhase) return
+
     phase.value = newPhase
-    if (newPhase === 'processing') {
+    if (newPhase !== 'network') {
       // 切换到处理阶段时，重置 current 以便重新统计处理进度
       current.value = 0
     }
     console.log(`[LoadingStore] 切换阶段: ${newPhase}`)
   }
 
-  function updateProgress(currentCount: number, failed: number = 0) {
+  function updateProgress(currentCount: number, failed: number = 0, sessionId?: number) {
+    if (sessionId !== undefined && sessionId !== loadingSessionId) return
     current.value = currentCount
     failedCount.value = failed
 
-    // 如果加载完成，延迟隐藏
-    if (currentCount >= total.value) {
-      finishLoading()
+    // Staged tasks finish explicitly after their prepared result is published.
+    if (currentCount >= total.value && mode.value === 'simple') {
+      finishLoading(sessionId)
     }
   }
 
-  function finishLoading() {
+  function finishLoading(sessionId?: number) {
+    if (sessionId !== undefined && sessionId !== loadingSessionId) return
+    if (!isLoading.value) return
     console.log(`[LoadingStore] 加载完成`)
+    current.value = total.value
+    if (mode.value === 'staged' && phase.value === 'network') phase.value = 'processing'
     isLoading.value = false
 
     if (showTimer !== null) {
@@ -170,11 +183,21 @@ export const useLoadingStore = defineStore('loading', () => {
     }, activeCompleteHoldMs)
   }
 
-  function cancelLoading() {
-    console.log(`[LoadingStore] 取消加载`)
+  function cancelLoading(sessionId?: number) {
+    if (sessionId !== undefined && sessionId !== loadingSessionId) return
+    if (isLoading.value) console.log(`[LoadingStore] 取消加载`)
     loadingSessionId++
     clearTimers()
     resetState()
+  }
+
+  function failLoading(reason: unknown, sessionId?: number) {
+    if (sessionId !== undefined && sessionId !== loadingSessionId) return
+    clearTimers()
+    isLoading.value = false
+    isVisible.value = true
+    failedCount.value = Math.max(1, failedCount.value)
+    error.value = reason instanceof Error ? reason.message : String(reason)
   }
 
   return {
@@ -185,6 +208,7 @@ export const useLoadingStore = defineStore('loading', () => {
     current,
     total,
     failedCount,
+    error,
     phase,
     mode,
     progress,
@@ -197,5 +221,6 @@ export const useLoadingStore = defineStore('loading', () => {
     updateProgress,
     finishLoading,
     cancelLoading,
+    failLoading,
   }
 })

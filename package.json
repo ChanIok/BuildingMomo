@@ -20,6 +20,7 @@
     "deploy:cloudflare": "npm run build:secure && wrangler pages deploy dist --project-name buildingmomo-lab"
   },
   "dependencies": {
+    "@nuan5-pro/render": "github:nuan5-pro/infinity-nikki-web-render",
     "@fontsource-variable/inter": "^5.2.8",
     "@tailwindcss/vite": "^4.2.0",
     "@tresjs/cientos": "^5.4.0",

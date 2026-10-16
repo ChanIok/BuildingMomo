@@ -612,13 +612,18 @@ export const enLocale = {
 
   // Loading Progress
   loading: {
+    error: 'Render preparation failed. Import again or switch schemes.',
     icon: 'Loading Icons',
     model: 'Loading Models',
+    environment: 'Updating Lighting and Shadows',
     complete: 'Complete',
     failed: 'failed',
     phase: {
-      network: 'Downloading...',
+      network: 'Loading model resources...',
       processing: 'Preparing render...',
+      shaders: 'Compiling shaders...',
+      shadows: 'Preparing shadows...',
+      environment: 'Preprocessing environment lighting...',
     },
   },
 

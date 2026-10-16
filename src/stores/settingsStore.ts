@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
 import { ref } from 'vue'
+import type { ModelAssetProfile } from '@nuan5-pro/render/furniture'
 
 import type { Locale } from '../composables/useI18n'
-import type { ModelAssetProfile } from '../types/furniture'
 
 // 输入绑定配置接口
 export interface InputBindings {
@@ -40,7 +40,8 @@ export interface AppSettings {
 
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
-  modelAssetProfile: ModelAssetProfile // 模型资源档位：精简版或完整版
+  modelAssetProfile: ModelAssetProfile // Geometry quality; unavailable assets are never aliased.
+  materialAssetProfile: ModelAssetProfile
   modelGroupColorTint: boolean // 模型模式下用组合配色标记同组家具（关闭时保持贴图原色）
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
 
@@ -87,7 +88,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   mirrorWithRotation: true,
   enableWatchNotification: true,
   threeDisplayMode: 'simple-box',
-  modelAssetProfile: 'lite',
+  modelAssetProfile: 'full',
+  materialAssetProfile: 'lite',
   modelGroupColorTint: false,
   threeSymbolScale: 1.0,
   cameraFov: 50,

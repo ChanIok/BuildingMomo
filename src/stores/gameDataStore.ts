@@ -1,14 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref, shallowRef, toRaw } from 'vue'
+import { computed, ref, shallowRef, toRaw } from 'vue'
+import {
+  loadFurnitureModels,
+  type FurnitureModelConfig,
+  type ModelAssetProfile,
+} from '@nuan5-pro/render/furniture'
 import { getSafeScaleRange } from '../lib/scaleLimits'
 import type {
   FurnitureItem,
   FurnitureCategory,
   BuildingMomoFurniture,
-  FurnitureDB,
-  FurnitureModelConfig,
-  FurnitureLiteTextureManifestMeta,
-  FurnitureLiteTextureManifestFile,
   RawFurnitureCombinationColorPreset,
   FurnitureCombinationColorPreset,
 } from '../types/furniture'
@@ -18,50 +19,10 @@ const FURNITURE_DATA_URL = import.meta.env.BASE_URL + 'assets/data/building-momo
 // 可建造区域数据
 const BUILDABLE_AREA_URL = import.meta.env.BASE_URL + 'assets/data/home-buildable-area.json'
 // 家具模型数据库
-const FURNITURE_DB_URL = import.meta.env.BASE_URL + 'assets/data/furniture_db.json'
+const FURNITURE_ROOT_URL = import.meta.env.BASE_URL + 'assets/furniture-v2/'
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 const CATEGORY_ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/category-icon/'
-
-const LITE_TEXTURE_BASE_PATH = 'assets/furniture-model-lite/textures/'
-
-function normalizePublicAssetPath(assetPath: string): string {
-  return assetPath.replace(/^\/+/, '')
-}
-
-function buildPublicAssetUrl(assetPath: string, hash?: string): string {
-  if (/^https?:\/\//i.test(assetPath)) {
-    return assetPath
-  }
-
-  const url = `${import.meta.env.BASE_URL}${normalizePublicAssetPath(assetPath)}`
-  return hash ? `${url}?v=${encodeURIComponent(hash)}` : url
-}
-
-function normalizeManifestMeshPath(meshPath: string): string {
-  return meshPath.trim().replace(/\\/g, '/')
-}
-
-function getManifestMeshPathCandidates(meshPath: string): string[] {
-  const normalized = normalizeManifestMeshPath(meshPath)
-  const candidates = [normalized]
-  const lastSlash = normalized.lastIndexOf('/')
-  const baseName = lastSlash >= 0 ? normalized.slice(lastSlash + 1) : normalized
-
-  if (baseName && !candidates.includes(baseName)) {
-    candidates.push(baseName)
-  }
-
-  if (baseName && !baseName.toLowerCase().endsWith('.glb')) {
-    candidates.push(`${baseName}.glb`)
-  }
-
-  return candidates
-}
-
-function buildLiteTextureManifestKey(meshPath: string, textureName: string): string {
-  return `${normalizeManifestMeshPath(meshPath)}::${textureName.trim()}`
-}
 
 function normalizeCombinationColorPresets(
   memberCount: number,
@@ -139,9 +100,12 @@ export const useGameDataStore = defineStore('gameData', () => {
   // ========== 状态 (Furniture DB) ==========
   const furnitureDB = ref<Map<number, FurnitureModelConfig>>(new Map())
   const isFurnitureDBLoaded = ref(false)
-  const liteTextureManifestMeta = ref<FurnitureLiteTextureManifestMeta | null>(null)
-  const liteTextureManifest = shallowRef<Map<string, string> | null>(null)
-  const isLiteTextureManifestLoaded = ref(false)
+  const furnitureDBRevision = ref(0)
+  const furnitureDBError = ref<string | null>(null)
+  const availableModelProfiles = computed<ModelAssetProfile[]>(() => {
+    const meshes = [...furnitureDB.value.values()].flatMap((item) => item.meshes)
+    return meshes.length && meshes.every((mesh) => mesh.models.lite) ? ['full', 'lite'] : ['full']
+  })
 
   // ========== 数据加载 (Furniture) ==========
 
@@ -255,92 +219,25 @@ export const useGameDataStore = defineStore('gameData', () => {
     }
   }
 
-  async function loadFurnitureDB() {
-    if (isFurnitureDBLoaded.value) return
+  async function loadFurnitureDB(force = false) {
+    if (isFurnitureDBLoaded.value && !force) return
 
     try {
-      const response = await fetch(FURNITURE_DB_URL)
-      if (!response.ok) throw new Error('Failed to load furniture database')
-
-      const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
-        isFurnitureDBLoaded.value = true
-        return
-      }
-
-      const data: FurnitureDB = await response.json()
+      const decoded = await loadFurnitureModels(FURNITURE_ROOT_URL)
 
       const map = new Map<number, FurnitureModelConfig>()
-      for (const config of data.furniture) {
-        const gameId = config.id + 1170000000
-        map.set(gameId, config)
+      for (const config of decoded) {
+        map.set(config.id, config)
       }
 
       furnitureDB.value = map
-      liteTextureManifestMeta.value = data.liteTextureManifest ?? null
-      liteTextureManifest.value = null
-      isLiteTextureManifestLoaded.value = false
+      furnitureDBRevision.value++
+      furnitureDBError.value = null
       isFurnitureDBLoaded.value = true
     } catch (error) {
-      if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true') {
-        console.error('[GameDataStore] Failed to load furniture database:', error)
-      }
+      furnitureDBError.value = error instanceof Error ? error.message : String(error)
+      console.error('[GameDataStore] Failed to load furniture v2 catalog:', error)
     }
-  }
-
-  async function loadLiteTextureManifest(force = false): Promise<Map<string, string> | null> {
-    if (isLiteTextureManifestLoaded.value && !force) {
-      return liteTextureManifest.value
-    }
-
-    const manifestMeta = liteTextureManifestMeta.value
-    if (!manifestMeta?.path) {
-      liteTextureManifest.value = null
-      isLiteTextureManifestLoaded.value = true
-      return null
-    }
-
-    try {
-      const response = await fetch(buildPublicAssetUrl(manifestMeta.path, manifestMeta.hash))
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const data: FurnitureLiteTextureManifestFile = await response.json()
-      const nextManifest = new Map<string, string>()
-      for (const [key, value] of Object.entries(data.textures ?? {})) {
-        const trimmedValue = value.trim()
-        if (trimmedValue) nextManifest.set(key, trimmedValue)
-      }
-
-      liteTextureManifest.value = nextManifest
-      isLiteTextureManifestLoaded.value = true
-      console.log(`[GameDataStore] Lite texture manifest loaded: ${nextManifest.size} entries`)
-      return nextManifest
-    } catch (error) {
-      liteTextureManifest.value = null
-      isLiteTextureManifestLoaded.value = true
-      console.warn('[GameDataStore] Failed to load lite texture manifest:', error)
-      return null
-    }
-  }
-
-  function getLiteTexturePath(meshPath: string, textureName: string): string | null {
-    const manifest = liteTextureManifest.value
-    if (!manifest || !meshPath || !textureName) return null
-
-    const normalizedTextureName = textureName.trim()
-    for (const candidate of getManifestMeshPathCandidates(meshPath)) {
-      const path = manifest.get(buildLiteTextureManifestKey(candidate, normalizedTextureName))
-      if (path) return path
-    }
-
-    return null
-  }
-
-  function getLiteTextureUrl(meshPath: string, textureName: string): string | null {
-    const fileName = getLiteTexturePath(meshPath, textureName)
-    return fileName ? buildPublicAssetUrl(`${LITE_TEXTURE_BASE_PATH}${fileName}`) : null
   }
 
   // ========== 全局初始化 ==========
@@ -424,9 +321,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     buildableAreas.value = null
     isBuildableAreaLoaded.value = false
     furnitureDB.value.clear()
-    liteTextureManifestMeta.value = null
-    liteTextureManifest.value = null
-    isLiteTextureManifestLoaded.value = false
+    furnitureDBRevision.value++
+    furnitureDBError.value = null
     isFurnitureDBLoaded.value = false
   }
 
@@ -443,8 +339,9 @@ export const useGameDataStore = defineStore('gameData', () => {
     // 状态 (Furniture DB)
     furnitureDB,
     isFurnitureDBLoaded,
-    liteTextureManifestMeta,
-    isLiteTextureManifestLoaded,
+    furnitureDBRevision,
+    furnitureDBError,
+    availableModelProfiles,
 
     // 方法
     initialize,
@@ -454,10 +351,8 @@ export const useGameDataStore = defineStore('gameData', () => {
     getIconUrl,
     getCategoryIconUrl,
     getFurnitureModelConfig,
+    loadFurnitureDB,
     getFurnitureConstraintsMap,
-    loadLiteTextureManifest,
-    getLiteTexturePath,
-    getLiteTextureUrl,
     clearCache,
   }
 })
