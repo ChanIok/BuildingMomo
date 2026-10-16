@@ -10,8 +10,6 @@
 export interface FurnitureColorEntry {
   /** 显示图标 ID（UI 色块用） */
   idx: number
-  /** 原始 raw 由上游 cfg 保留；旧三项数据不能反推 HBC 的 raw。 */
-  cfg: [meshIdx: number, pattern: number, tint: number, raw?: number][]
 }
 
 /** 染色配置：groupId -> (colorIndex -> 变体配置) */

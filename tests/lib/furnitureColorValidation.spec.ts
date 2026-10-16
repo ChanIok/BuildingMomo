@@ -43,7 +43,7 @@ describe('checkFurnitureColors', () => {
   })
 
   it('cleans unsupported schemes and keeps the last valid scheme per area without mutating input', () => {
-    const entry = { idx: 1, cfg: [] }
+    const entry = { idx: 1 }
     const config = { 1: { 1: entry, 2: entry }, 2: { 1: entry } }
     const colors = [11, 12, 13, 21, 0, null]
     const cleaned = cleanFurnitureColors(colors, config)
