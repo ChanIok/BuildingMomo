@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
@@ -10,6 +10,8 @@ import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupButton } from '@/components/ui/radio-group'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Clock } from 'lucide-vue-next'
 
 const settingsStore = useSettingsStore()
 const gameDataStore = useGameDataStore()
@@ -78,6 +80,28 @@ function updateTodTime(event: Event) {
   input.value = todTime.value
 }
 
+const timePickerOpen = ref(false)
+
+const timePresets = [
+  { label: 'sidebar.environment.presetSunrise', minute: 6 * 60 },
+  { label: 'sidebar.environment.presetNoon', minute: 12 * 60 },
+  { label: 'sidebar.environment.presetSunset', minute: 18 * 60 },
+  { label: 'sidebar.environment.presetMidnight', minute: 0 },
+] as const
+
+function isPresetActive(presetMinute: number) {
+  const current = settingsStore.settings.todMinute
+  const diff = Math.abs(current - presetMinute)
+  const circularDiff = Math.min(diff, 1440 - diff)
+  return circularDiff < 30
+}
+
+function updateTodMinuteFromSlider(value: number[] | undefined) {
+  if (value?.[0] !== undefined) {
+    settingsStore.settings.todMinute = value[0]
+  }
+}
+
 function updateThreeSymbolScale(value: number[] | undefined) {
   if (value) settingsStore.settings.threeSymbolScale = value[0]!
 }
@@ -96,7 +120,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
               v-model="settingsStore.settings.modelAssetProfile"
               :aria-label="t('settings.modelGeometry.label')"
               orientation="horizontal"
-              class="inline-flex shrink-0 gap-0 rounded-md border border-input bg-muted/40 p-0.5"
+              class="inline-flex shrink-0 gap-0 rounded-md border border-input bg-muted/40 p-[1px]"
             >
               <RadioGroupButton
                 v-for="quality in qualityOptions"
@@ -117,7 +141,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
               v-model="settingsStore.settings.materialAssetProfile"
               :aria-label="t('settings.modelAssets.label')"
               orientation="horizontal"
-              class="inline-flex shrink-0 gap-0 rounded-md border border-input bg-muted/40 p-0.5"
+              class="inline-flex shrink-0 gap-0 rounded-md border border-input bg-muted/40 p-[1px]"
             >
               <RadioGroupButton
                 v-for="quality in qualityOptions"
@@ -150,7 +174,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
               v-model="backgroundMode"
               :aria-label="t('settings.background.label')"
               orientation="horizontal"
-              class="inline-flex shrink-0 gap-0 rounded-md border border-input bg-muted/40 p-0.5"
+              class="inline-flex shrink-0 gap-0 rounded-md border border-input bg-muted/40 p-[1px]"
             >
               <RadioGroupButton
                 v-for="option in backgroundOptions"
@@ -163,28 +187,90 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             </RadioGroup>
           </div>
 
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
               <Label for="home-lighting" class="text-xs">{{ t('sidebar.environment.home') }}</Label>
-              <Switch id="home-lighting" v-model="useHomeLighting" :disabled="preparingRender" />
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.environment.homeHint') }}
+              </p>
             </div>
-            <p class="text-[11px] text-muted-foreground">{{ t('sidebar.environment.homeHint') }}</p>
+            <Switch id="home-lighting" v-model="useHomeLighting" :disabled="preparingRender" />
           </div>
           <div class="flex items-center justify-between gap-2">
             <Label for="home-tod-time" class="text-xs">{{ t('sidebar.environment.time') }}</Label>
-            <Input
-              id="home-tod-time"
-              type="time"
-              step="60"
-              size="sm"
-              class="w-24 justify-end px-2 text-right [&::-webkit-datetime-edit]:ml-auto [&::-webkit-datetime-edit]:flex-none"
-              :disabled="!useHomeLighting || preparingRender"
-              :model-value="todTime"
-              @input="updateTodTime"
-              @keydown="handleTodKeydown"
-              @keyup="todStepDirection = 0"
-              @blur="todStepDirection = 0"
-            />
+            <Popover v-model:open="timePickerOpen">
+              <div class="relative flex items-center">
+                <Input
+                  id="home-tod-time"
+                  type="time"
+                  step="60"
+                  size="sm"
+                  class="w-20 justify-end pr-7 pl-2 text-right text-xs [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-datetime-edit]:ml-auto [&::-webkit-datetime-edit]:flex-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+                  :disabled="!useHomeLighting || preparingRender"
+                  :model-value="todTime"
+                  @input="updateTodTime"
+                  @keydown="handleTodKeydown"
+                  @keyup="todStepDirection = 0"
+                  @blur="todStepDirection = 0"
+                />
+                <PopoverTrigger as-child>
+                  <button
+                    type="button"
+                    class="absolute right-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                    :disabled="!useHomeLighting || preparingRender"
+                    :title="t('sidebar.environment.timePicker')"
+                    :aria-label="t('sidebar.environment.timePicker')"
+                  >
+                    <Clock class="h-3.5 w-3.5" />
+                  </button>
+                </PopoverTrigger>
+              </div>
+
+              <PopoverContent class="w-64 p-3" align="end" :side-offset="6">
+                <div class="flex flex-col gap-3">
+                  <div>
+                    <span class="text-xs font-medium">{{ t('sidebar.environment.time') }}</span>
+                  </div>
+
+                  <div class="flex flex-col gap-3">
+                    <Slider
+                      :model-value="[settingsStore.settings.todMinute]"
+                      @update:model-value="updateTodMinuteFromSlider"
+                      :min="0"
+                      :max="1439"
+                      :step="1"
+                      variant="thin"
+                      class="w-full"
+                      :aria-label="t('sidebar.environment.time')"
+                    />
+                    <div class="flex justify-between text-xs text-muted-foreground">
+                      <span>00:00</span>
+                      <span>06:00</span>
+                      <span>12:00</span>
+                      <span>18:00</span>
+                      <span>24:00</span>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-4 gap-1.5 pt-0.5">
+                    <button
+                      v-for="preset in timePresets"
+                      :key="preset.minute"
+                      type="button"
+                      class="flex items-center justify-center rounded-md border border-input bg-background/50 px-1 py-1.5 text-center transition-colors hover:bg-accent hover:text-accent-foreground"
+                      :class="
+                        isPresetActive(preset.minute)
+                          ? 'border-primary bg-primary/10 font-medium text-primary'
+                          : 'text-muted-foreground'
+                      "
+                      @click="settingsStore.settings.todMinute = preset.minute"
+                    >
+                      <span class="text-[11px]">{{ t(preset.label) }}</span>
+                    </button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </section>
 
@@ -192,16 +278,26 @@ function updateThreeSymbolScale(value: number[] | undefined) {
 
         <section class="flex flex-col gap-4">
           <h3 class="text-xs font-semibold">{{ t('sidebar.display.helpers') }}</h3>
-          <div class="flex items-center justify-between gap-2">
-            <Label for="furniture-tooltip" class="text-xs">{{
-              t('settings.furnitureTooltip.label')
-            }}</Label>
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label for="furniture-tooltip" class="text-xs">{{
+                t('settings.furnitureTooltip.label')
+              }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('settings.furnitureTooltip.hint') }}
+              </p>
+            </div>
             <Switch id="furniture-tooltip" v-model="settingsStore.settings.showFurnitureTooltip" />
           </div>
-          <div v-if="showModelOnlySettings" class="flex items-center justify-between gap-2">
-            <Label for="model-group-color" class="text-xs">{{
-              t('settings.modelGroupColor.label')
-            }}</Label>
+          <div v-if="showModelOnlySettings" class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label for="model-group-color" class="text-xs">{{
+                t('settings.modelGroupColor.label')
+              }}</Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('settings.modelGroupColor.hint') }}
+              </p>
+            </div>
             <Switch id="model-group-color" v-model="settingsStore.settings.modelGroupColorTint" />
           </div>
           <div class="flex flex-col gap-2">
@@ -226,16 +322,16 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             <Label for="fps-monitor" class="text-xs">{{ t('settings.fpsMonitor') }}</Label>
             <Switch id="fps-monitor" v-model="settingsStore.settings.showFpsMonitor" />
           </div>
-          <div class="space-y-1">
-            <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
               <Label for="on-demand-rendering" class="text-xs">{{
                 t('settings.onDemandRendering.label')
               }}</Label>
-              <Switch id="on-demand-rendering" v-model="settingsStore.settings.onDemandRendering" />
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('settings.onDemandRendering.hint') }}
+              </p>
             </div>
-            <p class="text-[11px] text-muted-foreground">
-              {{ t('settings.onDemandRendering.hint') }}
-            </p>
+            <Switch id="on-demand-rendering" v-model="settingsStore.settings.onDemandRendering" />
           </div>
         </section>
       </div>

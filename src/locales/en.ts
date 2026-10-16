@@ -694,6 +694,11 @@ export const enLocale = {
       homeHint:
         'Simulates in-game home lighting, typically without affecting rendering performance.',
       time: 'Game time',
+      timePicker: 'Select time',
+      presetSunrise: 'Dawn',
+      presetNoon: 'Noon',
+      presetSunset: 'Dusk',
+      presetMidnight: 'Midnight',
       terrain: 'Home island terrain',
       terrainError: 'Failed to load home island terrain: {message}',
     },
