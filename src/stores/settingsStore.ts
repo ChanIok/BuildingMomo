@@ -42,6 +42,10 @@ export interface AppSettings {
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
   modelAssetProfile: ModelAssetProfile // Geometry quality; unavailable assets are never aliased.
   materialAssetProfile: ModelAssetProfile
+  lightingMode: 'studio' | 'home'
+  todMinute: number // Fixed game time, minutes since midnight.
+  homeTerrainEnabled: boolean
+  shadowsEnabled: boolean
   modelGroupColorTint: boolean // 模型模式下用组合配色标记同组家具（关闭时保持贴图原色）
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
 
@@ -90,6 +94,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'full',
   materialAssetProfile: 'lite',
+  lightingMode: 'home',
+  todMinute: 12 * 60,
+  homeTerrainEnabled: true,
+  shadowsEnabled: true,
   modelGroupColorTint: false,
   threeSymbolScale: 1.0,
   cameraFov: 50,

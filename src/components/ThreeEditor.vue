@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { installFurnitureRender } from '@/composables/useFurnitureRender'
+import { homeOutputUniforms } from '@/composables/renderer/homeOutput'
 import {
   ref,
   shallowRef,
@@ -16,7 +17,6 @@ import {
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls } from '@tresjs/cientos'
 import {
-  Color,
   Object3D,
   PCFShadowMap,
   Raycaster,
@@ -29,6 +29,7 @@ import backgroundUrl from '@/assets/home.webp'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useLoadingStore } from '@/stores/loadingStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useThreeSelection } from '@/composables/useThreeSelection'
 import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
@@ -42,9 +43,12 @@ import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
 import { useThreeGrid } from '@/composables/useThreeGrid'
 import { useThreeBackground } from '@/composables/useThreeBackground'
+import { useHomeTerrain } from '@/composables/useHomeTerrain'
+import { useI18n } from '@/composables/useI18n'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
-import { useThreeEnvironment } from '@/composables/useThreeEnvironment'
+import { createSceneEnvironment } from '@/composables/useThreeEnvironment'
+import { createEnvironmentTransition } from '@/composables/renderer/environmentTransition'
 import { useThreePointerRouter } from '@/composables/useThreePointerRouter'
 import { useOrbitControlsInput } from '@/composables/useOrbitControlsInput'
 import { setSceneInvalidate, invalidateScene } from '@/composables/useSceneInvalidate'
@@ -69,11 +73,11 @@ const editorStore = useEditorStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
+const { t } = useI18n()
 
 // 相机输入配置（统一管理）
 const cameraInput = useCameraInputConfig()
-// IBL 环境光管理
-const { setupEnvironment } = useThreeEnvironment()
+let sceneEnvironment: ReturnType<typeof createSceneEnvironment> | null = null
 
 // 开发环境标志
 const isDev = import.meta.env.DEV
@@ -122,14 +126,18 @@ const gizmoSize = computed(() => (isCoarsePointer.value ? 1.8 : 1))
 // 背景图管理（使用新的 composable）
 const {
   backgroundTexture,
+  backgroundTodMaterial,
   backgroundSize,
   backgroundPosition,
+  backgroundRotation,
   mapCenter,
   shouldShowBackground,
   isMapDepthDisabled,
 } = useThreeBackground(backgroundUrl, {
-  scale: 11.2,
-  offset: [-20000, -28000],
+  // Similarity fit to the overview's money-tree terrace, pavilion and like-button centers.
+  scale: 11.12,
+  offset: [-19752.35, -27276.3],
+  rotationZ: (0.25 * Math.PI) / 180,
 })
 
 // 动态计算地图材质颜色（暗色模式下保留90%亮度）
@@ -181,6 +189,17 @@ const currentViewPreset = computed(() => uiStore.currentViewPreset)
 const isWorldBuildScheme = computed(
   () => editorStore.activeScheme?.filePath.value?.startsWith('WORLDBUILD_') === true
 )
+const terrainEnabled = computed(
+  () =>
+    settingsStore.settings.homeTerrainEnabled &&
+    settingsStore.settings.showBackground &&
+    !isWorldBuildScheme.value
+)
+const {
+  object: terrainObject,
+  bounds: terrainBounds,
+  error: terrainError,
+} = useHomeTerrain(terrainEnabled)
 
 const activeCameraComponentRef = computed(() => {
   return currentViewPreset.value !== 'perspective' ? orthoCameraRef.value : cameraRef.value
@@ -316,9 +335,22 @@ const sceneWorldBoundsMetrics = computed(() => {
   return getItemsWorldBoundsMetrics(items)
 })
 
-const clipFar = computed(() =>
-  computeClipFarFromWorldBounds(cameraPosition.value, sceneWorldBoundsMetrics.value)
-)
+const clipFar = computed(() => {
+  let far = computeClipFarFromWorldBounds(cameraPosition.value, sceneWorldBoundsMetrics.value)
+  if (terrainEnabled.value && terrainBounds.value) {
+    const bounds = terrainBounds.value
+    const [x, y, z] = cameraPosition.value
+    far = Math.max(
+      far,
+      Math.hypot(
+        Math.max(Math.abs(x - bounds.min.x), Math.abs(x - bounds.max.x)),
+        Math.max(Math.abs(y - bounds.min.y), Math.abs(y - bounds.max.y)),
+        Math.max(Math.abs(z - bounds.min.z), Math.abs(z - bounds.max.z))
+      ) * 1.1
+    )
+  }
+  return far
+})
 
 // 先初始化 renderer 获取 updateSelectedInstancesMatrix 和 interactionAdapter
 const {
@@ -432,7 +464,12 @@ onMounted(() => {
 // 从 TresCanvas ready 事件初始化
 let restoreRenderFunction: (() => void) | null = null
 let furnitureContext: ReturnType<typeof installFurnitureRender> | null = null
+let environmentTransition: ReturnType<typeof createEnvironmentTransition> | null = null
 onUnmounted(() => {
+  environmentTransition?.dispose()
+  environmentTransition = null
+  sceneEnvironment?.dispose()
+  sceneEnvironment = null
   furnitureContext?.dispose()
   furnitureContext = null
   restoreRenderFunction?.()
@@ -440,38 +477,84 @@ onUnmounted(() => {
 })
 
 function handleTresReady(context: any) {
+  environmentTransition?.dispose()
+  environmentTransition = null
+  sceneEnvironment?.dispose()
+  sceneEnvironment = null
   furnitureContext?.dispose()
   furnitureContext = null
   console.log('[ThreeEditor] TresCanvas ready')
 
+  // 配置渲染器
   const renderer = toRaw(context.renderer?.instance)
   const scene = toRaw(context.scene.value)
+
   if (renderer && scene) {
-    setupEnvironment(renderer, scene, 0.3)
+    // 2. 色调映射
     renderer.toneMapping = 3
     renderer.toneMappingExposure = 0.8
+
+    // 确保输出色彩空间正确
     renderer.outputColorSpace = 'srgb'
-    renderer.shadowMap.enabled = true
+    renderer.shadowMap.enabled = settingsStore.settings.shadowsEnabled
+    // 按光源/投影物变化更新阴影；仅视角变化时复用静态阴影贴图
     renderer.shadowMap.autoUpdate = false
     renderer.shadowMap.needsUpdate = true
-
-    // Match the existing studio sun declared below; the host owns its lighting.
-    const direction = new Vector3(1500, 2000, 3000).normalize()
-    const color = new Color(0xfff4e6).multiplyScalar(2)
+    sceneEnvironment = createSceneEnvironment(renderer, scene, () => context.renderer.invalidate())
+    sceneEnvironment.update(settingsStore.settings.lightingMode, settingsStore.settings.todMinute)
     furnitureContext = installFurnitureRender({
       renderer,
       scene,
       getCamera: () => toRaw(context.camera.activeCamera.value),
       invalidate: () => context.renderer.invalidate(),
-      lighting: () => ({
-        primaryDirection: direction.toArray(),
-        primaryColor: [color.r, color.g, color.b],
-        tod: { minute: 720, sunDirectionWorld: direction.toArray(), swapLightFactor: 1 },
-      }),
+      outputUniforms: homeOutputUniforms(renderer),
+      lighting: () => {
+        if (!sceneEnvironment) throw new Error('Furniture environment owner missing')
+        return sceneEnvironment.materialLighting()
+      },
+    })
+    const environment = sceneEnvironment
+    const furniture = furnitureContext
+    const loading = useLoadingStore()
+    let session: number | undefined
+    environmentTransition = createEnvironmentTransition({
+      async apply() {
+        await environment.prepare(
+          settingsStore.settings.lightingMode,
+          settingsStore.settings.todMinute
+        )
+        environment.setShadowsEnabled(settingsStore.settings.shadowsEnabled)
+        environment.update(settingsStore.settings.lightingMode, settingsStore.settings.todMinute)
+      },
+      prepare(stale, progress) {
+        environment.beforeRender()
+        return furniture.prepareScene(stale, progress)
+      },
+      start() {
+        session = loading.startLoading('environment', 1, 'staged', { showDelayMs: 150 })
+      },
+      progress(completed, total, phase = 'shaders') {
+        if (loading.phase !== phase || loading.total !== Math.max(1, total))
+          loading.setPhase(phase, Math.max(1, total), session)
+        loading.updateProgress(completed, 0, session)
+      },
+      finish() {
+        loading.finishLoading(session)
+      },
+      cancel() {
+        loading.cancelLoading(session)
+      },
+      fail(error) {
+        loading.failLoading(error, session)
+      },
+      invalidate: () => context.renderer.invalidate(),
     })
 
+    // Reuse Tres' direct render loop and the independently dirty shadow pass.
     restoreRenderFunction?.()
     const renderMainScene = (notifyFrameRendered: () => void) => {
+      // Tres stores registered cameras in a deep ref; keep matrix/uniform reads
+      // in Three's draw loop off that proxy without caching the active camera.
       const camera = toRaw(context.camera.activeCamera.value)
       if (!camera) return
       renderer.render(context.scene.value, camera)
@@ -479,16 +562,37 @@ function handleTresReady(context: any) {
     }
     restoreRenderFunction = () => context.renderer.replaceRenderFunction(renderMainScene)
     context.renderer.replaceRenderFunction((notifyFrameRendered: () => void) => {
-      if (!toRaw(context.camera.activeCamera.value)) return
+      if (environmentTransition?.pending) {
+        notifyFrameRendered()
+        return
+      }
+      const camera = toRaw(context.camera.activeCamera.value)
+      if (!camera) return
       furnitureContext?.beforeRender()
+      sceneEnvironment?.beforeRender()
       renderMainScene(notifyFrameRendered)
     })
   }
 
+  // 连接场景的 invalidate 函数
   if (context.renderer?.invalidate) {
     setSceneInvalidate(context.renderer.invalidate)
   }
 }
+
+watch(
+  () => [settingsStore.settings.lightingMode, settingsStore.settings.shadowsEnabled] as const,
+  () => {
+    void environmentTransition?.request()
+  }
+)
+watch(
+  () => settingsStore.settings.todMinute,
+  (minute) => {
+    if (environmentTransition?.pending) void environmentTransition.request()
+    else sceneEnvironment?.update(settingsStore.settings.lightingMode, minute)
+  }
+)
 
 // 相机模式切换包装函数（仅在透视模式下生效）
 function handleToggleCameraMode() {
@@ -504,8 +608,9 @@ let _prevCamX = NaN,
   _prevCamY = NaN,
   _prevCamZ = NaN
 
-// 渲染后回调（仅在 TresJS 实际渲染主场景后触发，on-demand 模式下空闲时不运行）
+// 渲染后回调（仅在 TresJS 实际渲染主场景后触发）
 function handlePostRender(context: any) {
+  if (environmentTransition?.pending) return
   recordRenderFrame()
 
   const renderer = context.renderer?.instance as WebGLRenderer | undefined
@@ -696,7 +801,21 @@ const orthoFrustum = computed(() => {
 })
 
 // 网格控制逻辑
-const { containerRotation, innerRotation, gridPosition } = useThreeGrid(backgroundPosition)
+const gridBase = computed<[number, number, number]>(() => {
+  if (terrainEnabled.value && terrainBounds.value) {
+    const { min, max } = terrainBounds.value
+    return [(min.x + max.x) / 2, -(min.y + max.y) / 2, -2]
+  }
+  return backgroundPosition.value
+})
+const gridSize = computed(() => {
+  if (terrainEnabled.value && terrainBounds.value) {
+    const { min, max } = terrainBounds.value
+    return { width: max.x - min.x, height: max.y - min.y }
+  }
+  return backgroundSize.value
+})
+const { containerRotation, innerRotation, gridPosition } = useThreeGrid(gridBase)
 
 // 视图切换函数（供命令系统调用）
 function switchToView(preset: ViewPreset) {
@@ -857,9 +976,9 @@ onDeactivated(() => {
       @wheel="handleContainerWheel"
     >
       <TresCanvas
-        render-mode="on-demand"
-        :shadow-map-type="PCFShadowMap"
         :clear-color="canvasClearColor"
+        :shadow-map-type="PCFShadowMap"
+        render-mode="on-demand"
         logarithmic-depth-buffer
         power-preference="high-performance"
         @ready="handleTresReady"
@@ -911,38 +1030,34 @@ onDeactivated(() => {
           :touches="orbitTouches"
         />
 
-        <!-- 简约光照系统：IBL + 辅助光 -->
-
-        <!-- 半球光：有了 IBL 后，这个可以作为微弱的补光 -->
-        <TresHemisphereLight :sky-color="0xffffff" :ground-color="0x888888" :intensity="2" />
-
-        <!-- 主光源：产生阴影 -->
-        <TresDirectionalLight
-          :position="[1500, 2000, 3000]"
-          :intensity="2.0"
-          :color="0xfff4e6"
-          :cast-shadow="true"
-          :shadow-mapSize-width="2048"
-          :shadow-mapSize-height="2048"
-          :shadow-camera-left="-3000"
-          :shadow-camera-right="3000"
-          :shadow-camera-top="3000"
-          :shadow-camera-bottom="-3000"
-          :shadow-bias="-0.0005"
-        />
+        <!-- Standalone export already contains world-space Z-up cm transforms. -->
+        <primitive v-if="terrainEnabled && terrainObject" :object="terrainObject" />
 
         <!-- 场景内容容器：Y轴翻转以实现左手坐标系视觉（Y轴朝南） -->
         <TresGroup :scale="[1, -1, 1]">
           <!-- 背景地图 -->
           <!-- 由于父级 Group 翻转了 Y 轴，这里再次翻转 Y 轴以保持地图图片方向正确（北朝上） -->
           <TresMesh
-            v-if="backgroundTexture && shouldShowBackground && !isWorldBuildScheme"
+            v-if="
+              backgroundTexture &&
+              shouldShowBackground &&
+              !isWorldBuildScheme &&
+              !(terrainEnabled && terrainObject)
+            "
             :position="backgroundPosition"
+            :rotation="backgroundRotation"
             :scale="[1, -1, 1]"
             :render-order="isMapDepthDisabled ? -1 : 0"
           >
             <TresPlaneGeometry :args="[backgroundSize.width, backgroundSize.height]" />
+            <primitive
+              v-if="settingsStore.settings.lightingMode === 'home'"
+              :object="backgroundTodMaterial"
+              attach="material"
+              :dispose="false"
+            />
             <TresMeshBasicMaterial
+              v-else
               :map="backgroundTexture"
               :color="mapColor"
               :tone-mapped="false"
@@ -980,14 +1095,14 @@ onDeactivated(() => {
 
         <!-- 辅助元素 - 适配大场景 - 移至世界空间 -->
         <TresGroup
-          v-if="backgroundTexture && !isWorldBuildScheme"
+          v-if="(backgroundTexture || terrainObject) && !isWorldBuildScheme"
           :position="gridPosition"
           :rotation="containerRotation"
         >
           <TresGroup :rotation="innerRotation">
             <!-- Grid 组件 -->
             <LogDepthGrid
-              :args="[backgroundSize.width, backgroundSize.height]"
+              :args="[gridSize.width, gridSize.height]"
               :cell-size="1000"
               :section-size="1000"
               :cell-color="gridColor"
@@ -1022,6 +1137,12 @@ onDeactivated(() => {
     </div>
 
     <!-- 所有 UI 叠加层 (统一子组件) -->
+    <div
+      v-if="terrainEnabled && terrainError"
+      class="pointer-events-none absolute bottom-3 left-3 max-w-md rounded bg-background/90 px-3 py-2 text-xs text-destructive"
+    >
+      {{ t('sidebar.environment.terrainError', { message: terrainError }) }}
+    </div>
     <ThreeEditorOverlays
       :context-menu="contextMenuState"
       :tooltip="{ visible: tooltipVisible, data: tooltipData }"

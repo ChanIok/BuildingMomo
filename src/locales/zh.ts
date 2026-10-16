@@ -664,6 +664,14 @@ export const zhLocale = {
     structure: '结构',
     transform: '变换',
     editorSettings: '编辑器',
+    environment: {
+      label: '场景与光照',
+      home: '仿真光照',
+      homeHint: '模拟真实家园光照，通常不影响渲染性能',
+      time: '游戏时间',
+      terrain: '真实家园地形',
+      terrainError: '真实地形加载失败：{message}',
+    },
     header: {
       expand: '展开顶部工具',
       collapse: '收起顶部工具',

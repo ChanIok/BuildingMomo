@@ -677,6 +677,15 @@ export const enLocale = {
     structure: 'Structure',
     transform: 'Transform',
     editorSettings: 'Editor',
+    environment: {
+      label: 'Scene and lighting',
+      home: 'Home lighting',
+      homeHint:
+        'Simulates in-game home lighting, typically without affecting rendering performance.',
+      time: 'Game time',
+      terrain: 'Home island terrain',
+      terrainError: 'Failed to load home island terrain: {message}',
+    },
     header: {
       expand: 'Expand Header Tools',
       collapse: 'Collapse Header Tools',

@@ -160,7 +160,9 @@ const material = markRaw(
     `,
     transparent: true,
     depthTest: true,
-    depthWrite: true,
+    // Ground annotation is blended before furniture transparency; it must not
+    // become a sparse depth occluder for surfaces below the reference plane.
+    depthWrite: false,
     side: props.side,
   })
 ) as ShaderMaterial & { uniforms: GridUniforms }
@@ -221,7 +223,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <TresMesh ref="meshRef" :frustum-culled="false">
+  <TresMesh ref="meshRef" :frustum-culled="false" :render-order="-1">
     <TresPlaneGeometry :args="args" />
     <primitive :object="material" attach="material" />
   </TresMesh>
