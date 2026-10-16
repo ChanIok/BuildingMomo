@@ -144,6 +144,10 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     base,
+    optimizeDeps: {
+      // 保留渲染库源码中的 Worker 相对路径，交由 Vite 正常转换。
+      exclude: ['@nuan5-pro/render', '@nuan5-pro/render/furniture'],
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
