@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@tresjs/core@5.9.3': 5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0
+
 importers:
 
   .:
@@ -19,10 +22,10 @@ importers:
         version: 4.3.3(rolldown-vite@7.3.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@25.9.9)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
       '@tresjs/cientos':
         specifier: ^5.4.0
-        version: 5.9.3(@tresjs/core@5.9.3(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
+        version: 5.9.3(@tresjs/core@5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
       '@tresjs/core':
-        specifier: ^5.5.0
-        version: 5.9.3(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
+        specifier: 5.9.3
+        version: 5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
       '@vueuse/core':
         specifier: ^14.2.1
         version: 14.4.0(vue@3.5.44(typescript@5.9.3))
@@ -3811,9 +3814,9 @@ snapshots:
       '@tanstack/virtual-core': 3.19.5
       vue: 3.5.44(typescript@5.9.3)
 
-  '@tresjs/cientos@5.9.3(@tresjs/core@5.9.3(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
+  '@tresjs/cientos@5.9.3(@tresjs/core@5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
     dependencies:
-      '@tresjs/core': 5.9.3(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
+      '@tresjs/core': 5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
       '@vueuse/core': 15.0.0(vue@3.5.44(typescript@5.9.3))
       camera-controls: 3.1.2(three@0.183.2)
       stats-gl: 4.2.3(three@0.183.2)
@@ -3827,7 +3830,7 @@ snapshots:
       - '@react-three/fiber'
       - react
 
-  '@tresjs/core@5.9.3(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
+  '@tresjs/core@5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
     dependencies:
       '@pmndrs/pointer-events': 6.6.32
       '@vue/devtools-api': 8.2.1

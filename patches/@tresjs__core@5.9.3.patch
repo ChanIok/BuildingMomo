@@ -1,0 +1,8 @@
+diff --git a/dist/tres.js b/dist/tres.js
+index 5e22d08123fd427a9c668abb63fc4112f7c249d8..7ed474e37aa59cccfc9406cde6ab1962feb5f49d 100644
+--- a/dist/tres.js
++++ b/dist/tres.js
+@@ -863,0 +864,3 @@
++	watch(() => toValue(options.renderMode), (renderMode) => {
++		frames.value = renderMode === "manual" ? 0 : 1;
++	});

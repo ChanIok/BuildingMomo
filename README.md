@@ -48,12 +48,14 @@ BuildingMomo（搬砖吧大喵）
 
 如果您是开发者或希望本地部署：
 
+使用 Node.js 24 和 pnpm。
+
 ```bash
 # 安装依赖
-npm install
+pnpm install
 
 # 构建生产版本
-npm run build
+pnpm run build
 ```
 
 ## 🛠️ 技术栈

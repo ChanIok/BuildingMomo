@@ -30,14 +30,19 @@ jobs:
       - name: 设置 Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '24'
+
+      - name: 设置 pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+          cache: true
       
       - name: 安装依赖
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: 构建项目
-        run: npm run build
+        run: pnpm run build
         env:
           VITE_BASE_PATH: /BuildingMomo/
       
