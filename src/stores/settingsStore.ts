@@ -48,6 +48,7 @@ export interface AppSettings {
   shadowsEnabled: boolean
   modelGroupColorTint: boolean // 模型模式下用组合配色标记同组家具（关闭时保持贴图原色）
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
+  onDemandRendering: boolean
 
   // 相机设置
   cameraFov: number // 透视相机视场角 (30-90)
@@ -100,6 +101,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   shadowsEnabled: true,
   modelGroupColorTint: false,
   threeSymbolScale: 1.0,
+  onDemandRendering: false,
   cameraFov: 50,
   cameraBaseSpeed: 1000,
   cameraShiftMultiplier: 4,

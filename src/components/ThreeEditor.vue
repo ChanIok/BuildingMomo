@@ -978,7 +978,7 @@ onDeactivated(() => {
       <TresCanvas
         :clear-color="canvasClearColor"
         :shadow-map-type="PCFShadowMap"
-        render-mode="on-demand"
+        :render-mode="settingsStore.settings.onDemandRendering ? 'on-demand' : 'always'"
         logarithmic-depth-buffer
         power-preference="high-performance"
         @ready="handleTresReady"

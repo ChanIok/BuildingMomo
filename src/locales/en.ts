@@ -126,6 +126,7 @@ export const enLocale = {
       showSelection: 'Selection (1)',
       showTransform: 'Transform (2)',
       showEditorSettings: 'Editor Settings (3)',
+      showDisplaySettings: 'Display Settings (4)',
     },
     tool: {
       select: 'Select',
@@ -474,13 +475,19 @@ export const enLocale = {
       hint: 'Show name and icon on hover',
     },
     background: {
-      label: 'Background Image',
-      hint: 'Show reference background',
+      label: 'Background',
+      off: 'Off',
+      simple: 'Simple',
+      real: 'Real',
     },
     modelAssets: {
-      label: 'Full Textures',
-      hint: 'More realistic materials',
+      label: 'Material Quality',
     },
+    modelGeometry: {
+      label: 'Model Quality',
+    },
+    quality: { low: 'Lite', medium: 'Standard' },
+    shadows: 'Shadows',
     modelDye: {
       label: 'Model Dye',
       hint: 'Enable dye texture loading',
@@ -507,6 +514,10 @@ export const enLocale = {
       hint: 'Show a popup when the file changes.',
     },
     fpsMonitor: 'Show FPS',
+    onDemandRendering: {
+      label: 'On-demand rendering',
+      hint: 'Pauses rendering when idle to save battery.',
+    },
     experimental: {
       label: 'Experimental Features',
       hint: 'Enable advanced features',
@@ -728,6 +739,8 @@ export const enLocale = {
     },
     display: {
       label: 'Display Settings',
+      graphics: 'Furniture Rendering',
+      helpers: 'Display Aids',
       iconSize: 'Icon/Block Size',
     },
     editAssist: {

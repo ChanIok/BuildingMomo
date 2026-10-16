@@ -125,6 +125,7 @@ export const zhLocale = {
       showSelection: '选中列表 (1)',
       showTransform: '变换面板 (2)',
       showEditorSettings: '编辑器设置 (3)',
+      showDisplaySettings: '显示设置 (4)',
     },
     tool: {
       select: '选择工具',
@@ -464,13 +465,19 @@ export const zhLocale = {
       hint: '悬停时显示名称和图标',
     },
     background: {
-      label: '家园背景图',
-      hint: '显示背景参考图',
+      label: '家园背景',
+      off: '关',
+      simple: '简易',
+      real: '真实',
     },
     modelAssets: {
-      label: '完整贴图',
-      hint: '更真实的材质效果',
+      label: '材质质量',
     },
+    modelGeometry: {
+      label: '模型质量',
+    },
+    quality: { low: '轻量', medium: '常规' },
+    shadows: '阴影',
     modelDye: {
       label: '模型染色显示',
       hint: '开启染色纹理加载',
@@ -497,6 +504,10 @@ export const zhLocale = {
       hint: '文件变化时弹窗询问是否导入。',
     },
     fpsMonitor: '显示 FPS',
+    onDemandRendering: {
+      label: '按需渲染',
+      hint: '无操作时暂停渲染，节省电量',
+    },
     experimental: {
       label: '实验性功能',
       hint: '启用高级功能',
@@ -713,6 +724,8 @@ export const zhLocale = {
     },
     display: {
       label: '显示设置',
+      graphics: '家具渲染',
+      helpers: '显示辅助',
       iconSize: '图标/方块大小',
     },
     editAssist: {

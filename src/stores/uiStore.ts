@@ -36,7 +36,9 @@ export const useUIStore = defineStore('ui', () => {
   const currentViewPreset = ref<ViewPreset>('perspective')
 
   // 侧边栏视图状态
-  const sidebarView = ref<'structure' | 'transform' | 'editorSettings'>('structure')
+  const sidebarView = ref<'structure' | 'transform' | 'editorSettings' | 'displaySettings'>(
+    'structure'
+  )
   // 结构面板 hover 的物品类型（gameId），用于联动画布高亮
   const sidebarHoveredGameId = ref<number | null>(null)
 
@@ -262,7 +264,7 @@ export const useUIStore = defineStore('ui', () => {
 
   // ========== 侧边栏管理 ==========
 
-  function setSidebarView(view: 'structure' | 'transform' | 'editorSettings') {
+  function setSidebarView(view: 'structure' | 'transform' | 'editorSettings' | 'displaySettings') {
     sidebarView.value = view
     console.log('[UIStore] Sidebar view set to:', view)
   }
