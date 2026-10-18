@@ -478,6 +478,13 @@ export const zhLocale = {
     },
     quality: { low: '轻量', medium: '常规' },
     shadows: '阴影',
+    resources: {
+      label: '资源占用',
+      materials: '材质 {n}',
+      models: '模型 {n}',
+      shaders: '着色器 {n}',
+      clear: '释放缓存',
+    },
     modelDye: {
       label: '模型染色显示',
       hint: '开启染色纹理加载',

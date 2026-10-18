@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef, watch, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useI18n } from '@/composables/useI18n'
+import { furnitureRender } from '@/composables/useFurnitureRender'
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
@@ -23,6 +25,30 @@ const preparingRender = computed(
   () => loadingStore.isLoading && loadingStore.loadingType !== 'icon'
 )
 const { t } = useI18n()
+const resourceStats = shallowRef({ materials: 0, models: 0, shaders: 0, canClearCache: false })
+
+function refreshResourceStats() {
+  resourceStats.value = furnitureRender.value?.getResourceStats() ?? {
+    materials: 0,
+    models: 0,
+    shaders: 0,
+    canClearCache: false,
+  }
+}
+
+function clearRenderCache() {
+  if (preparingRender.value || !furnitureRender.value) return
+  furnitureRender.value.clearUnused()
+  refreshResourceStats()
+}
+
+watch(furnitureRender, refreshResourceStats, { immediate: true })
+let resourceStatsTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  resourceStatsTimer = setInterval(refreshResourceStats, 1000)
+})
+onUnmounted(() => clearInterval(resourceStatsTimer))
+
 const showModelOnlySettings = computed(
   () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
 )
@@ -161,6 +187,27 @@ function updateThreeSymbolScale(value: number[] | undefined) {
               v-model="settingsStore.settings.shadowsEnabled"
               :disabled="preparingRender"
             />
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0 space-y-0.5">
+              <Label class="text-xs text-primary">{{ t('settings.resources.label') }}</Label>
+              <div class="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground tabular-nums">
+                <span>{{ t('settings.resources.materials', { n: resourceStats.materials }) }}</span>
+                <span>{{ t('settings.resources.models', { n: resourceStats.models }) }}</span>
+                <span>{{ t('settings.resources.shaders', { n: resourceStats.shaders }) }}</span>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="h-7 px-2 text-xs"
+              :disabled="preparingRender || !resourceStats.canClearCache"
+              @click="clearRenderCache"
+            >
+              {{ t('settings.resources.clear') }}
+            </Button>
           </div>
         </section>
 

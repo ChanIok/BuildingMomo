@@ -488,6 +488,13 @@ export const enLocale = {
     },
     quality: { low: 'Lite', medium: 'Standard' },
     shadows: 'Shadows',
+    resources: {
+      label: 'Resources',
+      materials: 'Materials {n}',
+      models: 'Models {n}',
+      shaders: 'Shaders {n}',
+      clear: 'Clear cache',
+    },
     modelDye: {
       label: 'Model Dye',
       hint: 'Enable dye texture loading',
