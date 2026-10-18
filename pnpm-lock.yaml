@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@tresjs/core@5.9.3': 5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0
+  '@tresjs/core@5.9.3': a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8
 
 importers:
 
@@ -16,16 +16,16 @@ importers:
         version: 5.3.0
       '@nuan5-pro/render':
         specifier: github:nuan5-pro/infinity-nikki-web-render
-        version: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/bc6c820e2604be8b2fc1d88522a172791b2245bb(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)
+        version: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/c2074b182d7be88ab2fb09549d78dd902e8c069e(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)
       '@tailwindcss/vite':
         specifier: ^4.2.0
         version: 4.3.3(rolldown-vite@7.3.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@25.9.9)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
       '@tresjs/cientos':
         specifier: ^5.4.0
-        version: 5.9.3(@tresjs/core@5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
+        version: 5.9.3(@tresjs/core@5.9.3(patch_hash=a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
       '@tresjs/core':
         specifier: 5.9.3
-        version: 5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
+        version: 5.9.3(patch_hash=a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
       '@vueuse/core':
         specifier: ^14.2.1
         version: 14.4.0(vue@3.5.44(typescript@5.9.3))
@@ -696,8 +696,8 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/bc6c820e2604be8b2fc1d88522a172791b2245bb':
-    resolution: {gitHosted: true, integrity: sha512-2O3Rd5WN6wXrJ5zeEt/ASGumE0zA6YIPBCDeltdHggzIy1dVAObIMlk0X/bqQXV8rvKfUnu04H6cSq2GRL+Z4A==, tarball: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/bc6c820e2604be8b2fc1d88522a172791b2245bb}
+  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/c2074b182d7be88ab2fb09549d78dd902e8c069e':
+    resolution: {gitHosted: true, integrity: sha512-cpnaVtSLs7IptEnjBvCaUrpSpeA/VOZgIK3VQ79lD3n3bzyLXPW7FDZOYIeMIYjxNDE74mVbCpIHX2Z5uDzc9Q==, tarball: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/c2074b182d7be88ab2fb09549d78dd902e8c069e}
     version: 0.1.0
     peerDependencies:
       three: '>=0.183.2 <0.184.0'
@@ -3558,7 +3558,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.4
     optional: true
 
-  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/bc6c820e2604be8b2fc1d88522a172791b2245bb(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)':
+  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/c2074b182d7be88ab2fb09549d78dd902e8c069e(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)':
     dependencies:
       three: 0.183.2
       three-mesh-bvh: 0.9.16(three@0.183.2)
@@ -3814,9 +3814,9 @@ snapshots:
       '@tanstack/virtual-core': 3.19.5
       vue: 3.5.44(typescript@5.9.3)
 
-  '@tresjs/cientos@5.9.3(@tresjs/core@5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
+  '@tresjs/cientos@5.9.3(@tresjs/core@5.9.3(patch_hash=a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
     dependencies:
-      '@tresjs/core': 5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
+      '@tresjs/core': 5.9.3(patch_hash=a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))
       '@vueuse/core': 15.0.0(vue@3.5.44(typescript@5.9.3))
       camera-controls: 3.1.2(three@0.183.2)
       stats-gl: 4.2.3(three@0.183.2)
@@ -3830,7 +3830,7 @@ snapshots:
       - '@react-three/fiber'
       - react
 
-  '@tresjs/core@5.9.3(patch_hash=5130db619409b1b56eef8e024ba8b8de88c0af8f63fd229f998fae3fb76252c0)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
+  '@tresjs/core@5.9.3(patch_hash=a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8)(three@0.183.2)(vue@3.5.44(typescript@5.9.3))':
     dependencies:
       '@pmndrs/pointer-events': 6.6.32
       '@vue/devtools-api': 8.2.1
