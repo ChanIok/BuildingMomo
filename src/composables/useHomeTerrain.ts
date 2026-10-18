@@ -43,7 +43,6 @@ export function useHomeTerrain(enabled: Ref<boolean>) {
   const loader = new GLTFLoader().setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder)
   let controller: AbortController | null = null
   let generation = 0
-  let waterAnimation: ReturnType<typeof setInterval> | null = null
 
   watch(
     enabled,
@@ -65,18 +64,10 @@ export function useHomeTerrain(enabled: Ref<boolean>) {
           return
         }
         gltf.scene.name = 'home-terrain'
-        const river = installHomeTerrainWater(gltf.scene, () => ({
+        installHomeTerrainWater(gltf.scene, () => ({
           mode: settings.settings.lightingMode,
           minute: settings.settings.todMinute,
         }))
-        if (river.count) {
-          // Request at most 30 fps in on-demand mode. The current always mode
-          // already supplies frames; hidden/disabled/offscreen rivers request none.
-          waterAnimation = setInterval(() => {
-            if (enabled.value && document.visibilityState === 'visible' && river.recentlyVisible())
-              invalidateScene()
-          }, 1000 / 30)
-        }
         gltf.scene.traverse((node) => {
           if (!(node instanceof Mesh)) return
           node.receiveShadow = true
@@ -103,7 +94,6 @@ export function useHomeTerrain(enabled: Ref<boolean>) {
   onUnmounted(() => {
     generation++
     controller?.abort()
-    if (waterAnimation) clearInterval(waterAnimation)
     draco.dispose()
     if (object.value) disposeTerrain(object.value)
     object.value = null

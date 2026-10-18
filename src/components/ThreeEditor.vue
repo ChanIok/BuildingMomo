@@ -54,7 +54,6 @@ import { useOrbitControlsInput } from '@/composables/useOrbitControlsInput'
 import { setSceneInvalidate, invalidateScene } from '@/composables/useSceneInvalidate'
 import { ORTHO_BASE_FRUSTUM_HEIGHT } from '@/lib/cameraUtils'
 import { computeClipFarFromWorldBounds } from '@/lib/cameraClipRange'
-import { getItemsWorldBoundsMetrics } from '@/lib/spatialBounds'
 import {
   useMagicKeys,
   useElementSize,
@@ -280,6 +279,7 @@ const cameraOptions = computed(() => ({
 
 const {
   cameraPosition,
+  sceneBounds: sceneWorldBoundsMetrics,
   cameraLookAt,
   cameraUp,
   cameraZoom,
@@ -326,14 +326,6 @@ watch(
 
 // 对数深度缓冲下 near 无需随场景切换；固定较小值便于贴近视口编辑
 const cameraNearPlane = 10
-
-// 全场景合并 AABB → 动态远裁面（配合对数深度缓冲，避免大地图预览整屏被裁）
-const sceneWorldBoundsMetrics = computed(() => {
-  void editorStore.sceneVersion
-  const items = editorStore.activeScheme?.items.value ?? []
-  if (items.length === 0) return null
-  return getItemsWorldBoundsMetrics(items)
-})
 
 const clipFar = computed(() => {
   let far = computeClipFarFromWorldBounds(cameraPosition.value, sceneWorldBoundsMetrics.value)

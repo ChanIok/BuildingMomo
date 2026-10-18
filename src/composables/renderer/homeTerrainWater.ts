@@ -66,32 +66,23 @@ function riverDepths(root: Object3D, river: Mesh) {
     beds.forEach((bed) => bed.geometry.dispose())
   }
   river.geometry.setAttribute('terrainWaterDepth', new BufferAttribute(depths, 1))
-  return depths
 }
 
-/** A local, single-pass approximation, not the furniture/native SLW contract.
- * Capture frame137442: river draw 14898, cb5: roughness .05, F0=.08*.255,
- * detail periods 1000/667 cm, near/far normal .1/.5, absorption reciprocal
- * (120,184.586,200)*2.5. Scene transport below uses the real static river bed.
- */
+/** Static river shading with river-bed absorption and world-space normal detail. */
 export function installHomeTerrainWater(
   root: Object3D,
   lighting: () => { mode: 'home' | 'studio'; minute: number }
 ) {
   root.updateMatrixWorld(true)
-  const time = { value: 0 }
   const light = { value: new Vector3(1, 1, 1) }
   let lightingKey = ''
-  let lastDraw = -Infinity
-  let count = 0
 
   root.traverse((object) => {
     if (!(object instanceof Mesh)) return
     const source = Array.isArray(object.material) ? null : object.material
     if (!(source instanceof MeshStandardMaterial) || source.name !== RIVER_MATERIAL) return
     if (!source.normalMap) throw new Error('Authored home river normal is missing')
-    const started = performance.now()
-    const depths = riverDepths(root, object)
+    riverDepths(root, object)
     source.normalMap.wrapS = source.normalMap.wrapT = RepeatWrapping
     source.normalMap.needsUpdate = true
 
@@ -109,27 +100,16 @@ export function installHomeTerrainWater(
       side: DoubleSide,
       forceSinglePass: true,
     })
-    // Only environmentLighting reads this classification; this object never
-    // enters furniture registries or their material/optical-resource pipeline.
+    // Select the water reflection tint in environmentLighting.
     material.userData.water = { family: 'single-layer-water' }
-    material.userData.terrainWater = {
-      approximation: 'static-bed absorption + world-flow normals + existing sky IBL',
-      captureDraw: 14898,
-      depthMin: Math.min(...depths),
-      depthMax: Math.max(...depths),
-      bedBuildMs: performance.now() - started,
-    }
     material.onBeforeRender = () => {
-      lastDraw = performance.now()
-      time.value = lastDraw * 0.001
       const selection = lighting()
       const key = `${selection.mode}:${selection.minute}`
       if (key === lightingKey) return
       lightingKey = key
       if (selection.mode === 'home') {
         const sample = sampleHomeTod(selection.minute)
-        // Local incident-light proxy; follows the existing manual TOD without
-        // a clock, exposure override or fixed screenshot-colour injection.
+        // Approximate incident light from the selected time of day.
         const sky = sample.skyIntensity
         const sun = sample.sunIntensity / 7
         light.value.set(
@@ -140,7 +120,6 @@ export function installHomeTerrainWater(
       } else light.value.set(1, 1, 1)
     }
     material.onBeforeCompile = (shader) => {
-      shader.uniforms.terrainWaterTime = time
       shader.uniforms.terrainWaterLight = light
       shader.vertexShader =
         `
@@ -161,7 +140,6 @@ vTerrainWaterDepth = terrainWaterDepth;
       )
       shader.fragmentShader =
         `
-uniform float terrainWaterTime;
 uniform vec3 terrainWaterLight;
 varying float vTerrainWaterDepth;
 varying vec3 vTerrainWaterWorld;
@@ -171,8 +149,8 @@ varying vec3 vTerrainWaterWorld;
         `
 // World centimetres, not the .28x.90 UV island covering the entire river.
 vec2 riverUv = vTerrainWaterWorld.xy * vec2(1., -1.);
-vec2 n1 = texture2D(normalMap, riverUv * .001 + terrainWaterTime * vec2(.003, .002)).rg * 2. - 1.;
-vec2 n2 = texture2D(normalMap, riverUv * .0015 + terrainWaterTime * vec2(-.002, .001)).rg * 2. - 1.;
+vec2 n1 = texture2D(normalMap, riverUv * .001).rg * 2. - 1.;
+vec2 n2 = texture2D(normalMap, riverUv * .0015).rg * 2. - 1.;
 float riverDistance = length(cameraPosition - vTerrainWaterWorld);
 float riverNormalWeight = mix(.1, .24, smoothstep(2000., 5000., riverDistance));
 riverNormalWeight *= smoothstep(0., 20., vTerrainWaterDepth);
@@ -203,11 +181,8 @@ diffuseColor.a = riverAlpha;
 #include <opaque_fragment>`
       )
     }
-    material.customProgramCacheKey = () => 'home-terrain-river-v1'
+    material.customProgramCacheKey = () => 'home-terrain-river-static-v2'
     object.material = applyEnvironmentLighting(material)
     source.dispose()
-    count++
   })
-
-  return { count, recentlyVisible: () => performance.now() - lastDraw < 250 }
 }
