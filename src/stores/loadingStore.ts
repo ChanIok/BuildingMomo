@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 
 export type LoadingType = 'icon' | 'model' | 'environment'
 export type LoadingPhase = 'network' | 'processing' | 'shaders' | 'shadows'
-export type LoadingMode = 'simple' | 'staged' // 新增：加载模式
+export type LoadingMode = 'simple' | 'staged' | 'parallel'
 export interface LoadingDisplayOptions {
   showDelayMs?: number
   completeHoldMs?: number
@@ -19,6 +19,7 @@ export const useLoadingStore = defineStore('loading', () => {
   const loadingType = ref<LoadingType | null>(null)
   const current = ref(0)
   const total = ref(0)
+  const stageCounts = ref({ resources: 0, rendering: 0 })
   const failedCount = ref(0)
   const error = ref<string | null>(null)
 
@@ -50,6 +51,7 @@ export const useLoadingStore = defineStore('loading', () => {
     isVisible.value = false
     current.value = 0
     total.value = 0
+    stageCounts.value = { resources: 0, rendering: 0 }
     failedCount.value = 0
     error.value = null
     loadingType.value = null
@@ -59,8 +61,8 @@ export const useLoadingStore = defineStore('loading', () => {
   const progress = computed(() => {
     if (total.value === 0) return 0
 
-    // Simple模式：单阶段 0-100%
-    if (mode.value === 'simple') {
+    // Simple和Parallel模式直接使用总完成数；Parallel由调用方显式结束。
+    if (mode.value !== 'staged') {
       return Math.round((current.value / total.value) * 100)
     }
 
@@ -104,6 +106,7 @@ export const useLoadingStore = defineStore('loading', () => {
     loadingType.value = type
     current.value = 0
     total.value = totalCount
+    stageCounts.value = { resources: 0, rendering: 0 }
     failedCount.value = 0
     error.value = null
     phase.value = 'network' // 重置为网络阶段
@@ -126,12 +129,12 @@ export const useLoadingStore = defineStore('loading', () => {
   }
 
   /**
-   * 设置加载阶段（仅在staged模式下有效）
+   * 更新任务阶段及总量；并行任务保留累积进度。
    */
   function setPhase(newPhase: LoadingPhase, totalCount?: number, sessionId?: number) {
     if (sessionId !== undefined && sessionId !== loadingSessionId) return
-    if (mode.value !== 'staged') {
-      console.warn(`[LoadingStore] setPhase仅在staged模式下生效，当前模式: ${mode.value}`)
+    if (mode.value === 'simple') {
+      console.warn(`[LoadingStore] setPhase不适用于simple模式`)
       return
     }
 
@@ -139,7 +142,7 @@ export const useLoadingStore = defineStore('loading', () => {
     if (phase.value === newPhase) return
 
     phase.value = newPhase
-    if (newPhase !== 'network') {
+    if (newPhase !== 'network' && mode.value === 'staged') {
       // 切换到处理阶段时，重置 current 以便重新统计处理进度
       current.value = 0
     }
@@ -157,11 +160,25 @@ export const useLoadingStore = defineStore('loading', () => {
     }
   }
 
+  function updateParallelProgress(
+    resources: number,
+    rendering: number,
+    failed = 0,
+    sessionId?: number
+  ) {
+    if (sessionId !== undefined && sessionId !== loadingSessionId) return
+    stageCounts.value = { resources, rendering }
+    updateProgress(resources + rendering, failed, sessionId)
+  }
+
   function finishLoading(sessionId?: number) {
     if (sessionId !== undefined && sessionId !== loadingSessionId) return
     if (!isLoading.value) return
     console.log(`[LoadingStore] 加载完成`)
     current.value = total.value
+    if (mode.value === 'parallel') {
+      stageCounts.value = { resources: total.value / 2, rendering: total.value / 2 }
+    }
     if (mode.value === 'staged' && phase.value === 'network') phase.value = 'processing'
     isLoading.value = false
 
@@ -207,6 +224,7 @@ export const useLoadingStore = defineStore('loading', () => {
     loadingType,
     current,
     total,
+    stageCounts,
     failedCount,
     error,
     phase,
@@ -219,6 +237,7 @@ export const useLoadingStore = defineStore('loading', () => {
     startLoading,
     setPhase,
     updateProgress,
+    updateParallelProgress,
     finishLoading,
     cancelLoading,
     failLoading,

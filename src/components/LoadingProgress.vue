@@ -27,6 +27,16 @@ const progressBarStyle = computed(() => ({
   width: `${loadingStore.progress}%`,
 }))
 
+const stages = computed(() =>
+  (['rendering', 'resources'] as const).map((key) => ({
+    key,
+    progress:
+      loadingStore.total > 0
+        ? Math.min(100, (loadingStore.stageCounts[key] / (loadingStore.total / 2)) * 100)
+        : 0,
+  }))
+)
+
 // 是否显示完成状态
 const showComplete = computed(() => {
   return loadingStore.isComplete && !loadingStore.isLoading && !loadingStore.error
@@ -97,12 +107,25 @@ const showComplete = computed(() => {
           v-if="loadingStore.loadingType !== 'environment' || loadingStore.phase !== 'network'"
           class="text-muted-foreground tabular-nums"
         >
-          {{ loadingStore.current }}/{{ loadingStore.total }}
+          <template v-if="loadingStore.mode === 'parallel'">{{ loadingStore.progress }}%</template>
+          <template v-else>{{ loadingStore.current }}/{{ loadingStore.total }}</template>
         </span>
       </div>
 
       <!-- 进度条 -->
-      <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+      <div
+        v-if="loadingStore.mode === 'parallel'"
+        class="flex h-1.5 overflow-hidden rounded-full bg-secondary"
+      >
+        <div
+          v-for="stage in stages"
+          :key="stage.key"
+          class="h-full shrink-0 transition-[width] duration-300 ease-out"
+          :class="stage.key === 'resources' ? 'bg-primary/40' : 'bg-primary'"
+          :style="{ width: `${stage.progress / 2}%` }"
+        ></div>
+      </div>
+      <div v-else class="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
         <div
           class="h-full rounded-full bg-primary transition-all duration-300 ease-out"
           :style="progressBarStyle"

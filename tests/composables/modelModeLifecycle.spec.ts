@@ -87,7 +87,10 @@ beforeEach(() => {
     getInstance: (id: string) => instances.get(id),
     getBatchInstances: (id: number) =>
       [...instances].filter(([, entry]) => entry.mesh === batches.get(id)).map(([id]) => id),
-    load: vi.fn(async () => {}),
+    load: vi.fn(async (ids, task) => {
+      task.onProgress?.({ phase: 'loading', completed: ids.length, total: ids.length })
+      task.onProgress?.({ phase: 'preparing', completed: ids.length, total: ids.length })
+    }),
     setTiers: vi.fn(async (_selection, task) => {
       const total = batches.size
       if (total) {
@@ -158,8 +161,8 @@ it('publishes mappings after readiness and hides the layer when leaving a scheme
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
   expect(mode.meshMap.value.size).toBe(0)
   expect(loading.phase).toBe('shaders')
-  expect(loading.current).toBe(2)
-  expect(loading.total).toBe(2)
+  expect(loading.current).toBe(4)
+  expect(loading.total).toBe(4)
   expect(loading.isLoading).toBe(true)
   vi.advanceTimersByTime(1000)
   expect(loading.isVisible).toBe(true)
@@ -167,8 +170,8 @@ it('publishes mappings after readiness and hides the layer when leaving a scheme
   expect(await pending).toBe(true)
   expect(mode.idToIndexMap.value.has('a')).toBe(true)
   expect(loading.isLoading).toBe(false)
-  expect(loading.current).toBe(2)
-  expect(loading.total).toBe(2)
+  expect(loading.current).toBe(4)
+  expect(loading.total).toBe(4)
   expect(loading.progress).toBe(100)
   mode.clearScene()
   expect(state.layer.root.visible).toBe(false)
@@ -231,7 +234,7 @@ it('retires hidden batches before preloading and preserves progress across a sch
     for (let i = 1; i < reports.length; i++) {
       expect(reports[i]!.progress).toBeGreaterThanOrEqual(reports[i - 1]!.progress)
     }
-    expect(reports.some((report) => report.phase === 'processing')).toBe(true)
+    expect(reports.some((report) => report.phase === 'shaders')).toBe(true)
     expect(state.layer.replaceAll).toHaveBeenCalledTimes(2)
     expect(state.layer.remove).toHaveBeenCalledExactlyOnceWith(['a3', 'a2', 'a'])
   } finally {
@@ -256,13 +259,13 @@ it('reconciles editor mappings when resuming model mode without replacing cached
   mode.dispose()
 })
 
-it('retains asset counts across both material tiers without an empty loading stage', async () => {
+it('retains combined work counts across both material tiers without an empty loading stage', async () => {
   state.editor.activeScheme.items.value = [item('a'), item('b'), item('c', 2)]
   const mode = useModelMode(),
     loading = useLoadingStore()
   await mode.rebuild()
   const setPhase = vi.spyOn(loading, 'setPhase')
-  const updateProgress = vi.spyOn(loading, 'updateProgress')
+  const updateProgress = vi.spyOn(loading, 'updateParallelProgress')
 
   for (const material of ['lite', 'full']) {
     setPhase.mockClear()
@@ -280,24 +283,65 @@ it('retains asset counts across both material tiers without an empty loading sta
     vi.advanceTimersByTime(1000)
     expect(loading.isLoading).toBe(true)
     expect(loading.isVisible).toBe(true)
-    expect(loading.current).toBe(2)
-    expect(loading.total).toBe(2)
+    expect(loading.current).toBe(4)
+    expect(loading.total).toBe(4)
     finish()
     expect(await pending).toBe(true)
     expect(loading.isLoading).toBe(false)
     expect(loading.progress).toBe(100)
-    expect(loading.current).toBe(2)
-    expect(loading.total).toBe(2)
+    expect(loading.current).toBe(4)
+    expect(loading.total).toBe(4)
     expect(setPhase.mock.calls.map(([phase, total]) => [phase, total])).toEqual([
-      ['network', 2],
-      ['shaders', 2],
+      ['shaders', 4],
+      ['shaders', 4],
     ])
-    expect(updateProgress.mock.calls.map(([completed]) => completed)).toEqual([2, 2])
+    expect(
+      updateProgress.mock.calls.map(([resources, rendering]) => [resources, rendering])
+    ).toEqual([
+      [2, 0],
+      [2, 2],
+    ])
   }
   expect(state.layer.load).toHaveBeenCalledTimes(2)
   expect(state.layer.replaceAll).toHaveBeenCalledTimes(1)
   expect(state.layer.upsert).not.toHaveBeenCalled()
   expect(mode.idToIndexMap.value.size).toBe(3)
+  mode.dispose()
+})
+
+it('adds interleaved loading and GPU preparation to one total without publishing early', async () => {
+  state.editor.activeScheme.items.value = [item('a'), item('b', 2)]
+  const tasks = new Map<number, { report: (phase: string) => void; finish: () => void }>()
+  state.layer.load.mockImplementation(
+    ([id]: number[], task: any) =>
+      new Promise<void>((resolve) => {
+        tasks.set(id!, {
+          report: (phase) => task.onProgress({ phase, completed: 1, total: 1 }),
+          finish: resolve,
+        })
+      })
+  )
+  const mode = useModelMode()
+  const loading = useLoadingStore()
+  const pending = mode.rebuild()
+  await vi.waitFor(() => expect(tasks.size).toBe(2))
+  tasks.get(1)!.report('loading')
+  expect(loading.progress).toBe(25)
+  expect(loading.stageCounts).toEqual({ resources: 1, rendering: 0 })
+  tasks.get(1)!.report('preparing')
+  expect(loading.progress).toBe(50)
+  expect(loading.stageCounts).toEqual({ resources: 1, rendering: 1 })
+  tasks.get(2)!.report('loading')
+  expect(loading.progress).toBe(75)
+  expect(loading.stageCounts).toEqual({ resources: 2, rendering: 1 })
+  tasks.get(2)!.report('preparing')
+  expect(loading.progress).toBe(100)
+  expect(loading.isLoading).toBe(true)
+  expect(mode.meshMap.value.size).toBe(0)
+  tasks.forEach((task) => task.finish())
+  expect(await pending).toBe(true)
+  expect(mode.idToIndexMap.value.size).toBe(2)
+  expect(loading.isLoading).toBe(false)
   mode.dispose()
 })
 

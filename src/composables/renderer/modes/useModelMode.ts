@@ -201,7 +201,7 @@ export function useModelMode() {
       signal.aborted || options?.isStale?.() || editorStore.activeScheme !== current
     let session = furnitureRender.value
       ? undefined
-      : loadingStore.startLoading('model', 1, 'staged')
+      : loadingStore.startLoading('model', 2, 'parallel')
     loadingSession = session
     try {
       const layer = await readyFurnitureRender()
@@ -294,24 +294,35 @@ export function useModelMode() {
       const totalAssets = tierChange
         ? new Set(models.map((item) => item.gameId)).size
         : assetIds.length
-      session = loadingStore.startLoading('model', totalAssets, 'staged')
+      session = loadingStore.startLoading('model', totalAssets * 2, 'parallel')
       loadingSession = session
       let preloaded = false
+      let loadedAssets = 0
+      let preparedAssets = 0
+      let progressTotal = totalAssets
+      const reportProgress = () => {
+        if (stale() || session === undefined || progressTotal <= 0) return
+        const loading = loadedAssets < progressTotal
+        loadingStore.setPhase(loading ? 'network' : 'shaders', progressTotal * 2, session)
+        loadingStore.updateParallelProgress(
+          loadedAssets,
+          preparedAssets,
+          failedAssets.size,
+          session
+        )
+      }
       const task = {
         signal,
         onProgress: (progress: { phase: string; completed: number; total: number }) => {
           // Resource/preparation counts are assets; ready counts are instances.
           if (stale() || session === undefined || progress.total <= 0 || progress.phase === 'ready')
             return
-          // Candidate assembly reacquires the preloaded assets. That is not a
-          // second download phase and must not restart the completed resource count.
-          if (preloaded && progress.phase === 'loading') return
-          loadingStore.setPhase(
-            progress.phase === 'loading' ? 'network' : 'shaders',
-            progress.total,
-            session
-          )
-          loadingStore.updateProgress(progress.completed, failedAssets.size, session)
+          // Preloads already prepared the retained batches; assembly only rechecks them.
+          if (preloaded) return
+          progressTotal = progress.total
+          if (progress.phase === 'loading') loadedAssets = progress.completed
+          else preparedAssets = progress.completed
+          reportProgress()
         },
       }
       // The old scheme is hidden. Remove its instances without discarding
@@ -330,42 +341,58 @@ export function useModelMode() {
         await layer.setTiers(selection, task)
       }
       if (replace) failedAssets.clear()
-      let completed = 0
-      if (assetIds.length) loadingStore.setPhase('network', assetIds.length, session)
+      if (assetIds.length) {
+        progressTotal = assetIds.length
+        loadedAssets = preparedAssets = 0
+        loadingStore.setPhase('network', progressTotal * 2, session)
+      }
       await Promise.all(
         assetIds.map(async (id) => {
+          let loaded = false
+          let prepared = false
           try {
-            await layer.load([id], { signal })
+            await layer.load([id], {
+              signal,
+              onProgress: ({ phase }) => {
+                if (phase === 'loading') {
+                  loaded = true
+                  loadedAssets++
+                } else if (phase === 'preparing') {
+                  prepared = true
+                  preparedAssets++
+                }
+                reportProgress()
+              },
+            })
             failedAssets.delete(id)
           } catch (error) {
             if (stale()) return
             failedAssets.add(id)
             console.warn(`[ModelMode] Asset ${id} failed; using fallback`, error)
           } finally {
-            if (!stale()) loadingStore.updateProgress(++completed, failedAssets.size, session)
+            if (!loaded) loadedAssets++
+            if (!prepared) preparedAssets++
+            reportProgress()
           }
         })
       )
       if (stale()) return false
       if (assetIds.length && session !== undefined) {
         preloaded = true
-        loadingStore.setPhase('processing', totalAssets, session)
       }
       fallback.push(...models.filter((item) => failedAssets.has(item.gameId)))
       models = models.filter((item) => !failedAssets.has(item.gameId))
       const renderItems = (
         replace ? models : changed.filter((item) => !failedAssets.has(item.gameId))
-      ).map(
-        (item): FurnitureInstance => ({
-          id: item.internalId,
-          assetId: item.gameId,
-          matrix: matrixFor(item, true),
-          customData: resolveCustomData(
-            layer.getConfig(item.gameId)!,
-            decodeColorMapToGroupMap(item.extra.ColorMap)
-          ),
-        })
-      )
+      ).map((item): FurnitureInstance => ({
+        id: item.internalId,
+        assetId: item.gameId,
+        matrix: matrixFor(item, true),
+        customData: resolveCustomData(
+          layer.getConfig(item.gameId)!,
+          decodeColorMapToGroupMap(item.extra.ColorMap)
+        ),
+      }))
       if (replace) await layer.replaceAll(renderItems, task)
       else {
         const ids = new Set(models.map((item) => item.internalId))
@@ -389,7 +416,7 @@ export function useModelMode() {
     } catch (error) {
       if (stale()) return false
       if (session === undefined) {
-        session = loadingStore.startLoading('model', 1, 'staged')
+        session = loadingStore.startLoading('model', 2, 'parallel')
         loadingSession = session
       }
       loadingStore.failLoading(error, session)

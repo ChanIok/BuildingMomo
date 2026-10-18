@@ -17,8 +17,8 @@ const modelQueries = {
     if (isStale?.()) return
     const layer = await readyFurnitureRender()
     await layer.load(ids, {
-      onProgress: ({ completed, total }) => {
-        if (!isStale?.()) onProgress?.(completed, total, 0)
+      onProgress: ({ phase, completed, total }) => {
+        if (phase === 'preparing' && !isStale?.()) onProgress?.(completed, total, 0)
       },
     })
   },
