@@ -207,7 +207,7 @@ export function useModelMode() {
       const layer = await readyFurnitureRender()
       if (stale()) return false
       const resuming = !layer.root.visible
-      layer.root.visible = current === scheme
+      setVisible(current === scheme)
       const changes =
         current === scheme && key === profile && current
           ? editorStore.getRenderChanges(current.id, renderVersion)
@@ -409,7 +409,7 @@ export function useModelMode() {
       profile = key
       renderVersion = editorStore.sceneVersion
       syncMappings(items, fallback)
-      layer.root.visible = true
+      setVisible(true)
       if (session !== undefined) loadingStore.finishLoading(session)
       invalidateScene()
       return true
@@ -436,13 +436,20 @@ export function useModelMode() {
     cancelPending()
     previous.clear()
     scheme = null
-    if (furnitureRender.value) furnitureRender.value.root.visible = false
+    setVisible(false)
     if (fallbackMesh.value) fallbackMesh.value.count = 0
     meshMap.value = new Map()
     indexToIdMap.value = new Map()
     idToIndexMap.value = new Map()
     meshToLocalIndexMap.value = new Map()
     internalIdToMeshInfo.value = new Map()
+  }
+
+  function setVisible(visible: boolean) {
+    const root = furnitureRender.value?.root
+    if (!root || root.visible === visible) return
+    root.visible = visible
+    invalidateScene({ shadows: true })
   }
 
   return {
@@ -461,9 +468,7 @@ export function useModelMode() {
     rebuild,
     clearScene,
     cancelPending,
-    setVisible(visible: boolean) {
-      if (furnitureRender.value) furnitureRender.value.root.visible = visible
-    },
+    setVisible,
     updateMatrices(values: Map<string, Matrix4>) {
       const inverse = furnitureRender.value?.root.matrixWorld.clone().invert()
       if (!inverse) return

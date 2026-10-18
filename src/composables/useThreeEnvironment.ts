@@ -265,7 +265,7 @@ export function createSceneEnvironment(
       }
     },
     beforeRender() {
-      if (!renderer.shadowMap.enabled) return
+      if (!renderer.shadowMap.enabled || !renderer.shadowMap.needsUpdate) return
       scene.updateMatrixWorld()
       sceneBounds.makeEmpty()
       scene.traverseVisible((object) => {

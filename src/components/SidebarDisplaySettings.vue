@@ -10,6 +10,13 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { RadioGroup, RadioGroupButton } from '@/components/ui/radio-group'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -53,6 +60,7 @@ const showModelOnlySettings = computed(
   () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
 )
 const qualityOptions = ['lite', 'full'] as const
+const fpsOptions = [30, 60, 120, 240, 0] as const
 const backgroundOptions = ['off', 'simple', 'real'] as const
 const backgroundMode = computed({
   get: () => {
@@ -379,6 +387,19 @@ function updateThreeSymbolScale(value: number[] | undefined) {
               </p>
             </div>
             <Switch id="on-demand-rendering" v-model="settingsStore.settings.onDemandRendering" />
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <Label for="fps-limit" class="text-xs">{{ t('settings.fpsLimit.label') }}</Label>
+            <Select v-model="settingsStore.settings.fpsLimit">
+              <SelectTrigger id="fps-limit" size="sm" class="w-24 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="fps in fpsOptions" :key="fps" :value="fps">
+                  {{ fps || t('settings.fpsLimit.unlimited') }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </section>
       </div>

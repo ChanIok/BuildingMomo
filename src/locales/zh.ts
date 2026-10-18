@@ -511,6 +511,10 @@ export const zhLocale = {
       hint: '文件变化时弹窗询问是否导入。',
     },
     fpsMonitor: '显示 FPS',
+    fpsLimit: {
+      label: '帧率上限',
+      unlimited: '不限',
+    },
     onDemandRendering: {
       label: '按需渲染',
       hint: '无操作时暂停渲染，节省电量',

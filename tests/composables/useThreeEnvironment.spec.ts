@@ -142,6 +142,8 @@ it('keeps the shadow volume fixed when navigating and excludes distant non-shado
   scene.add(camera)
   renderer.shadowMap.needsUpdate = false
   invalidate.mockClear()
+  const traverse = vi.spyOn(scene, 'traverseVisible')
+  const matrices = vi.spyOn(scene, 'updateMatrixWorld')
 
   for (let frame = 0; frame < 30; frame++) {
     camera.position.set(frame * 1000, -frame * 2000, frame * 100)
@@ -151,12 +153,14 @@ it('keeps the shadow volume fixed when navigating and excludes distant non-shado
     expect(renderer.shadowMap.needsUpdate).toBe(false)
   }
   expect(invalidate).not.toHaveBeenCalled()
+  expect(traverse).not.toHaveBeenCalled()
+  expect(matrices).not.toHaveBeenCalled()
 })
 
 it('refits immediately when terrain loads or furniture extends beyond the current world bounds', () => {
   environment.beforeRender()
   const terrain = addIsland()
-  renderer.shadowMap.needsUpdate = false
+  renderer.shadowMap.needsUpdate = true
   environment.beforeRender()
   expectShadowCoverage(new Box3().setFromObject(terrain))
   expect(renderer.shadowMap.needsUpdate).toBe(true)
@@ -165,7 +169,7 @@ it('refits immediately when terrain loads or furniture extends beyond the curren
   furniture.castShadow = true
   furniture.position.set(90000, 50000, 15000)
   scene.add(furniture)
-  renderer.shadowMap.needsUpdate = false
+  renderer.shadowMap.needsUpdate = true
   environment.beforeRender()
 
   expectShadowCoverage(new Box3().setFromObject(terrain))
@@ -182,6 +186,32 @@ it('fits the full depth range after changes to the sun direction', async () => {
     expect(sun.shadow.camera.near).toBeGreaterThan(0)
   }
   await Promise.resolve()
+})
+
+it('refits after casters are hidden or removed', () => {
+  addIsland()
+  environment.beforeRender()
+  const islandProjection = sun.shadow.camera.projectionMatrix.clone()
+  const caster = new Mesh(new BoxGeometry(1000, 1000, 1000), new MeshBasicMaterial())
+  caster.position.set(150000, 100000, 50000)
+  caster.castShadow = true
+  scene.add(caster)
+  renderer.shadowMap.needsUpdate = true
+  environment.beforeRender()
+  expect(sun.shadow.camera.projectionMatrix.equals(islandProjection)).toBe(false)
+  caster.visible = false
+  renderer.shadowMap.needsUpdate = true
+  environment.beforeRender()
+  expect(sun.shadow.camera.projectionMatrix.equals(islandProjection)).toBe(true)
+  caster.visible = true
+  renderer.shadowMap.needsUpdate = true
+  environment.beforeRender()
+  caster.removeFromParent()
+  renderer.shadowMap.needsUpdate = true
+  environment.beforeRender()
+  expect(sun.shadow.camera.projectionMatrix.equals(islandProjection)).toBe(true)
+  caster.geometry.dispose()
+  caster.material.dispose()
 })
 
 it('toggles shadow rendering independently and refits changes made while disabled', () => {

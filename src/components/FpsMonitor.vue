@@ -10,12 +10,11 @@ import {
 
 const CANVAS_W = 120
 const CANVAS_H = 32
-const MAX_FPS = 65
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const displayFps = ref(0)
 const displayMs = ref(0)
-let rafId = 0
+let timer: ReturnType<typeof setInterval> | undefined
 
 const fpsColor = computed(() =>
   displayFps.value >= 50 ? '#4ade80' : displayFps.value >= 25 ? '#facc15' : '#f87171'
@@ -33,13 +32,14 @@ function draw(): void {
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H)
 
   const { data, ptr, size } = getFpsHistory()
+  const maxFps = Math.max(60, Math.ceil((Math.max(displayFps.value, ...data) * 1.15) / 30) * 30)
+  const graphY = (fps: number) => 3 + (CANVAS_H - 6) * (1 - fps / maxFps)
 
-  // 参考线：30fps / 60fps
   ctx.lineWidth = 0.5
   ctx.strokeStyle = 'rgba(255,255,255,0.18)'
   ctx.setLineDash([2, 3])
-  for (const target of [30, 60]) {
-    const y = CANVAS_H * (1 - target / MAX_FPS)
+  for (const target of [maxFps / 3, (maxFps * 2) / 3]) {
+    const y = graphY(target)
     ctx.beginPath()
     ctx.moveTo(0, y)
     ctx.lineTo(CANVAS_W, y)
@@ -52,8 +52,8 @@ function draw(): void {
   for (let i = 0; i < size; i++) {
     const idx = (ptr + i) % size
     const val = (data[idx] as number) || 0
-    const x = (i / (size - 1)) * CANVAS_W
-    const y = CANVAS_H * (1 - Math.min(val / MAX_FPS, 1.05))
+    const x = 2 + (i / (size - 1)) * (CANVAS_W - 4)
+    const y = graphY(val)
     if (i === 0) ctx.moveTo(x, y)
     else ctx.lineTo(x, y)
   }
@@ -64,17 +64,16 @@ function draw(): void {
   // 最右侧当前值高亮点
   if (ptr > 0) {
     const lastVal = (data[(ptr - 1 + size) % size] as number) || 0
-    const dotY = CANVAS_H * (1 - Math.min(lastVal / MAX_FPS, 1.05))
+    const dotY = graphY(lastVal)
     ctx.beginPath()
-    ctx.arc(CANVAS_W, dotY, 2.5, 0, Math.PI * 2)
+    ctx.arc(CANVAS_W - 2, dotY, 2, 0, Math.PI * 2)
     ctx.fillStyle = fpsColor.value
     ctx.fill()
   }
-}
-
-function loop(): void {
-  draw()
-  rafId = requestAnimationFrame(loop)
+  ctx.font = '9px monospace'
+  ctx.fillStyle = 'rgba(255,255,255,0.4)'
+  ctx.textAlign = 'right'
+  ctx.fillText(String(maxFps), CANVAS_W - 2, 9)
 }
 
 onMounted(() => {
@@ -85,11 +84,12 @@ onMounted(() => {
   canvas.getContext('2d')?.scale(dpr, dpr)
 
   startFpsMonitor()
-  rafId = requestAnimationFrame(loop)
+  draw()
+  timer = setInterval(draw, 100)
 })
 
 onUnmounted(() => {
-  cancelAnimationFrame(rafId)
+  clearInterval(timer)
   stopFpsMonitor()
 })
 </script>

@@ -521,6 +521,10 @@ export const enLocale = {
       hint: 'Show a popup when the file changes.',
     },
     fpsMonitor: 'Show FPS',
+    fpsLimit: {
+      label: 'Frame rate limit',
+      unlimited: 'Unlimited',
+    },
     onDemandRendering: {
       label: 'On-demand rendering',
       hint: 'Pauses rendering when idle to save battery.',

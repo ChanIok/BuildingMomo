@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { BoxGeometry, Group, InstancedMesh, MeshBasicMaterial } from 'three'
 import { useLoadingStore } from '../../src/stores/loadingStore'
 import { useModelMode } from '../../src/composables/renderer/modes/useModelMode'
+import { invalidateScene } from '../../src/composables/useSceneInvalidate'
 
 const state = vi.hoisted(() => ({
   editor: {
@@ -194,6 +195,23 @@ it('sends ordinary edits through the incremental API without replacing meshes or
   expect(state.layer.load).toHaveBeenCalledTimes(1)
   expect(state.layer.updateMatrices.mock.calls[0][0][0].matrix.elements[12]).toBe(42)
   expect(state.layer.updateDyes).toHaveBeenCalledTimes(1)
+  mode.dispose()
+})
+
+it('invalidates shadows only when the furniture layer visibility changes', async () => {
+  const mode = useModelMode()
+  await mode.rebuild()
+  vi.mocked(invalidateScene).mockClear()
+  mode.setVisible(false)
+  expect(invalidateScene).toHaveBeenCalledExactlyOnceWith({ shadows: true })
+  mode.setVisible(false)
+  expect(invalidateScene).toHaveBeenCalledOnce()
+  vi.mocked(invalidateScene).mockClear()
+  mode.setVisible(true)
+  expect(invalidateScene).toHaveBeenCalledExactlyOnceWith({ shadows: true })
+  vi.mocked(invalidateScene).mockClear()
+  mode.clearScene()
+  expect(invalidateScene).toHaveBeenCalledExactlyOnceWith({ shadows: true })
   mode.dispose()
 })
 

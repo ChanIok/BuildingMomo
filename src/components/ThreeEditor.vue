@@ -458,6 +458,7 @@ let restoreRenderFunction: (() => void) | null = null
 let furnitureContext: ReturnType<typeof installFurnitureRender> | null = null
 let environmentTransition: ReturnType<typeof createEnvironmentTransition> | null = null
 onUnmounted(() => {
+  setSceneInvalidate(null)
   environmentTransition?.dispose()
   environmentTransition = null
   sceneEnvironment?.dispose()
@@ -568,9 +569,14 @@ function handleTresReady(context: any) {
 
   // 连接场景的 invalidate 函数
   if (context.renderer?.invalidate) {
-    setSceneInvalidate(context.renderer.invalidate)
+    setSceneInvalidate((shadows) => {
+      if (shadows) renderer.shadowMap.needsUpdate = true
+      context.renderer.invalidate()
+    })
   }
 }
+
+watch([terrainEnabled, terrainObject], () => invalidateScene({ shadows: true }), { flush: 'post' })
 
 watch(
   () => [settingsStore.settings.lightingMode, settingsStore.settings.shadowsEnabled] as const,
@@ -971,6 +977,7 @@ onDeactivated(() => {
         :clear-color="canvasClearColor"
         :shadow-map-type="PCFShadowMap"
         :render-mode="settingsStore.settings.onDemandRendering ? 'on-demand' : 'always'"
+        :fps-limit="settingsStore.settings.fpsLimit || undefined"
         logarithmic-depth-buffer
         power-preference="high-performance"
         @ready="handleTresReady"
