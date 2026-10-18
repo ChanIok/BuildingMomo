@@ -424,6 +424,7 @@ export const enLocale = {
   // Settings
   settings: {
     title: 'Settings',
+    version: 'Version',
     description: 'Configure display options and editor settings',
     menu: {
       general: 'General',

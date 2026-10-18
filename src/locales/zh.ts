@@ -415,6 +415,7 @@ export const zhLocale = {
   // 设置
   settings: {
     title: '设置',
+    version: '版本',
     description: '配置应用的显示选项和编辑设置',
     menu: {
       general: '通用',

@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { templateCompilerOptions } from '@tresjs/core'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -15,8 +16,18 @@ export default defineConfig(({ mode }) => {
   // 默认使用根路径，如果设置了 VITE_BASE_PATH 环境变量则使用该路径
   const base = process.env.VITE_BASE_PATH || '/'
   const cloudApiProxyTarget = process.env.VITE_CLOUD_API_PROXY_TARGET || 'http://127.0.0.1:8788'
+  const buildInfo = {
+    commit: execFileSync('git', ['rev-parse', '--short=8', 'HEAD'], {
+      cwd: fileURLToPath(new URL('.', import.meta.url)),
+      encoding: 'utf8',
+    }).trim(),
+    time: new Date().toISOString(),
+  }
 
   return {
+    define: {
+      __BUILD_INFO__: JSON.stringify(buildInfo),
+    },
     plugins: [
       vue({
         // TresJS 模板编译器配置，让 Vue 识别 Tres 组件
