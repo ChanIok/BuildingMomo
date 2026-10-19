@@ -397,6 +397,15 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
 
+    {
+      id: 'sidebar.showDisplaySettings',
+      label: t('command.sidebar.showDisplaySettings'),
+      shortcut: '4',
+      category: 'view',
+      enabled: () => true,
+      execute: () => uiStore.setSidebarView('displaySettings'),
+    },
+
     // ===== 编辑菜单 =====
     {
       id: 'edit.undo',

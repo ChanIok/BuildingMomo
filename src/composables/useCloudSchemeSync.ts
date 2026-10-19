@@ -292,6 +292,7 @@ export function useCloudSchemeSync() {
   }
 
   function applyCommittedTransaction(transaction: { schemeId: string; ops: unknown[] }) {
+    const renderVersion = editorStore.sceneVersion
     const scheme = editorStore.getSchemeById(transaction.schemeId)
     if (!scheme) return
 
@@ -300,6 +301,7 @@ export function useCloudSchemeSync() {
       applyEditorTransactionToScheme(scheme, transaction as never)
       triggerRef(scheme.groupOrigins)
       editorStore.triggerSceneUpdate()
+      editorStore.recordRenderTransaction(transaction as never, renderVersion)
     } finally {
       isApplyingRemoteUpdate.value = false
     }

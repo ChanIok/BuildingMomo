@@ -3,7 +3,7 @@ import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 't
 import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
-import { createBoxMaterial } from '../shared/materials'
+import { createBoxMaterial } from '@nuan5-pro/render'
 import {
   scratchMatrix,
   scratchPosition,

@@ -20,7 +20,7 @@ import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
 import { matrixTransform } from '@/lib/matrixTransform'
 import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
-import { createBoxMaterial } from './shared/materials'
+import { createBoxMaterial } from '@nuan5-pro/render'
 import {
   ALIGN_REFERENCE_ITEM_COLOR,
   convertColorToHex,

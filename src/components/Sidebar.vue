@@ -9,8 +9,16 @@ import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
 import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
+import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
-import { ChevronDown, ChevronUp, Layers, Settings2, SlidersHorizontal } from 'lucide-vue-next'
+import {
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  Monitor,
+  Settings2,
+  SlidersHorizontal,
+} from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
@@ -83,6 +91,17 @@ watch(
               >
                 <SlidersHorizontal class="h-4 w-4" />
               </SidebarToggleItem>
+              <SidebarToggleItem
+                :model-value="uiStore.sidebarView === 'displaySettings'"
+                @update:model-value="
+                  (v: boolean) => {
+                    if (v) uiStore.setSidebarView('displaySettings')
+                  }
+                "
+                :tooltip="`${t('sidebar.display.label')} (4)`"
+              >
+                <Monitor class="h-4 w-4" />
+              </SidebarToggleItem>
             </div>
 
             <SidebarToggleItem
@@ -106,7 +125,7 @@ watch(
         <!-- 全局提示信息 -->
         <div
           v-if="
-            uiStore.sidebarView !== 'editorSettings' &&
+            (uiStore.sidebarView === 'structure' || uiStore.sidebarView === 'transform') &&
             (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0
           "
           class="pt-10 text-center text-xs text-muted-foreground"
@@ -134,6 +153,9 @@ watch(
         <div v-else-if="uiStore.sidebarView === 'editorSettings'" class="mt-0 min-h-0 flex-1">
           <!-- 编辑器设置面板 -->
           <SidebarEditorSettings class="h-full" />
+        </div>
+        <div v-else-if="uiStore.sidebarView === 'displaySettings'" class="mt-0 min-h-0 flex-1">
+          <SidebarDisplaySettings class="h-full" />
         </div>
       </div>
     </div>

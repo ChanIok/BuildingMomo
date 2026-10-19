@@ -49,12 +49,14 @@ Designed for players with special building needs (complex building group adjustm
 
 If you're a developer or want to self-host:
 
+Use Node.js 24 and pnpm.
+
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Build for production
-npm run build
+pnpm run build
 ```
 
 ## 🛠️ Tech Stack

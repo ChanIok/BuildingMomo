@@ -148,6 +148,50 @@ export const useEditorStore = defineStore('editor', () => {
   // 场景内容版本号：任何已提交的物品变更都统一触发 full rebuild。
   // 拖拽过程中的临时预览仍走实例矩阵直写，但提交后的持久状态只认 sceneVersion。
   const sceneVersion = ref(0)
+  const renderChanges: Array<{
+    from: number
+    to: number
+    schemeId: string
+    items: Map<string, AppItem | null>
+  }> = []
+
+  function recordRenderTransaction(transaction: EditorTransaction, fromVersion: number) {
+    if (transaction.schemeId !== activeScheme.value?.id) return
+    if (sceneVersion.value === fromVersion) triggerSceneUpdate()
+    const items = new Map<string, AppItem | null>()
+    for (const operation of transaction.ops) {
+      switch (operation.type) {
+        case 'patch_items':
+          for (const change of operation.changes) items.set(change.itemId, change.after)
+          break
+        case 'add_items':
+          for (const item of operation.items) items.set(item.internalId, item)
+          break
+        case 'remove_items':
+          for (const item of operation.items) items.set(item.internalId, null)
+          break
+      }
+    }
+    renderChanges.push({
+      from: fromVersion,
+      to: sceneVersion.value,
+      schemeId: transaction.schemeId,
+      items,
+    })
+    if (renderChanges.length > 128) renderChanges.shift()
+  }
+
+  function getRenderChanges(schemeId: string, fromVersion: number) {
+    const items = new Map<string, AppItem | null>()
+    let through = fromVersion
+    for (const change of renderChanges) {
+      if (change.to <= through) continue
+      if (change.from !== through || change.schemeId !== schemeId) return null
+      for (const [id, item] of change.items) items.set(id, item)
+      through = change.to
+    }
+    return through === sceneVersion.value ? items : null
+  }
   // 选择状态版本号，用于低开销监听选中变化
   const selectionVersion = ref(0)
   // 历史栈版本号：undo/redo 会原地修改 history.value，用此版本号驱动撤销/重做按钮的 enabled 更新
@@ -829,6 +873,8 @@ export const useEditorStore = defineStore('editor', () => {
 
     // 手动触发更新 (Crucial for ShallowRef pattern)
     sceneVersion,
+    recordRenderTransaction,
+    getRenderChanges,
     selectionVersion,
     historyVersion,
     transactionVersion,

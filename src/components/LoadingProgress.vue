@@ -14,15 +14,12 @@ const shouldShow = computed(() => {
 // 加载类型标题
 const loadingTitle = computed(() => {
   if (!loadingStore.loadingType) return ''
-  return loadingStore.loadingType === 'icon' ? t('loading.icon') : t('loading.model')
-})
-
-// 阶段描述文本
-const phaseText = computed(() => {
-  if (!loadingStore.phase) return ''
-  return loadingStore.phase === 'network'
-    ? t('loading.phase.network')
-    : t('loading.phase.processing')
+  if (loadingStore.mode === 'staged') {
+    if (loadingStore.phase === 'network' && loadingStore.loadingType === 'environment')
+      return t('loading.phase.environment')
+    return t(`loading.phase.${loadingStore.phase}`)
+  }
+  return t(`loading.${loadingStore.loadingType}`)
 })
 
 // 进度条样式
@@ -30,9 +27,19 @@ const progressBarStyle = computed(() => ({
   width: `${loadingStore.progress}%`,
 }))
 
+const stages = computed(() =>
+  (['rendering', 'resources'] as const).map((key) => ({
+    key,
+    progress:
+      loadingStore.total > 0
+        ? Math.min(100, (loadingStore.stageCounts[key] / (loadingStore.total / 2)) * 100)
+        : 0,
+  }))
+)
+
 // 是否显示完成状态
 const showComplete = computed(() => {
-  return loadingStore.isComplete && !loadingStore.isLoading
+  return loadingStore.isComplete && !loadingStore.isLoading && !loadingStore.error
 })
 </script>
 
@@ -84,29 +91,41 @@ const showComplete = computed(() => {
             />
           </svg>
 
-          <!-- 标题 + 阶段描述 -->
-          <div class="flex flex-col">
-            <span class="font-medium">
-              {{ showComplete ? t('loading.complete') : loadingTitle }}
-            </span>
-            <!-- 阶段描述（仅在staged模式下显示） -->
-            <span
-              v-if="!showComplete && loadingStore.mode === 'staged'"
-              class="text-[10px] text-muted-foreground"
-            >
-              {{ phaseText }}
-            </span>
-          </div>
+          <span class="font-medium">
+            {{
+              loadingStore.error
+                ? t('loading.error')
+                : showComplete
+                  ? t('loading.complete')
+                  : loadingTitle
+            }}
+          </span>
         </div>
 
         <!-- 进度数字 -->
-        <span class="text-muted-foreground tabular-nums">
-          {{ loadingStore.current }}/{{ loadingStore.total }}
+        <span
+          v-if="loadingStore.loadingType !== 'environment' || loadingStore.phase !== 'network'"
+          class="text-muted-foreground tabular-nums"
+        >
+          <template v-if="loadingStore.mode === 'parallel'">{{ loadingStore.progress }}%</template>
+          <template v-else>{{ loadingStore.current }}/{{ loadingStore.total }}</template>
         </span>
       </div>
 
       <!-- 进度条 -->
-      <div class="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+      <div
+        v-if="loadingStore.mode === 'parallel'"
+        class="flex h-1.5 overflow-hidden rounded-full bg-secondary"
+      >
+        <div
+          v-for="stage in stages"
+          :key="stage.key"
+          class="h-full shrink-0 transition-[width] duration-300 ease-out"
+          :class="stage.key === 'resources' ? 'bg-primary/40' : 'bg-primary'"
+          :style="{ width: `${stage.progress / 2}%` }"
+        ></div>
+      </div>
+      <div v-else class="relative h-1.5 w-full overflow-hidden rounded-full bg-secondary">
         <div
           class="h-full rounded-full bg-primary transition-all duration-300 ease-out"
           :style="progressBarStyle"
@@ -130,7 +149,9 @@ const showComplete = computed(() => {
             clip-rule="evenodd"
           />
         </svg>
-        <span>{{ loadingStore.failedCount }} {{ t('loading.failed') }}</span>
+        <span>{{
+          loadingStore.error || `${loadingStore.failedCount} ${t('loading.failed')}`
+        }}</span>
       </div>
     </div>
   </Transition>

@@ -33,6 +33,15 @@ const isOpen = computed({
 const settingsStore = useSettingsStore()
 const notification = useNotification()
 const { t, locale, setLocale } = useI18n()
+const buildInfo = __BUILD_INFO__
+const buildTime = new Date(buildInfo.time).toLocaleString('sv-SE', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
 
 // 当前选中的菜单项
 const activeSection = ref<'general' | 'shortcuts'>('general')
@@ -105,6 +114,14 @@ async function handleVerify() {
               </li>
             </ul>
           </ScrollArea>
+          <div class="flex shrink-0 flex-col gap-1 px-6 pb-5 font-sans text-muted-foreground">
+            <p class="m-0 text-xs leading-4">{{ t('settings.version') }} {{ buildInfo.commit }}</p>
+            <time
+              :datetime="buildInfo.time"
+              class="block text-xs leading-4 whitespace-nowrap tabular-nums"
+              >{{ buildTime }}</time
+            >
+          </div>
         </nav>
 
         <!-- 右侧内容区 -->
@@ -173,14 +190,6 @@ async function handleVerify() {
                   </p>
                 </div>
                 <Switch v-model="settingsStore.settings.enableWatchNotification" />
-              </div>
-
-              <!-- FPS 监视器 -->
-              <div class="flex items-center justify-between">
-                <div class="space-y-0.5">
-                  <Label>{{ t('settings.fpsMonitor') }}</Label>
-                </div>
-                <Switch v-model="settingsStore.settings.showFpsMonitor" />
               </div>
 
               <!-- 实验性功能 -->

@@ -9,12 +9,12 @@
  * 无需手动调用 invalidateScene()。
  */
 
-let _invalidate: ((frames?: number) => void) | null = null
+let _invalidate: ((shadows: boolean) => void) | null = null
 
 /**
  * 设置 TresJS 的 invalidate 函数（由 ThreeEditor 在 TresCanvas ready 时调用）
  */
-export function setSceneInvalidate(fn: (frames?: number) => void) {
+export function setSceneInvalidate(fn: ((shadows: boolean) => void) | null) {
   _invalidate = fn
 }
 
@@ -26,6 +26,6 @@ export function setSceneInvalidate(fn: (frames?: number) => void) {
  * - InstancedMesh.count 变化
  * - 离屏渲染目标内容更新（如 selection outline mask）
  */
-export function invalidateScene() {
-  _invalidate?.()
+export function invalidateScene(options?: { shadows: boolean }) {
+  _invalidate?.(options?.shadows ?? false)
 }

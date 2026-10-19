@@ -125,6 +125,7 @@ export const zhLocale = {
       showSelection: '选中列表 (1)',
       showTransform: '变换面板 (2)',
       showEditorSettings: '编辑器设置 (3)',
+      showDisplaySettings: '显示设置 (4)',
     },
     tool: {
       select: '选择工具',
@@ -414,6 +415,7 @@ export const zhLocale = {
   // 设置
   settings: {
     title: '设置',
+    version: '版本',
     description: '配置应用的显示选项和编辑设置',
     menu: {
       general: '通用',
@@ -464,12 +466,25 @@ export const zhLocale = {
       hint: '悬停时显示名称和图标',
     },
     background: {
-      label: '家园背景图',
-      hint: '显示背景参考图',
+      label: '家园背景',
+      off: '关',
+      simple: '简易',
+      real: '真实',
     },
     modelAssets: {
-      label: '完整贴图',
-      hint: '更真实的材质效果',
+      label: '材质质量',
+    },
+    modelGeometry: {
+      label: '模型质量',
+    },
+    quality: { low: '轻量', medium: '常规' },
+    shadows: '阴影',
+    resources: {
+      label: '资源占用',
+      materials: '材质 {n}',
+      models: '模型 {n}',
+      shaders: '着色器 {n}',
+      clear: '释放缓存',
     },
     modelDye: {
       label: '模型染色显示',
@@ -497,6 +512,14 @@ export const zhLocale = {
       hint: '文件变化时弹窗询问是否导入。',
     },
     fpsMonitor: '显示 FPS',
+    fpsLimit: {
+      label: '帧率上限',
+      unlimited: '不限',
+    },
+    onDemandRendering: {
+      label: '按需渲染',
+      hint: '无操作时暂停渲染，节省电量',
+    },
     experimental: {
       label: '实验性功能',
       hint: '启用高级功能',
@@ -601,13 +624,18 @@ export const zhLocale = {
 
   // 加载进度
   loading: {
+    error: '渲染准备失败，可重新导入或切换方案',
     icon: '正在加载图标',
     model: '正在加载模型',
+    environment: '正在更新光照与阴影',
     complete: '加载完成',
     failed: '个失败',
     phase: {
-      network: '正在下载...',
-      processing: '正在准备渲染...',
+      network: '加载模型资源...',
+      processing: '准备渲染...',
+      shaders: '编译着色器...',
+      shadows: '准备阴影...',
+      environment: '预处理环境光...',
     },
   },
 
@@ -659,6 +687,19 @@ export const zhLocale = {
     structure: '结构',
     transform: '变换',
     editorSettings: '编辑器',
+    environment: {
+      label: '场景与光照',
+      home: '仿真光照',
+      homeHint: '模拟真实家园光照，通常不影响渲染性能',
+      time: '游戏时间',
+      timePicker: '选择时间',
+      presetSunrise: '清晨',
+      presetNoon: '正午',
+      presetSunset: '黄昏',
+      presetMidnight: '午夜',
+      terrain: '真实家园地形',
+      terrainError: '真实地形加载失败：{message}',
+    },
     header: {
       expand: '展开顶部工具',
       collapse: '收起顶部工具',
@@ -700,6 +741,8 @@ export const zhLocale = {
     },
     display: {
       label: '显示设置',
+      graphics: '家具渲染',
+      helpers: '显示辅助',
       iconSize: '图标/方块大小',
     },
     editAssist: {

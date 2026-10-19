@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
 import { ref } from 'vue'
+import type { ModelAssetProfile } from '@nuan5-pro/render/furniture'
 
 import type { Locale } from '../composables/useI18n'
-import type { ModelAssetProfile } from '../types/furniture'
 
 // 输入绑定配置接口
 export interface InputBindings {
@@ -40,9 +40,16 @@ export interface AppSettings {
 
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
-  modelAssetProfile: ModelAssetProfile // 模型资源档位：精简版或完整版
+  modelAssetProfile: ModelAssetProfile // Geometry quality; unavailable assets are never aliased.
+  materialAssetProfile: ModelAssetProfile
+  lightingMode: 'studio' | 'home'
+  todMinute: number // Fixed game time, minutes since midnight.
+  homeTerrainEnabled: boolean
+  shadowsEnabled: boolean
   modelGroupColorTint: boolean // 模型模式下用组合配色标记同组家具（关闭时保持贴图原色）
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
+  onDemandRendering: boolean
+  fpsLimit: 0 | 30 | 60 | 120 | 240
 
   // 相机设置
   cameraFov: number // 透视相机视场角 (30-90)
@@ -88,8 +95,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableWatchNotification: true,
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'lite',
+  materialAssetProfile: 'lite',
+  lightingMode: 'home',
+  todMinute: 12 * 60,
+  homeTerrainEnabled: false,
+  shadowsEnabled: true,
   modelGroupColorTint: false,
   threeSymbolScale: 1.0,
+  onDemandRendering: true,
+  fpsLimit: 0,
   cameraFov: 50,
   cameraBaseSpeed: 1000,
   cameraShiftMultiplier: 4,

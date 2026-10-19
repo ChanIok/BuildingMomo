@@ -13,15 +13,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const settingsStore = useSettingsStore()
 const { t } = useI18n()
 
-const isSecureModeEnabled = import.meta.env.VITE_ENABLE_SECURE_MODE === 'true'
-const showModelOnlySettings = computed(() => isSecureModeEnabled && settingsStore.isAuthenticated)
-const useFullModelAssets = computed({
-  get: () => settingsStore.settings.modelAssetProfile === 'full',
-  set: (value: boolean) => {
-    settingsStore.settings.modelAssetProfile = value ? 'full' : 'lite'
-  },
-})
-
 // FOV 节流处理
 const fovValue = ref(settingsStore.settings.cameraFov)
 const handleFovChange = useThrottleFn((value: number[] | undefined) => {
@@ -65,11 +56,6 @@ function updateCameraOrbitRotateSpeed(value: number[] | undefined) {
 function updateCameraZoomSpeed(value: number[] | undefined) {
   if (!value) return
   settingsStore.settings.cameraZoomSpeed = value[0]!
-}
-
-function updateThreeSymbolScale(value: number[] | undefined) {
-  if (!value) return
-  settingsStore.settings.threeSymbolScale = value[0]!
 }
 
 // 步进预设档位
@@ -477,83 +463,6 @@ const fmt = (n: number, decimals: number = 0) => {
               </p>
             </div>
             <Switch v-model="settingsStore.settings.cameraLockHorizontalMovement" />
-          </div>
-        </div>
-
-        <!-- 分隔线 -->
-        <div class="border-t border-sidebar-border"></div>
-
-        <!-- 显示设置 -->
-        <div class="flex flex-col gap-4">
-          <h3 class="text-xs font-semibold text-sidebar-foreground">
-            {{ t('sidebar.display.label') }}
-          </h3>
-
-          <!-- 家具Tooltip开关 -->
-          <div class="flex items-center justify-between">
-            <div class="mr-2 space-y-0.5">
-              <Label class="text-xs">{{ t('settings.furnitureTooltip.label') }}</Label>
-              <p class="text-[11px] text-muted-foreground">
-                {{ t('settings.furnitureTooltip.hint') }}
-              </p>
-            </div>
-            <Switch v-model="settingsStore.settings.showFurnitureTooltip" />
-          </div>
-
-          <!-- 背景图开关 -->
-          <div class="flex items-center justify-between">
-            <div class="mr-2 space-y-0.5">
-              <Label class="text-xs">{{ t('settings.background.label') }}</Label>
-              <p class="text-[11px] text-muted-foreground">
-                {{ t('settings.background.hint') }}
-              </p>
-            </div>
-            <Switch v-model="settingsStore.settings.showBackground" />
-          </div>
-
-          <div v-if="showModelOnlySettings" class="flex items-center justify-between">
-            <div class="mr-2 space-y-0.5">
-              <Label class="text-xs">{{ t('settings.modelAssets.label') }}</Label>
-              <p class="text-[11px] text-muted-foreground">
-                {{ t('settings.modelAssets.hint') }}
-              </p>
-            </div>
-            <Switch v-model="useFullModelAssets" />
-          </div>
-
-          <!-- 模型模式组合配色开关 -->
-          <div v-if="showModelOnlySettings" class="flex items-center justify-between">
-            <div class="mr-2 space-y-0.5">
-              <Label class="text-xs">{{ t('settings.modelGroupColor.label') }}</Label>
-              <p class="text-[11px] text-muted-foreground">
-                {{ t('settings.modelGroupColor.hint') }}
-              </p>
-            </div>
-            <Switch v-model="settingsStore.settings.modelGroupColorTint" />
-          </div>
-
-          <!-- 图标/方块大小控制 -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <Label class="text-xs text-muted-foreground">
-                {{ t('sidebar.display.iconSize') }}
-              </Label>
-              <span class="shrink-0 text-xs font-medium text-sidebar-foreground">
-                {{ Math.round(settingsStore.settings.threeSymbolScale * 100) }}%
-              </span>
-            </div>
-            <Slider
-              :model-value="[settingsStore.settings.threeSymbolScale]"
-              @update:model-value="updateThreeSymbolScale"
-              :min="0.1"
-              :max="3"
-              :step="0.1"
-              variant="thin"
-              class="w-full"
-            />
-            <p class="text-[10px] text-muted-foreground">
-              {{ t('editor.sizeControl.shortcut') }}
-            </p>
           </div>
         </div>
 

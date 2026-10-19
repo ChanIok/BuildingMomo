@@ -5,7 +5,7 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { applyScaleRenderCompensationToPositionInPlace } from '@/lib/scaleRenderCompensation'
 import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
 import { resolveFurnitureSize } from '@/lib/slidePath'
-import { createBoxMaterial } from '../shared/materials'
+import { createBoxMaterial } from '@nuan5-pro/render'
 import {
   scratchMatrix,
   scratchPosition,

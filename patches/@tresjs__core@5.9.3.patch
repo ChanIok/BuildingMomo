@@ -1,0 +1,100 @@
+diff --git a/dist/tres.js b/dist/tres.js
+index 5e22d08123fd427a9c668abb63fc4112f7c249d8..ed8aaf0aaa559af401ec7c19677d99a09254551c 100644
+--- a/dist/tres.js
++++ b/dist/tres.js
+@@ -778,7 +778,25 @@ const useCreateRafLoop = (cycleFn, { fpsLimit } = {}) => {
+ 		before: createEventHook(),
+ 		after: createEventHook()
+ 	};
+-	const { pause, resume, isActive } = useRafFn(() => {
++	let lastFrame;
++	let accumulated = 0;
++	let previousLimit;
++	const { pause, resume, isActive } = useRafFn(({ timestamp }) => {
++		const limit = toValue(fpsLimit);
++		const interval = limit > 0 && Number.isFinite(limit) ? 1000 / limit : 0;
++		if (lastFrame === undefined || limit !== previousLimit) {
++			previousLimit = limit;
++			lastFrame = timestamp;
++			accumulated = interval;
++		}
++		const elapsed = Math.max(0, timestamp - lastFrame);
++		lastFrame = timestamp;
++		if (interval) {
++			// Babylon.js AbstractEngine: retain fractional time and at most one frame of debt.
++			accumulated += elapsed;
++			if (accumulated < interval) return;
++			accumulated = Math.min(interval, accumulated - interval);
++		}
+ 		timer.update();
+ 		const context = {
+ 			delta: timer.getDelta(),
+@@ -788,10 +806,12 @@ const useCreateRafLoop = (cycleFn, { fpsLimit } = {}) => {
+ 		cycleFn();
+ 		eventHooks.after.trigger(context);
+ 	}, {
+-		immediate: false,
+-		fpsLimit
++		immediate: false
+ 	});
+ 	const start = () => {
++		previousLimit = undefined;
++		lastFrame = undefined;
++		accumulated = 0;
+ 		timer.start();
+ 		resume();
+ 	};
+@@ -861,6 +881,9 @@ function useRendererManager({ scene, canvas, options, fpsLimit, contextParts: {
+ 		if (toValue(options.renderMode) === "on-demand") invalidate();
+ 	};
+ 	const isModeAlways = computed(() => toValue(options.renderMode) === "always");
++	watch(() => toValue(options.renderMode), (renderMode) => {
++		frames.value = renderMode === "manual" ? 0 : 1;
++	});
+ 	const readyEventHook = createEventHook();
+ 	const errorEventHook = createEventHook();
+ 	let hasTriggeredReady = false;
+@@ -1548,31 +1571,21 @@ function setupTresDevtools(ctx) {
+ 	const fps = useFps({ every: updateInterval });
+ 	const { isSupported, memory } = useMemory({ scheduler: (cb) => useIntervalFn(cb, updateInterval) });
+ 	const maxFrames = 160;
+-	let lastUpdateTime = performance.now();
+-	let accumulatedTime = 0;
+-	const interval = 1;
+-	const updatePerformanceData = ({ timestamp }) => {
++	const updatePerformanceData = () => {
+ 		if (ctx.scene.value) performanceState.memory.allocatedMem = calculateMemoryUsage(ctx.scene.value);
+-		if (timestamp - lastUpdateTime >= updateInterval) {
+-			lastUpdateTime = timestamp;
+-			boundedPush(performanceState.fps.accumulator, fps.value, maxFrames);
+-			performanceState.fps.value = fps.value;
+-			if (isSupported.value && memory.value?.usedJSHeapSize) {
+-				boundedPush(performanceState.memory.accumulator, memory.value.usedJSHeapSize / 1024 / 1024, maxFrames);
+-				if (performanceState.memory.accumulator.length > 0) performanceState.memory.currentMem = performanceState.memory.accumulator.reduce((a, b) => a + b, 0) / performanceState.memory.accumulator.length;
+-			}
++		boundedPush(performanceState.fps.accumulator, fps.value, maxFrames);
++		performanceState.fps.value = fps.value;
++		if (isSupported.value && memory.value?.usedJSHeapSize) {
++			boundedPush(performanceState.memory.accumulator, memory.value.usedJSHeapSize / 1024 / 1024, maxFrames);
++			if (performanceState.memory.accumulator.length > 0) performanceState.memory.currentMem = performanceState.memory.accumulator.reduce((a, b) => a + b, 0) / performanceState.memory.accumulator.length;
+ 		}
+ 	};
+-	const { pause } = useRafFn(({ delta }) => {
+-		if (!window.__TRES__DEVTOOLS__) return;
+-		updatePerformanceData({ timestamp: performance.now() });
+-		accumulatedTime += delta;
+-		if (accumulatedTime >= interval) {
+-			window.__TRES__DEVTOOLS__.send("context", ctx);
+-			window.__TRES__DEVTOOLS__.send("performance", performanceState);
+-			accumulatedTime = 0;
+-		}
+-	}, { immediate: true });
++	const { pause } = useIntervalFn(() => {
++		if (!window.__TRES__DEVTOOLS__?.hasSubscribers) return;
++		updatePerformanceData();
++		window.__TRES__DEVTOOLS__.send("context", ctx);
++		window.__TRES__DEVTOOLS__.send("performance", performanceState);
++	}, updateInterval);
+ 	onUnmounted(() => {
+ 		pause();
+ 	});

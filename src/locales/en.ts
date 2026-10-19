@@ -126,6 +126,7 @@ export const enLocale = {
       showSelection: 'Selection (1)',
       showTransform: 'Transform (2)',
       showEditorSettings: 'Editor Settings (3)',
+      showDisplaySettings: 'Display Settings (4)',
     },
     tool: {
       select: 'Select',
@@ -423,6 +424,7 @@ export const enLocale = {
   // Settings
   settings: {
     title: 'Settings',
+    version: 'Version',
     description: 'Configure display options and editor settings',
     menu: {
       general: 'General',
@@ -474,12 +476,25 @@ export const enLocale = {
       hint: 'Show name and icon on hover',
     },
     background: {
-      label: 'Background Image',
-      hint: 'Show reference background',
+      label: 'Background',
+      off: 'Off',
+      simple: 'Simple',
+      real: 'Real',
     },
     modelAssets: {
-      label: 'Full Textures',
-      hint: 'More realistic materials',
+      label: 'Material Quality',
+    },
+    modelGeometry: {
+      label: 'Model Quality',
+    },
+    quality: { low: 'Lite', medium: 'Standard' },
+    shadows: 'Shadows',
+    resources: {
+      label: 'Resources',
+      materials: 'Materials {n}',
+      models: 'Models {n}',
+      shaders: 'Shaders {n}',
+      clear: 'Clear cache',
     },
     modelDye: {
       label: 'Model Dye',
@@ -507,6 +522,14 @@ export const enLocale = {
       hint: 'Show a popup when the file changes.',
     },
     fpsMonitor: 'Show FPS',
+    fpsLimit: {
+      label: 'Frame rate limit',
+      unlimited: 'Unlimited',
+    },
+    onDemandRendering: {
+      label: 'On-demand rendering',
+      hint: 'Pauses rendering when idle to save battery.',
+    },
     experimental: {
       label: 'Experimental Features',
       hint: 'Enable advanced features',
@@ -612,13 +635,18 @@ export const enLocale = {
 
   // Loading Progress
   loading: {
+    error: 'Render preparation failed. Import again or switch schemes.',
     icon: 'Loading Icons',
     model: 'Loading Models',
+    environment: 'Updating Lighting and Shadows',
     complete: 'Complete',
     failed: 'failed',
     phase: {
-      network: 'Downloading...',
+      network: 'Loading model resources...',
       processing: 'Preparing render...',
+      shaders: 'Compiling shaders...',
+      shadows: 'Preparing shadows...',
+      environment: 'Preprocessing environment lighting...',
     },
   },
 
@@ -672,6 +700,20 @@ export const enLocale = {
     structure: 'Structure',
     transform: 'Transform',
     editorSettings: 'Editor',
+    environment: {
+      label: 'Scene and lighting',
+      home: 'Home lighting',
+      homeHint:
+        'Simulates in-game home lighting, typically without affecting rendering performance.',
+      time: 'Game time',
+      timePicker: 'Select time',
+      presetSunrise: 'Dawn',
+      presetNoon: 'Noon',
+      presetSunset: 'Dusk',
+      presetMidnight: 'Midnight',
+      terrain: 'Home island terrain',
+      terrainError: 'Failed to load home island terrain: {message}',
+    },
     header: {
       expand: 'Expand Header Tools',
       collapse: 'Collapse Header Tools',
@@ -714,6 +756,8 @@ export const enLocale = {
     },
     display: {
       label: 'Display Settings',
+      graphics: 'Furniture Rendering',
+      helpers: 'Display Aids',
       iconSize: 'Icon/Block Size',
     },
     editAssist: {

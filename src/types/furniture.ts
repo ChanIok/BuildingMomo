@@ -10,8 +10,6 @@
 export interface FurnitureColorEntry {
   /** 显示图标 ID（UI 色块用） */
   idx: number
-  /** 每项为 [meshIdx, pattern, tint]。 */
-  cfg: [meshIdx: number, pattern: number, tint: number][]
 }
 
 /** 染色配置：groupId -> (colorIndex -> 变体配置) */
@@ -113,50 +111,4 @@ export interface FurnitureItem {
   combination?: FurnitureCombinationMember[]
   /** 该组合在游戏中定义的整组染色方案 */
   combinationColorPresets?: FurnitureCombinationColorPreset[]
-}
-
-// ========== Furniture DB (模型配置) ==========
-
-export type ModelAssetProfile = 'lite' | 'full'
-
-export interface FurnitureMeshHashes {
-  lite: string
-  full: string
-}
-
-export interface FurnitureLiteTextureManifestMeta {
-  path: string
-  hash?: string
-}
-
-export interface FurnitureLiteTextureManifestFile {
-  textures: Record<string, string>
-}
-
-/** 单个 Mesh 配置 */
-export interface FurnitureMeshConfig {
-  path: string
-  rotation: { x: number; y: number; z: number; w: number }
-  trans: { x: number; y: number; z: number }
-  scale: { x: number; y: number; z: number }
-  hashes: FurnitureMeshHashes
-}
-
-/** 家具模型配置 */
-export interface FurnitureModelConfig {
-  id: number
-  name: string
-  cat: string
-  meshes: FurnitureMeshConfig[]
-  root_offset: { x: number; y: number; z: number }
-  scale_range?: [number, number]
-  rotate_axis?: [boolean, boolean]
-  price?: number
-}
-
-/** Furniture DB 数据结构 */
-export interface FurnitureDB {
-  categories: string[]
-  liteTextureManifest?: FurnitureLiteTextureManifestMeta
-  furniture: FurnitureModelConfig[]
 }

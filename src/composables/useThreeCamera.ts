@@ -10,7 +10,7 @@ import {
   toValue,
 } from 'vue'
 import { useRafFn, useMagicKeys } from '@vueuse/core'
-import { getItemsWorldBoundsMetrics } from '@/lib/spatialBounds'
+import { getItemsWorldBoundsMetrics, type WorldBoundsMetrics } from '@/lib/spatialBounds'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -86,6 +86,7 @@ export interface CameraControllerResult {
   controlMode: Ref<ControlMode>
   isOrthographic: Ref<boolean>
   sceneCenter: Ref<Vec3>
+  sceneBounds: Ref<WorldBoundsMetrics | null>
   cameraDistance: Ref<number>
   handleNavPointerDown: (evt: PointerEvent) => void
   handleNavPointerMove: (evt: PointerEvent) => void
@@ -185,6 +186,7 @@ export function useThreeCamera(
 
   // 场景级 frame metrics：用于场景中心和正交视锥体基准距离。
   const sceneFrameMetrics = computed(() => {
+    void editorStore.sceneVersion
     const items = editorStore.activeScheme?.items.value ?? []
     return getItemsWorldBoundsMetrics(items)
   })
@@ -1078,6 +1080,7 @@ export function useThreeCamera(
     controlMode,
     isOrthographic,
     sceneCenter,
+    sceneBounds: sceneFrameMetrics,
     cameraDistance,
 
     // 事件处理

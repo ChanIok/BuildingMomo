@@ -1,0 +1,2 @@
+patchedDependencies:
+  '@tresjs/core@5.9.3': patches/@tresjs__core@5.9.3.patch

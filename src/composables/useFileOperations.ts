@@ -8,7 +8,6 @@ import { storeToRefs } from 'pinia'
 import { useValidationStore } from '../stores/validationStore'
 import { useGameDataStore } from '../stores/gameDataStore'
 import { getIconLoader } from './useIconLoader'
-import { getThreeModelManager } from './useThreeModelManager'
 import { useI18n } from './useI18n'
 import backgroundUrl from '@/assets/home.webp'
 import { createCodeImportOps } from './fileOps/codeImport'
@@ -44,14 +43,10 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     if (editorStore.activeScheme) {
       const uniqueIds = [...new Set(editorStore.activeScheme.items.value.map((i) => i.gameId))]
 
-      getIconLoader().preloadIcons(uniqueIds)
-
-      if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated) {
-        getThreeModelManager()
-          .preloadModels(uniqueIds)
-          .catch((err) => {
-            console.warn('[FileOps] 模型预加载失败:', err)
-          })
+      // The active renderer owns model preparation and its cancellation. A
+      // second fire-and-forget preload would keep superseded schemes queued.
+      if (settingsStore.settings.threeDisplayMode === 'icon') {
+        getIconLoader().preloadIcons(uniqueIds)
       }
     }
   }

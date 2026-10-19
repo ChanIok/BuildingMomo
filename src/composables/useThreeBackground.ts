@@ -1,8 +1,9 @@
-import { ref, computed, onMounted, type Ref } from 'vue'
-import { TextureLoader, SRGBColorSpace, type Texture } from 'three'
+import { ref, computed, markRaw, onMounted, onUnmounted, watch, type Ref } from 'vue'
+import { DoubleSide, MeshBasicMaterial, TextureLoader, SRGBColorSpace, type Texture } from 'three'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import type { ViewPreset } from './useThreeCamera'
+import { homeTodCurveShader, homeTodCurveUniforms } from './renderer/homeTodCurve'
 
 export interface BackgroundConfig {
   /**
@@ -16,17 +17,25 @@ export interface BackgroundConfig {
    * yOffset: Canvas Y -> Game Y 的偏移
    */
   offset: [number, number]
+
+  /** 平面绕中心的旋转（数据坐标系 Z 轴，弧度）。 */
+  rotationZ?: number
 }
 
 export interface ThreeBackgroundResult {
   /** 背景纹理 */
   backgroundTexture: Ref<Texture | null>
 
+  /** 保留白昼原图，仅按 TOD 曲线温和调整夜间显示。 */
+  backgroundTodMaterial: MeshBasicMaterial
+
   /** 背景图尺寸（世界坐标） */
   backgroundSize: Ref<{ width: number; height: number }>
 
   /** 背景图位置（Three.js 坐标系，Plane 中心点） */
   backgroundPosition: Ref<[number, number, number]>
+
+  backgroundRotation: Ref<[number, number, number]>
 
   /** 地图中心（世界坐标） */
   mapCenter: Ref<[number, number, number]>
@@ -51,8 +60,38 @@ export function useThreeBackground(
   const uiStore = useUIStore()
 
   const backgroundTexture = ref<Texture | null>(null)
+  // The overview already contains daylight and display grading. Relighting it
+  // as albedo doubles that treatment; preserve the original image during day.
+  const backgroundTodMaterial = markRaw(
+    new MeshBasicMaterial({
+      name: 'home-map-tod',
+      toneMapped: false,
+      side: DoubleSide,
+    })
+  )
+  backgroundTodMaterial.onBeforeCompile = function (shader, renderer) {
+    Object.assign(shader.uniforms, homeTodCurveUniforms(renderer))
+    shader.fragmentShader =
+      homeTodCurveShader +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `
+      #include <color_fragment>
+      vec3 todColor = homeCloudTODColor();
+      float daylight = dot(todColor, vec3(.2126, .7152, .0722));
+      // Preview thresholds, not native lighting: above .5 leave the image alone,
+      // below .25 halve linear brightness with only a quarter of the curve hue.
+      float night = 1. - smoothstep(.25, .5, daylight);
+      float peak = max(max(todColor.r, todColor.g), max(todColor.b, 1e-4));
+      vec3 nightTint = .5 * mix(vec3(1.), todColor / peak, .25);
+      diffuseColor.rgb *= mix(vec3(1.), nightTint, night);
+    `
+      )
+  }
+  backgroundTodMaterial.customProgramCacheKey = () => 'flat_map_tod_v2'
   const backgroundSize = ref<{ width: number; height: number }>({ width: 100, height: 100 })
   const backgroundPosition = ref<[number, number, number]>([0, 0, -50])
+  const backgroundRotation = computed<[number, number, number]>(() => [0, 0, config.rotationZ ?? 0])
   const mapCenter = ref<[number, number, number]>([0, 0, 0])
 
   // 背景显示条件
@@ -82,12 +121,26 @@ export function useThreeBackground(
     return isTopOrBottom && isSimpleMode
   })
 
+  watch(
+    isMapDepthDisabled,
+    (disabled) => {
+      backgroundTodMaterial.depthWrite = !disabled
+    },
+    { immediate: true }
+  )
+
   // 加载背景图
+  let disposed = false
   onMounted(() => {
     const loader = new TextureLoader()
 
     loader.load(imageUrl, (texture) => {
+      if (disposed) {
+        texture.dispose()
+        return
+      }
       texture.colorSpace = SRGBColorSpace
+      backgroundTodMaterial.map = texture
       backgroundTexture.value = texture
 
       const img = texture.image
@@ -113,10 +166,18 @@ export function useThreeBackground(
     })
   })
 
+  onUnmounted(() => {
+    disposed = true
+    backgroundTodMaterial.dispose()
+    backgroundTexture.value?.dispose()
+  })
+
   return {
     backgroundTexture,
+    backgroundTodMaterial,
     backgroundSize,
     backgroundPosition,
+    backgroundRotation,
     mapCenter,
     shouldShowBackground,
     isMapDepthDisabled,
