@@ -373,7 +373,7 @@ function handleIconError(e: Event) {
         <span
           :class="[
             'rounded-full px-2 py-0.5 text-xs font-medium',
-            selectedGroupInfo?.type === 'single' || selectedGroupInfo?.type === 'multiple'
+            isEntireGroupSelected || selectedGroupInfo?.type === 'multiple'
               ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
               : 'bg-gray-100 text-gray-600 dark:bg-secondary dark:text-muted-foreground',
           ]"
@@ -565,8 +565,7 @@ function handleIconError(e: Event) {
       <Button
         @click="groupSelected()"
         :disabled="
-          (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) < 2 ||
-          selectedGroupInfo?.type === 'single'
+          (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) < 2 || isEntireGroupSelected
         "
         class="flex-1"
         size="sm"

@@ -66,17 +66,23 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
         return
       }
 
-      // 快速对齐点选模式下，Esc 仅用于退出该模式
-      if (event.key === 'Escape' && uiStore.isSelectingQuickAlignTarget) {
-        event.preventDefault()
-        uiStore.setSelectingQuickAlignTarget(false)
-        return
-      }
-
-      if (event.key === 'Escape' && uiStore.isSelectingReplaceTarget) {
-        event.preventDefault()
-        uiStore.setSelectingReplaceTarget(false)
-        return
+      if (event.key === 'Escape') {
+        if (event.repeat || event.defaultPrevented) return
+        if (
+          uiStore.isSelectingGroupOrigin ||
+          uiStore.isSelectingPivotItem ||
+          uiStore.isSelectingAlignReference ||
+          uiStore.isSelectingQuickAlignTarget ||
+          uiStore.isSelectingReplaceTarget
+        ) {
+          event.preventDefault()
+          uiStore.setSelectingGroupOrigin(false)
+          uiStore.setSelectingPivotItem(false)
+          uiStore.setSelectingAlignReference(false)
+          uiStore.setSelectingQuickAlignTarget(false)
+          uiStore.setSelectingReplaceTarget(false)
+          return
+        }
       }
 
       // 匹配快捷键命令

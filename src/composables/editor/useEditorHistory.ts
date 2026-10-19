@@ -290,11 +290,27 @@ export function useEditorHistory() {
     store.triggerSelectionUpdate()
   }
 
-  /**
-   * 执行对一条事务记录的撤回。
-   * @param entry 我们希望倒回的那笔交易记录
-   */
+  // Replay retains global history order; outside edits must be visible before applying them.
+  function prepareLocalHistoryReplay(entry: TransactionHistoryEntry) {
+    const scope = store.localEditingItemIds
+    if (scope === null) return
+    const touchedIds = collectTransactionTouchedItemIds(entry.transaction)
+    let outside = [...touchedIds].some((id) => !scope.has(id))
+    for (const op of entry.transaction.ops) {
+      if (op.type !== 'set_group_origins') continue
+      const before = new Map(op.before)
+      const after = new Map(op.after)
+      for (const groupId of new Set([...before.keys(), ...after.keys()])) {
+        if (before.get(groupId) === after.get(groupId)) continue
+        if ([...(store.groupsMap.get(groupId) ?? [])].some((id) => !scope.has(id))) outside = true
+      }
+    }
+    if (outside) store.exitLocalEditing()
+  }
+
+  /** 执行对一条事务记录的撤回。 */
   function undoTransaction(entry: TransactionHistoryEntry) {
+    prepareLocalHistoryReplay(entry)
     const renderVersion = store.sceneVersion
     const scheme = activeScheme.value!
     const history = scheme.history.value!
@@ -328,6 +344,7 @@ export function useEditorHistory() {
    * 和 undo 极为神似。
    */
   function redoTransaction(entry: TransactionHistoryEntry) {
+    prepareLocalHistoryReplay(entry)
     const renderVersion = store.sceneVersion
     const scheme = activeScheme.value!
     const history = scheme.history.value!

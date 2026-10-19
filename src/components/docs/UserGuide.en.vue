@@ -115,6 +115,21 @@
       </li>
     </ul>
 
+    <h3>Local Editing</h3>
+    <p>
+      Select any furniture and choose <strong>Enter Local Editing</strong> from the canvas context
+      menu. Double-clicking a group is a shortcut for entering with all its members. Entry clears
+      the selection and preserves the camera. Only the working set is shown; select and edit
+      individual items within it. Select All, Invert Selection and Select Same Type stay within this
+      set. Added and pasted furniture joins the working set without automatically joining an
+      existing group. Pasting with source IDs is unavailable.
+    </p>
+    <p>
+      A single click on empty space clears the selection. Double-click empty space, click
+      <strong>Exit</strong> at the top right, or press <code>Esc</code> with nothing selected to
+      leave. Exiting clears the selection and preserves your camera position and edits.
+    </p>
+
     <h2>Advanced Features</h2>
 
     <h3>Coordinate System</h3>
@@ -210,9 +225,9 @@
         fine-tuning.
       </li>
       <li>
-        <strong>Edit complex buildings in separate schemes</strong>: For large or structurally
-        complex building groups, consider
-        <strong>cutting that section to a new blank scheme tab</strong> to edit separately.
+        <strong>Use local editing for complex buildings</strong>: Select the furniture you need and
+        enter local editing, or double-click a group, to work without surrounding furniture getting
+        in the way.
       </li>
     </ul>
   </div>

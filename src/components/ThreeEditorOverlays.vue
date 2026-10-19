@@ -12,6 +12,8 @@ import {
 import { useI18n } from '@/composables/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useEditorStore } from '@/stores/editorStore'
+import type { Command } from '@/stores/commandStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
 import { PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next'
 import LoadingProgress from './LoadingProgress.vue'
@@ -23,6 +25,7 @@ import FpsMonitor from './FpsMonitor.vue'
 
 const { t } = useI18n()
 const uiStore = useUIStore()
+const editorStore = useEditorStore()
 
 interface SelectionRect {
   x: number
@@ -75,6 +78,12 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+const localEditingCommand = computed<Command>(() =>
+  props.commandStore.commandMap.get(
+    editorStore.localEditingItemIds === null ? 'edit.enterLocalEditing' : 'edit.exitLocalEditing'
+  )
+)
 
 const emit = defineEmits<{
   'update:contextMenu': [value: ContextMenuState]
@@ -157,6 +166,30 @@ function handleViewInfoClick() {
 <template>
   <!-- 右上角状态信息组（禁止选中文本，避免拖拽/点击时误选） -->
   <div class="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 select-none">
+    <div
+      v-if="editorStore.localEditingItemIds !== null"
+      role="status"
+      class="flex max-w-[calc(100vw-2rem)] items-baseline gap-2 rounded-md border bg-background/90 px-3 py-2 text-xs whitespace-nowrap shadow-xs backdrop-blur-sm"
+      @pointerdown.stop
+      @pointerup.stop
+      @dblclick.stop
+    >
+      <span class="font-medium">
+        {{ t('localEdit.status', { count: editorStore.localEditingItemCount }) }}
+      </span>
+      <span class="flex items-baseline gap-1 text-[10px]">
+        <span v-if="!isCoarsePointer" class="text-muted-foreground">
+          {{ t('localEdit.exitHint') }}
+        </span>
+        <button
+          type="button"
+          class="rounded-sm text-xs font-medium transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          @click.stop="editorStore.exitLocalEditing()"
+        >
+          {{ t('localEdit.exit') }}
+        </button>
+      </span>
+    </div>
     <!-- 视图信息和侧边栏控制按钮（同一行） -->
     <div class="flex items-center gap-2">
       <!-- 视图信息 -->
@@ -308,6 +341,12 @@ function handleViewInfoClick() {
         <DropdownMenuShortcut>Ctrl+V</DropdownMenuShortcut>
       </DropdownMenuItem>
       <DropdownMenuSeparator />
+      <DropdownMenuItem
+        :disabled="!commandStore.isCommandEnabled(localEditingCommand.id)"
+        @select="commandStore.executeCommand(localEditingCommand.id)"
+      >
+        <span>{{ localEditingCommand.label }}</span>
+      </DropdownMenuItem>
       <DropdownMenuItem
         :disabled="!commandStore.isCommandEnabled('edit.group')"
         @select="commandStore.executeCommand('edit.group')"

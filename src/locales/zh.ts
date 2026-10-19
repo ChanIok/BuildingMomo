@@ -1,4 +1,12 @@
 export const zhLocale = {
+  localEdit: {
+    status: '局部编辑 · {count}件家具',
+    enter: '进入局部编辑',
+    exit: '退出',
+    exitAction: '退出局部编辑',
+    exitHint: '双击空白处或按 ESC',
+    pasteHint: '局部编辑时仅支持分配新编号粘贴，以免修改范围外家具。',
+  },
   // 方案相关
   scheme: {
     defaultName: '方案 {n}',

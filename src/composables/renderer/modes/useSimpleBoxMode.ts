@@ -1,5 +1,7 @@
 import { ref, markRaw } from 'vue'
 import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 'three'
+import type { AppItem } from '@/types/editor'
+import { selectRenderItems } from '../shared/renderItems'
 import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
@@ -62,8 +64,12 @@ export function useSimpleBoxMode() {
   /**
    * 重建所有实例
    */
-  function rebuild() {
-    const items = editorStore.activeScheme?.items.value ?? []
+  function rebuild(
+    items: readonly AppItem[] = selectRenderItems(
+      editorStore.activeScheme?.items.value ?? [],
+      editorStore.localEditingItemIds ?? null
+    )
+  ) {
     const instanceCount = requiredInstanceCount(items.length)
     ensureMeshPool(instanceCount)
 

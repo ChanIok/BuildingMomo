@@ -1,4 +1,4 @@
-import { ref, markRaw, type Ref } from 'vue'
+import { ref, markRaw, watch, type Ref } from 'vue'
 import { Raycaster, Vector2, type Camera } from 'three'
 import {
   computeBounds,
@@ -36,6 +36,23 @@ export function useThreeSelection(
   const isSelecting = ref(false)
   const lassoPoints = ref<ScreenPoint[]>([])
   const mouseDownPos = ref<ScreenPoint | null>(null)
+  let lastClick: { id: string | null; time: number; x: number; y: number } | null = null
+
+  watch(
+    () => editorStore.localEditingItemIds,
+    () => {
+      lastClick = null
+      interactionAdapter.value.cancelPick()
+      uiStore.setActiveSlidePathPoint(null)
+      uiStore.setSidebarHoveredGameId(null)
+      uiStore.setSelectingGroupOrigin(false)
+      uiStore.setSelectingPivotItem(false)
+      uiStore.setSelectingAlignReference(false)
+      uiStore.setSelectingQuickAlignTarget(false)
+      uiStore.setSelectingReplaceTarget(false)
+    },
+    { flush: 'sync' }
+  )
 
   const { deselectItems, updateSelection, intersectSelection, clearSelection } =
     useEditorSelection()
@@ -105,11 +122,16 @@ export function useThreeSelection(
     }
   }
 
-  function cancelSelectionSession() {
+  function resetSelectionSession() {
     mouseDownPos.value = null
     isSelecting.value = false
     selectionRect.value = null
     lassoPoints.value = []
+  }
+
+  function cancelSelectionSession() {
+    lastClick = null
+    resetSelectionSession()
   }
 
   function handlePointerUp(evt: any) {
@@ -139,13 +161,15 @@ export function useThreeSelection(
     // 此处再次检查 distance 作为兜底，确保微小移动不被当作框选提交。
     if (!isSelecting.value || distance < 3) {
       performClickSelection(evt)
-    } else if (editorStore.selectionMode === 'lasso') {
-      performLassoSelection(lasso)
-    } else if (rectInfo) {
-      performBoxSelection(rectInfo)
+      resetSelectionSession()
+    } else {
+      if (editorStore.selectionMode === 'lasso') {
+        performLassoSelection(lasso)
+      } else if (rectInfo) {
+        performBoxSelection(rectInfo)
+      }
+      cancelSelectionSession()
     }
-
-    cancelSelectionSession()
   }
 
   function handleGroupOriginClick(evt: any) {
@@ -439,6 +463,38 @@ export function useThreeSelection(
     raycaster.setFromCamera(pointerNdc, camera)
 
     const hit = interactionAdapter.value.pick(raycaster)
+
+    const id = hit?.internalId ?? null
+    const time = evt.timeStamp ?? performance.now()
+    const previous = lastClick
+    const isDoubleClick =
+      evt.pointerType !== 'touch' &&
+      !evt.ctrlKey &&
+      !evt.metaKey &&
+      !evt.shiftKey &&
+      !evt.altKey &&
+      previous !== null &&
+      previous.id === id &&
+      time - previous.time < 400 &&
+      Math.hypot(evt.clientX - previous.x, evt.clientY - previous.y) < 5
+
+    if (isDoubleClick) {
+      lastClick = null
+      if (!hit && editorStore.localEditingItemIds !== null) {
+        editorStore.exitLocalEditing()
+        return
+      }
+      if (hit && editorStore.localEditingItemIds === null) {
+        const item = editorStore.itemsMap.get(hit.internalId)
+        const group = item && editorStore.groupsMap.get(item.groupId)
+        if (group) {
+          editorStore.enterLocalEditing(group)
+          return
+        }
+      }
+    } else {
+      lastClick = { id, time, x: evt.clientX, y: evt.clientY }
+    }
 
     if (hit?.kind === 'slide-path-point' && hit.pointIndex !== undefined) {
       updateSelection([hit.internalId], false, { skipGroupExpansion: true })

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, shallowRef, triggerRef } from 'vue'
+import { ref, computed, shallowRef, triggerRef, watch } from 'vue'
 
 // 选择动作类型
 export type SelectionAction = 'new' | 'add' | 'subtract' | 'intersect' | 'toggle'
@@ -145,6 +145,81 @@ export const useEditorStore = defineStore('editor', () => {
     return map
   })
 
+  // 局部编辑作用域（独立于家具组和历史事务的临时工作集）
+  const localEditingItemIds = shallowRef<ReadonlySet<string> | null>(null)
+
+  const localEditingItemCount = computed(() => {
+    let count = 0
+    for (const id of localEditingItemIds.value ?? []) {
+      if (itemsMap.value.has(id)) count++
+    }
+    return count
+  })
+
+  function isItemEditable(itemId: string): boolean {
+    return (
+      itemsMap.value.has(itemId) &&
+      (localEditingItemIds.value === null || localEditingItemIds.value.has(itemId))
+    )
+  }
+
+  function enterLocalEditing(itemIds: Iterable<string>) {
+    const scheme = activeScheme.value
+    if (!scheme || localEditingItemIds.value !== null) return
+    const ids = new Set<string>()
+    for (const id of itemIds) {
+      if (itemsMap.value.has(id)) {
+        ids.add(id)
+      }
+    }
+    if (ids.size === 0) return
+    localEditingItemIds.value = ids
+    scheme.selectedItemIds.value = new Set()
+    triggerSelectionUpdate()
+  }
+
+  function includeInLocalEditing(itemIds: Iterable<string>) {
+    const current = localEditingItemIds.value
+    if (current === null) return
+    const ids = new Set(current)
+    for (const id of itemIds) {
+      ids.add(id)
+    }
+    if (ids.size !== current.size) {
+      localEditingItemIds.value = ids
+    }
+  }
+
+  function exitLocalEditing() {
+    localEditingItemIds.value = null
+    if (activeScheme.value) {
+      activeScheme.value.selectedItemIds.value = new Set()
+      triggerSelectionUpdate()
+    }
+  }
+
+  function constrainSelectionToLocalEditing() {
+    const scheme = activeScheme.value
+    if (!scheme || localEditingItemIds.value === null) return false
+    let changed = false
+    const current = scheme.selectedItemIds.value
+    for (const id of current) {
+      if (!isItemEditable(id)) {
+        current.delete(id)
+        changed = true
+      }
+    }
+    return changed
+  }
+
+  watch(
+    activeSchemeId,
+    () => {
+      localEditingItemIds.value = null
+    },
+    { flush: 'sync' }
+  )
+
   // 场景内容版本号：任何已提交的物品变更都统一触发 full rebuild。
   // 拖拽过程中的临时预览仍走实例矩阵直写，但提交后的持久状态只认 sceneVersion。
   const sceneVersion = ref(0)
@@ -203,12 +278,16 @@ export const useEditorStore = defineStore('editor', () => {
   function triggerSceneUpdate() {
     if (activeScheme.value) {
       triggerRef(activeScheme.value.items)
+      if (constrainSelectionToLocalEditing()) {
+        triggerSelectionUpdate()
+      }
       sceneVersion.value++
     }
   }
 
   function triggerSelectionUpdate() {
     if (activeScheme.value) {
+      constrainSelectionToLocalEditing()
       triggerRef(activeScheme.value.selectedItemIds)
       selectionVersion.value++
     }
@@ -726,7 +805,12 @@ export const useEditorStore = defineStore('editor', () => {
    */
   function setItemInstanceId(internalId: string, nextInstanceId: number): boolean {
     const scheme = activeScheme.value
-    if (!scheme || !Number.isInteger(nextInstanceId) || nextInstanceId <= 0) {
+    if (
+      !scheme ||
+      !isItemEditable(internalId) ||
+      !Number.isInteger(nextInstanceId) ||
+      nextInstanceId <= 0
+    ) {
       return false
     }
 
@@ -741,6 +825,9 @@ export const useEditorStore = defineStore('editor', () => {
         .filter((item) => item.internalId !== internalId && item.instanceId === nextInstanceId)
         .map((item) => item.internalId)
     )
+
+    // Renumbering hidden furniture would cross the local editing boundary.
+    if ([...conflictingItemIds].some((id) => !isItemEditable(id))) return false
 
     const conflictRemap = new Map<string, number>()
     for (const itemId of conflictingItemIds) {
@@ -843,6 +930,12 @@ export const useEditorStore = defineStore('editor', () => {
     activeScheme,
     itemsMap,
     groupsMap,
+    localEditingItemIds,
+    localEditingItemCount,
+    includeInLocalEditing,
+    enterLocalEditing,
+    exitLocalEditing,
+    isItemEditable,
     clipboardList: clipboardRef,
     currentTool,
     selectionMode,

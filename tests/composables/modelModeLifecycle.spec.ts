@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { BoxGeometry, Group, InstancedMesh, MeshBasicMaterial } from 'three'
+import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, MeshBasicMaterial } from 'three'
 import { useLoadingStore } from '../../src/stores/loadingStore'
 import { useModelMode } from '../../src/composables/renderer/modes/useModelMode'
 import { invalidateScene } from '../../src/composables/useSceneInvalidate'
@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   editor: {
     activeScheme: null as any,
     sceneVersion: 0,
+    localEditingItemIds: null as ReadonlySet<string> | null,
     getRenderChanges: vi.fn(() => null as any),
   },
   settings: { modelAssetProfile: 'full', materialAssetProfile: 'full' },
@@ -40,10 +41,11 @@ vi.mock('@/composables/useFurnitureRender', () => ({
 }))
 vi.mock('@/composables/useSceneInvalidate', () => ({ invalidateScene: vi.fn() }))
 
-function item(id: string, gameId = 1) {
+function item(id: string, gameId = 1, groupId = 0) {
   return {
     internalId: id,
     gameId,
+    groupId,
     x: 0,
     y: 0,
     z: 0,
@@ -60,6 +62,7 @@ beforeEach(() => {
   state.settings.materialAssetProfile = 'full'
   state.editor.activeScheme = { id: 'scheme-a', items: { value: [item('a')] } }
   state.editor.sceneVersion = 0
+  state.editor.localEditingItemIds = null
   state.editor.getRenderChanges.mockReset().mockReturnValue(null)
   state.prepare.mockReset().mockResolvedValue(undefined)
   state.available = true
@@ -87,7 +90,10 @@ beforeEach(() => {
     getModelBounds: () => undefined,
     getInstance: (id: string) => instances.get(id),
     getBatchInstances: (id: number) =>
-      [...instances].filter(([, entry]) => entry.mesh === batches.get(id)).map(([id]) => id),
+      [...instances]
+        .filter(([, entry]) => entry.mesh === batches.get(id))
+        .sort(([, left], [, right]) => left.index - right.index)
+        .map(([id]) => id),
     load: vi.fn(async (ids, task) => {
       task.onProgress?.({ phase: 'loading', completed: ids.length, total: ids.length })
       task.onProgress?.({ phase: 'preparing', completed: ids.length, total: ids.length })
@@ -127,6 +133,15 @@ beforeEach(() => {
       for (const id of ids) {
         const entry = instances.get(id)
         if (!entry) continue
+        const last = [...instances.values()].find(
+          (candidate) => candidate.mesh === entry.mesh && candidate.index === entry.mesh.count - 1
+        )
+        if (last && last !== entry) {
+          const matrix = new Matrix4()
+          entry.mesh.getMatrixAt(last.index, matrix)
+          entry.mesh.setMatrixAt(entry.index, matrix)
+          last.index = entry.index
+        }
         instances.delete(id)
         entry.mesh.count--
         if (!entry.mesh.count) {
@@ -569,4 +584,222 @@ it('ignores a cancelled manifest failure without overwriting a newer loading ses
   } finally {
     mode.dispose()
   }
+})
+
+it('projects mixed model/fallback batches on scope changes without a scene transaction or asset replacement', async () => {
+  const items = [
+    item('outside', 1, 8),
+    item('inside', 1, 7),
+    item('fallback', 99, 0),
+    item('hidden-fallback', 99, 8),
+  ]
+  state.editor.activeScheme.items.value = items
+  state.layer.getConfig = (id: number) =>
+    id === 99 ? undefined : { componentCount: 1, customData: [0], colorings: {} }
+  state.editor.getRenderChanges.mockReturnValue(new Map())
+  const mode = useModelMode()
+  await mode.rebuild()
+  const mesh = state.layer.getInstance('inside').mesh
+  expect(mode.fallbackMesh.value!.count).toBe(2)
+  mode.fallbackMesh.value!.setColorAt(0, new Color(0x123456))
+  state.editor.localEditingItemIds = new Set(['inside', 'fallback'])
+  const pending = mode.rebuild()
+  expect(state.layer.root.visible).toBe(true)
+  expect([...mode.idToIndexMap.value.keys()]).toEqual(['inside', 'fallback'])
+  expect(mode.fallbackMesh.value!.count).toBe(1)
+  const retainedColor = new Color()
+  mode.fallbackMesh.value!.getColorAt(0, retainedColor)
+  expect(retainedColor.getHex()).toBe(0x123456)
+  expect(state.layer.getInstance('inside').mesh).toBe(mesh)
+  expect(await pending).toBe(true)
+  expect(state.layer.getInstance('outside')).toBeUndefined()
+  expect(state.layer.getInstance('inside').mesh).toBe(mesh)
+  expect([...mode.idToIndexMap.value.keys()]).toEqual(['inside', 'fallback'])
+  expect(mode.internalIdToMeshInfo.value.get('inside')!.localIndex).toBe(0)
+  expect(mode.fallbackMesh.value!.count).toBe(1)
+  expect(state.editor.activeScheme.items.value).toBe(items)
+  expect(state.editor.sceneVersion).toBe(0)
+  state.editor.localEditingItemIds = null
+  await mode.rebuild()
+  expect(mode.idToIndexMap.value.size).toBe(4)
+  expect(mode.fallbackMesh.value!.count).toBe(2)
+  expect(state.layer.getInstance('inside').mesh).toBe(mesh)
+  expect(state.layer.replaceAll).toHaveBeenCalledTimes(1)
+  mode.dispose()
+})
+
+it('ignores hidden edits and updates membership through the normal incremental slot API', async () => {
+  const inside = item('inside', 1, 7),
+    outside = item('outside', 2, 8),
+    peer = item('peer', 1, 0)
+  state.editor.activeScheme.items.value = [outside, inside, peer]
+  state.editor.localEditingItemIds = new Set(['inside', 'peer'])
+  const mode = useModelMode()
+  await mode.rebuild()
+  state.layer.load.mockClear()
+  state.layer.upsert.mockClear()
+  const hiddenChange = { ...outside, x: 300 }
+  state.editor.activeScheme.items.value = [hiddenChange, inside, peer]
+  state.editor.sceneVersion++
+  state.editor.getRenderChanges.mockReturnValue(new Map([['outside', hiddenChange]]))
+  await mode.rebuild()
+  expect(state.layer.load).not.toHaveBeenCalled()
+  expect(state.layer.upsert).not.toHaveBeenCalled()
+  expect(state.layer.getInstance('outside')).toBeUndefined()
+  const moved = { ...inside, x: 42 }
+  state.editor.activeScheme.items.value = [hiddenChange, moved, peer]
+  state.editor.sceneVersion++
+  await mode.rebuild()
+  expect(state.layer.updateMatrices.mock.calls.at(-1)[0][0].matrix.elements[12]).toBe(42)
+  const incoming = { ...hiddenChange, groupId: 7 }
+  state.editor.activeScheme.items.value = [incoming, { ...moved, groupId: 8 }, peer]
+  state.editor.localEditingItemIds = new Set(['outside', 'peer'])
+  state.editor.sceneVersion++
+  await mode.rebuild()
+  expect(state.layer.getInstance('inside')).toBeUndefined()
+  expect(state.layer.getInstance('outside')).toBeDefined()
+  expect([...mode.idToIndexMap.value.keys()].sort()).toEqual(['outside', 'peer'])
+  expect(state.layer.replaceAll).toHaveBeenCalledTimes(1)
+  mode.dispose()
+})
+
+it('keeps local models and fallbacks visible while only the missing furniture is prepared on exit', async () => {
+  state.editor.activeScheme.items.value = [
+    item('outside', 2),
+    item('inside', 1),
+    item('fallback', 99),
+    item('hidden-fallback', 99),
+  ]
+  state.layer.getConfig = (id: number) =>
+    id === 99 ? undefined : { componentCount: 1, customData: [0], colorings: {} }
+  const mode = useModelMode()
+  await mode.rebuild()
+  state.editor.localEditingItemIds = new Set(['inside', 'fallback'])
+  await mode.rebuild()
+  const mesh = state.layer.getInstance('inside').mesh
+  const fallback = mode.fallbackMesh.value
+  state.layer.load.mockClear()
+  let finish!: () => void
+  state.layer.load.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+  )
+  state.editor.localEditingItemIds = null
+  const pending = mode.rebuild()
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  expect(state.layer.root.visible).toBe(true)
+  expect(state.layer.getInstance('inside').mesh).toBe(mesh)
+  expect(mesh.count).toBe(1)
+  expect(fallback!.count).toBe(1)
+  expect(mode.fallbackMesh.value).toBe(fallback)
+  expect([...mode.idToIndexMap.value.keys()]).toEqual(['inside', 'fallback'])
+  expect(state.layer.load.mock.calls[0][0]).toEqual([2])
+  expect(state.layer.getInstance('outside')).toBeUndefined()
+  expect(useLoadingStore().isLoading).toBe(true)
+  finish()
+  expect(await pending).toBe(true)
+  expect(useLoadingStore().isLoading).toBe(false)
+  expect(state.layer.root.visible).toBe(true)
+  expect(state.layer.getInstance('inside').mesh).toBe(mesh)
+  expect(state.layer.getInstance('outside')).toBeDefined()
+  expect(mode.fallbackMesh.value).toBe(fallback)
+  expect(fallback!.count).toBe(2)
+  expect(mode.idToIndexMap.value.size).toBe(4)
+  expect(state.layer.replaceAll).toHaveBeenCalledTimes(1)
+  mode.dispose()
+})
+
+it('restores pruned instances even when a cancelled entry returns to the last committed scope', async () => {
+  state.editor.activeScheme.items.value = [item('inside', 1), item('outside', 2)]
+  const mode = useModelMode()
+  await mode.rebuild()
+  const mesh = state.layer.getInstance('inside').mesh
+  let finish!: (layer: typeof state.layer) => void
+  state.ready.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
+  state.editor.localEditingItemIds = new Set(['inside'])
+  const obsolete = mode.rebuild()
+  expect(state.layer.root.visible).toBe(true)
+  expect(state.layer.getInstance('outside')).toBeUndefined()
+  state.editor.localEditingItemIds = null
+  expect(await mode.rebuild()).toBe(true)
+  expect(state.layer.getInstance('inside').mesh).toBe(mesh)
+  expect(state.layer.getInstance('outside')).toBeDefined()
+  finish(state.layer)
+  expect(await obsolete).toBe(false)
+  expect(mode.idToIndexMap.value.size).toBe(2)
+  mode.dispose()
+})
+
+it('does not let a late load restore a scope that has already been left', async () => {
+  state.editor.activeScheme.items.value = [item('inside', 1, 7), item('outside', 2, 8)]
+  const mode = useModelMode()
+  await mode.rebuild()
+  state.editor.localEditingItemIds = new Set(['inside'])
+  await mode.rebuild()
+  let finish!: () => void
+  state.layer.load.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+  )
+  state.editor.localEditingItemIds = null
+  const obsolete = mode.rebuild()
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  state.editor.localEditingItemIds = new Set(['inside'])
+  expect(await mode.rebuild()).toBe(true)
+  finish()
+  expect(await obsolete).toBe(false)
+  expect([...mode.idToIndexMap.value.keys()]).toEqual(['inside'])
+  expect(state.layer.getInstance('outside')).toBeUndefined()
+  expect(state.layer.root.visible).toBe(true)
+  mode.dispose()
+})
+
+it('reconciles actual layer slots after a cancelled build removed a previously committed instance', async () => {
+  state.editor.activeScheme.items.value = [item('a', 1, 7), item('b', 2, 8)]
+  const mode = useModelMode()
+  await mode.rebuild()
+  const remove = state.layer.remove.getMockImplementation()!
+  state.layer.remove.mockImplementationOnce((ids: string[]) => {
+    remove(ids)
+    state.editor.localEditingItemIds = new Set(['b'])
+  })
+  state.editor.localEditingItemIds = new Set(['a'])
+  expect(await mode.rebuild()).toBe(false)
+  expect(state.layer.getInstance('b')).toBeUndefined()
+  expect(await mode.rebuild()).toBe(true)
+  expect([...mode.idToIndexMap.value.keys()]).toEqual(['b'])
+  expect(state.layer.getInstance('a')).toBeUndefined()
+  expect(state.layer.getInstance('b')).toBeDefined()
+  mode.dispose()
+})
+
+it('fills newly visible slots when a previously capped scene shrinks back under its budget', async () => {
+  const a = item('a'),
+    b = item('b'),
+    c = item('c')
+  state.editor.activeScheme.items.value = [a, b, c]
+  const mode = useModelMode()
+  // Supply a small capped projection to exercise the boundary without allocating 500k matrices.
+  await mode.rebuild({ items: [a, b] })
+  expect([...mode.idToIndexMap.value.keys()]).toEqual(['a', 'b'])
+  state.editor.activeScheme.items.value = [b, c]
+  state.editor.sceneVersion++
+  state.editor.getRenderChanges.mockReturnValue(new Map([['a', null]]))
+  const pending = mode.rebuild()
+  expect(state.layer.root.visible).toBe(true)
+  expect(state.layer.getInstance('b')).toBeDefined()
+  expect(state.layer.getInstance('a')).toBeUndefined()
+  expect(await pending).toBe(true)
+  expect([...mode.idToIndexMap.value.keys()].sort()).toEqual(['b', 'c'])
+  expect(state.layer.getInstance('c')).toBeDefined()
+  mode.dispose()
 })

@@ -1,5 +1,14 @@
+import { useRenderItems } from './shared/renderItems'
+import { retainInstances } from './shared/retainInstances'
 import { ref, watch, onUnmounted, computed, type Ref } from 'vue'
-import { Matrix4, Vector3, type Camera, type Raycaster, type InstancedMesh } from 'three'
+import {
+  Matrix4,
+  Vector3,
+  InstancedBufferAttribute,
+  type Camera,
+  type Raycaster,
+  type InstancedMesh,
+} from 'three'
 import { ObjectBVH } from 'three-mesh-bvh'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
@@ -36,6 +45,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
   const uiStore = useUIStore()
+  const getRenderItems = useRenderItems()
 
   // 初始化 BVH 加速（仅执行一次）
   if (!bvhInitialized) {
@@ -63,6 +73,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   const indexToIdMap = ref(new Map<number, string>())
   const idToIndexMap = ref(new Map<string, number>())
   let isDisposed = false
+  const interactionReady = ref(false)
 
   // 重建调度器：保证同一时刻只有一个 rebuild 在执行，后续请求合并到下一轮
   let rebuildPending = false
@@ -81,8 +92,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     if (selectedIds.size === 0) return null
 
     const hoveredIds = new Set<string>()
-    for (const item of scheme.items.value) {
-      if (item.gameId === hoveredGameId && selectedIds.has(item.internalId)) {
+    for (const id of selectedIds) {
+      const item = editorStore.itemsMap.get(id)
+      if (item?.gameId === hoveredGameId) {
         hoveredIds.add(item.internalId)
       }
     }
@@ -139,6 +151,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     if (isDisposed) return
 
     const mode = settingsStore.settings.threeDisplayMode
+    const items = getRenderItems()
+    const version = editorStore.sceneVersion
+    const isStale = () =>
+      isDisposed || seq !== requestedRebuildSeq || editorStore.sceneVersion !== version
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
     const simpleBoxMeshTarget = simpleBoxMode.mesh.value
@@ -165,23 +181,25 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     // 执行对应模式的重建
     switch (mode) {
       case 'box':
-        await boxMode.rebuild()
+        boxMode.rebuild(items)
         break
       case 'icon':
-        await iconMode.rebuild()
+        if (!(await iconMode.rebuild(items, isStale))) return
         break
       case 'simple-box':
-        await simpleBoxMode.rebuild()
+        simpleBoxMode.rebuild(items)
         break
       case 'model':
         // 若本轮构建被模型模式内部中断（方案切换等），跳过后续提交，等待下一轮
         const committed = await modelMode.rebuild({
-          isStale: () => isDisposed || seq !== requestedRebuildSeq,
+          items,
+          isStale,
         })
         if (!committed || isDisposed || seq !== requestedRebuildSeq) {
           return
         }
 
+        interactionReady.value = true
         if (!modelMode.structureChanged) {
           colorManager.updateModelItems(
             modelMode.changedItems,
@@ -234,7 +252,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
 
     // 非 Model 模式：构建全局索引映射
-    const items = editorStore.activeScheme?.items.value ?? []
     const map = new Map<number, string>()
     const instanceCount = requiredInstanceCount(items.length)
 
@@ -250,6 +267,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       reverseMap.set(id, index)
     }
     idToIndexMap.value = reverseMap
+    interactionReady.value = true
 
     // 更新颜色
     // 重新获取 mesh 引用，因为 rebuild 可能重新创建了 mesh（例如首次进入 Icon 模式时）
@@ -273,6 +291,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     idToWorldMatrixMap: Map<string, Matrix4>,
     skipBVHRefit: boolean = false
   ) {
+    if (!interactionReady.value) return
     const mode = settingsStore.settings.threeDisplayMode
     const meshTarget = boxMode.mesh.value
     const iconMeshTarget = iconMode.mesh.value
@@ -651,6 +670,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     return {
       // 同步射线检测（用于点击等需要立即结果的场景）
       pick: (raycaster: Raycaster) => {
+        if (!interactionReady.value) return null
         if (mode === 'model') {
           return pickModel(raycaster)
         } else {
@@ -671,6 +691,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
       // 异步时间切片射线检测（用于 tooltip 等可接受延迟的场景）
       pickAsync: async (raycaster: Raycaster) => {
+        if (!interactionReady.value) return null
         // 取消上一次未完成的检测，避免旧任务的结果覆盖最新的 hover 状态
         cancelTask(activeRaycastTask)
 
@@ -705,6 +726,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
       // 枚举当前模式下可参与区域选择的中心点候选（框选 / 套索的核心数据来源）
       forEachRegionCenterCandidate: (camera, viewport, visitor) => {
+        if (!interactionReady.value) return
         // seenIds 防止 model 模式下同一物品出现在多个 mesh 时被重复访问
         const seenIds = new Set<string>()
 
@@ -727,6 +749,67 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
     }
   })
 
+  // Interaction and visibility have separate lifetimes during asynchronous preparation.
+  function suspendInteraction() {
+    interactionReady.value = false
+    cancelTask(activeRaycastTask)
+    activeRaycastTask = null
+    modelPickBVH = null
+    modelPickMeshMap = null
+    colorManager.hoveredItemId.value = null
+    colorManager.suppressedHoverId.value = null
+    colorManager.setSidebarHoveredItemIds(null)
+    selectionOutline.reconcileMaskMeshes(new Map(), null)
+  }
+
+  function invalidateVisibleInstances() {
+    suspendInteraction()
+    for (const mesh of [
+      boxMode.mesh.value,
+      iconMode.mesh.value,
+      simpleBoxMode.mesh.value,
+      modelMode.fallbackMesh.value,
+    ]) {
+      if (mesh) mesh.count = 0
+    }
+    modelMode.hideInstances()
+    indexToIdMap.value = new Map()
+    idToIndexMap.value = new Map()
+    invalidateScene({ shadows: true })
+  }
+
+  function retainVisibleInstances() {
+    suspendInteraction()
+    const items = getRenderItems()
+    const mode = settingsStore.settings.threeDisplayMode
+    if (mode === 'model') {
+      modelMode.retainItems(items)
+    } else {
+      const mesh = getActiveInstancedMesh(mode)
+      if (mesh) {
+        const textureIndices = mesh.geometry.getAttribute('textureIndex')
+        const retained = retainInstances(
+          mesh,
+          indexToIdMap.value,
+          new Set(items.map((item) => item.internalId)),
+          textureIndices instanceof InstancedBufferAttribute ? [textureIndices] : []
+        )
+        indexToIdMap.value = retained
+        idToIndexMap.value = new Map([...retained].map(([index, id]) => [id, index]))
+      }
+    }
+    invalidateScene({ shadows: true })
+  }
+
+  watch(
+    () => editorStore.localEditingItemIds,
+    () => {
+      retainVisibleInstances()
+      scheduleRebuild()
+    },
+    { flush: 'sync' }
+  )
+
   // Watchers
   watch(
     () => editorStore.activeScheme,
@@ -734,21 +817,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       // Scheme identity, not sceneVersion: transforms, dyes and camera changes
       // keep their visible meshes. A different scheme must never inherit them.
       requestedRebuildSeq++
-      cancelTask(activeRaycastTask)
-      activeRaycastTask = null
-      for (const mesh of [boxMode.mesh.value, iconMode.mesh.value, simpleBoxMode.mesh.value]) {
-        if (mesh) mesh.count = 0
-      }
+      invalidateVisibleInstances()
       modelMode.clearScene()
-      indexToIdMap.value = new Map()
-      idToIndexMap.value = new Map()
-      modelPickBVH = null
-      modelPickMeshMap = null
-      colorManager.hoveredItemId.value = null
-      colorManager.suppressedHoverId.value = null
-      colorManager.setSidebarHoveredItemIds(null)
-      selectionOutline.reconcileMaskMeshes(new Map(), null)
-      invalidateScene()
     },
     { flush: 'sync' }
   )
@@ -773,8 +843,10 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   watch(
     () => settingsStore.settings.threeDisplayMode,
     () => {
+      invalidateVisibleInstances()
       scheduleRebuild()
-    }
+    },
+    { flush: 'sync' }
   )
 
   watch(
@@ -837,7 +909,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   watch(
     () => uiStore.sidebarHoveredGameId,
     () => {
-      if (isTransformDragging?.value) {
+      if (!interactionReady.value || isTransformDragging?.value) {
         return
       }
 
@@ -883,7 +955,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
       () => editorStore.selectionVersion, // 监听版本号（选择变化时）
     ],
     () => {
-      if (isTransformDragging?.value) {
+      if (!interactionReady.value || isTransformDragging?.value) {
         return
       }
 
@@ -946,7 +1018,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   watch(
     () => uiStore.alignReferenceItemId,
     (newId, oldId) => {
-      if (isTransformDragging?.value) {
+      if (!interactionReady.value || isTransformDragging?.value) {
         return
       }
 
@@ -1030,6 +1102,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // 返回统一接口
   return {
+    isInteractionReady: computed(() => interactionReady.value),
     instancedMesh: boxMode.mesh,
     iconInstancedMesh: iconMode.mesh,
     simpleBoxInstancedMesh: simpleBoxMode.mesh,

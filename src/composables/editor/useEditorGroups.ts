@@ -37,6 +37,28 @@ export function useEditorGroups() {
     return Array.from(groupsMap.value.keys()).sort((a, b) => a - b)
   }
 
+  function canEditGroupOrigin(groupId: number): boolean {
+    if (store.localEditingItemIds === null) return true
+    const items = getGroupItems(groupId)
+    return items.length > 0 && items.every((item) => store.isItemEditable(item.internalId))
+  }
+
+  // Preserve origins on untouched members, including existing external anchors.
+  function reconcileGroupOrigins(
+    previousItems: readonly AppItem[],
+    selectedIds: ReadonlySet<string>
+  ) {
+    const scheme = activeScheme.value!
+    const nextOrigins = new Map(scheme.groupOrigins.value)
+    for (const item of previousItems) {
+      if (!selectedIds.has(item.internalId) || item.groupId <= 0) continue
+      if (!groupsMap.value.has(item.groupId) || nextOrigins.get(item.groupId) === item.internalId) {
+        nextOrigins.delete(item.groupId)
+      }
+    }
+    if (nextOrigins.size !== scheme.groupOrigins.value.size) scheme.groupOrigins.value = nextOrigins
+  }
+
   // 成组：将选中的物品成组
   function groupSelected() {
     if (!activeScheme.value) return
@@ -61,6 +83,7 @@ export function useEditorGroups() {
         selected.has(item.internalId) ? { ...item, groupId: newGroupId } : item
       )
       activeScheme.value!.maxGroupId.value = newGroupId
+      reconcileGroupOrigins(items, selected)
       store.triggerSceneUpdate()
     })
 
@@ -89,24 +112,13 @@ export function useEditorGroups() {
       const items = activeScheme.value!.items.value
       const selected = activeScheme.value!.selectedItemIds.value
 
-      const groupIdsToRemove = new Set<number>()
-      for (const item of items) {
-        if (selected.has(item.internalId) && item.groupId > 0) {
-          groupIdsToRemove.add(item.groupId)
-        }
-      }
-      if (groupIdsToRemove.size === 0) return
-
       // 同上：严格遵循不直接写 item.groupId = 0 而是用解构产出新对象的方法
       // 维系响应式引用的历史系统的极速快进性能
       activeScheme.value!.items.value = items.map((item) =>
         selected.has(item.internalId) && item.groupId > 0 ? { ...item, groupId: 0 } : item
       )
 
-      const scheme = activeScheme.value!
-      const nextOrigins = new Map(scheme.groupOrigins.value)
-      groupIdsToRemove.forEach((groupId) => nextOrigins.delete(groupId))
-      scheme.groupOrigins.value = nextOrigins
+      reconcileGroupOrigins(items, selected)
 
       store.triggerSceneUpdate()
     })
@@ -144,7 +156,8 @@ export function useEditorGroups() {
    */
   function setGroupOrigin(groupId: number, itemId: string) {
     const scheme = activeScheme.value
-    if (!scheme) return
+    if (!scheme || !canEditGroupOrigin(groupId)) return
+    if (store.localEditingItemIds !== null && !store.isItemEditable(itemId)) return
 
     if (scheme.groupOrigins.value.get(groupId) === itemId) {
       return
@@ -162,7 +175,7 @@ export function useEditorGroups() {
    */
   function clearGroupOrigin(groupId: number) {
     const scheme = activeScheme.value
-    if (!scheme) return
+    if (!scheme || !canEditGroupOrigin(groupId)) return
 
     if (!scheme.groupOrigins.value.has(groupId)) {
       return
@@ -192,6 +205,7 @@ export function useEditorGroups() {
     getItemGroupId,
     getAllGroupIds,
     getGroupColor,
+    canEditGroupOrigin,
     setGroupOrigin,
     clearGroupOrigin,
     getGroupOrigin,

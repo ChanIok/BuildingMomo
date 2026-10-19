@@ -1,3 +1,4 @@
+import { selectRenderItems } from './shared/renderItems'
 import { computed, markRaw, onUnmounted, ref, watch } from 'vue'
 import {
   BoxGeometry,
@@ -199,7 +200,10 @@ export function useSlidePathRenderer() {
   function rebuild() {
     if (isDisposed) return
 
-    const items = (editorStore.activeScheme?.items.value ?? []).filter(shouldRenderAsSlidePath)
+    const items = selectRenderItems(
+      editorStore.activeScheme?.items.value ?? [],
+      editorStore.localEditingItemIds ?? null
+    ).filter(shouldRenderAsSlidePath)
     let requiredSegments = 0
     let requiredPoints = 0
     for (const item of items) {
@@ -445,9 +449,21 @@ export function useSlidePathRenderer() {
   }
 
   // 方案切换或场景变更时全量重建；选区/sidebar hover/参照物变化时只刷颜色
-  watch([() => editorStore.activeSchemeId, () => editorStore.sceneVersion], () => rebuild(), {
-    immediate: true,
-  })
+  watch(
+    [
+      () => editorStore.activeSchemeId,
+      () => editorStore.sceneVersion,
+      () => editorStore.localEditingItemIds,
+    ],
+    () => {
+      hoveredHit = null
+      rebuild()
+    },
+    {
+      flush: 'sync',
+      immediate: true,
+    }
+  )
 
   watch(
     [

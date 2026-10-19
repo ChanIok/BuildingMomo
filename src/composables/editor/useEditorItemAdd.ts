@@ -88,6 +88,7 @@ export function useEditorItemAdd() {
     recordTransaction('item.add', () => {
       // 4. 添加到场景（创建新数组以触发推断引擎）
       scheme.items.value = [...scheme.items.value, newItem]
+      editorStore.includeInLocalEditing([newItem.internalId])
       editorStore.triggerSceneUpdate()
       scheme.selectedItemIds.value = new Set([newItem.internalId])
       editorStore.triggerSelectionUpdate()
@@ -145,6 +146,7 @@ export function useEditorItemAdd() {
       scheme.maxInstanceId.value = instanceId
       scheme.maxGroupId.value = groupId
       scheme.selectedItemIds.value = new Set(newItems.map((item) => item.internalId))
+      editorStore.includeInLocalEditing(newItems.map((item) => item.internalId))
       editorStore.triggerSceneUpdate()
       editorStore.triggerSelectionUpdate()
     })

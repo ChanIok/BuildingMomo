@@ -531,9 +531,17 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.deselectAll'),
       shortcut: 'Escape',
       category: 'selection',
-      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      enabled: () =>
+        editorStore.localEditingItemIds !== null ||
+        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
-        console.log('[Command] 取消选择')
+        if (
+          editorStore.localEditingItemIds !== null &&
+          !editorStore.activeScheme?.selectedItemIds.value.size
+        ) {
+          editorStore.exitLocalEditing()
+          return
+        }
         clearSelection()
       },
     },
@@ -560,6 +568,26 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'edit.enterLocalEditing',
+      label: t('localEdit.enter'),
+      category: 'edit',
+      enabled: () =>
+        editorStore.localEditingItemIds === null &&
+        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      execute: () => {
+        editorStore.enterLocalEditing(editorStore.activeScheme?.selectedItemIds.value ?? [])
+      },
+    },
+    {
+      id: 'edit.exitLocalEditing',
+      label: t('localEdit.exitAction'),
+      category: 'edit',
+      enabled: () => editorStore.localEditingItemIds !== null,
+      execute: () => {
+        editorStore.exitLocalEditing()
+      },
+    },
+    {
       id: 'edit.group',
       label: t('command.edit.group'),
       shortcut: 'Ctrl+G',
@@ -568,18 +596,8 @@ export const useCommandStore = defineStore('command', () => {
         const scheme = editorStore.activeScheme
         if (!scheme || scheme.selectedItemIds.value.size < 2) return false
 
-        const ids = scheme.selectedItemIds.value
-        // 获取所有选中物品的组ID
-        const selectedItems = scheme.items.value.filter((item) => ids.has(item.internalId))
-        const groupIds = new Set(selectedItems.map((item) => item.groupId))
-
-        // 如果所有物品都属于同一个组（且该组ID > 0），则不允许成组
-        if (groupIds.size === 1) {
-          const groupId = Array.from(groupIds)[0]
-          if (groupId !== undefined && groupId > 0) return false
-        }
-
-        return true
+        // Only an already-complete group needs no further grouping.
+        return editorStore.getGroupIdIfEntireGroupSelected(scheme.selectedItemIds.value) === null
       },
       execute: () => {
         console.log('[Command] 成组')

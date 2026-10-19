@@ -56,18 +56,22 @@ export function useEditorSelection() {
     return result
   }
 
+  function shouldSkipGroupExpansion(options?: { skipGroupExpansion?: boolean }): boolean {
+    return Boolean(options?.skipGroupExpansion || store.localEditingItemIds !== null)
+  }
+
   function toggleSelection(
     itemId: string,
     additive: boolean,
     options?: { skipGroupExpansion?: boolean }
   ) {
-    if (!activeScheme.value) return
+    if (!activeScheme.value || !store.isItemEditable(itemId)) return
 
     // 保存历史（选择操作，会合并）
     recordSelectionChange()
 
     // 强制单选模式：直接操作单个物品，不扩展到组
-    if (options?.skipGroupExpansion) {
+    if (shouldSkipGroupExpansion(options)) {
       if (additive) {
         if (activeScheme.value.selectedItemIds.value.has(itemId)) {
           activeScheme.value.selectedItemIds.value.delete(itemId)
@@ -128,6 +132,8 @@ export function useEditorSelection() {
   ) {
     if (!activeScheme.value) return
 
+    itemIds = itemIds.filter(store.isItemEditable)
+
     // 保存历史(选择操作,会合并)
     recordSelectionChange()
 
@@ -136,7 +142,7 @@ export function useEditorSelection() {
     }
 
     // 强制单选模式：直接添加，不扩展到组
-    if (options?.skipGroupExpansion) {
+    if (shouldSkipGroupExpansion(options)) {
       itemIds.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
     } else {
       // 组模式：扩展选择到整组(框选行为)
@@ -152,11 +158,13 @@ export function useEditorSelection() {
   function deselectItems(itemIds: string[], options?: { skipGroupExpansion?: boolean }) {
     if (!activeScheme.value) return
 
+    itemIds = itemIds.filter(store.isItemEditable)
+
     // 保存历史(选择操作,会合并)
     recordSelectionChange()
 
     // 强制单选模式：直接移除，不扩展到组
-    if (options?.skipGroupExpansion) {
+    if (shouldSkipGroupExpansion(options)) {
       itemIds.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
     } else {
       // 组模式：扩展选择到整组(框选行为)
@@ -187,8 +195,10 @@ export function useEditorSelection() {
     recordSelectionChange()
 
     activeScheme.value.selectedItemIds.value.clear()
-    activeScheme.value.items.value.forEach((item: any) => {
-      activeScheme.value!.selectedItemIds.value.add(item.internalId)
+    activeScheme.value.items.value.forEach((item) => {
+      if (store.isItemEditable(item.internalId)) {
+        activeScheme.value!.selectedItemIds.value.add(item.internalId)
+      }
     })
 
     store.triggerSelectionUpdate()
@@ -202,8 +212,11 @@ export function useEditorSelection() {
     recordSelectionChange()
 
     const newSelection = new Set<string>()
-    activeScheme.value.items.value.forEach((item: any) => {
-      if (!activeScheme.value!.selectedItemIds.value.has(item.internalId)) {
+    activeScheme.value.items.value.forEach((item) => {
+      if (
+        store.isItemEditable(item.internalId) &&
+        !activeScheme.value!.selectedItemIds.value.has(item.internalId)
+      ) {
         newSelection.add(item.internalId)
       }
     })
@@ -223,7 +236,7 @@ export function useEditorSelection() {
     const newSelection = new Set<string>()
 
     // 强制单选模式：直接计算交集，不扩展到组
-    if (options?.skipGroupExpansion) {
+    if (shouldSkipGroupExpansion(options)) {
       const targetSet = new Set(itemIds)
       currentSelection.forEach((id) => {
         if (targetSet.has(id)) {
@@ -268,8 +281,8 @@ export function useEditorSelection() {
 
     // 遍历所有物品，选中匹配的 gameId（不自动扩展到组）
     const newSelection = new Set<string>()
-    activeScheme.value.items.value.forEach((item: any) => {
-      if (gameIds.has(item.gameId)) {
+    activeScheme.value.items.value.forEach((item) => {
+      if (store.isItemEditable(item.internalId) && gameIds.has(item.gameId)) {
         newSelection.add(item.internalId)
       }
     })

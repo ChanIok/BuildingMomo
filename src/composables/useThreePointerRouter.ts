@@ -391,6 +391,7 @@ export function useThreePointerRouter(options: UseThreePointerRouterOptions) {
       return
     }
 
+    options.cancelSelectionSession()
     startPointerRoute(evt, 'navigation')
     if (evt.pointerType === 'touch' && !isMultiTouchActive.value) {
       beginTouchLongPressGuard(evt)

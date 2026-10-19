@@ -25,15 +25,17 @@ import {
 import { resolveFurnitureSize } from '@/lib/slidePath'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
 import { createBoxMaterial } from '@nuan5-pro/render'
-import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
+import { nextInstancedPoolCapacity } from '@/lib/renderInstanceBudget'
+import { diffRenderItems, selectRenderItems } from '../shared/renderItems'
+import { retainInstances } from '../shared/retainInstances'
 
 export const MODEL_FALLBACK_MESH_KEY = '-1'
 
 export function useModelMode() {
-  const editorStore = useEditorStore(),
-    gameDataStore = useGameDataStore()
-  const loadingStore = useLoadingStore(),
-    settingsStore = useSettingsStore()
+  const editorStore = useEditorStore()
+  const gameDataStore = useGameDataStore()
+  const loadingStore = useLoadingStore()
+  const settingsStore = useSettingsStore()
   const meshMap = shallowRef(new Map<string, InstancedMesh>())
   const indexToIdMap = shallowRef(new Map<number, string>())
   const idToIndexMap = shallowRef(new Map<string, number>())
@@ -43,17 +45,20 @@ export function useModelMode() {
   )
   const fallbackMesh = shallowRef<InstancedMesh | null>(null)
   const fallbackGeometry = new BoxGeometry(1, 1, 1).translate(0, 0, 0.5)
-  const position = new Vector3(),
-    scale = new Vector3(),
-    rotation = new Euler(),
-    quaternion = new Quaternion()
+  const position = new Vector3()
+  const scale = new Vector3()
+  const rotation = new Euler()
+  const quaternion = new Quaternion()
   let controller = new AbortController()
   let loadingSession: number | undefined
   let scheme: typeof editorStore.activeScheme = null
   let profile = ''
   let previous = new Map<string, AppItem>()
   let renderVersion = -1
+  let renderScope: ReadonlySet<string> | null | undefined
+  let renderWasCapped = false
   let structureChanged = true
+  let projectionDirty = false
   let changedItems: AppItem[] = []
   const failedAssets = new Set<number>()
 
@@ -84,13 +89,7 @@ export function useModelMode() {
     return new Matrix4().compose(position, quaternion, scale)
   }
 
-  function syncMappings(items: readonly AppItem[], fallback: AppItem[]) {
-    const layer = furnitureRender.value!
-    meshMap.value = new Map([...layer.batches].map(([id, mesh]) => [String(id), markRaw(mesh)]))
-    const local = new Map<InstancedMesh, Map<number, string>>()
-    const info = new Map<string, { meshKey: string; localIndex: number }>()
-    const ids = new Map<number, string>(),
-      indexes = new Map<string, number>()
+  function rebuildFallback(fallback: readonly AppItem[]) {
     const capacity = nextInstancedPoolCapacity(
       fallback.length,
       fallbackMesh.value?.instanceMatrix.count ?? 0
@@ -114,11 +113,22 @@ export function useModelMode() {
     fallback.forEach((item, index) => {
       fallbackMesh.value!.setMatrixAt(index, matrixFor(item, false))
       fallbackMesh.value!.setColorAt(index, new Color(1, 1, 1))
-      info.set(item.internalId, { meshKey: MODEL_FALLBACK_MESH_KEY, localIndex: index })
     })
     fallbackMesh.value.instanceMatrix.needsUpdate = true
     if (fallbackMesh.value.instanceColor) fallbackMesh.value.instanceColor.needsUpdate = true
     fallbackMesh.value.computeBoundingSphere()
+  }
+
+  function syncMappings(items: readonly AppItem[], fallback: readonly AppItem[]) {
+    const layer = furnitureRender.value!
+    meshMap.value = new Map([...layer.batches].map(([id, mesh]) => [String(id), markRaw(mesh)]))
+    const local = new Map<InstancedMesh, Map<number, string>>()
+    const info = new Map<string, { meshKey: string; localIndex: number }>()
+    const ids = new Map<number, string>(),
+      indexes = new Map<string, number>()
+    fallback.forEach((item, index) => {
+      info.set(item.internalId, { meshKey: MODEL_FALLBACK_MESH_KEY, localIndex: index })
+    })
     for (const item of items) {
       const instance = layer.getInstance(item.internalId)
       const fallbackInfo = info.get(item.internalId)
@@ -168,9 +178,11 @@ export function useModelMode() {
       else previous.delete(id)
     }
     for (const id of affected) {
-      const key = String(id),
-        old = meshMap.value.get(key)
-      if (old) meshToLocalIndexMap.value.delete(old)
+      const key = String(id)
+      const old = meshMap.value.get(key)
+      if (old) {
+        meshToLocalIndexMap.value.delete(old)
+      }
       const ids = layer.getBatchInstances(id)
       if (!ids.length) {
         meshMap.value.delete(key)
@@ -187,18 +199,81 @@ export function useModelMode() {
     }
   }
 
-  async function rebuild(options?: { isStale?: () => boolean }): Promise<boolean> {
+  // Remove only obsolete instances before asynchronous preparation. Existing batches stay visible.
+  function retainItems(items: readonly AppItem[]) {
     cancelPending()
+    const layer = furnitureRender.value
+    if (!layer || editorStore.activeScheme !== scheme) {
+      hideInstances()
+      return
+    }
+    const desired = new Set(items.map((item) => item.internalId))
+    const removed: string[] = []
+    for (const assetId of layer.batches.keys()) {
+      for (const id of layer.getBatchInstances(assetId)) if (!desired.has(id)) removed.push(id)
+    }
+    projectionDirty = true
+    const removesFallback = [...internalIdToMeshInfo.value].some(
+      ([id, info]) =>
+        info.meshKey === MODEL_FALLBACK_MESH_KEY && (!desired.has(id) || !!layer.getInstance(id))
+    )
+    // Pure expansion needs no matrix rewrite or remapping of the retained projection.
+    if (!removed.length && !removesFallback) return
+    layer.remove(removed)
+    const fallbackIndices = new Map<number, string>()
+    const desiredFallback = new Set<string>()
+    for (const [id, info] of internalIdToMeshInfo.value) {
+      if (info.meshKey !== MODEL_FALLBACK_MESH_KEY) continue
+      fallbackIndices.set(info.localIndex, id)
+      if (desired.has(id) && !layer.getInstance(id)) desiredFallback.add(id)
+    }
+    const fallback = fallbackMesh.value
+      ? [...retainInstances(fallbackMesh.value, fallbackIndices, desiredFallback).values()].map(
+          (id) => previous.get(id)!
+        )
+      : []
+    const retained = items.filter(
+      (item) => layer.getInstance(item.internalId) || desiredFallback.has(item.internalId)
+    )
+    syncMappings(retained, fallback)
+    const visible = new Set(retained.map((item) => item.internalId))
+    previous = new Map([...previous].filter(([id]) => visible.has(id)))
+    invalidateScene({ shadows: true })
+  }
+
+  async function rebuild(options?: {
+    items?: readonly AppItem[]
+    isStale?: () => boolean
+  }): Promise<boolean> {
+    const current = editorStore.activeScheme
+    const scope = editorStore.localEditingItemIds ?? null
+    const items = options?.items ?? selectRenderItems(current?.items.value ?? [], scope)
+    const isCapped = scope === null && (current?.items.value.length ?? 0) > items.length
+    const scopeOrCapChanged = scope !== renderScope || isCapped !== renderWasCapped
+
+    if (current !== scheme) {
+      hideInstances()
+    } else if (scopeOrCapChanged) {
+      retainItems(items)
+    } else {
+      cancelPending()
+    }
+
     controller = new AbortController()
     const signal = controller.signal
-    const current = editorStore.activeScheme
+    const version = editorStore.sceneVersion
     const selection = {
       model: settingsStore.settings.modelAssetProfile,
       material: settingsStore.settings.materialAssetProfile,
     }
     const key = `${selection.model}:${selection.material}:${gameDataStore.furnitureDBRevision}`
     const stale = () =>
-      signal.aborted || options?.isStale?.() || editorStore.activeScheme !== current
+      signal.aborted ||
+      options?.isStale?.() ||
+      editorStore.activeScheme !== current ||
+      (editorStore.localEditingItemIds ?? null) !== scope ||
+      editorStore.sceneVersion !== version
+
     let session = furnitureRender.value
       ? undefined
       : loadingStore.startLoading('model', 2, 'parallel')
@@ -207,11 +282,15 @@ export function useModelMode() {
       const layer = await readyFurnitureRender()
       if (stale()) return false
       const resuming = !layer.root.visible
-      setVisible(current === scheme)
+      const needsVisibilityDiff =
+        projectionDirty || scope !== null || scope !== renderScope || isCapped || renderWasCapped
       const changes =
         current === scheme && key === profile && current
-          ? editorStore.getRenderChanges(current.id, renderVersion)
+          ? needsVisibilityDiff
+            ? diffRenderItems(previous, items)
+            : editorStore.getRenderChanges(current.id, renderVersion)
           : null
+
       if (
         !resuming &&
         changes &&
@@ -219,8 +298,8 @@ export function useModelMode() {
           ([id, item]) => item && previous.get(id)?.gameId === item.gameId && layer.getInstance(id)
         )
       ) {
-        const matrices = [],
-          dyes = []
+        const matrices = []
+        const dyes = []
         changedItems = []
         for (const [id, item] of changes) {
           if (!item) continue
@@ -237,8 +316,11 @@ export function useModelMode() {
         }
         layer.updateMatrices(matrices)
         layer.updateDyes(dyes)
-        renderVersion = editorStore.sceneVersion
-        structureChanged = false
+        renderVersion = version
+        renderScope = scope
+        renderWasCapped = isCapped
+        structureChanged = projectionDirty
+        projectionDirty = false
         return true
       }
       // Structural model edits rebuild only the affected batches' slot maps. The
@@ -254,7 +336,27 @@ export function useModelMode() {
       ) {
         const items = [...changes.values()].filter((item): item is AppItem => !!item)
         try {
-          await layer.load([...new Set(items.map((item) => item.gameId))], { signal })
+          const assetIds = [...new Set(items.map((item) => item.gameId))]
+          if (projectionDirty && assetIds.length) {
+            session = loadingStore.startLoading('model', assetIds.length * 2, 'parallel')
+            loadingSession = session
+          }
+          let loaded = 0,
+            prepared = 0
+          await layer.load(assetIds, {
+            signal,
+            onProgress: ({ phase, completed }) => {
+              if (stale() || session === undefined) return
+              if (phase === 'loading') loaded = completed
+              else if (phase === 'preparing') prepared = completed
+              loadingStore.setPhase(
+                loaded < assetIds.length ? 'network' : 'shaders',
+                assetIds.length * 2,
+                session
+              )
+              loadingStore.updateParallelProgress(loaded, prepared, 0, session)
+            },
+          })
           if (stale()) return false
           layer.remove([...changes].filter(([, item]) => !item).map(([id]) => id))
           await layer.upsert(
@@ -271,8 +373,12 @@ export function useModelMode() {
           )
           if (stale()) return false
           syncChangedModels(changes)
-          renderVersion = editorStore.sceneVersion
+          renderVersion = version
+          renderScope = scope
+          renderWasCapped = isCapped
           structureChanged = true
+          projectionDirty = false
+          if (session !== undefined) loadingStore.finishLoading(session)
           invalidateScene()
           return true
         } catch (error) {
@@ -281,13 +387,12 @@ export function useModelMode() {
         }
       }
       structureChanged = true
-      const items = (current?.items.value ?? []).slice(
-        0,
-        requiredInstanceCount(current?.items.value.length ?? 0)
-      )
       let models = items.filter((item) => layer.getConfig(item.gameId))
       const fallback = items.filter((item) => !layer.getConfig(item.gameId))
-      const changed = models.filter((item) => previous.get(item.internalId) !== item)
+      // A cancelled build may have changed layer slots without publishing its snapshot.
+      const changed = models.filter(
+        (item) => previous.get(item.internalId) !== item || !layer.getInstance(item.internalId)
+      )
       const tierChange = current === scheme && key !== profile
       const replace = current !== scheme
       const assetIds = [...new Set((replace ? models : changed).map((item) => item.gameId))]
@@ -340,10 +445,13 @@ export function useModelMode() {
       if (key !== profile) {
         await layer.setTiers(selection, task)
       }
-      if (replace) failedAssets.clear()
+      if (replace) {
+        failedAssets.clear()
+      }
       if (assetIds.length) {
         progressTotal = assetIds.length
-        loadedAssets = preparedAssets = 0
+        loadedAssets = 0
+        preparedAssets = 0
         loadingStore.setPhase('network', progressTotal * 2, session)
       }
       await Promise.all(
@@ -393,11 +501,22 @@ export function useModelMode() {
           decodeColorMapToGroupMap(item.extra.ColorMap)
         ),
       }))
-      if (replace) await layer.replaceAll(renderItems, task)
-      else {
+      if (replace) {
+        await layer.replaceAll(renderItems, task)
+      } else {
         const ids = new Set(models.map((item) => item.internalId))
-        layer.remove([...previous.keys()].filter((id) => !ids.has(id)))
-        if (renderItems.length) await layer.upsert(renderItems, task)
+        const removed: string[] = []
+        for (const assetId of layer.batches.keys()) {
+          for (const id of layer.getBatchInstances(assetId)) {
+            if (!ids.has(id)) {
+              removed.push(id)
+            }
+          }
+        }
+        layer.remove(removed)
+        if (renderItems.length) {
+          await layer.upsert(renderItems, task)
+        }
       }
       if (tierChange)
         layer.updateMatrices(
@@ -407,8 +526,12 @@ export function useModelMode() {
       previous = new Map(items.map((item) => [item.internalId, item]))
       scheme = current
       profile = key
-      renderVersion = editorStore.sceneVersion
+      renderVersion = version
+      renderScope = scope
+      renderWasCapped = isCapped
+      rebuildFallback(fallback)
       syncMappings(items, fallback)
+      projectionDirty = false
       setVisible(true)
       if (session !== undefined) loadingStore.finishLoading(session)
       invalidateScene()
@@ -433,9 +556,17 @@ export function useModelMode() {
   }
 
   function clearScene() {
-    cancelPending()
     previous.clear()
+    projectionDirty = false
+    renderScope = undefined
+    renderWasCapped = false
     scheme = null
+    hideInstances()
+  }
+
+  // Hide a render projection without discarding its asset cache or committed snapshot.
+  function hideInstances() {
+    cancelPending()
     setVisible(false)
     if (fallbackMesh.value) fallbackMesh.value.count = 0
     meshMap.value = new Map()
@@ -466,7 +597,9 @@ export function useModelMode() {
       return changedItems
     },
     rebuild,
+    retainItems,
     clearScene,
+    hideInstances,
     cancelPending,
     setVisible,
     updateMatrices(values: Map<string, Matrix4>) {

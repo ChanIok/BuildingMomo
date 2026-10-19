@@ -1,4 +1,13 @@
 export const enLocale = {
+  localEdit: {
+    status: 'Local editing · {count} items',
+    enter: 'Enter Local Editing',
+    exit: 'Exit',
+    exitAction: 'Exit Local Editing',
+    exitHint: 'Double-click empty space or press Esc',
+    pasteHint:
+      'Local editing supports pasting with new IDs only, to avoid changing furniture outside the working set.',
+  },
   // Scheme
   scheme: {
     defaultName: 'Scheme {n}',

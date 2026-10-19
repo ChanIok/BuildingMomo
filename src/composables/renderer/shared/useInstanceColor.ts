@@ -115,13 +115,8 @@ export function useInstanceColor() {
     modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>,
     modelFallbackMesh?: InstancedMesh | null
   ) {
-    const items = editorStore.activeScheme?.items.value ?? []
     if (!indexToIdMap || indexToIdMap.size === 0) return
-
-    const itemById = new Map<string, AppItem>()
-    for (const item of items) {
-      itemById.set(item.internalId, item)
-    }
+    const itemById = editorStore.itemsMap
 
     // Model 模式下 '-1' 对应 fallbackMesh（无模型配置的物品渲染为方块）
     const resolveModelMesh = (meshKey: string): InstancedMesh | null | undefined =>
@@ -203,7 +198,7 @@ export function useInstanceColor() {
     modelInternalIdToMeshInfo?: Map<string, { meshKey: string; localIndex: number }>,
     modelFallbackMesh?: InstancedMesh | null
   ) {
-    const item = editorStore.activeScheme?.items.value.find((it) => it.internalId === id)
+    const item = editorStore.itemsMap.get(id)
     if (!item) return
 
     if (mode === 'box' && meshTarget) {

@@ -353,6 +353,7 @@ const {
   modelFallbackMesh,
   updateSelectedInstancesMatrix,
   interactionAdapter: standardInteractionAdapter,
+  isInteractionReady,
   setHoveredItemId: setStandardHoveredItemId,
   setupIconFacing,
   renderSelectionOutlineMaskPass,
@@ -373,6 +374,7 @@ const {
 // 合并标准 renderer 和飞花道 renderer 的交互适配器：raycast 取最近命中，框选合并两者候选集
 const interactionAdapter = ref<InteractionAdapter>({
   pick: (raycaster) => {
+    if (!isInteractionReady.value) return null
     const sHit = slidePathInteractionAdapter.value.pick(raycaster)
     const nHit = standardInteractionAdapter.value.pick(raycaster)
     if (!sHit) return nHit
@@ -380,10 +382,19 @@ const interactionAdapter = ref<InteractionAdapter>({
     return sHit.distance <= nHit.distance ? sHit : nHit
   },
   pickAsync: async (raycaster) => {
+    if (!isInteractionReady.value) return null
+    const scheme = editorStore.activeScheme
+    const scope = editorStore.localEditingItemIds
     const [sHit, nHit] = await Promise.all([
       slidePathInteractionAdapter.value.pickAsync(raycaster),
       standardInteractionAdapter.value.pickAsync(raycaster),
     ])
+    if (
+      !isInteractionReady.value ||
+      editorStore.activeScheme !== scheme ||
+      editorStore.localEditingItemIds !== scope
+    )
+      return null
     if (!sHit) return nHit
     if (!nHit) return sHit
     return sHit.distance <= nHit.distance ? sHit : nHit
@@ -393,6 +404,7 @@ const interactionAdapter = ref<InteractionAdapter>({
     standardInteractionAdapter.value.cancelPick()
   },
   forEachRegionCenterCandidate: (camera, viewport, visitor) => {
+    if (!isInteractionReady.value) return
     standardInteractionAdapter.value.forEachRegionCenterCandidate(camera, viewport, visitor)
     slidePathInteractionAdapter.value.forEachRegionCenterCandidate(camera, viewport, visitor)
   },
@@ -422,7 +434,7 @@ const shouldShowModelMesh = computed(() => currentDisplayMode.value === 'model')
 
 // 然后初始化 gizmo，传入 updateSelectedInstancesMatrix
 const {
-  shouldShowGizmo,
+  shouldShowGizmo: shouldShowSelectionGizmo,
   handleGizmoDragging,
   handleGizmoMouseDown: handleGizmoMouseDownInternal,
   handleGizmoMouseUp,
@@ -442,6 +454,8 @@ const {
     clearPreview: clearSlidePathPreview,
   }
 )
+
+const shouldShowGizmo = computed(() => isInteractionReady.value && shouldShowSelectionGizmo.value)
 
 // 自动管理 Gizmo 外观：外观应用完成后精确触发一次重渲染
 setupGizmoAppearance(transformRef, axesRef, () => {
@@ -683,7 +697,7 @@ function handlePointerMoveWithTooltip(evt: PointerEvent) {
   }
 
   // 如果应该禁用框选，跳过选择逻辑
-  if (cameraInput.shouldDisableSelection.value) {
+  if (cameraInput.shouldDisableSelection.value || !isInteractionReady.value) {
     hideTooltip()
     return
   }
@@ -765,7 +779,9 @@ const {
   controlMode,
   isTransformDragging,
   isPointerOverGizmo,
-  isSelectionDisabled: cameraInput.shouldDisableSelection,
+  isSelectionDisabled: computed(
+    () => cameraInput.shouldDisableSelection.value || !isInteractionReady.value
+  ),
   isPointerOnGizmoAxis,
   handleSelectionPointerDown: handlePointerDown,
   handleSelectionPointerMove: handlePointerMove,

@@ -11,6 +11,8 @@ import {
 } from 'three'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorStore } from '@/stores/editorStore'
+import type { AppItem } from '@/types/editor'
+import { selectRenderItems } from '../shared/renderItems'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { getThreeIconManager, disposeThreeIconManager } from '@/composables/useThreeIconManager'
 import {
@@ -60,12 +62,11 @@ export function useIconMode() {
   }
 
   /**
-   * 确保纹理层数、实例池几何属性与 InstancedMesh 容量满足本次重建需求。
-   * @param textureLayerCapacity 纹理数组层数下限（唯一 gameId 规模）
+   * 纹理准备完成后，提交实例池几何属性与 InstancedMesh 容量。
    * @param requiredInstances 本帧需要的实例数（已按用户硬顶裁剪）
    */
-  function ensureIconResources(textureLayerCapacity: number, requiredInstances: number) {
-    const arrayTexture = iconManager.initTextureArray(textureLayerCapacity)
+  function ensureIconResources(requiredInstances: number) {
+    const arrayTexture = iconManager.getTextureArray()!
 
     const currentMeshCapacity = iconMesh?.instanceMatrix.count ?? 0
     const targetPool = nextInstancedPoolCapacity(requiredInstances, currentMeshCapacity)
@@ -123,18 +124,19 @@ export function useIconMode() {
   /**
    * 重建所有实例
    */
-  async function rebuild() {
-    const items = editorStore.activeScheme?.items.value ?? []
+  async function rebuild(
+    items: readonly AppItem[] = selectRenderItems(
+      editorStore.activeScheme?.items.value ?? [],
+      editorStore.localEditingItemIds ?? null
+    ),
+    isStale: () => boolean = () => false
+  ): Promise<boolean> {
     const instanceCount = requiredInstanceCount(items.length)
 
     const uniqueItemIdsSet = new Set(items.slice(0, instanceCount).map((item) => item.gameId))
     const textureLayerCapacity = Math.max(32, uniqueItemIdsSet.size + 16)
-    ensureIconResources(textureLayerCapacity, instanceCount)
-
-    const currentIconMeshTarget = iconInstancedMesh.value
-    if (!currentIconMeshTarget) return
-
-    currentIconMeshTarget.count = instanceCount
+    // Initialize once. preloadIcons grows the atlas while preserving existing pixels.
+    if (!iconManager.getTextureArray()) iconManager.initTextureArray(textureLayerCapacity)
 
     // 预加载纹理
     const itemIds = items.slice(0, instanceCount).map((item) => item.gameId)
@@ -164,6 +166,12 @@ export function useIconMode() {
           loadingStore.cancelLoading()
         })
     }
+    if (isStale()) return false
+    // Do not replace the live instance pool or its attributes while textures are loading.
+    ensureIconResources(instanceCount)
+    const currentIconMeshTarget = iconInstancedMesh.value
+    if (!currentIconMeshTarget) return false
+
     // 如果全部已缓存，无需显示加载提示
 
     // 更新 uniform
@@ -225,9 +233,11 @@ export function useIconMode() {
       textureIndices[index] = texIndex
     }
 
+    currentIconMeshTarget.count = instanceCount
     currentIconMeshTarget.instanceMatrix.needsUpdate = true
     const textureIndexAttr = planeGeometry?.getAttribute('textureIndex')
     if (textureIndexAttr) textureIndexAttr.needsUpdate = true
+    return true
   }
 
   /**

@@ -15,6 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Separator } from '@/components/ui/separator'
 import { useI18n } from '@/composables/useI18n'
 import { useClipboard } from '@/composables/useClipboard'
+import { useEditorStore } from '@/stores/editorStore'
 import type { StepRepeatConfig } from '@/types/editor'
 
 const props = defineProps<{
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const editorStore = useEditorStore()
 const { canPreserveSourceIds, advancedPaste } = useClipboard()
 
 const mode = ref<'preserveIds' | 'stepRepeat'>('preserveIds')
@@ -116,6 +118,9 @@ function submit() {
         <DialogDescription v-if="canPreserveSourceIds">
           {{ t('advancedPaste.description') }}
         </DialogDescription>
+        <DialogDescription v-else-if="editorStore.localEditingItemIds !== null">{{
+          t('localEdit.pasteHint')
+        }}</DialogDescription>
       </DialogHeader>
 
       <div class="grid gap-5 py-2">
