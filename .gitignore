@@ -26,6 +26,7 @@ dist-ssr
 # Downloaded assets
 public/assets/data/
 public/assets/furniture-*
+public/assets/terrain/
 # Auto-copied decoder files
 public/draco/
 functions/

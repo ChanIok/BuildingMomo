@@ -56,12 +56,14 @@ onMounted(() => {
 })
 onUnmounted(() => clearInterval(resourceStatsTimer))
 
-const showModelOnlySettings = computed(
+const privateAssetsUnlocked = computed(
   () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
 )
 const qualityOptions = ['lite', 'full'] as const
 const fpsOptions = [30, 60, 120, 240, 0] as const
-const backgroundOptions = ['off', 'simple', 'real'] as const
+const backgroundOptions = computed<readonly string[]>(() =>
+  privateAssetsUnlocked.value ? ['off', 'simple', 'real'] : ['off', 'simple']
+)
 const backgroundMode = computed({
   get: () => {
     if (!settingsStore.settings.showBackground) return 'off'
@@ -145,7 +147,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
   <div class="flex h-full flex-col overflow-hidden p-4 pr-0">
     <ScrollArea class="h-full">
       <div class="flex flex-col gap-4 pr-4">
-        <section v-if="showModelOnlySettings" class="flex flex-col gap-4">
+        <section v-if="privateAssetsUnlocked" class="flex flex-col gap-4">
           <h3 class="text-xs font-semibold">{{ t('sidebar.display.graphics') }}</h3>
 
           <div class="flex items-center justify-between gap-2">
@@ -219,7 +221,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
           </div>
         </section>
 
-        <div v-if="showModelOnlySettings" class="border-t border-sidebar-border"></div>
+        <div v-if="privateAssetsUnlocked" class="border-t border-sidebar-border"></div>
 
         <section class="flex flex-col gap-4">
           <h3 class="text-xs font-semibold">{{ t('sidebar.environment.label') }}</h3>
@@ -344,7 +346,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             </div>
             <Switch id="furniture-tooltip" v-model="settingsStore.settings.showFurnitureTooltip" />
           </div>
-          <div v-if="showModelOnlySettings" class="flex items-center justify-between">
+          <div v-if="privateAssetsUnlocked" class="flex items-center justify-between">
             <div class="mr-2 space-y-0.5">
               <Label for="model-group-color" class="text-xs">{{
                 t('settings.modelGroupColor.label')

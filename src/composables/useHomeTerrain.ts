@@ -4,10 +4,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { applyEnvironmentLighting } from '@nuan5-pro/render'
-import terrainUrl from '@/assets/terrain/home-terrain.glb?url'
 import { invalidateScene } from './useSceneInvalidate'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { installHomeTerrainWater } from './renderer/homeTerrainWater'
+
+// Protected static asset under a stable path; Cloudflare Functions gates it.
+const terrainUrl = import.meta.env.BASE_URL + 'assets/terrain/home-terrain.glb'
 
 function disposeTerrain(root: Object3D) {
   const geometry = new Set<BufferGeometry>(),
