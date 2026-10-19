@@ -500,6 +500,10 @@ function handleTresReady(context: any) {
       scene,
       getCamera: () => toRaw(context.camera.activeCamera.value),
       invalidate: () => context.renderer.invalidate(),
+      onContextRestored: () => {
+        sceneEnvironment?.reset()
+        return environmentTransition?.request()
+      },
       outputUniforms: homeOutputUniforms(renderer),
       lighting: () => {
         if (!sceneEnvironment) throw new Error('Furniture environment owner missing')

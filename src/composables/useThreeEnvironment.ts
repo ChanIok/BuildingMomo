@@ -44,7 +44,7 @@ export function createSceneEnvironment(
   scene: Scene,
   invalidate: () => void
 ) {
-  const generator = new PMREMGenerator(renderer)
+  let generator = new PMREMGenerator(renderer)
   const cache = new Map<string, EnvironmentEntry>()
   const sun = new DirectionalLight()
   const hemisphere = new HemisphereLight()
@@ -80,23 +80,34 @@ export function createSceneEnvironment(
   let selectedKey = ''
   let disposed = false
   let homeLoading: Promise<void> | undefined
+  let generation = 0
 
   function prepare(nextMode: 'studio' | 'home', minute: number) {
     if (nextMode !== 'home') return Promise.resolve()
     if (!homeLoading) {
+      const version = generation
+      const owner = generator
       homeLoading = new HDRLoader()
         .loadAsync(homeEnvironmentAsset)
         .then(async (texture) => {
           try {
-            if (disposed) return
-            const target = await preparePmrem(renderer, generator, texture, () => disposed)
-            if (target) cache.set('home', { target })
+            if (disposed || version !== generation) return
+            const target = await preparePmrem(
+              renderer,
+              owner,
+              texture,
+              () => disposed || version !== generation
+            )
+            if (target) {
+              if (disposed || version !== generation) target.dispose()
+              else cache.set('home', { target })
+            }
           } finally {
             texture.dispose()
           }
         })
         .catch((error) => {
-          homeLoading = undefined
+          if (version === generation) homeLoading = undefined
           throw error
         })
     }
@@ -234,6 +245,15 @@ export function createSceneEnvironment(
   return {
     update,
     prepare,
+    reset() {
+      generation++
+      selectedKey = ''
+      homeLoading = undefined
+      for (const entry of cache.values()) disposeEntry(entry)
+      cache.clear()
+      generator.dispose()
+      generator = new PMREMGenerator(renderer)
+    },
     setShadowsEnabled(enabled: boolean) {
       if (renderer.shadowMap.enabled === enabled) return
       renderer.shadowMap.enabled = enabled

@@ -112,6 +112,21 @@ function expectShadowCoverage(bounds: Box3) {
   }
 }
 
+it('rebuilds precomputed environment targets after context restoration at the same time of day', async () => {
+  await environment.prepare('home', 720)
+  environment.update('home', 720)
+  const oldTexture = scene.environment
+  const oldRotation = scene.environmentRotation.clone()
+  const oldIntensity = scene.environmentIntensity
+  environment.reset()
+  await environment.prepare('home', 720)
+  environment.update('home', 720)
+  expect(scene.environment).not.toBe(oldTexture)
+  expect(scene.environment).toBeInstanceOf(Texture)
+  expect(scene.environmentRotation.equals(oldRotation)).toBe(true)
+  expect(scene.environmentIntensity).toBe(oldIntensity)
+})
+
 it('covers the whole island and world-transformed furniture instances, not a local camera window', () => {
   const terrain = addIsland()
   const furniture = new InstancedMesh(new BoxGeometry(200, 300, 1000), new MeshBasicMaterial(), 2)
