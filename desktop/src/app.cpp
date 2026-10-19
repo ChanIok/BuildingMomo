@@ -3,6 +3,7 @@
 #include <format>
 #include <utility>
 
+#include "desktop_bridge.hpp"
 #include "webview.hpp"
 #include "window.hpp"
 
@@ -21,6 +22,7 @@ auto shutdown(AppState& state) -> void {
     return;
   }
   state.shutting_down = true;
+  shutdown_desktop_bridge();
   shutdown_gpu_priority(state.gpu_priority);
   if (state.controller) {
     state.controller->Close();

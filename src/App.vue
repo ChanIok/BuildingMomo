@@ -23,6 +23,7 @@ import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useWorkspaceWorker } from './composables/useWorkspaceWorker'
 import { useCloudSchemeSync } from './composables/useCloudSchemeSync'
 import { useUIStore } from './stores/uiStore'
+import { useDesktopStore } from './stores/desktopStore'
 import { useCommandStore } from './stores/commandStore'
 import { removeLegacyWatchHistoryDatabase } from './lib/legacyIdbCleanup'
 
@@ -31,6 +32,7 @@ const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
 const tabStore = useTabStore()
 const uiStore = useUIStore()
+const desktopStore = useDesktopStore()
 const { restore: restoreWorkspace, isWorkerActive, startMonitoring } = useWorkspaceWorker()
 // 注册云协同单连接与「激活 tab ↔ 房间」同步（内有单例 watch）
 useCloudSchemeSync()
@@ -212,6 +214,7 @@ async function importStartupSchemeCode(schemeCode: string | null) {
 
 // 初始化
 onMounted(async () => {
+  desktopStore.init()
   // 旧版「监控导入历史」的 IndexedDB 已废弃，历史改为写入 BuildingMomo/history 目录
   void removeLegacyWatchHistoryDatabase()
 

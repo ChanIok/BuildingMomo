@@ -1,4 +1,5 @@
 #include "gpu_priority.hpp"
+#include "desktop_bridge.hpp"
 
 #include <d3dkmthk.h>
 #include <shlobj.h>
@@ -27,6 +28,10 @@ void log_message(GpuPriorityState& state, const std::string& message) {
 }
 
 void apply_priority(GpuPriorityState& state, DWORD pid) {
+  if (!is_gpu_realtime_priority_enabled()) {
+    log_message(state, std::format("pid={} priority elevation skipped (disabled by config)", pid));
+    return;
+  }
   wil::unique_handle process(OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid));
   if (!process) {
     log_message(state, std::format("pid={} OpenProcess failed: Win32={}", pid, GetLastError()));

@@ -1,6 +1,7 @@
 #include "webview.hpp"
 
 #include "app.hpp"
+#include "desktop_bridge.hpp"
 
 #include <shellapi.h>
 #include <shlobj.h>
@@ -43,12 +44,12 @@ auto configure_webview(AppState& state) -> HRESULT {
   if (FAILED(result)) {
     return result;
   }
-  // 这只是网页容器，不向页面暴露原生对象或消息桥。
+  // 允许页面与宿主通过 WebMessage 通信，不向页面暴露原生 COM 对象。
   result = settings->put_AreHostObjectsAllowed(FALSE);
   if (FAILED(result)) {
     return result;
   }
-  result = settings->put_IsWebMessageEnabled(FALSE);
+  result = settings->put_IsWebMessageEnabled(TRUE);
   if (FAILED(result)) {
     return result;
   }
@@ -102,6 +103,23 @@ auto configure_webview(AppState& state) -> HRESULT {
   if (FAILED(result)) {
     return result;
   }
+
+  result = state.webview->add_WebMessageReceived(
+      Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+          [](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+            wil::unique_cotaskmem_string raw_message;
+            if (SUCCEEDED(args->get_WebMessageAsJson(raw_message.put())) && raw_message) {
+              handle_web_message(raw_message.get());
+            }
+            return S_OK;
+          })
+          .Get(),
+      &token);
+  if (FAILED(result)) {
+    return result;
+  }
+
+  init_desktop_bridge(state.webview.get());
 
   resize_webview(state);
   state.controller->put_IsVisible(!IsIconic(state.window));

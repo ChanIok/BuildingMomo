@@ -10,10 +10,13 @@ import SidebarSelection from './SidebarSelection.vue'
 import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
+import SidebarDesktopSettings from './SidebarDesktopSettings.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
+import { useDesktopStore } from '../stores/desktopStore'
 import {
   ChevronDown,
   ChevronUp,
+  Laptop,
   Layers,
   Monitor,
   Settings2,
@@ -22,6 +25,7 @@ import {
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
+const desktopStore = useDesktopStore()
 const { t } = useI18n()
 
 const isCompactSidebar = useMediaQuery('(max-height: 700px)')
@@ -102,6 +106,19 @@ watch(
               >
                 <Monitor class="h-4 w-4" />
               </SidebarToggleItem>
+
+              <SidebarToggleItem
+                v-if="desktopStore.isDesktop"
+                :model-value="uiStore.sidebarView === 'desktopSettings'"
+                @update:model-value="
+                  (v: boolean) => {
+                    if (v) uiStore.setSidebarView('desktopSettings')
+                  }
+                "
+                :tooltip="`${t('sidebar.desktop.label')} (5)`"
+              >
+                <Laptop class="h-4 w-4" />
+              </SidebarToggleItem>
             </div>
 
             <SidebarToggleItem
@@ -156,6 +173,9 @@ watch(
         </div>
         <div v-else-if="uiStore.sidebarView === 'displaySettings'" class="mt-0 min-h-0 flex-1">
           <SidebarDisplaySettings class="h-full" />
+        </div>
+        <div v-else-if="uiStore.sidebarView === 'desktopSettings'" class="mt-0 min-h-0 flex-1">
+          <SidebarDesktopSettings class="h-full" />
         </div>
       </div>
     </div>

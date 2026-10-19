@@ -10,6 +10,7 @@ import { useUIStore } from './uiStore'
 import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
 import { useTabStore } from './tabStore'
+import { useDesktopStore } from './desktopStore'
 import { useI18n } from '../composables/useI18n'
 import { useNotification } from '../composables/useNotification'
 import { matrixTransform } from '../lib/matrixTransform'
@@ -42,6 +43,7 @@ export const useCommandStore = defineStore('command', () => {
   const { deleteSelected } = useEditorManipulation()
 
   const uiStore = useUIStore()
+  const desktopStore = useDesktopStore()
   const { t } = useI18n()
   const notification = useNotification()
 
@@ -404,6 +406,14 @@ export const useCommandStore = defineStore('command', () => {
       category: 'view',
       enabled: () => true,
       execute: () => uiStore.setSidebarView('displaySettings'),
+    },
+    {
+      id: 'sidebar.showDesktopSettings',
+      label: t('command.sidebar.showDesktopSettings'),
+      shortcut: '5',
+      category: 'view',
+      enabled: () => desktopStore.isDesktop,
+      execute: () => uiStore.setSidebarView('desktopSettings'),
     },
 
     // ===== 编辑菜单 =====
