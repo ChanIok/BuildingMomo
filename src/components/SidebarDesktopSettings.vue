@@ -17,6 +17,11 @@ const notification = useNotification()
 const isCleaningGame = ref(false)
 const isCleaningEditor = ref(false)
 
+function handleToggleRunAsAdmin(enabled: boolean) {
+  desktopStore.setRunAsAdmin(enabled)
+  notification.info(t('sidebar.desktop.runAsAdminRestartHint'))
+}
+
 async function handleCleanMemory(target: 'game' | 'editor') {
   if (target === 'game') {
     isCleaningGame.value = true
@@ -112,6 +117,32 @@ const gameBadge = computed(() => {
   <div class="flex h-full flex-col overflow-hidden p-4 pr-0">
     <ScrollArea class="h-full">
       <div class="flex flex-col gap-4 pr-4">
+        <!-- 系统权限 -->
+        <div class="flex flex-col gap-4">
+          <h3 class="w-fit cursor-default text-xs font-semibold text-sidebar-foreground">
+            {{ t('sidebar.desktop.systemPermission') }}
+          </h3>
+
+          <!-- 开关：以管理员身份运行 -->
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label class="cursor-pointer text-xs" for="run-as-admin">
+                {{ t('sidebar.desktop.runAsAdmin') }}
+              </Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.desktop.runAsAdminHint') }}
+              </p>
+            </div>
+            <Switch
+              id="run-as-admin"
+              :model-value="desktopStore.status.runAsAdminEnabled"
+              @update:model-value="handleToggleRunAsAdmin"
+            />
+          </div>
+        </div>
+
+        <Separator />
+
         <!-- 性能调度 -->
         <div class="flex flex-col gap-4">
           <h3 class="w-fit cursor-default text-xs font-semibold text-sidebar-foreground">

@@ -1,6 +1,7 @@
 #include "window.hpp"
 
 #include "app.hpp"
+#include "system_utils.hpp"
 #include "webview.hpp"
 
 namespace desktop {
@@ -51,6 +52,14 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case kWebViewErrorMessage:
       show_pending_error(*state);
       return 0;
+    case kActivateInstanceMessage:
+      if (IsIconic(window)) {
+        ShowWindow(window, SW_RESTORE);
+      } else {
+        ShowWindow(window, SW_SHOW);
+      }
+      SetForegroundWindow(window);
+      return 0;
     case WM_CLOSE:
       DestroyWindow(window);
       return 0;
@@ -89,6 +98,10 @@ auto create_window(AppState& state, int show_command) -> std::expected<void, std
                        bounds.bottom - bounds.top, nullptr, nullptr, state.instance, &state)) {
     return std::unexpected(L"无法创建窗口。错误码：" + std::to_wstring(GetLastError()));
   }
+
+  // 允许低权限实例发送激活窗口消息（绕过 UIPI 限制）
+  ChangeWindowMessageFilterEx(state.window, kActivateInstanceMessage, MSGFLT_ALLOW, nullptr);
+
   ShowWindow(state.window, show_command);
   UpdateWindow(state.window);
   return {};

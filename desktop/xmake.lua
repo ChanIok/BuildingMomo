@@ -24,6 +24,12 @@ target("BuildingMomo")
     add_links("user32", "gdi32", "shell32", "ole32", "shlwapi", "version", "advapi32", "psapi")
     -- manifest 由 app.rc 嵌入，避免链接器再生成另一份清单。
     add_ldflags("/SUBSYSTEM:WINDOWS", "/MANIFEST:NO", {force = true})
+    if is_mode("release") then
+        set_symbols("debug")
+        add_ldflags("/DEBUG:FULL", {force = true})
+        add_ldflags("/NODEFAULTLIB:libucrt.lib", {force = true})
+        add_ldflags("/DEFAULTLIB:ucrt.lib", {force = true})
+    end
     if is_mode("debug") then
         add_defines("BUILDINGMOMO_DESKTOP_DEBUG")
     end

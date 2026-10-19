@@ -764,6 +764,11 @@ export const enLocale = {
     },
     desktop: {
       label: 'Desktop Settings',
+      systemPermission: 'System Permissions',
+      runAsAdmin: 'Run as Administrator',
+      runAsAdminHint:
+        'Provides necessary system privileges for framerate control and memory management.',
+      runAsAdminRestartHint: 'Saved. Changes will take effect on next launch.',
       performance: 'Performance & Scheduling',
       gpuPriority: 'GPU Realtime Priority',
       gpuPriorityHint:

@@ -11,6 +11,8 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
 
 const DEFAULT_DESKTOP_STATUS: DesktopStatus = {
   isDesktop: false,
+  isElevated: false,
+  runAsAdminEnabled: true,
   rtssAvailable: false,
   gameRunning: false,
   gameFocused: false,
@@ -79,6 +81,8 @@ export const useDesktopStore = defineStore('desktop', () => {
 
     if (data.type === 'desktopStatus' && data.status) {
       status.value.isDesktop = true
+      status.value.isElevated = Boolean(data.status.isElevated)
+      status.value.runAsAdminEnabled = Boolean(data.status.runAsAdminEnabled)
       status.value.rtssAvailable = Boolean(data.status.rtssAvailable)
       status.value.gameRunning = Boolean(data.status.gameRunning)
       status.value.gameFocused = Boolean(data.status.gameFocused)
@@ -96,6 +100,20 @@ export const useDesktopStore = defineStore('desktop', () => {
         })
       }
     }
+  }
+
+  /**
+   * 设置是否默认以管理员权限启动（控制数据目录标记文件）
+   */
+  function setRunAsAdmin(enabled: boolean): void {
+    const webview = getWebview()
+    if (!webview) return
+
+    status.value.runAsAdminEnabled = enabled
+    webview.postMessage({
+      type: 'setRunAsAdmin',
+      enabled,
+    })
   }
 
   const cleanMemoryResolvers = new Map<string, (result: CleanMemoryResult) => void>()
@@ -169,5 +187,6 @@ export const useDesktopStore = defineStore('desktop', () => {
     init,
     syncConfigToNative,
     cleanMemory,
+    setRunAsAdmin,
   }
 })

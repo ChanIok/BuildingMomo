@@ -14,6 +14,10 @@ export interface DesktopSettings {
 export interface DesktopStatus {
   /** 是否处于桌面宿主 (WebView2) 环境 */
   isDesktop: boolean
+  /** 当前进程是否处于管理员运行权限 (Elevated) */
+  isElevated: boolean
+  /** 用户是否启用了“默认以管理员身份运行”策略（根据数据目录 no_admin 标记文件反推） */
+  runAsAdminEnabled: boolean
   /** RTSS (RivaTuner Statistics Server) 是否已就绪并运行 */
   rtssAvailable: boolean
   /** 目标游戏是否正在运行 */

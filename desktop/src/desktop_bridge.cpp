@@ -7,6 +7,7 @@
 
 #include "rtss_limiter.hpp"
 #include "memory_cleaner.hpp"
+#include "system_utils.hpp"
 
 namespace desktop {
 
@@ -104,11 +105,15 @@ void broadcast_desktop_status() {
     return;
   }
   auto status = get_rtss_status();
+  bool is_elevated = is_process_elevated();
+  bool run_as_admin = !has_no_admin_marker();
   auto json = std::format(
-      LR"({{"type":"desktopStatus","config":{{"gpuRealtimePriority":{},"rtssHangLimitEnabled":{},"rtssHangLimitFps":{}}},"status":{{"isDesktop":true,"rtssAvailable":{},"gameRunning":{},"gameFocused":{},"isLimiting":{}}}}})",
+      LR"({{"type":"desktopStatus","config":{{"gpuRealtimePriority":{},"rtssHangLimitEnabled":{},"rtssHangLimitFps":{}}},"status":{{"isDesktop":true,"isElevated":{},"runAsAdminEnabled":{},"rtssAvailable":{},"gameRunning":{},"gameFocused":{},"isLimiting":{}}}}})",
       g_config.gpu_realtime_priority ? L"true" : L"false",
       g_config.rtss_hang_limit_enabled ? L"true" : L"false",
       g_config.rtss_hang_limit_fps,
+      is_elevated ? L"true" : L"false",
+      run_as_admin ? L"true" : L"false",
       status.available ? L"true" : L"false",
       status.game_running ? L"true" : L"false",
       status.game_focused ? L"true" : L"false",
@@ -160,6 +165,11 @@ void handle_web_message(const wchar_t* message_json) {
         result.released_mb,
         result.error_code);
     g_webview->PostWebMessageAsJson(json.c_str());
+  } else if (type == L"setRunAsAdmin") {
+    if (auto enabled = extract_bool(sv, L"enabled"); enabled.has_value()) {
+      set_no_admin_marker(!(*enabled));
+      broadcast_desktop_status();
+    }
   }
 }
 

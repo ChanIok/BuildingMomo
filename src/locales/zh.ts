@@ -749,6 +749,10 @@ export const zhLocale = {
     },
     desktop: {
       label: '客户端设置',
+      systemPermission: '系统权限',
+      runAsAdmin: '以管理员身份运行',
+      runAsAdminHint: '为帧率控制和内存整理提供必要的系统权限',
+      runAsAdminRestartHint: '设置已保存，将在下次启动编辑器时生效',
       performance: '性能调度',
       gpuPriority: 'GPU 实时优先级',
       gpuPriorityHint: '为编辑器分配最高 GPU 调度权重，保障视口流畅',
