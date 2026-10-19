@@ -54,7 +54,7 @@ export function useThreeSelection(
     { flush: 'sync' }
   )
 
-  const { deselectItems, updateSelection, intersectSelection, clearSelection } =
+  const { deselectItems, updateSelection, intersectSelection, clearSelection, toggleItems } =
     useEditorSelection()
 
   const { setGroupOrigin } = useEditorGroups()
@@ -602,28 +602,9 @@ export function useThreeSelection(
       case 'intersect':
         intersectSelection(selectedIds, { skipGroupExpansion })
         break
-      case 'toggle': {
-        const scheme = editorStore.activeScheme
-        const currentSelected = scheme?.selectedItemIds.value
-        const toSelect: string[] = []
-        const toDeselect: string[] = []
-
-        for (const id of selectedIds) {
-          if (currentSelected?.has(id)) {
-            toDeselect.push(id)
-          } else {
-            toSelect.push(id)
-          }
-        }
-
-        if (toDeselect.length > 0) {
-          deselectItems(toDeselect, { skipGroupExpansion })
-        }
-        if (toSelect.length > 0) {
-          updateSelection(toSelect, true, { skipGroupExpansion })
-        }
+      case 'toggle':
+        toggleItems(selectedIds, { skipGroupExpansion })
         break
-      }
       case 'new':
       default:
         updateSelection(selectedIds, false, { skipGroupExpansion })

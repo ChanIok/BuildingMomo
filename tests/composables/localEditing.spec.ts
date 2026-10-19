@@ -9,7 +9,7 @@ import { useEditorItemAdd } from '../../src/composables/editor/useEditorItemAdd'
 import { useClipboard } from '../../src/composables/useClipboard'
 import type { AppItem } from '../../src/types/editor'
 import { OrthographicCamera } from 'three'
-import { shallowRef } from 'vue'
+import { shallowRef, ref, nextTick } from 'vue'
 import { useThreeSelection } from '../../src/composables/useThreeSelection'
 import { useUIStore } from '../../src/stores/uiStore'
 import type { InteractionAdapter, RaycastHit } from '../../src/composables/renderer/types'
@@ -18,13 +18,18 @@ import { useKeyboardShortcuts } from '../../src/composables/useKeyboardShortcuts
 import { createCodeImportOps } from '../../src/composables/fileOps/codeImport'
 import { NEW_SNAPSHOTS_JSON } from '../fixtures/gameJson'
 import { useEditorManipulation } from '../../src/composables/editor/useEditorManipulation'
+import { useSettingsStore } from '../../src/stores/settingsStore'
 
-const keyboard = vi.hoisted(() => ({ listener: null as ((event: KeyboardEvent) => void) | null }))
+const keyboard = vi.hoisted(() => ({
+  listener: null as ((event: KeyboardEvent) => void) | null,
+  keys: { shift: { value: false }, ctrl: { value: false }, alt: { value: false } },
+}))
 vi.mock('@vueuse/core', async (original) => ({
   ...(await original<typeof import('@vueuse/core')>()),
   onKeyStroke: (listener: (event: KeyboardEvent) => void) => {
     keyboard.listener = listener
   },
+  useMagicKeys: () => keyboard.keys,
 }))
 vi.mock('@/composables/useFileOperations', () => ({ useFileOperations: () => ({}) }))
 
@@ -63,6 +68,122 @@ function setup() {
 beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   setActivePinia(createPinia())
+  keyboard.keys = { shift: ref(false), ctrl: ref(false), alt: ref(false) }
+})
+
+describe('local group selection preference', () => {
+  it('defaults to individual selection, changes only future actions, and leaves normal selection unchanged', async () => {
+    const { store, scheme, selection, items } = setup()
+    const settings = useSettingsStore()
+    expect(settings.settings.localGroupSelection).toBe(false)
+    store.enterLocalEditing(['a', 'b', 'c', 'd'])
+    selection.updateSelection(['a'], false)
+    const scope = store.localEditingItemIds
+    const version = store.selectionVersion
+    const sceneVersion = store.sceneVersion
+    const historySize = scheme.history.value!.selectionUndoStack.length
+    settings.settings.localGroupSelection = true
+    await nextTick()
+    expect([...scheme.selectedItemIds.value]).toEqual(['a'])
+    expect(store.localEditingItemIds).toBe(scope)
+    expect(scheme.items.value).toBe(items)
+    expect(store.selectionVersion).toBe(version)
+    expect(store.sceneVersion).toBe(sceneVersion)
+    expect(scheme.history.value!.selectionUndoStack).toHaveLength(historySize)
+    selection.updateSelection(['a'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+    settings.settings.localGroupSelection = false
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+    selection.updateSelection(['a'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
+    store.exitLocalEditing()
+    selection.updateSelection(['a'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+    settings.settings.localGroupSelection = true
+    selection.updateSelection(['a'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+  })
+
+  it('expands all selection actions only to the intersection of groups and the working set', () => {
+    const { store, scheme, selection } = setup()
+    scheme.items.value = [...scheme.items.value, item('e', 8)]
+    store.triggerSceneUpdate()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c', 'd'])
+    selection.updateSelection(['b', 'c'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b', 'c']))
+    selection.deselectItems(['b'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['c']))
+    selection.updateSelection(['a'], true)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b', 'c']))
+    selection.intersectSelection(['b', 'e'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+    selection.selectAll()
+    selection.deselectItems(['e'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b', 'c', 'd']))
+    selection.toggleSelection('c', false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['c']))
+    store.exitLocalEditing()
+    store.enterLocalEditing(['b', 'c', 'd'])
+    selection.updateSelection(['b'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+    expect(store.isItemEditable('a')).toBe(false)
+    expect(store.isItemEditable('e')).toBe(false)
+  })
+
+  it('lets explicit individual actions override the saved preference', () => {
+    const { store, scheme, selection } = setup()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c'])
+    selection.toggleSelection('a', false, { skipGroupExpansion: true })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
+    selection.updateSelection(['b'], false, { skipGroupExpansion: true })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+    selection.toggleItems(['a', 'b'], { skipGroupExpansion: true })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
+    selection.selectAll()
+    selection.deselectItems(['a'], { skipGroupExpansion: true })
+    selection.intersectSelection(['b'], { skipGroupExpansion: true })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+  })
+
+  it('toggles each effective group once, completes partial groups, and records one selection step', () => {
+    const { store, scheme, selection } = setup()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c', 'd'])
+    selection.updateSelection(['a', 'c'], false, { skipGroupExpansion: true })
+    const before = scheme.history.value!.selectionUndoStack.length
+    selection.toggleItems(['a', 'b', 'a', 'c', 'd'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b', 'd']))
+    expect(scheme.history.value!.selectionUndoStack).toHaveLength(before + 1)
+    selection.toggleItems(['b', 'a', 'b'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['d']))
+  })
+
+  it('keeps invert and same-type selection exact instead of expanding their results to groups', () => {
+    const { store, scheme, selection } = setup()
+    scheme.items.value = scheme.items.value.map((entry) =>
+      entry.internalId === 'b' ? { ...entry, gameId: 2 } : entry
+    )
+    store.triggerSceneUpdate()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c'])
+    selection.updateSelection(['a'], false, { skipGroupExpansion: true })
+    selection.selectSameType()
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'c']))
+    selection.invertSelection()
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+  })
+
+  it('preserves normal hit-based group toggling for partial selections', () => {
+    const { scheme, selection } = setup()
+    selection.updateSelection(['a'], false, { skipGroupExpansion: true })
+    selection.toggleItems(['a'])
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    selection.updateSelection(['a'], false, { skipGroupExpansion: true })
+    selection.toggleItems(['a', 'b'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+  })
 })
 
 describe('local editing scope', () => {
@@ -444,12 +565,13 @@ describe('local editing pointer gestures', () => {
     const state = setup()
     useUIStore().updateEditorContainerRect({ left: 0, top: 0, width: 100, height: 100 })
     let hit: RaycastHit | null = { internalId: 'a', instanceId: 0, distance: 1 }
+    let candidates = ['a', 'b', 'c']
     const adapter = shallowRef<InteractionAdapter>({
       pick: () => hit,
       pickAsync: async () => hit,
       cancelPick: vi.fn(),
       forEachRegionCenterCandidate: (_camera, _viewport, visitor) => {
-        for (const id of ['a', 'b', 'c']) visitor({ internalId: id, center: { x: 50, y: 50 } })
+        for (const id of candidates) visitor({ internalId: id, center: { x: 50, y: 50 } })
       },
     })
     const controller = useThreeSelection(shallowRef(new OrthographicCamera()), adapter)
@@ -470,11 +592,81 @@ describe('local editing pointer gestures', () => {
       ...state,
       controller,
       click,
+      setCandidates: (ids: string[]) => {
+        candidates = ids
+      },
       setHit: (next: RaycastHit | null) => {
         hit = next
       },
     }
   }
+
+  it('uses the saved preference for clicks and lets the configured modifier pick an individual member', () => {
+    const { store, scheme, click } = pointerSetup()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c'])
+    click(1000)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+    keyboard.keys.ctrl.value = true
+    click(2000, { ctrlKey: true })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+    keyboard.keys.ctrl.value = false
+    click(3000)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+  })
+
+  it.each([
+    ['new', ['c'], ['a', 'b']],
+    ['add', ['c'], ['a', 'b', 'c']],
+    ['subtract', ['a', 'b', 'c'], ['c']],
+    ['intersect', ['a', 'b', 'c'], ['a', 'b']],
+    ['toggle', ['a', 'c'], ['a', 'b', 'c']],
+  ] as const)('applies group selection to region action %s', (action, initial, expected) => {
+    const { store, scheme, selection, controller, setCandidates } = pointerSetup()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c'])
+    selection.updateSelection([...initial], false, { skipGroupExpansion: true })
+    store.selectionAction = action
+    setCandidates(['a', 'b'])
+    const event = (x: number, y: number) => ({
+      button: 0,
+      buttons: 1,
+      clientX: x,
+      clientY: y,
+      type: 'pointerup',
+      pointerType: 'mouse',
+    })
+    controller.handlePointerDown(event(10, 10))
+    controller.handlePointerMove(event(90, 90))
+    controller.handlePointerUp(event(90, 90))
+    expect(scheme.selectedItemIds.value).toEqual(new Set(expected))
+  })
+
+  it('expands a lasso hit to other in-scope group members', () => {
+    const { store, scheme, controller, setCandidates } = pointerSetup()
+    useSettingsStore().settings.localGroupSelection = true
+    store.enterLocalEditing(['a', 'b', 'c'])
+    setCandidates(['a'])
+    store.selectionMode = 'lasso'
+    const event = (x: number, y: number) => ({
+      button: 0,
+      buttons: 1,
+      clientX: x,
+      clientY: y,
+      type: 'pointerup',
+      pointerType: 'mouse',
+    })
+    controller.handlePointerDown(event(10, 10))
+    for (const [x, y] of [
+      [90, 10],
+      [90, 90],
+      [10, 90],
+      [10, 10],
+    ])
+      controller.handlePointerMove(event(x!, y!))
+    controller.handlePointerUp(event(20, 20))
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+  })
 
   it('keeps single-click group selection, enters on double click, and exits only on double blank', () => {
     const { store, scheme, click, setHit } = pointerSetup()

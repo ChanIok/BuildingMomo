@@ -122,6 +122,35 @@ describe('render input projection', () => {
 })
 
 describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices', (mode) => {
+  it('does not rebuild instances or change selection when the group preference changes', async () => {
+    const { store, scheme } = setup()
+    const settings = useSettingsStore()
+    settings.settings.threeDisplayMode = mode
+    const renderer = scope.run(() => useThreeInstancedRenderer())!
+    store.enterLocalEditing(['inside', 'peer'])
+    await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
+    useEditorSelection().updateSelection(['inside'], false, { skipGroupExpansion: true })
+    await nextTick()
+    const meshRef =
+      mode === 'box'
+        ? renderer.instancedMesh
+        : mode === 'icon'
+          ? renderer.iconInstancedMesh
+          : renderer.simpleBoxInstancedMesh
+    const mesh = meshRef.value!
+    const version = mesh.instanceMatrix.version
+    const colorVersion = mesh.instanceColor!.version
+    const workingSet = store.localEditingItemIds
+    settings.settings.localGroupSelection = true
+    await nextTick()
+    expect(meshRef.value).toBe(mesh)
+    expect(mesh.instanceMatrix.version).toBe(version)
+    expect(mesh.instanceColor!.version).toBe(colorVersion)
+    expect(mesh.count).toBe(2)
+    expect(store.localEditingItemIds).toBe(workingSet)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['inside']))
+  })
+
   it('retains visible furniture when exiting instead of resetting its instance count', async () => {
     const { store } = setup()
     useSettingsStore().settings.threeDisplayMode = mode

@@ -1,5 +1,8 @@
 export const zhLocale = {
   localEdit: {
+    groupSelection: '按组选择',
+    groupSelectionLabel: '局部编辑时按组选择',
+    groupSelectionHint: '联动选择局部范围内的同组家具。',
     status: '局部编辑 · {count}件家具',
     enter: '进入局部编辑',
     exit: '退出',

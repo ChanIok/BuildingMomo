@@ -1,185 +1,137 @@
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
+import { useSettingsStore } from '../../stores/settingsStore'
 
+type SelectionOptions = {
+  // 本次操作强制按单件处理（例如按住单件选择修饰键），优先于持久化设置。
+  skipGroupExpansion?: boolean
+}
+
+/**
+ * 统一处理选择集合与选择历史，不修改家具数据。
+ * 点击、框选、套索先解析实际作用的家具，再执行替换、追加、移除等集合操作。
+ */
 export function useEditorSelection() {
   const store = useEditorStore()
+  const settingsStore = useSettingsStore()
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
 
   const { recordSelectionChange } = useEditorHistory()
 
-  // 内部辅助函数：获取物品组ID
-  // 为了避免循环依赖（如果 useEditorGroups 也引用了 selection），我们直接从 map 读取
-  function getItemGroupIdLocal(itemId: string): number {
-    if (!activeScheme.value) return 0
-    const item = itemsMap.value.get(itemId)
-    return item?.groupId ?? 0
+  function shouldSkipGroupExpansion(options?: SelectionOptions): boolean {
+    // 普通模式仍默认按组选择；只有局部编辑受“按组选择”设置控制。
+    return Boolean(
+      options?.skipGroupExpansion ||
+      (store.localEditingItemIds !== null && !settingsStore.settings.localGroupSelection)
+    )
   }
 
-  // 扩展选择到整组（内部辅助函数）
-  function expandSelectionToGroups(itemIds: Set<string>): Set<string> {
-    if (!activeScheme.value) return itemIds
-
-    const expandedIds = new Set(itemIds)
-    const groupsToExpand = new Set<number>()
-
-    // 收集所有涉及的组ID
-    itemIds.forEach((id) => {
-      const groupId = getItemGroupIdLocal(id)
-      if (groupId > 0) {
-        groupsToExpand.add(groupId)
-      }
-    })
-
-    // 扩展选择到整组（直接使用 groupsMap 获取 itemIds）
-    groupsToExpand.forEach((groupId) => {
-      const itemIds = groupsMap.value.get(groupId)
-      if (itemIds) {
-        itemIds.forEach((itemId) => expandedIds.add(itemId))
-      }
-    })
-
-    return expandedIds
-  }
-
-  // 内部辅助函数：获取组内所有物品
-  function getGroupItemsLocal(groupId: number) {
-    if (!activeScheme.value || groupId <= 0) return []
-    const itemIds = groupsMap.value.get(groupId)
-    if (!itemIds) return []
-
-    const result: any[] = []
-    itemIds.forEach((id) => {
-      const item = itemsMap.value.get(id)
-      if (item) result.push(item)
-    })
-    return result
-  }
-
-  function shouldSkipGroupExpansion(options?: { skipGroupExpansion?: boolean }): boolean {
-    return Boolean(options?.skipGroupExpansion || store.localEditingItemIds !== null)
-  }
-
-  function toggleSelection(
-    itemId: string,
-    additive: boolean,
-    options?: { skipGroupExpansion?: boolean }
-  ) {
-    if (!activeScheme.value || !store.isItemEditable(itemId)) return
-
-    // 保存历史（选择操作，会合并）
-    recordSelectionChange()
-
-    // 强制单选模式：直接操作单个物品，不扩展到组
-    if (shouldSkipGroupExpansion(options)) {
-      if (additive) {
-        if (activeScheme.value.selectedItemIds.value.has(itemId)) {
-          activeScheme.value.selectedItemIds.value.delete(itemId)
-        } else {
-          activeScheme.value.selectedItemIds.value.add(itemId)
-        }
-      } else {
-        activeScheme.value.selectedItemIds.value.clear()
-        activeScheme.value.selectedItemIds.value.add(itemId)
-      }
-      store.triggerSelectionUpdate()
-      return
+  /**
+   * 将实际命中的家具解析成操作目标：过滤不可编辑项，必要时补入同组成员。
+   * 命中项和补入成员都必须可编辑，过滤不存在的 ID，并限制在当前局部范围内。
+   * 此处只计算目标，不修改当前选择；Set 同时消除重复命中和重复组成员。
+   */
+  function resolveSelectionTargets(
+    itemIds: Iterable<string>,
+    options?: SelectionOptions
+  ): Set<string> {
+    const targets = new Set([...itemIds].filter(store.isItemEditable))
+    if (shouldSkipGroupExpansion(options)) return targets
+    const groups = new Set<number>()
+    for (const id of targets) {
+      const groupId = itemsMap.value.get(id)!.groupId
+      if (groupId > 0) groups.add(groupId)
     }
+    for (const groupId of groups) {
+      for (const id of groupsMap.value.get(groupId) ?? []) {
+        if (store.isItemEditable(id)) targets.add(id)
+      }
+    }
+    return targets
+  }
 
-    // 组模式：原有逻辑，扩展到整组
-    if (additive) {
-      if (activeScheme.value.selectedItemIds.value.has(itemId)) {
-        // 取消选择：如果是组，取消整组
-        const groupId = getItemGroupIdLocal(itemId)
-        if (groupId > 0) {
-          const groupItems = getGroupItemsLocal(groupId)
-          groupItems.forEach((item) =>
-            activeScheme.value!.selectedItemIds.value.delete(item.internalId)
-          )
-        } else {
-          activeScheme.value.selectedItemIds.value.delete(itemId)
-        }
-      } else {
-        // 添加选择：如果是组，选中整组
-        const groupId = getItemGroupIdLocal(itemId)
-        if (groupId > 0) {
-          const groupItems = getGroupItemsLocal(groupId)
-          groupItems.forEach((item) =>
-            activeScheme.value!.selectedItemIds.value.add(item.internalId)
-          )
-        } else {
-          activeScheme.value.selectedItemIds.value.add(itemId)
-        }
-      }
-    } else {
-      activeScheme.value.selectedItemIds.value.clear()
-      // 如果是组，选中整组
-      const groupId = getItemGroupIdLocal(itemId)
-      if (groupId > 0) {
-        const groupItems = getGroupItemsLocal(groupId)
-        groupItems.forEach((item) => activeScheme.value!.selectedItemIds.value.add(item.internalId))
-      } else {
-        activeScheme.value.selectedItemIds.value.add(itemId)
-      }
+  // 单个命中的切换：非追加时替换选择；追加时根据命中家具是否已选中，移除或加入整组目标。
+  function toggleSelection(itemId: string, additive: boolean, options?: SelectionOptions) {
+    const scheme = activeScheme.value
+    if (!scheme || !store.isItemEditable(itemId)) return
+    const targets = resolveSelectionTargets([itemId], options)
+    recordSelectionChange()
+    const selected = scheme.selectedItemIds.value
+    const remove = additive && selected.has(itemId)
+    if (!additive) selected.clear()
+    for (const id of targets) {
+      if (remove) selected.delete(id)
+      else selected.add(id)
     }
     store.triggerSelectionUpdate()
   }
 
-  function updateSelection(
-    itemIds: string[],
-    additive: boolean,
-    options?: { skipGroupExpansion?: boolean }
-  ) {
-    if (!activeScheme.value) return
-
-    itemIds = itemIds.filter(store.isItemEditable)
-
-    // 保存历史(选择操作,会合并)
+  // additive=false 替换原选择，true 保留原选择并追加；两者都遵循统一的组扩展规则。
+  function updateSelection(itemIds: string[], additive: boolean, options?: SelectionOptions) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+    const targets = resolveSelectionTargets(itemIds, options)
     recordSelectionChange()
-
-    if (!additive) {
-      activeScheme.value.selectedItemIds.value.clear()
-    }
-
-    // 强制单选模式：直接添加，不扩展到组
-    if (shouldSkipGroupExpansion(options)) {
-      itemIds.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
-    } else {
-      // 组模式：扩展选择到整组(框选行为)
-      const initialSelection = new Set(itemIds)
-      const expandedSelection = expandSelectionToGroups(initialSelection)
-      expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.add(id))
-    }
-
+    if (!additive) scheme.selectedItemIds.value.clear()
+    for (const id of targets) scheme.selectedItemIds.value.add(id)
     store.triggerSelectionUpdate()
   }
 
-  // 减选功能:从当前选择中移除指定物品
-  function deselectItems(itemIds: string[], options?: { skipGroupExpansion?: boolean }) {
-    if (!activeScheme.value) return
-
-    itemIds = itemIds.filter(store.isItemEditable)
-
-    // 保存历史(选择操作,会合并)
+  // 从当前选择中移除解析后的目标；按组选择开启时，同组可编辑成员也一起移除。
+  function deselectItems(itemIds: string[], options?: SelectionOptions) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+    const targets = resolveSelectionTargets(itemIds, options)
     recordSelectionChange()
+    for (const id of targets) scheme.selectedItemIds.value.delete(id)
+    store.triggerSelectionUpdate()
+  }
 
-    // 强制单选模式：直接移除，不扩展到组
-    if (shouldSkipGroupExpansion(options)) {
-      itemIds.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
-    } else {
-      // 组模式：扩展选择到整组(框选行为)
-      const initialSelection = new Set(itemIds)
-      const expandedSelection = expandSelectionToGroups(initialSelection)
-      expandedSelection.forEach((id) => activeScheme.value!.selectedItemIds.value.delete(id))
+  /**
+   * 批量切换（点击、框选、套索共用）：同组成员作为一个单元，只切换一次。
+   * 不能逐个命中调用 toggleSelection，否则区域命中同组多件时会把同一组反复开关。
+   */
+  function toggleItems(itemIds: string[], options?: SelectionOptions) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+    // hits 是实际命中项；targets 还包含按组扩展出来的成员，两者语义不同。
+    const hits = new Set(itemIds.filter(store.isItemEditable))
+    const targets = resolveSelectionTargets(hits, options)
+    if (targets.size === 0) return
+    const units = new Map<number | string, Set<string>>()
+    const skipGroups = shouldSkipGroupExpansion(options)
+    for (const id of targets) {
+      const groupId = itemsMap.value.get(id)!.groupId
+      // 按组时用数字组 ID 归并，否则用字符串家具 ID；不同键类型不会相互冲突。
+      const key = !skipGroups && groupId > 0 ? groupId : id
+      let unit = units.get(key)
+      if (!unit) {
+        unit = new Set()
+        units.set(key, unit)
+      }
+      unit.add(id)
     }
-
+    // 整次操作只记录一次选择历史，而不是为每个单元分别记录。
+    recordSelectionChange()
+    const selected = scheme.selectedItemIds.value
+    for (const unit of units.values()) {
+      // 只用实际命中项判断方向，不用扩展成员判断：
+      // 命中项全已选中 → 移除整个单元；任一命中项未选中 → 加入整个单元。
+      // 例如组内 A 已选、B 未选：只命中 A 会取消整组，同时命中 A/B 则选中整组。
+      const remove = [...unit].every((id) => !hits.has(id) || selected.has(id))
+      for (const id of unit) {
+        if (remove) selected.delete(id)
+        else selected.add(id)
+      }
+    }
     store.triggerSelectionUpdate()
   }
 
   function clearSelection() {
     if (!activeScheme.value) return
 
-    // 保存历史（选择操作，会合并）
+    // 在修改前保存选择快照，供选择撤销恢复。
     recordSelectionChange()
 
     activeScheme.value.selectedItemIds.value.clear()
@@ -187,11 +139,11 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  // 全选可见物品
+  // 全选可编辑家具（局部编辑时只含局部范围），无需再做组扩展。
   function selectAll() {
     if (!activeScheme.value) return
 
-    // 保存历史（选择操作，会合并）
+    // 在修改前保存选择快照，供选择撤销恢复。
     recordSelectionChange()
 
     activeScheme.value.selectedItemIds.value.clear()
@@ -204,11 +156,11 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  // 反选
+  // 对可编辑范围逐件取反，不做组扩展，保留“选中项与未选中项互换”的语义。
   function invertSelection() {
     if (!activeScheme.value) return
 
-    // 保存历史（选择操作，会合并）
+    // 在修改前保存选择快照，供选择撤销恢复。
     recordSelectionChange()
 
     const newSelection = new Set<string>()
@@ -225,38 +177,15 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  // 交叉选择：只保留当前选择与新选择的重叠部分
-  function intersectSelection(itemIds: string[], options?: { skipGroupExpansion?: boolean }) {
-    if (!activeScheme.value) return
-
-    // 保存历史（选择操作，会合并）
+  // 交叉选择：保留当前选择与解析后目标的交集。
+  function intersectSelection(itemIds: string[], options?: SelectionOptions) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+    const targets = resolveSelectionTargets(itemIds, options)
     recordSelectionChange()
-
-    const currentSelection = activeScheme.value.selectedItemIds.value
-    const newSelection = new Set<string>()
-
-    // 强制单选模式：直接计算交集，不扩展到组
-    if (shouldSkipGroupExpansion(options)) {
-      const targetSet = new Set(itemIds)
-      currentSelection.forEach((id) => {
-        if (targetSet.has(id)) {
-          newSelection.add(id)
-        }
-      })
-    } else {
-      // 组模式：扩展选择到整组后计算交集
-      const initialSelection = new Set(itemIds)
-      const expandedSelection = expandSelectionToGroups(initialSelection)
-
-      currentSelection.forEach((id) => {
-        if (expandedSelection.has(id)) {
-          newSelection.add(id)
-        }
-      })
-    }
-
-    activeScheme.value.selectedItemIds.value = newSelection
-
+    scheme.selectedItemIds.value = new Set(
+      [...scheme.selectedItemIds.value].filter((id) => targets.has(id))
+    )
     store.triggerSelectionUpdate()
   }
 
@@ -267,7 +196,7 @@ export function useEditorSelection() {
     const currentSelection = activeScheme.value.selectedItemIds.value
     if (currentSelection.size === 0) return
 
-    // 保存历史（选择操作，会合并）
+    // 在修改前保存选择快照，供选择撤销恢复。
     recordSelectionChange()
 
     // 收集当前选中物品的所有 gameId
@@ -294,6 +223,7 @@ export function useEditorSelection() {
 
   return {
     toggleSelection,
+    toggleItems,
     updateSelection,
     deselectItems,
     intersectSelection,

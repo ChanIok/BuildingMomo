@@ -125,6 +125,12 @@
       existing group. Pasting with source IDs is unavailable.
     </p>
     <p>
+      Enable <strong>Group select</strong> in the local editing bar or the sidebar editor settings
+      to select group members within the working set. This preference defaults to off and is saved
+      automatically. Switching it leaves the current selection unchanged; hold the
+      individual-selection modifier to temporarily select single items.
+    </p>
+    <p>
       A single click on empty space clears the selection. Double-click empty space, click
       <strong>Exit</strong> at the top right, or press <code>Esc</code> with nothing selected to
       leave. Exiting clears the selection and preserves your camera position and edits.

@@ -1,5 +1,8 @@
 export const enLocale = {
   localEdit: {
+    groupSelection: 'Group select',
+    groupSelectionLabel: 'Select by group in local editing',
+    groupSelectionHint: 'Select matching group members within the local working set.',
     status: 'Local editing · {count} items',
     enter: 'Enter Local Editing',
     exit: 'Exit',

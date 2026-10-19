@@ -13,6 +13,7 @@ import { useI18n } from '@/composables/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorStore } from '@/stores/editorStore'
+import { Toggle } from '@/components/ui/toggle'
 import type { Command } from '@/stores/commandStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
 import { PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next'
@@ -169,7 +170,7 @@ function handleViewInfoClick() {
     <div
       v-if="editorStore.localEditingItemIds !== null"
       role="status"
-      class="flex max-w-[calc(100vw-2rem)] items-baseline gap-2 rounded-md border bg-background/90 px-3 py-2 text-xs whitespace-nowrap shadow-xs backdrop-blur-sm"
+      class="flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-md border bg-background/90 px-3 py-2 text-xs whitespace-nowrap shadow-xs backdrop-blur-sm"
       @pointerdown.stop
       @pointerup.stop
       @dblclick.stop
@@ -177,6 +178,15 @@ function handleViewInfoClick() {
       <span class="font-medium">
         {{ t('localEdit.status', { count: editorStore.localEditingItemCount }) }}
       </span>
+      <Toggle
+        v-model="settingsStore.settings.localGroupSelection"
+        size="sm"
+        class="-my-1 h-6 cursor-pointer text-xs hover:bg-primary/5 hover:text-primary data-[state=on]:bg-primary/15"
+        :title="t('localEdit.groupSelectionHint')"
+        :aria-label="t('localEdit.groupSelectionLabel')"
+      >
+        {{ t('localEdit.groupSelection') }}
+      </Toggle>
       <span class="flex items-baseline gap-1 text-[10px]">
         <span v-if="!isCoarsePointer" class="text-muted-foreground">
           {{ t('localEdit.exitHint') }}

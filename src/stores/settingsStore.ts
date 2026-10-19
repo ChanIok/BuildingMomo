@@ -36,6 +36,7 @@ export interface AppSettings {
   enableLimitDetection: boolean
   enableAutoSave: boolean
   mirrorWithRotation: boolean // 镜像时同时旋转
+  localGroupSelection: boolean // 局部编辑时联动选择范围内的同组家具
   enableWatchNotification: boolean // 文件监控弹窗提示
 
   // 3D 视图设置
@@ -92,6 +93,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableLimitDetection: true,
   enableAutoSave: true,
   mirrorWithRotation: true,
+  localGroupSelection: false,
   enableWatchNotification: true,
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'lite',
@@ -140,7 +142,7 @@ const PASSWORD_STORAGE_KEY = 'momo_lab_password'
 
 export const useSettingsStore = defineStore('settings', () => {
   // 使用 VueUse 的 useLocalStorage，自动持久化
-  const settings = useLocalStorage<AppSettings>(STORAGE_KEY, DEFAULT_SETTINGS, {
+  const settings = useLocalStorage<AppSettings>(STORAGE_KEY, structuredClone(DEFAULT_SETTINGS), {
     mergeDefaults: true, // 自动合并默认值
   })
 
@@ -150,7 +152,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   // 重置为默认设置
   function resetSettings(): void {
-    settings.value = { ...DEFAULT_SETTINGS }
+    settings.value = structuredClone(DEFAULT_SETTINGS)
     console.log('[SettingsStore] Settings reset to default')
   }
 
