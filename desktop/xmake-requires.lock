@@ -1,0 +1,13 @@
+{
+    __meta__ = {
+        version = "1.0"
+    },
+    ["windows|x64"] = {
+        ["vcpkg::webview2#f56260b5"] = {
+            version = "latest"
+        },
+        ["vcpkg::wil#f56260b5"] = {
+            version = "latest"
+        }
+    }
+}

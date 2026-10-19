@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Windows desktop host
+desktop/.xmake/
+desktop/build/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

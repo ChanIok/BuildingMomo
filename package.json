@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:secure": "vite --mode secure",
     "build": "vue-tsc -b && vite build && node scripts/build-i18n.js",
+    "build:cpp": "node scripts/build-cpp.js",
     "build:secure": "vue-tsc -b && vite build --mode secure && node scripts/build-i18n.js && node scripts/clean-seo-for-secure.js",
     "preview": "vite preview",
     "test": "vitest run",
