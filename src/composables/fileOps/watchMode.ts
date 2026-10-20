@@ -687,8 +687,10 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     isWatchModeBusy.value = true
     try {
       // 此调用前不能等待 IndexedDB、目录扫描或其他异步工作，以保留用户手势。
-      const permission = await (storedHandle as any).requestPermission({ mode: 'readwrite' })
-      if (permission !== 'granted') {
+      // 先用 read 触发旧授权恢复：WebView2 同时请求读写可能重复弹窗。
+      // 恢复提示可一并恢复原有写权限，只有确实仍缺写权限时才追加申请。
+      const permission = await (storedHandle as any).requestPermission({ mode: 'read' })
+      if (permission !== 'granted' || !(await verifyPermission(storedHandle))) {
         notification.warning(t('fileOps.watch.permissionRequired'))
         return false
       }

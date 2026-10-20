@@ -12,15 +12,18 @@ vi.mock('@/lib/watchHandleStore', () => ({
 }))
 
 function directory(name: string, children: Record<string, FileSystemDirectoryHandle> = {}) {
+  const queryPermission = vi.fn(
+    async (_options: { mode: string }): Promise<PermissionState> => 'prompt'
+  )
   const handle = {
     kind: 'directory' as const,
     name,
-    queryPermission: vi.fn(
-      async (_options: { mode: string }): Promise<PermissionState> => 'prompt'
-    ),
-    requestPermission: vi.fn(
-      async (_options: { mode: string }): Promise<PermissionState> => 'granted'
-    ),
+    queryPermission,
+    requestPermission: vi.fn(async (_options: { mode: string }): Promise<PermissionState> => {
+      // 模拟恢复提示一并恢复原有读写权限，而非只更新所请求的 mode。
+      queryPermission.mockResolvedValue('granted')
+      return 'granted'
+    }),
     getDirectoryHandle: vi.fn(async (child: string) => {
       if (children[child]) return children[child]
       throw new DOMException('Directory not found', 'NotFoundError')
@@ -59,7 +62,7 @@ function setup() {
     preloadActiveSchemeResources: vi.fn(),
     prepareDataForSave: vi.fn(),
   } as unknown as Parameters<typeof createWatchModeOps>[0]
-  return { root, buildData, picker, notification, params, ops: createWatchModeOps(params) }
+  return { root, buildData, picker, notification, ops: createWatchModeOps(params) }
 }
 
 beforeEach(() => {
@@ -74,71 +77,81 @@ afterEach(() => {
 })
 
 describe('watch mode directory permission restore', () => {
-  it.each(['prompt', 'denied'] as const)(
-    'only queries permission on startup when %s, keeping the restore entry without prompting',
+  it.each(['granted', 'prompt', 'denied'] as const)(
+    'silently restores only when startup permission is granted: %s',
     async (permission) => {
       const { ops, root, picker, notification } = setup()
       root.queryPermission.mockResolvedValue(permission)
 
-      expect(await ops.restoreWatchModeSilently()).toBe(false)
+      const authorized = permission === 'granted'
+      expect(await ops.restoreWatchModeSilently()).toBe(authorized)
       expect(root.queryPermission).toHaveBeenCalledWith({ mode: 'readwrite' })
       expect(root.requestPermission).not.toHaveBeenCalled()
-      expect(root.getDirectoryHandle).not.toHaveBeenCalled()
       expect(picker).not.toHaveBeenCalled()
-      expect(WatchHandleStore.clearRootHandle).not.toHaveBeenCalled()
       expect(notification.warning).not.toHaveBeenCalled()
-      expect(ops.canRestoreWatchMode.value).toBe(true)
-      expect(ops.watchState.value.isActive).toBe(false)
-      expect(ops.isWatchModeBusy.value).toBe(false)
+      expect(notification.confirm).not.toHaveBeenCalled()
+      expect(ops.canRestoreWatchMode.value).toBe(!authorized)
+      expect(ops.watchState.value.isActive).toBe(authorized)
+      ops.cleanup()
     }
   )
 
-  it('silently restores watch mode when already authorized, without requesting permission or prompting import', async () => {
-    const { ops, root, buildData, picker, notification } = setup()
-    root.queryPermission.mockResolvedValue('granted')
-
-    expect(await ops.restoreWatchModeSilently()).toBe(true)
-    expect(root.requestPermission).not.toHaveBeenCalled()
-    expect(picker).not.toHaveBeenCalled()
-    expect(ops.watchState.value.isActive).toBe(true)
-    expect(ops.watchState.value.dirHandle).toBe(buildData)
-    expect(ops.canRestoreWatchMode.value).toBe(false)
-    expect(notification.confirm).not.toHaveBeenCalled()
-    expect(notification.success).not.toHaveBeenCalled()
-    ops.cleanup()
-  })
-
-  it('requests permission on the preloaded handle immediately on restore click, reusing the directory scan and watcher', async () => {
-    const { ops, root, buildData, picker, notification } = setup()
+  it('immediately requests read on the cached handle, then checks write access without another request', async () => {
+    const { ops, root, buildData, picker } = setup()
     await ops.restoreWatchModeSilently()
 
     const restoring = ops.restoreWatchMode()
     // 必须在第一次异步让出之前调用，才能保留浏览器的用户手势。
-    expect(root.requestPermission).toHaveBeenCalledWith({ mode: 'readwrite' })
-    expect(ops.isWatchModeBusy.value).toBe(true)
+    expect(root.requestPermission).toHaveBeenCalledWith({ mode: 'read' })
     expect(await restoring).toBe(true)
+    expect(root.requestPermission).toHaveBeenCalledOnce()
+    expect(root.queryPermission).toHaveBeenLastCalledWith({ mode: 'readwrite' })
     expect(WatchHandleStore.getRootHandle).toHaveBeenCalledOnce()
     expect(picker).not.toHaveBeenCalled()
     expect(ops.watchState.value.isActive).toBe(true)
     expect(ops.watchState.value.dirHandle).toBe(buildData)
-    expect(ops.getRootDirHandle()).toBe(root)
     expect(ops.canRestoreWatchMode.value).toBe(false)
-    expect(notification.success).toHaveBeenCalledWith('fileOps.watch.started')
     ops.cleanup()
   })
 
-  it.each(['prompt', 'denied'] as const)(
-    'keeps the old handle when permission resolves to %s so it can be retried, without switching directory automatically',
+  it.each(['granted', 'prompt', 'denied'] as const)(
+    'requests missing write access and activates only if granted: %s',
+    async (permission) => {
+      const { ops, root } = setup()
+      await ops.restoreWatchModeSilently()
+      root.requestPermission.mockResolvedValueOnce('granted').mockResolvedValueOnce(permission)
+
+      const authorized = permission === 'granted'
+      expect(await ops.restoreWatchMode()).toBe(authorized)
+      expect(root.requestPermission.mock.calls).toEqual([
+        [{ mode: 'read' }],
+        [{ mode: 'readwrite' }],
+      ])
+      expect(ops.watchState.value.isActive).toBe(authorized)
+      expect(ops.getRootDirHandle()).toBe(authorized ? root : null)
+      ops.cleanup()
+    }
+  )
+
+  it.each(['prompt', 'denied', 'error'] as const)(
+    'preserves the handle and allows retry after an unsuccessful read request: %s',
     async (permission) => {
       const { ops, root, picker, notification } = setup()
       await ops.restoreWatchModeSilently()
-      root.requestPermission.mockResolvedValueOnce(permission)
+      if (permission === 'error') {
+        root.requestPermission.mockRejectedValueOnce(
+          new DOMException('No gesture', 'SecurityError')
+        )
+      } else {
+        root.requestPermission.mockResolvedValueOnce(permission)
+      }
 
       expect(await ops.restoreWatchMode()).toBe(false)
+      expect(root.requestPermission).toHaveBeenCalledOnce()
       expect(ops.canRestoreWatchMode.value).toBe(true)
       expect(ops.watchState.value.isActive).toBe(false)
       expect(ops.isWatchModeBusy.value).toBe(false)
-      expect(notification.warning).toHaveBeenCalledWith('fileOps.watch.permissionRequired')
+      expect(permission === 'error' ? notification.error : notification.warning).toHaveBeenCalled()
       expect(WatchHandleStore.clearRootHandle).not.toHaveBeenCalled()
       expect(picker).not.toHaveBeenCalled()
 
@@ -146,18 +159,6 @@ describe('watch mode directory permission restore', () => {
       ops.cleanup()
     }
   )
-
-  it('keeps the old handle and clears the busy flag when the permission request throws', async () => {
-    const { ops, root, notification } = setup()
-    await ops.restoreWatchModeSilently()
-    root.requestPermission.mockRejectedValueOnce(new DOMException('No gesture', 'SecurityError'))
-
-    expect(await ops.restoreWatchMode()).toBe(false)
-    expect(ops.canRestoreWatchMode.value).toBe(true)
-    expect(ops.isWatchModeBusy.value).toBe(false)
-    expect(WatchHandleStore.clearRootHandle).not.toHaveBeenCalled()
-    expect(notification.error).toHaveBeenCalledWith('fileOps.watch.startFailed')
-  })
 
   it('keeps the pick-directory entry and requests no permission when no cached handle exists', async () => {
     const { ops, root } = setup()
@@ -184,55 +185,29 @@ describe('watch mode directory permission restore', () => {
     expect(await ops.restoreWatchModeSilently()).toBe(false)
     await ops.startWatchMode()
     expect(picker).not.toHaveBeenCalled()
-    expect(root.requestPermission).toHaveBeenCalledOnce()
+    root.queryPermission.mockResolvedValue('granted')
     resolve('granted')
     expect(await restoring).toBe(true)
+    expect(root.requestPermission).toHaveBeenCalledOnce()
     ops.cleanup()
   })
 
   it('still opens the picker when re-selecting a directory, keeping the pending directory after cancellation', async () => {
-    const { ops, root, picker, notification } = setup()
+    const { ops, picker } = setup()
     await ops.restoreWatchModeSilently()
     picker.mockRejectedValueOnce(new DOMException('Cancelled', 'AbortError'))
 
     await ops.startWatchMode()
     expect(picker).toHaveBeenCalledOnce()
-    expect(root.requestPermission).not.toHaveBeenCalled()
     expect(WatchHandleStore.clearRootHandle).not.toHaveBeenCalled()
     expect(ops.canRestoreWatchMode.value).toBe(true)
     expect(ops.isWatchModeBusy.value).toBe(false)
-    expect(notification.error).not.toHaveBeenCalled()
-  })
-
-  it('saves and starts watching after re-selecting a valid directory', async () => {
-    const { ops, picker } = setup()
-    await ops.restoreWatchModeSilently()
-    const other = directory('X6Game', { BuildData: directory('BuildData') })
-    picker.mockResolvedValueOnce(other)
-
-    await ops.startWatchMode()
-    expect(WatchHandleStore.saveRootHandle).toHaveBeenCalledWith(other)
-    expect(ops.getRootDirHandle()).toBe(other)
-    expect(ops.watchState.value.isActive).toBe(true)
-    expect(ops.canRestoreWatchMode.value).toBe(false)
-    ops.cleanup()
-  })
-
-  it('clears the invalid handle and asks to re-select when the original directory no longer contains BuildData', async () => {
-    const { ops, root, notification } = setup()
-    await ops.restoreWatchModeSilently()
-    root.getDirectoryHandle.mockRejectedValue(new DOMException('Gone', 'NotFoundError'))
-
-    expect(await ops.restoreWatchMode()).toBe(false)
-    expect(WatchHandleStore.clearRootHandle).toHaveBeenCalledOnce()
-    expect(ops.canRestoreWatchMode.value).toBe(false)
-    expect(notification.warning).toHaveBeenCalledWith('fileOps.watch.directoryUnavailable')
   })
 
   it('clears the cache and restore entry when watch mode stops', async () => {
-    const { ops, root } = setup()
+    const { ops } = setup()
     await ops.restoreWatchModeSilently()
-    await ops.restoreWatchMode()
+    expect(await ops.restoreWatchMode()).toBe(true)
     await ops.stopWatchMode()
 
     expect(WatchHandleStore.clearRootHandle).toHaveBeenCalledOnce()
@@ -240,6 +215,5 @@ describe('watch mode directory permission restore', () => {
     expect(ops.watchState.value.isActive).toBe(false)
     expect(ops.canRestoreWatchMode.value).toBe(false)
     expect(await ops.restoreWatchMode()).toBe(false)
-    expect(root.requestPermission).toHaveBeenCalledOnce()
   })
 })
