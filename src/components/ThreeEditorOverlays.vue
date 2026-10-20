@@ -356,6 +356,7 @@ function handleViewInfoClick() {
         @select="commandStore.executeCommand(localEditingCommand.id)"
       >
         <span>{{ localEditingCommand.label }}</span>
+        <DropdownMenuShortcut>{{ localEditingCommand.shortcut }}</DropdownMenuShortcut>
       </DropdownMenuItem>
       <DropdownMenuItem
         :disabled="!commandStore.isCommandEnabled('edit.group')"

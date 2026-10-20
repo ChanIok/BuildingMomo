@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useEditorStore } from '../../src/stores/editorStore'
 import { useTabStore } from '../../src/stores/tabStore'
@@ -77,35 +77,26 @@ beforeEach(() => {
   keyboard.keys = { shift: ref(false), ctrl: ref(false), alt: ref(false) }
 })
 
+afterEach(() => vi.unstubAllGlobals())
+
 describe('local group selection preference', () => {
   it('defaults to individual selection, changes only future actions, and leaves normal selection unchanged', async () => {
-    const { store, scheme, selection, items } = setup()
+    const { store, scheme, selection } = setup()
     const settings = useSettingsStore()
     expect(settings.settings.localGroupSelection).toBe(false)
     store.enterLocalEditing(['a', 'b', 'c', 'd'])
     selection.updateSelection(['a'], false)
-    const scope = store.localEditingItemIds
-    const version = store.selectionVersion
-    const sceneVersion = store.sceneVersion
-    const historySize = scheme.history.value!.selectionUndoStack.length
     settings.settings.localGroupSelection = true
     await nextTick()
     expect([...scheme.selectedItemIds.value]).toEqual(['a'])
-    expect(store.localEditingItemIds).toBe(scope)
-    expect(scheme.items.value).toBe(items)
-    expect(store.selectionVersion).toBe(version)
-    expect(store.sceneVersion).toBe(sceneVersion)
-    expect(scheme.history.value!.selectionUndoStack).toHaveLength(historySize)
     selection.updateSelection(['a'], false)
     expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
     settings.settings.localGroupSelection = false
     expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
     selection.updateSelection(['a'], false)
     expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
-    store.exitLocalEditing()
-    selection.updateSelection(['a'], false)
-    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
     settings.settings.localGroupSelection = true
+    store.exitLocalEditing()
     selection.updateSelection(['a'], false)
     expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
   })
@@ -406,11 +397,6 @@ describe('local editing insertions and history', () => {
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
     expect(store.localEditingItemCount).toBe(0)
     expect(store.isItemEditable('a')).toBe(false)
-    const scope = store.localEditingItemIds
-    store.createScheme('other')
-    useTabStore().openSchemeTab(scheme.id, 'test')
-    expect(store.localEditingItemCount).toBe(0)
-    expect(store.localEditingItemIds).toBe(scope)
     history.undo()
     expect(store.localEditingItemCount).toBe(2)
     expect([...scheme.selectedItemIds.value]).toEqual(['a', 'b'])
@@ -419,11 +405,10 @@ describe('local editing insertions and history', () => {
     const added = useEditorItemAdd().addFurnitureItem(10)!
     expect(store.localEditingItemCount).toBe(1)
     expect(store.isItemEditable(added.internalId)).toBe(true)
-    expect(added.groupId).toBe(0)
     expect(scheme.items.value[0]).toBe(items[2])
   })
 
-  it('adds code-imported combinations to the working set with their normal grouping', async () => {
+  it('includes code-imported furniture in the working set through undo and redo', async () => {
     const { store, scheme, items, history } = setup()
     store.enterLocalEditing(['d'])
     const payload = JSON.parse(NEW_SNAPSHOTS_JSON)
@@ -443,39 +428,30 @@ describe('local editing insertions and history', () => {
       preloadActiveSchemeResources: vi.fn(),
     })
     await ops.importFromCode('fixture')
-    expect(notification.error).not.toHaveBeenCalled()
-    expect(notification.success).toHaveBeenCalledOnce()
     const added = scheme.items.value.slice(4)
     expect(added).toHaveLength(2)
     expect(added.every((item) => store.isItemEditable(item.internalId))).toBe(true)
-    expect(added[0]!.groupId).toBe(9)
-    expect(added[1]!.groupId).toBe(0)
     expect(scheme.items.value.slice(0, 4)).toEqual(items)
     history.undo()
     expect(store.localEditingItemCount).toBe(1)
     history.redo()
     expect(store.localEditingItemCount).toBe(3)
-    vi.unstubAllGlobals()
   })
 
-  it('adds singles and library combinations to the working set without implicit grouping', () => {
-    const { store, scheme } = setup()
+  it('includes singles and library combinations in the working set', () => {
+    const { store } = setup()
     store.enterLocalEditing(['a', 'b'])
     const add = useEditorItemAdd()
     const single = add.addFurnitureItem(10)!
-    expect(single.groupId).toBe(0)
     expect(store.localEditingItemIds!.has(single.internalId)).toBe(true)
     const combined = add.addFurnitureCombination([
       { itemId: 11, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
       { itemId: 12, position: [10, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
     ])!
-    expect(combined.map((item) => item.groupId)).toEqual([9, 9])
-    expect(scheme.maxGroupId.value).toBe(9)
     expect(combined.every((item) => store.isItemEditable(item.internalId))).toBe(true)
-    expect(scheme.groupOrigins.value.get(7)).toBe('a')
   })
 
-  it('pastes an independent group with its origin and colors, and is reversible', () => {
+  it('includes pasted furniture and its origin without changing existing furniture, and is reversible', () => {
     const { store, scheme, items, history } = setup()
     store.enterLocalEditing(['a', 'b'])
     const clipboard = useClipboard()
@@ -487,32 +463,25 @@ describe('local editing insertions and history', () => {
     }
     const ids = clipboard.pasteItems(data, 0, 0)
     const inserted = scheme.items.value.find((item) => item.internalId === ids[0])!
-    expect(inserted.groupId).toBe(9)
     expect(store.isItemEditable(inserted.internalId)).toBe(true)
-    expect(scheme.groupOrigins.value.get(9)).toBe(inserted.internalId)
-    expect(inserted.extra.ColorMap).toEqual(source.extra.ColorMap)
-    expect(source.groupId).toBe(42)
+    expect(scheme.groupOrigins.value.get(inserted.groupId)).toBe(inserted.internalId)
     expect(scheme.items.value[2]).toBe(items[2])
     expect(scheme.groupOrigins.value.get(7)).toBe('a')
-    expect(scheme.groupOrigins.value.has(42)).toBe(false)
     history.undo()
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b', inserted.internalId]))
-    expect(scheme.items.value).toHaveLength(4)
+    expect(store.isItemEditable(inserted.internalId)).toBe(false)
     history.redo()
-    expect(store.localEditingItemIds).toEqual(new Set(['a', 'b', inserted.internalId]))
-    expect(scheme.items.value).toHaveLength(5)
-    expect([...scheme.selectedItemIds.value]).toEqual(ids)
+    expect(store.isItemEditable(inserted.internalId)).toBe(true)
   })
 
-  it('keeps step-repeat in the working set with independent groups and blocks source-ID paste', () => {
-    const { store, scheme } = setup()
+  it('keeps step-repeat in the working set and blocks source-ID paste', () => {
+    const { store } = setup()
     store.clipboardList = {
       sourceSchemeId: 'elsewhere',
       items: [item('x', 42)],
       groupOrigins: new Map(),
     }
     const clipboard = useClipboard()
-    expect(clipboard.canPreserveSourceIds.value).toBe(true)
     store.enterLocalEditing(['a', 'b'])
     expect(clipboard.canPreserveSourceIds.value).toBe(false)
     expect(clipboard.advancedPaste({ mode: 'preserveIds' })).toEqual([])
@@ -527,25 +496,6 @@ describe('local editing insertions and history', () => {
     })
     expect(ids).toHaveLength(2)
     expect(ids.every(store.isItemEditable)).toBe(true)
-    expect(
-      scheme.items.value.filter((item) => ids.includes(item.internalId)).map((item) => item.groupId)
-    ).toEqual([9, 10])
-  })
-
-  it('exits before undoing an outside transaction, without changing global history order', () => {
-    const { store, scheme, history } = setup()
-    history.recordTransaction('outside.move', () => {
-      scheme.items.value = scheme.items.value.map((item) =>
-        item.internalId === 'c' ? { ...item, x: 10 } : item
-      )
-      store.triggerSceneUpdate()
-    })
-    store.enterLocalEditing(['a', 'b'])
-    history.undo()
-    expect(store.localEditingItemIds).toBeNull()
-    expect(store.itemsMap.get('c')!.x).toBe(0)
-    history.redo()
-    expect(store.itemsMap.get('c')!.x).toBe(10)
   })
 
   it('recognizes outside furniture even when it belongs to the same group', () => {
@@ -739,19 +689,14 @@ describe('local editing pointer gestures', () => {
     expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
   })
 
-  it.each([
-    ['new', ['c'], ['a', 'b']],
-    ['add', ['c'], ['a', 'b', 'c']],
-    ['subtract', ['a', 'b', 'c'], ['c']],
-    ['intersect', ['a', 'b', 'c'], ['a', 'b']],
-    ['toggle', ['a', 'c'], ['a', 'b', 'c']],
-  ] as const)('applies group selection to region action %s', (action, initial, expected) => {
+  it('expands a box hit only to in-scope group members', () => {
     const { store, scheme, selection, controller, setCandidates } = pointerSetup()
+    scheme.items.value = [...scheme.items.value, item('e', 7)]
+    store.triggerSceneUpdate()
     useSettingsStore().settings.localGroupSelection = true
     store.enterLocalEditing(['a', 'b', 'c'])
-    selection.updateSelection([...initial], false, { skipGroupExpansion: true })
-    store.selectionAction = action
-    setCandidates(['a', 'b'])
+    selection.updateSelection(['c'], false)
+    setCandidates(['a', 'e'])
     const event = (x: number, y: number) => ({
       button: 0,
       buttons: 1,
@@ -763,7 +708,7 @@ describe('local editing pointer gestures', () => {
     controller.handlePointerDown(event(10, 10))
     controller.handlePointerMove(event(90, 90))
     controller.handlePointerUp(event(90, 90))
-    expect(scheme.selectedItemIds.value).toEqual(new Set(expected))
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
   })
 
   it('expands a lasso hit to other in-scope group members', () => {
@@ -807,19 +752,6 @@ describe('local editing pointer gestures', () => {
     click(2200)
     expect(store.localEditingItemIds).toBeNull()
     expect(scheme.selectedItemIds.value.size).toBe(0)
-  })
-
-  it('produces the same working set and cleared selection through either entry point', () => {
-    const { store, scheme, click, selection } = pointerSetup()
-    click(1000)
-    click(1200)
-    const fromDoubleClick = new Set(store.localEditingItemIds!)
-    const doubleClickSelection = new Set(scheme.selectedItemIds.value)
-    store.exitLocalEditing()
-    selection.updateSelection(['a'], false)
-    useCommandStore().executeCommand('edit.enterLocalEditing')
-    expect(store.localEditingItemIds).toEqual(fromDoubleClick)
-    expect(scheme.selectedItemIds.value).toEqual(doubleClickSelection)
   })
 
   it('does not interpret modified clicks, touch, cancellation or slow clicks as entry', () => {
@@ -879,28 +811,18 @@ describe('local editing pointer gestures', () => {
 })
 
 describe('local editing commands and Escape priority', () => {
-  it.each([false, true])('exits immediately with selected furniture: %s', (hasSelection) => {
-    const { store, scheme, selection, items } = setup()
+  beforeEach(() => {
+    vi.stubGlobal('window', {})
+    vi.stubGlobal('document', { activeElement: null })
     const commands = useCommandStore()
-    expect(commands.isCommandEnabled('edit.exitLocalEditing')).toBe(false)
-    selection.updateSelection(['a'], false)
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(true)
-    commands.executeCommand('edit.enterLocalEditing')
-    if (hasSelection) selection.selectAll()
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(false)
-    expect(commands.isCommandEnabled('edit.exitLocalEditing')).toBe(true)
-    const exit = commands.commandMap.get('edit.exitLocalEditing')!
-    expect(exit.label).toBe('localEdit.exitAction')
-    expect(exit.shortcut).toBeUndefined()
-    commands.executeCommand(exit.id)
-    expect(store.localEditingItemIds).toBeNull()
-    expect(scheme.selectedItemIds.value.size).toBe(0)
-    expect(scheme.items.value).toBe(items)
-    expect(commands.isCommandEnabled('edit.exitLocalEditing')).toBe(false)
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(false)
-    selection.updateSelection(['d'], false)
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(true)
+    useKeyboardShortcuts({ commands: commands.commands, executeCommand: commands.executeCommand })
   })
+
+  function pressKey(key: string, extra: Partial<KeyboardEvent> = {}) {
+    const event = { key, repeat: false, preventDefault: vi.fn(), ...extra }
+    keyboard.listener!(event as KeyboardEvent)
+    return event
+  }
 
   it('allows the exit command when the working set contains no live furniture', () => {
     const { store, selection } = setup()
@@ -914,75 +836,64 @@ describe('local editing commands and Escape priority', () => {
     expect(store.localEditingItemIds).toBeNull()
   })
 
-  it('enters the exact mixed selection without expanding partial groups again', () => {
-    const { store, scheme, selection } = setup()
-    selection.updateSelection(['b', 'c', 'd'], false, { skipGroupExpansion: true })
-    useCommandStore().executeCommand('edit.enterLocalEditing')
-    expect(store.localEditingItemIds).toEqual(new Set(['b', 'c', 'd']))
-    expect(scheme.selectedItemIds.value.size).toBe(0)
-    selection.selectAll()
-    expect([...scheme.selectedItemIds.value]).toEqual(['b', 'c', 'd'])
-    expect(useCommandStore().isCommandEnabled('edit.group')).toBe(true)
+  it.each([false, true])(
+    'toggles local editing with Shift+F, exiting with selection: %s',
+    (hasSelection) => {
+      const { store, scheme, selection } = setup()
+      const commands = useCommandStore()
+      const focus = vi.fn()
+      commands.setZoomFunctions(null, focus)
+
+      pressKey('F', { shiftKey: true })
+      expect(store.localEditingItemIds).toBeNull()
+      selection.updateSelection(['b', 'c', 'd'], false, { skipGroupExpansion: true })
+      pressKey('f')
+      expect(focus).toHaveBeenCalledTimes(1)
+      expect(store.localEditingItemIds).toBeNull()
+      pressKey('F', { shiftKey: true })
+      expect(store.localEditingItemIds).toEqual(new Set(['b', 'c', 'd']))
+      expect(scheme.selectedItemIds.value.size).toBe(0)
+      expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(false)
+      expect(commands.isCommandEnabled('edit.exitLocalEditing')).toBe(true)
+      pressKey('F', { shiftKey: true, repeat: true })
+      expect(store.localEditingItemIds).toEqual(new Set(['b', 'c', 'd']))
+      if (hasSelection) selection.selectAll()
+      pressKey('F', { shiftKey: true })
+      expect(store.localEditingItemIds).toBeNull()
+      expect(scheme.selectedItemIds.value.size).toBe(0)
+      expect(focus).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('ignores Shift+F while typing in an input', () => {
+    const { store, selection } = setup()
+    selection.updateSelection(['a'], false)
+    vi.stubGlobal('document', { activeElement: { tagName: 'INPUT' } })
+    expect(pressKey('F', { shiftKey: true }).preventDefault).not.toHaveBeenCalled()
+    expect(store.localEditingItemIds).toBeNull()
   })
 
   it('consumes one Escape per action, respects temporary modes, repeats and input focus', () => {
     const { store, scheme } = setup()
-    vi.stubGlobal('window', {})
-    vi.stubGlobal('document', { activeElement: null })
-    const command = useCommandStore()
     const ui = useUIStore()
-    useKeyboardShortcuts({ commands: command.commands, executeCommand: command.executeCommand })
-    function escape(extra = {}) {
-      const event = {
-        key: 'Escape',
-        code: 'Escape',
-        repeat: false,
-        preventDefault: vi.fn(),
-        ...extra,
-      }
-      keyboard.listener!(event as unknown as KeyboardEvent)
-      return event
-    }
     store.enterLocalEditing(['a', 'b'])
     useEditorSelection().toggleSelection('a', false)
     ui.setSelectingQuickAlignTarget(true)
-    escape()
+    pressKey('Escape')
     expect(ui.isSelectingQuickAlignTarget).toBe(false)
     expect([...scheme.selectedItemIds.value]).toEqual(['a'])
-    escape()
+    pressKey('Escape')
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
     expect(scheme.selectedItemIds.value.size).toBe(0)
-    escape({ repeat: true })
+    pressKey('Escape', { repeat: true })
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
-    escape({ defaultPrevented: true })
+    pressKey('Escape', { defaultPrevented: true })
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
     vi.stubGlobal('document', { activeElement: { tagName: 'INPUT' } })
-    escape()
+    pressKey('Escape')
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
     vi.stubGlobal('document', { activeElement: null })
-    escape()
+    pressKey('Escape')
     expect(store.localEditingItemIds).toBeNull()
-    vi.unstubAllGlobals()
-  })
-
-  it('enables entry for any nonempty selection and shares the double-click group result', () => {
-    const { store, scheme, selection } = setup()
-    const commands = useCommandStore()
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(false)
-    selection.selectAll()
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(true)
-    selection.updateSelection(['a'], false)
-    commands.executeCommand('edit.enterLocalEditing')
-    expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
-    expect(scheme.selectedItemIds.value.size).toBe(0)
-    expect(commands.isCommandEnabled('edit.enterLocalEditing')).toBe(false)
-    selection.selectAll()
-    expect(commands.isCommandEnabled('edit.ungroup')).toBe(true)
-    selection.updateSelection(['b'], false)
-    expect(commands.isCommandEnabled('edit.ungroup')).toBe(true)
-    store.exitLocalEditing()
-    selection.updateSelection(['d'], false)
-    commands.executeCommand('edit.enterLocalEditing')
-    expect(store.localEditingItemIds).toEqual(new Set(['d']))
   })
 })

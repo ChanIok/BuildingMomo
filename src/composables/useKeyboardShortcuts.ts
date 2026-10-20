@@ -15,10 +15,13 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
 
   // 构建快捷键映射表（响应式）
   const shortcutMap = computed(() => {
-    const map = new Map<string, string>()
+    const map = new Map<string, Command[]>()
     commands.forEach((cmd) => {
       if (cmd.shortcut) {
-        map.set(normalizeShortcut(cmd.shortcut), cmd.id)
+        const shortcut = normalizeShortcut(cmd.shortcut)
+        const candidates = map.get(shortcut) ?? []
+        candidates.push(cmd)
+        map.set(shortcut, candidates)
       }
     })
     return map
@@ -87,9 +90,13 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
 
       // 匹配快捷键命令
       const shortcut = eventToShortcut(event)
-      const commandId = shortcutMap.value.get(shortcut)
+      const candidates = shortcutMap.value.get(shortcut)
+      // 进入/退出等互斥命令可共享快捷键；一次按键只执行当前可用的命令。
+      const command = candidates?.find((cmd) => cmd.enabled()) ?? candidates?.[0]
+      const commandId = command?.id
 
-      if (commandId) {
+      if (command && commandId) {
+        if (event.repeat && command.allowRepeat === false) return
         // 优先级 2: 对于复制、剪切命令，检查是否有文本选中
         // 如果有文本选中，允许浏览器的原生复制/剪切行为
         const isTextOperationCommand = ['edit.copy', 'edit.cut'].includes(commandId)

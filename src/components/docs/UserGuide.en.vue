@@ -118,16 +118,18 @@
     <h3>Local Editing</h3>
     <ul>
       <li>
-        <strong>Enter</strong>: Select furniture and choose <strong>Enter Local Editing</strong>
-        from the context menu, or double-click a grouped item to enter directly.
+        <strong>Enter</strong>: Select furniture and press <code>Shift + F</code> or choose
+        <strong>Enter Local Editing</strong> from the context menu. You can also double-click a
+        grouped item to enter directly.
       </li>
       <li>
         <strong>Edit</strong>: Only the working set is shown, letting you focus on selecting and
         adjusting items without surrounding clutter.
       </li>
       <li>
-        <strong>Exit</strong>: Double-click empty space, click the <strong>Exit</strong> button at
-        the top right, or press <code>Esc</code>.
+        <strong>Exit</strong>: Press <code>Shift + F</code> again, double-click empty space, or
+        click the <strong>Exit</strong> button at the top right. You can also press <code>Esc</code>
+        to cancel a temporary operation, clear the selection, then exit.
       </li>
     </ul>
 

@@ -21,6 +21,7 @@ export interface Command {
   id: string
   label: string
   shortcut?: string
+  allowRepeat?: boolean
   category: CommandCategory
   enabled: () => boolean
   execute: () => void | Promise<void>
@@ -584,6 +585,8 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'edit.enterLocalEditing',
       label: t('localEdit.enter'),
+      shortcut: 'Shift+F',
+      allowRepeat: false,
       category: 'edit',
       enabled: () =>
         editorStore.localEditingItemIds === null &&
@@ -595,6 +598,8 @@ export const useCommandStore = defineStore('command', () => {
     {
       id: 'edit.exitLocalEditing',
       label: t('localEdit.exitAction'),
+      shortcut: 'Shift+F',
+      allowRepeat: false,
       category: 'edit',
       enabled: () => editorStore.localEditingItemIds !== null,
       execute: () => {
