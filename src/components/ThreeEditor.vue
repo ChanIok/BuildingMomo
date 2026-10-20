@@ -63,7 +63,8 @@ import {
 } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
 import LogDepthGrid from '@/components/scene/LogDepthGrid.vue'
-import { recordRenderFrame } from '@/composables/useFpsMonitor'
+import { recordRenderFrame, recordGpuFrame } from '@/composables/useFpsMonitor'
+import { createGpuFrameTimer } from '@/composables/renderer/gpuFrameTimer'
 
 // 设置 Three.js 全局 Z 轴向上
 Object3D.DEFAULT_UP.set(0, 0, 1)
@@ -474,7 +475,10 @@ onMounted(() => {
 let restoreRenderFunction: (() => void) | null = null
 let furnitureContext: ReturnType<typeof installFurnitureRender> | null = null
 let environmentTransition: ReturnType<typeof createEnvironmentTransition> | null = null
+let gpuFrameTimer: ReturnType<typeof createGpuFrameTimer> | null = null
 onUnmounted(() => {
+  gpuFrameTimer?.dispose()
+  gpuFrameTimer = null
   setSceneInvalidate(null)
   environmentTransition?.dispose()
   environmentTransition = null
@@ -487,6 +491,8 @@ onUnmounted(() => {
 })
 
 function handleTresReady(context: any) {
+  gpuFrameTimer?.dispose()
+  gpuFrameTimer = null
   environmentTransition?.dispose()
   environmentTransition = null
   sceneEnvironment?.dispose()
@@ -500,6 +506,12 @@ function handleTresReady(context: any) {
   const scene = toRaw(context.scene.value)
 
   if (renderer && scene) {
+    const timer = createGpuFrameTimer(
+      renderer.getContext(),
+      () => settingsStore.settings.showFpsMonitor,
+      recordGpuFrame
+    )
+    gpuFrameTimer = timer
     // 2. 色调映射
     renderer.toneMapping = 3
     renderer.toneMappingExposure = 0.8
@@ -582,9 +594,16 @@ function handleTresReady(context: any) {
       }
       const camera = toRaw(context.camera.activeCamera.value)
       if (!camera) return
-      furnitureContext?.beforeRender()
-      sceneEnvironment?.beforeRender()
-      renderMainScene(notifyFrameRendered)
+      const endGpuFrame = timer.beginFrame()
+      try {
+        furnitureContext?.beforeRender()
+        sceneEnvironment?.beforeRender()
+        renderMainScene(notifyFrameRendered)
+      } finally {
+        // Post-render selection overlays are queued as microtasks. End after
+        // those draws so the query covers shadows, scene, mask and overlay.
+        if (endGpuFrame) queueMicrotask(endGpuFrame)
+      }
     })
   }
 
