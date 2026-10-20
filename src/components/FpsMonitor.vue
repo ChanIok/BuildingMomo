@@ -4,7 +4,7 @@ import {
   startFpsMonitor,
   stopFpsMonitor,
   getInstantFps,
-  getFrameMs,
+  getGpuFrameMs,
   getFpsHistory,
 } from '@/composables/useFpsMonitor'
 
@@ -13,7 +13,7 @@ const CANVAS_H = 32
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const displayFps = ref(0)
-const displayMs = ref(0)
+const displayMs = ref<number | null>(null)
 let timer: ReturnType<typeof setInterval> | undefined
 
 const fpsColor = computed(() =>
@@ -22,7 +22,7 @@ const fpsColor = computed(() =>
 
 function draw(): void {
   displayFps.value = Math.round(getInstantFps())
-  displayMs.value = getFrameMs()
+  displayMs.value = getGpuFrameMs()
 
   const canvas = canvasRef.value
   if (!canvas) return
@@ -103,7 +103,7 @@ onUnmounted(() => {
       }}</span>
       <span class="text-[11px] text-white/50">fps</span>
       <span class="text-[10px] text-white/40 tabular-nums">
-        {{ displayFps > 0 ? displayMs.toFixed(1) + 'ms' : '--' }}
+        GPU {{ displayMs !== null ? displayMs.toFixed(1) + ' ms' : '—' }}
       </span>
     </div>
     <!-- 历史折线图 -->

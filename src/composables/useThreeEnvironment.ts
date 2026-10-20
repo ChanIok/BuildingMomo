@@ -20,7 +20,11 @@ import {
   homeEnvironmentSHSigns,
 } from '@/lib/homeEnvironmentData'
 import { sampleHomeTod, type HomeTodSample } from '@/lib/homeTod'
-import { setEnvironmentDiffuseWeight, setEnvironmentReflection } from '@nuan5-pro/render'
+import {
+  setEnvironmentDiffuseWeight,
+  setEnvironmentReflection,
+  type ShadingQuality,
+} from '@nuan5-pro/render'
 import { createHomeSky } from './renderer/homeSky'
 import { updateHomeOutput } from './renderer/homeOutput'
 import { preparePmrem } from './renderer/preparePmrem'
@@ -42,7 +46,8 @@ const HOME_NOON_SUN_INTENSITY = 5.198315765618913
 export function createSceneEnvironment(
   renderer: WebGLRenderer,
   scene: Scene,
-  invalidate: () => void
+  invalidate: () => void,
+  shadingQuality: ShadingQuality = 'original'
 ) {
   let generator = new PMREMGenerator(renderer)
   const cache = new Map<string, EnvironmentEntry>()
@@ -59,7 +64,12 @@ export function createSceneEnvironment(
   sun.shadow.bias = -0.0005
   sun.name = 'editor-environment-sun'
   hemisphere.name = 'editor-environment-fill'
-  scene.add(sun, sun.target, hemisphere, probe, homeSky.root)
+  scene.add(sun, sun.target, hemisphere, homeSky.root)
+  // A zero-intensity probe still enables the SH shader path in Three.
+  // Economy evaluates two endpoint irradiances on TOD changes instead.
+  if (shadingQuality !== 'economy') scene.add(probe)
+  const fillIrradiance = new Vector3()
+  const downward = new Vector3(0, 0, -1)
 
   const previous = {
     environment: scene.environment,
@@ -217,6 +227,20 @@ export function createSceneEnvironment(
           coefficient[2] * sign * skyColor[2] * diffuseTint[2]
         )
       })
+      if (shadingQuality === 'economy') {
+        hemisphere.position.set(0, 0, 1)
+        probe.sh
+          .getIrradianceAt(hemisphere.position, fillIrradiance)
+          .multiplyScalar(sample.skyIntensity)
+          .clampScalar(0, Infinity)
+        hemisphere.color.setRGB(fillIrradiance.x, fillIrradiance.y, fillIrradiance.z)
+        probe.sh
+          .getIrradianceAt(downward, fillIrradiance)
+          .multiplyScalar(sample.skyIntensity)
+          .clampScalar(0, Infinity)
+        hemisphere.groundColor.setRGB(fillIrradiance.x, fillIrradiance.y, fillIrradiance.z)
+        hemisphere.intensity = 1
+      }
       setEnvironmentDiffuseWeight(renderer, 0)
       setEnvironmentReflection(
         renderer,

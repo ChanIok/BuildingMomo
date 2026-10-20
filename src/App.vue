@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useElementSize, useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
@@ -30,6 +30,19 @@ import { removeLegacyWatchHistoryDatabase } from './lib/legacyIdbCleanup'
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
+const renderQualityReady = ref(true)
+let renderQualityChange = 0
+watch(
+  () => settingsStore.settings.renderQuality,
+  async () => {
+    const change = ++renderQualityChange
+    renderQualityReady.value = false
+    // Finish all old editor cleanup before the next editor acquires the shared
+    // furniture context. KeepAlive key replacement alone overlaps these phases.
+    await nextTick()
+    if (change === renderQualityChange) renderQualityReady.value = true
+  }
+)
 const tabStore = useTabStore()
 const uiStore = useUIStore()
 const desktopStore = useDesktopStore()
@@ -302,7 +315,7 @@ onUnmounted(() => {
                 <!-- 2. 有标签时：根据类型渲染 -->
                 <template v-else>
                   <!-- 方案编辑器 -->
-                  <KeepAlive>
+                  <KeepAlive v-if="renderQualityReady">
                     <ThreeEditor
                       v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme"
                     />
@@ -336,7 +349,7 @@ onUnmounted(() => {
             <!-- 2. 有标签时：根据类型渲染 -->
             <template v-else>
               <!-- 方案编辑器 -->
-              <KeepAlive>
+              <KeepAlive v-if="renderQualityReady">
                 <ThreeEditor
                   v-if="tabStore.activeTab?.type === 'scheme' && editorStore.activeScheme"
                 />

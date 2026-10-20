@@ -3,7 +3,11 @@ import { Box3, Mesh, Texture, type BufferGeometry, type Material, type Object3D 
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
-import { applyEnvironmentLighting } from '@nuan5-pro/render'
+import {
+  applyEnvironmentLighting,
+  applyShadingQuality,
+  type ShadingQuality,
+} from '@nuan5-pro/render'
 import { invalidateScene } from './useSceneInvalidate'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { installHomeTerrainWater } from './renderer/homeTerrainWater'
@@ -36,7 +40,7 @@ function disposeTerrain(root: Object3D) {
 
 /** An independent, immutable scene asset. It never enters furniture registries,
  * item selection, save files, or the editable item transform hierarchy. */
-export function useHomeTerrain(enabled: Ref<boolean>) {
+export function useHomeTerrain(enabled: Ref<boolean>, shadingQuality: ShadingQuality = 'original') {
   const settings = useSettingsStore()
   const object = shallowRef<Object3D | null>(null)
   const bounds = shallowRef<Box3 | null>(null)
@@ -76,8 +80,10 @@ export function useHomeTerrain(enabled: Ref<boolean>) {
           // Island geometry receives the world-space furniture shadow map, but
           // does not itself become an additional terrain caster.
           node.castShadow = false
-          for (const material of Array.isArray(node.material) ? node.material : [node.material])
+          for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
             applyEnvironmentLighting(material)
+            applyShadingQuality(material, shadingQuality, 'standard')
+          }
         })
         gltf.scene.updateMatrixWorld(true)
         bounds.value = new Box3().setFromObject(gltf.scene)

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
 import { ref } from 'vue'
 import type { ModelAssetProfile } from '@nuan5-pro/render/furniture'
+import type { RenderQuality } from '@/lib/renderQuality'
 
 import type { Locale } from '../composables/useI18n'
 
@@ -43,6 +44,8 @@ export interface AppSettings {
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
   modelAssetProfile: ModelAssetProfile // Geometry quality; unavailable assets are never aliased.
   materialAssetProfile: ModelAssetProfile
+  renderQuality: RenderQuality
+  renderResolution: number // Integer percentage, 50–100.
   lightingMode: 'studio' | 'home'
   todMinute: number // Fixed game time, minutes since midnight.
   homeTerrainEnabled: boolean
@@ -98,6 +101,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'lite',
   materialAssetProfile: 'lite',
+  renderQuality: 'original',
+  renderResolution: 100,
   lightingMode: 'home',
   todMinute: 12 * 60,
   homeTerrainEnabled: false,
@@ -145,6 +150,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const settings = useLocalStorage<AppSettings>(STORAGE_KEY, structuredClone(DEFAULT_SETTINGS), {
     mergeDefaults: true, // 自动合并默认值
   })
+  settings.value.renderResolution = Number.isFinite(settings.value.renderResolution)
+    ? Math.min(100, Math.max(50, Math.round(settings.value.renderResolution)))
+    : DEFAULT_SETTINGS.renderResolution
 
   // 认证状态：已有本地口令即视为已验证，启动时不再请求服务器。
   const isAuthenticated = ref<boolean>(localStorage.getItem(PASSWORD_STORAGE_KEY) !== null)

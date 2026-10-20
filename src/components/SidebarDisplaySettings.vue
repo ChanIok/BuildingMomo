@@ -60,6 +60,18 @@ const privateAssetsUnlocked = computed(
   () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
 )
 const qualityOptions = ['lite', 'full'] as const
+const renderQualityOptions = ['economy', 'original'] as const
+const renderResolutionLabel = computed(() => {
+  const percent = settingsStore.settings.renderResolution
+  if (percent >= 100) return 'fine'
+  if (percent >= 90) return 'standard'
+  if (percent >= 80) return 'slightlyBlurry'
+  if (percent >= 66) return 'blurry'
+  return 'veryBlurry'
+})
+function updateRenderResolution(value: number[] | undefined) {
+  if (value?.[0] !== undefined) settingsStore.settings.renderResolution = value[0]
+}
 const fpsOptions = [30, 60, 120, 240, 0] as const
 const backgroundOptions = computed<readonly string[]>(() =>
   privateAssetsUnlocked.value ? ['off', 'simple', 'real'] : ['off', 'simple']
@@ -151,6 +163,25 @@ function updateThreeSymbolScale(value: number[] | undefined) {
           <h3 class="text-xs font-semibold">{{ t('sidebar.display.graphics') }}</h3>
 
           <div class="flex items-center justify-between gap-2">
+            <Label class="shrink-0 text-xs">{{ t('settings.renderQuality.label') }}</Label>
+            <RadioGroup
+              v-model="settingsStore.settings.renderQuality"
+              :aria-label="t('settings.renderQuality.label')"
+              orientation="horizontal"
+              class="inline-flex gap-0 rounded-md border border-input bg-muted/40 p-[1px]"
+            >
+              <RadioGroupButton
+                v-for="quality in renderQualityOptions"
+                :key="quality"
+                :value="quality"
+                :disabled="preparingRender"
+              >
+                {{ t(`settings.renderQuality.${quality}`) }}
+              </RadioGroupButton>
+            </RadioGroup>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
             <Label class="shrink-0 text-xs">{{ t('settings.modelGeometry.label') }}</Label>
             <RadioGroup
               v-model="settingsStore.settings.modelAssetProfile"
@@ -196,6 +227,32 @@ function updateThreeSymbolScale(value: number[] | undefined) {
               id="scene-shadows"
               v-model="settingsStore.settings.shadowsEnabled"
               :disabled="preparingRender"
+            />
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label for="render-resolution" class="text-xs">
+                {{ t('settings.renderResolution.label') }}
+              </Label>
+              <span
+                id="render-resolution-value"
+                class="flex shrink-0 items-baseline gap-1 text-xs text-muted-foreground tabular-nums"
+              >
+                <span>{{ t(`settings.renderResolution.${renderResolutionLabel}`) }}</span>
+                <span>{{ settingsStore.settings.renderResolution }}%</span>
+              </span>
+            </div>
+            <Slider
+              id="render-resolution"
+              :model-value="[settingsStore.settings.renderResolution]"
+              @update:model-value="updateRenderResolution"
+              :min="50"
+              :max="100"
+              :step="1"
+              variant="thin"
+              class="w-full"
+              :aria-label="t('settings.renderResolution.label')"
             />
           </div>
 

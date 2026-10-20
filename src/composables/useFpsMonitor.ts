@@ -19,6 +19,25 @@ let _historyPtr = 0
 
 let _intervalId: ReturnType<typeof setInterval> | null = null
 let _refCount = 0
+let _gpuMs: number | null = null
+let _gpuSampledAt = -Infinity
+
+export function recordGpuFrame(milliseconds: number | null, sampledAt: number): void {
+  _gpuMs = milliseconds
+  _gpuSampledAt = sampledAt
+}
+
+export function getGpuFrameMs(): number | null {
+  const lastFrame = _recentFrames[_recentFrames.length - 1]
+  // GPU results arrive asynchronously and can be seconds behind submission.
+  // Clear on actual rendering inactivity, not on the age of a valid query.
+  return _refCount > 0 &&
+    lastFrame !== undefined &&
+    lastFrame >= _gpuSampledAt &&
+    performance.now() - lastFrame < 1000
+    ? _gpuMs
+    : null
+}
 
 /** 每次 Three.js 实际渲染时调用（在 @render 回调最前面） */
 export function recordRenderFrame(): void {
@@ -60,6 +79,7 @@ export function startFpsMonitor(): void {
 
   _recentFrames = []
   _firstFrame = undefined
+  _gpuMs = null
   _fpsHistory.fill(0)
   _historyPtr = 0
   _intervalId = setInterval(() => {
@@ -79,4 +99,5 @@ export function stopFpsMonitor(): void {
   _intervalId = null
   _recentFrames = []
   _firstFrame = undefined
+  _gpuMs = null
 }
