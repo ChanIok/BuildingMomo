@@ -490,6 +490,20 @@ export const zhLocale = {
       label: '模型质量',
     },
     quality: { low: '轻量', medium: '常规' },
+    renderQuality: {
+      label: '画质',
+      original: '原画',
+      performance: '性能',
+      economy: '超级性能',
+    },
+    renderResolution: {
+      label: '分辨率',
+      fine: '精致',
+      standard: '常规',
+      slightlyBlurry: '微糊',
+      blurry: '糊',
+      veryBlurry: '很糊',
+    },
     shadows: '阴影',
     resources: {
       label: '资源占用',

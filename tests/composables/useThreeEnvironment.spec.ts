@@ -3,6 +3,8 @@ import {
   Box3,
   BoxGeometry,
   DirectionalLight,
+  HemisphereLight,
+  LightProbe,
   Group,
   InstancedMesh,
   Matrix4,
@@ -98,6 +100,46 @@ function addIsland() {
   scene.add(terrain)
   return terrain
 }
+
+it('uses SH-derived sky/ground endpoints only in economy and preserves TOD and studio transitions', async () => {
+  const cheapScene = new Scene()
+  const cheap = createSceneEnvironment(renderer, cheapScene, invalidate, 'economy')
+  try {
+    await Promise.all([environment.prepare('home', 720), cheap.prepare('home', 720)])
+    for (const minute of [0, 360, 720, 1080]) {
+      environment.update('home', minute)
+      cheap.update('home', minute)
+      const fullProbe = scene.getObjectByName('editor-home-source-irradiance') as LightProbe
+      const fill = cheapScene.getObjectByName('editor-environment-fill') as HemisphereLight
+      expect(cheapScene.children.some((light) => light instanceof LightProbe)).toBe(false)
+      expect(fill.position.toArray()).toEqual([0, 0, 1])
+      expect(fill.intensity).toBe(1)
+      for (const [direction, color] of [
+        [new Vector3(0, 0, 1), fill.color],
+        [new Vector3(0, 0, -1), fill.groundColor],
+      ] as const) {
+        const expected = fullProbe.sh
+          .getIrradianceAt(direction, new Vector3())
+          .multiplyScalar(fullProbe.intensity)
+          .clampScalar(0, Infinity)
+        color
+          .toArray()
+          .forEach((value, i) => expect(value).toBeCloseTo(expected.getComponent(i), 8))
+      }
+      const cheapSun = cheapScene.getObjectByName('editor-environment-sun') as DirectionalLight
+      expect(cheapSun.color.toArray()).toEqual(sun.color.toArray())
+      expect(cheapSun.intensity).toBe(sun.intensity)
+    }
+    cheap.update('studio', 720)
+    const fill = cheapScene.getObjectByName('editor-environment-fill') as HemisphereLight
+    expect(fill.intensity).toBe(2)
+    expect(fill.position.toArray()).toEqual([0, 1, 0])
+    cheap.update('home', 720)
+    expect(fill.position.toArray()).toEqual([0, 0, 1])
+  } finally {
+    cheap.dispose()
+  }
+})
 
 function expectShadowCoverage(bounds: Box3) {
   for (const x of [bounds.min.x, bounds.max.x]) {

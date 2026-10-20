@@ -4,17 +4,23 @@ import {
   createFurnitureLayer,
   type RenderContextOptions,
   type FurnitureLayer,
+  type FurnitureLayerOptions,
 } from '@nuan5-pro/render'
 
 export const furnitureRender = shallowRef<FurnitureLayer | null>(null)
 let initialize: (() => Promise<FurnitureLayer>) | null = null
 const waiters = new Set<() => void>()
 
-export function installFurnitureRender(options: RenderContextOptions) {
+export function installFurnitureRender(
+  options: RenderContextOptions,
+  display?: Pick<FurnitureLayerOptions, 'shadingQuality'>
+) {
   const context = createRenderContext(options)
-  const layer = markRaw(
-    createFurnitureLayer(context, { decoderPath: import.meta.env.BASE_URL + 'draco/' })
-  )
+  const layerOptions: FurnitureLayerOptions = {
+    decoderPath: import.meta.env.BASE_URL + 'draco/',
+    shadingQuality: display?.shadingQuality,
+  }
+  const layer = markRaw(createFurnitureLayer(context, layerOptions))
   let pending: Promise<FurnitureLayer> | null = null
   let disposed = false
 

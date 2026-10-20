@@ -501,6 +501,20 @@ export const enLocale = {
       label: 'Model Quality',
     },
     quality: { low: 'Lite', medium: 'Standard' },
+    renderQuality: {
+      label: 'Quality',
+      original: 'Original',
+      performance: 'Fast',
+      economy: 'Ultrafast',
+    },
+    renderResolution: {
+      label: 'Resolution',
+      fine: 'Fine',
+      standard: 'Standard',
+      slightlyBlurry: 'Slightly blurry',
+      blurry: 'Blurry',
+      veryBlurry: 'Very blurry',
+    },
     shadows: 'Shadows',
     resources: {
       label: 'Resources',
