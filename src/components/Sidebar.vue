@@ -18,7 +18,7 @@ import {
   ChevronUp,
   Laptop,
   Layers,
-  Monitor,
+  PictureInPicture2,
   Settings2,
   SlidersHorizontal,
 } from 'lucide-vue-next'
@@ -104,7 +104,7 @@ watch(
                 "
                 :tooltip="`${t('sidebar.display.label')} (4)`"
               >
-                <Monitor class="h-4 w-4" />
+                <PictureInPicture2 class="h-4 w-4" />
               </SidebarToggleItem>
 
               <SidebarToggleItem

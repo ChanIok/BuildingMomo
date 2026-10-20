@@ -11,14 +11,16 @@ const SUPPRESSED_THREE_WARNING_MATCHERS = [
   (message: string) =>
     message.includes('THREE.GLTFLoader: Ignoring primitive type .extras') &&
     message.includes('{"targetNames": []}'),
+  // ANGLE 在 Windows/D3D11 上对部分常量折叠报 X4122 双精度精度警告；
+  // three.js 仅在着色器成功链接后输出该 program log，无视觉或功能影响。
+  (message: string) =>
+    message.includes('WebGLProgram: Program Info Log') &&
+    message.includes('cannot be represented accurately in double precision'),
 ]
 
 function shouldSuppressWarning(args: unknown[]): boolean {
-  const firstArg = args[0]
-  return (
-    typeof firstArg === 'string' &&
-    SUPPRESSED_THREE_WARNING_MATCHERS.some((matcher) => matcher(firstArg))
-  )
+  const message = args.filter((arg): arg is string => typeof arg === 'string').join(' ')
+  return SUPPRESSED_THREE_WARNING_MATCHERS.some((matcher) => matcher(message))
 }
 
 function installWarningFilter() {

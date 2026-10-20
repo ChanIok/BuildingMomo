@@ -101,7 +101,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'lite',
   materialAssetProfile: 'lite',
-  renderQuality: 'original',
+  renderQuality: 'economy',
   renderResolution: 100,
   lightingMode: 'home',
   todMinute: 12 * 60,

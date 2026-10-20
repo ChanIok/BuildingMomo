@@ -197,7 +197,7 @@ const gameBadge = computed(() => {
                 min="1"
                 max="240"
                 size="xs"
-                class="w-14 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
+                class="w-12 text-right [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [&:focus-visible]:shadow-none [&:focus-visible]:ring-0"
               />
               <span class="text-xs text-muted-foreground">FPS</span>
             </div>

@@ -490,7 +490,7 @@ function handleIconError(e: Event) {
         type="number"
         step="1"
         @change="applyInstanceIdChange"
-        class="w-16 min-w-0 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-right text-xs text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        class="w-16 min-w-0 [appearance:textfield] rounded-md bg-sidebar-accent px-2 py-1 text-center text-xs text-sidebar-foreground ring-1 ring-transparent transition-all outline-none hover:bg-accent focus:bg-background focus:ring-ring [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
     </div>
 

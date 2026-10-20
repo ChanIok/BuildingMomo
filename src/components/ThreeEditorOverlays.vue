@@ -433,7 +433,7 @@ function handleViewInfoClick() {
       <img
         v-if="tooltip.data.icon"
         :src="tooltip.data.icon"
-        class="h-12 w-12 rounded border"
+        class="h-12 w-12 rounded"
         :alt="tooltip.data.name"
         @error="(e) => ((e.target as HTMLImageElement).style.display = 'none')"
       />
