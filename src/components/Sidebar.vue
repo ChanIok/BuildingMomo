@@ -67,7 +67,8 @@ watch(
                     if (v) uiStore.setSidebarView('structure')
                   }
                 "
-                :tooltip="`${t('sidebar.structure')} (1)`"
+                :tooltip="t('sidebar.structure')"
+                shortcut="1"
               >
                 <Layers class="h-4 w-4" />
               </SidebarToggleItem>
@@ -79,7 +80,8 @@ watch(
                     if (v) uiStore.setSidebarView('transform')
                   }
                 "
-                :tooltip="`${t('sidebar.transform')} (2)`"
+                :tooltip="t('sidebar.transform')"
+                shortcut="2"
               >
                 <Settings2 class="h-4 w-4" />
               </SidebarToggleItem>
@@ -91,7 +93,8 @@ watch(
                     if (v) uiStore.setSidebarView('editorSettings')
                   }
                 "
-                :tooltip="`${t('sidebar.editorSettings')} (3)`"
+                :tooltip="t('sidebar.editorSettings')"
+                shortcut="3"
               >
                 <SlidersHorizontal class="h-4 w-4" />
               </SidebarToggleItem>
@@ -102,7 +105,8 @@ watch(
                     if (v) uiStore.setSidebarView('displaySettings')
                   }
                 "
-                :tooltip="`${t('sidebar.display.label')} (4)`"
+                :tooltip="t('sidebar.display.label')"
+                shortcut="4"
               >
                 <PictureInPicture2 class="h-4 w-4" />
               </SidebarToggleItem>
@@ -115,7 +119,8 @@ watch(
                     if (v) uiStore.setSidebarView('desktopSettings')
                   }
                 "
-                :tooltip="`${t('sidebar.desktop.label')} (5)`"
+                :tooltip="t('sidebar.desktop.label')"
+                shortcut="5"
               >
                 <Laptop class="h-4 w-4" />
               </SidebarToggleItem>

@@ -510,9 +510,9 @@ export const zhLocale = {
     shadows: '阴影',
     resources: {
       label: '资源占用',
-      materials: '材质 {n}',
-      models: '模型 {n}',
-      shaders: '着色器 {n}',
+      materials: '材质',
+      models: '模型',
+      shaders: '着色器',
       clear: '释放缓存',
     },
     modelDye: {

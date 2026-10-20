@@ -523,9 +523,9 @@ export const enLocale = {
     shadows: 'Shadows',
     resources: {
       label: 'Resources',
-      materials: 'Materials {n}',
-      models: 'Models {n}',
-      shaders: 'Shaders {n}',
+      materials: 'Materials',
+      models: 'Models',
+      shaders: 'Shaders',
       clear: 'Clear cache',
     },
     modelDye: {

@@ -20,7 +20,8 @@ import {
 import { RadioGroup, RadioGroupButton } from '@/components/ui/radio-group'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Clock } from 'lucide-vue-next'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { CircleAlert, Clock } from 'lucide-vue-next'
 
 const settingsStore = useSettingsStore()
 const gameDataStore = useGameDataStore()
@@ -55,6 +56,12 @@ onMounted(() => {
   resourceStatsTimer = setInterval(refreshResourceStats, 1000)
 })
 onUnmounted(() => clearInterval(resourceStatsTimer))
+
+const resourceDetailRows = computed(() => [
+  { labelKey: 'settings.resources.materials', value: resourceStats.value.materials },
+  { labelKey: 'settings.resources.models', value: resourceStats.value.models },
+  { labelKey: 'settings.resources.shaders', value: resourceStats.value.shaders },
+])
 
 const privateAssetsUnlocked = computed(
   () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
@@ -257,14 +264,31 @@ function updateThreeSymbolScale(value: number[] | undefined) {
           </div>
 
           <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0 space-y-0.5">
-              <Label class="text-xs text-primary">{{ t('settings.resources.label') }}</Label>
-              <div class="flex flex-wrap gap-x-2 text-[11px] text-muted-foreground tabular-nums">
-                <span>{{ t('settings.resources.materials', { n: resourceStats.materials }) }}</span>
-                <span>{{ t('settings.resources.models', { n: resourceStats.models }) }}</span>
-                <span>{{ t('settings.resources.shaders', { n: resourceStats.shaders }) }}</span>
-              </div>
-            </div>
+            <Tooltip :delay-duration="200">
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  class="group -mx-1 flex items-center gap-1 rounded px-1 py-0.5 text-xs text-primary transition-colors hover:text-primary/80 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <span>{{ t('settings.resources.label') }}</span>
+                  <CircleAlert
+                    class="size-3 shrink-0 text-muted-foreground transition-colors group-hover:text-primary/70"
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" class="min-w-32">
+                <div class="flex flex-col gap-0.5 tabular-nums">
+                  <div
+                    v-for="row in resourceDetailRows"
+                    :key="row.labelKey"
+                    class="flex items-center justify-between gap-4"
+                  >
+                    <span class="text-primary-foreground/70">{{ t(row.labelKey) }}</span>
+                    <span>{{ row.value }}</span>
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
             <Button
               type="button"
               variant="outline"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Toggle } from '@/components/ui/toggle'
+import { Kbd } from '@/components/ui/kbd'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 defineOptions({
@@ -9,6 +10,7 @@ defineOptions({
 defineProps<{
   modelValue: boolean
   tooltip: string
+  shortcut?: string
 }>()
 
 defineEmits<{
@@ -33,7 +35,10 @@ defineEmits<{
         </div>
       </TooltipTrigger>
       <TooltipContent side="bottom" class="text-xs" :side-offset="-8">
-        {{ tooltip }}
+        <div class="flex items-center gap-1.5">
+          <span>{{ tooltip }}</span>
+          <Kbd v-if="shortcut">{{ shortcut }}</Kbd>
+        </div>
       </TooltipContent>
     </Tooltip>
   </TooltipProvider>
