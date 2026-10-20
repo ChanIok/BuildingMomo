@@ -504,8 +504,7 @@ export const enLocale = {
     renderQuality: {
       label: 'Quality',
       original: 'Original',
-      performance: 'Fast',
-      economy: 'Ultrafast',
+      economy: 'Fast',
     },
     renderResolution: {
       label: 'Resolution',

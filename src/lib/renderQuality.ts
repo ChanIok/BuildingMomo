@@ -1,19 +1,17 @@
 import type { ShadingQuality } from '@nuan5-pro/render'
 
-export type RenderQuality = 'original' | 'performance' | 'economy'
+// The simplified profile keeps the render library's `economy` shading; the UI
+// presents it as "Performance" because it is the only reduced-quality option.
+export type RenderQuality = 'original' | 'economy'
 
 interface RenderQualityOptions {
   antialias: boolean
   shadingQuality: ShadingQuality
 }
 
-// Performance profiles simplify shading while retaining authored geometry.
+// Performance profile simplifies shading while retaining authored geometry.
 const profiles: Record<RenderQuality, RenderQualityOptions> = {
   original: { antialias: true, shadingQuality: 'original' },
-  performance: {
-    antialias: false,
-    shadingQuality: 'performance',
-  },
   economy: {
     antialias: false,
     shadingQuality: 'economy',

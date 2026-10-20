@@ -60,7 +60,7 @@ const privateAssetsUnlocked = computed(
   () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
 )
 const qualityOptions = ['lite', 'full'] as const
-const renderQualityOptions = ['original', 'performance', 'economy'] as const
+const renderQualityOptions = ['economy', 'original'] as const
 const renderResolutionLabel = computed(() => {
   const percent = settingsStore.settings.renderResolution
   if (percent >= 100) return 'fine'
