@@ -304,6 +304,9 @@ const {
   defaultCenter: mapCenter,
 })
 
+// TresJS 的 look-at 是方法型属性，不会自动请求重绘；在相机绑定更新后通知按需渲染器。
+watch(cameraLookAt, () => invalidateScene(), { flush: 'post' })
+
 const { orbitMouseButtons, orbitEnableRotate, orbitEnablePan, orbitTouches } =
   useOrbitControlsInput(cameraInput, {
     isOrthographic,

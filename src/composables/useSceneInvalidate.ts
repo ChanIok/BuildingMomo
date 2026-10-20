@@ -5,8 +5,8 @@
  * （如 instanceMatrix、instanceColor）不会被 TresJS 自动检测。
  * 需要在这些修改后调用 invalidateScene() 来通知 TresJS 重新渲染。
  *
- * 注意：Vue props 的变化（如相机位置、clearColor）由 TresJS 自动检测，
- * 无需手动调用 invalidateScene()。
+ * 普通 Vue props 的变化（如相机位置、clearColor）会由 TresJS 自动请求重绘。
+ * look-at 等方法型属性更新不走这一通知路径，需要在绑定更新后显式调用 invalidateScene()。
  */
 
 let _invalidate: ((shadows: boolean) => void) | null = null
