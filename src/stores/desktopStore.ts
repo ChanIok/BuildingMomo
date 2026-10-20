@@ -17,6 +17,7 @@ const DEFAULT_DESKTOP_STATUS: DesktopStatus = {
   gameRunning: false,
   gameFocused: false,
   isLimiting: false,
+  version: null,
 }
 
 const STORAGE_KEY = 'buildingmomo_desktop_settings'
@@ -108,6 +109,13 @@ export const useDesktopStore = defineStore('desktop', () => {
       status.value.gameRunning = Boolean(data.status.gameRunning)
       status.value.gameFocused = Boolean(data.status.gameFocused)
       status.value.isLimiting = Boolean(data.status.isLimiting)
+      // 旧外壳不下发 version，保持 null 以便界面回退到纯网页样式
+      status.value.version = data.version?.commit
+        ? {
+            commit: String(data.version.commit),
+            committedAt: String(data.version.committedAt ?? ''),
+          }
+        : null
     } else if (data.type === 'cleanMemoryResult') {
       const target = data.target as 'game' | 'editor'
       const resolver = cleanMemoryResolvers.get(target)

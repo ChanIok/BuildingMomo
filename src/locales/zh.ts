@@ -428,6 +428,8 @@ export const zhLocale = {
   settings: {
     title: '设置',
     version: '版本',
+    desktopClient: '桌面端',
+    webClient: '网页端',
     description: '配置应用的显示选项和编辑设置',
     menu: {
       general: '通用',

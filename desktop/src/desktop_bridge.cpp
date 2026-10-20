@@ -9,6 +9,7 @@
 #include "memory_cleaner.hpp"
 #include "system_utils.hpp"
 #include "window.hpp"
+#include "build_info.h"
 
 namespace desktop {
 
@@ -134,7 +135,7 @@ void broadcast_desktop_status() {
   bool is_elevated = is_process_elevated();
   bool run_as_admin = !has_no_admin_marker();
   auto json = std::format(
-      LR"({{"type":"desktopStatus","config":{{"gpuRealtimePriority":{},"rtssHangLimitEnabled":{},"rtssHangLimitFps":{}}},"status":{{"isDesktop":true,"isElevated":{},"runAsAdminEnabled":{},"rtssAvailable":{},"gameRunning":{},"gameFocused":{},"isLimiting":{}}}}})",
+      LR"({{"type":"desktopStatus","config":{{"gpuRealtimePriority":{},"rtssHangLimitEnabled":{},"rtssHangLimitFps":{}}},"status":{{"isDesktop":true,"isElevated":{},"runAsAdminEnabled":{},"rtssAvailable":{},"gameRunning":{},"gameFocused":{},"isLimiting":{}}},"version":{{"commit":"{}","committedAt":"{}"}}}})",
       g_config.gpu_realtime_priority ? L"true" : L"false",
       g_config.rtss_hang_limit_enabled ? L"true" : L"false",
       g_config.rtss_hang_limit_fps,
@@ -143,7 +144,8 @@ void broadcast_desktop_status() {
       status.available ? L"true" : L"false",
       status.game_running ? L"true" : L"false",
       status.game_focused ? L"true" : L"false",
-      status.is_limiting ? L"true" : L"false");
+      status.is_limiting ? L"true" : L"false",
+      BUILDINGMOMO_COMMIT, BUILDINGMOMO_COMMITTED_AT);
 
   g_webview->PostWebMessageAsJson(json.c_str());
 }

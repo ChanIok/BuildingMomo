@@ -438,6 +438,8 @@ export const enLocale = {
   settings: {
     title: 'Settings',
     version: 'Version',
+    desktopClient: 'Desktop',
+    webClient: 'Web',
     description: 'Configure display options and editor settings',
     menu: {
       general: 'General',

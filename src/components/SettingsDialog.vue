@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useDesktopStore } from '../stores/desktopStore'
 import { useI18n } from '../composables/useI18n'
 import { useNotification } from '../composables/useNotification'
 import type { Locale } from '../composables/useI18n'
@@ -31,6 +32,7 @@ const isOpen = computed({
 })
 
 const settingsStore = useSettingsStore()
+const desktopStore = useDesktopStore()
 const notification = useNotification()
 const { t, locale, setLocale } = useI18n()
 const buildInfo = __BUILD_INFO__
@@ -41,6 +43,23 @@ const buildTime = new Date(buildInfo.time).toLocaleString('sv-SE', {
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
+})
+
+// 桌面端外壳与网页分别发布，版本号互不相关，因此分组显示各自的时间与提交。
+const desktopVersion = computed(() => desktopStore.status.version)
+const desktopBuildTime = computed(() => {
+  const committedAt = desktopVersion.value?.committedAt
+  if (!committedAt) return ''
+  const time = new Date(committedAt)
+  if (Number.isNaN(time.getTime())) return ''
+  return time.toLocaleString('sv-SE', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
 })
 
 // 当前选中的菜单项
@@ -115,12 +134,34 @@ async function handleVerify() {
             </ul>
           </ScrollArea>
           <div class="flex shrink-0 flex-col gap-1 px-6 pb-5 font-sans text-muted-foreground">
-            <p class="m-0 text-xs leading-4">{{ t('settings.version') }} {{ buildInfo.commit }}</p>
-            <time
-              :datetime="buildInfo.time"
-              class="block text-xs leading-4 whitespace-nowrap tabular-nums"
-              >{{ buildTime }}</time
-            >
+            <template v-if="desktopVersion">
+              <p class="m-0 text-xs leading-4">
+                {{ t('settings.desktopClient') }} {{ desktopVersion.commit }}
+              </p>
+              <time
+                :datetime="desktopVersion.committedAt"
+                class="block text-xs leading-4 whitespace-nowrap tabular-nums"
+                >{{ desktopBuildTime }}</time
+              >
+              <p class="m-0 text-xs leading-4">
+                {{ t('settings.webClient') }} {{ buildInfo.commit }}
+              </p>
+              <time
+                :datetime="buildInfo.time"
+                class="block text-xs leading-4 whitespace-nowrap tabular-nums"
+                >{{ buildTime }}</time
+              >
+            </template>
+            <template v-else>
+              <p class="m-0 text-xs leading-4">
+                {{ t('settings.version') }} {{ buildInfo.commit }}
+              </p>
+              <time
+                :datetime="buildInfo.time"
+                class="block text-xs leading-4 whitespace-nowrap tabular-nums"
+                >{{ buildTime }}</time
+              >
+            </template>
           </div>
         </nav>
 

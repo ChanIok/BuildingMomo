@@ -11,6 +11,13 @@ export interface DesktopSettings {
   rtssHangLimitFps: number
 }
 
+export interface DesktopVersion {
+  /** 外壳的提交短哈希 */
+  commit: string
+  /** 外壳所基于提交的时间 (ISO 8601，含时区偏移) */
+  committedAt: string
+}
+
 export interface DesktopStatus {
   /** 是否处于桌面宿主 (WebView2) 环境 */
   isDesktop: boolean
@@ -26,6 +33,8 @@ export interface DesktopStatus {
   gameFocused: boolean
   /** 当前是否正处于限帧生效状态 */
   isLimiting: boolean
+  /** 外壳版本信息；纯网页环境为 null */
+  version: DesktopVersion | null
 }
 
 export interface CleanMemoryResult {

@@ -1,0 +1,12 @@
+#pragma once
+
+// 由 desktop/rules/build_info.lua 依据 git 提交生成，不要手工编辑。
+// 数字段供 VERSIONINFO 的 FILEVERSION/PRODUCTVERSION 使用；字符串段供资源与页面使用。
+// COMMIT / COMMITTED_AT 是宽字符字面量，可直接参与 std::format 的宽字符串拼接。
+#define BUILDINGMOMO_VERSION_YEAR @YEAR@
+#define BUILDINGMOMO_VERSION_MONTH @MONTH@
+#define BUILDINGMOMO_VERSION_DAY @DAY@
+#define BUILDINGMOMO_VERSION_HHMM @HHMM@
+#define BUILDINGMOMO_VERSION_TEXT "@VERSION@"
+#define BUILDINGMOMO_COMMIT L"@COMMIT@"
+#define BUILDINGMOMO_COMMITTED_AT L"@COMMITTED_AT@"
