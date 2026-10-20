@@ -608,6 +608,11 @@ export const zhLocale = {
     success: '成功',
   },
 
+  asyncView: {
+    failed: '界面加载失败，请检查网络连接后重试。',
+    retry: '重试',
+  },
+
   // 编辑器视图
   editor: {
     viewMode: {

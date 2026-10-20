@@ -6,14 +6,12 @@ import { useGameDataStore } from './stores/gameDataStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useTabStore } from './stores/tabStore'
 import Toolbar from './components/Toolbar.vue'
-import Sidebar from './components/Sidebar.vue'
 import StatusBar from './components/StatusBar.vue'
-import ThreeEditor from './components/ThreeEditor.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import RotateHintDialog from './components/RotateHintDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
 import AdvancedPasteDialog from './components/AdvancedPasteDialog.vue'
-import DocsViewer from './components/DocsViewer.vue'
+import { defineAsyncView } from './lib/asyncView'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
 import { Split } from '@/components/ui/split'
@@ -26,6 +24,28 @@ import { useUIStore } from './stores/uiStore'
 import { useDesktopStore } from './stores/desktopStore'
 import { useCommandStore } from './stores/commandStore'
 import { removeLegacyWatchHistoryDatabase } from './lib/legacyIdbCleanup'
+import { useNotification } from './composables/useNotification'
+import { useI18n } from './composables/useI18n'
+
+const notification = useNotification()
+const { t } = useI18n()
+function notifyViewLoadFailure(retry: () => void) {
+  // Keep the retry action available while Vue's shared load request is pending.
+  notification.error(t('asyncView.failed'), {
+    duration: Infinity,
+    dismissible: false,
+    action: { label: t('asyncView.retry'), onClick: retry },
+  })
+}
+const ThreeEditor = defineAsyncView(
+  () => import('./components/ThreeEditor.vue'),
+  notifyViewLoadFailure
+)
+const Sidebar = defineAsyncView(() => import('./components/Sidebar.vue'), notifyViewLoadFailure)
+const DocsViewer = defineAsyncView(
+  () => import('./components/DocsViewer.vue'),
+  notifyViewLoadFailure
+)
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()

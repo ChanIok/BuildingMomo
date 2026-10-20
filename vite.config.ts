@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite'
+import { defineConfig, loadEnv, normalizePath, searchForWorkspaceRoot } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => {
   // Config-only variable in ignored .env.local; never exposed to client code.
   const localRender = loadEnv(mode, process.cwd(), 'NUAN5_').NUAN5_RENDER_SOURCE
   const renderSource = localRender ? resolve(localRender, 'src') : null
+  const isRenderModule = (id: string) =>
+    id.includes('/node_modules/@nuan5-pro/render/') ||
+    (renderSource !== null && id.startsWith(`${normalizePath(renderSource)}/`))
 
   // 默认使用根路径，如果设置了 VITE_BASE_PATH 环境变量则使用该路径
   const base = process.env.VITE_BASE_PATH || '/'
@@ -174,43 +177,49 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rollupOptions: {
+        treeshake: {
+          moduleSideEffects(id) {
+            const normalized = normalizePath(id)
+            // This entry only re-exports functions/types. Let unused re-export
+            // branches stay lazy; keep default side-effect handling everywhere else.
+            // tests/scripts/renderTreeShaking.spec.ts checks this on dependency upgrades.
+            if (isRenderModule(normalized) && normalized.endsWith('/furniture/index.ts')) {
+              return false
+            }
+          },
+        },
         output: {
-          manualChunks: (id) => {
-            // Vue 核心库
-            if (
-              id.includes('node_modules/vue/') ||
-              id.includes('node_modules/pinia/') ||
-              id.includes('node_modules/@vueuse/')
-            ) {
-              return 'vue-vendor'
-            }
-            // TresJS 核心和cientos
-            if (
-              id.includes('node_modules/@tresjs/core/') ||
-              id.includes('node_modules/@tresjs/cientos/')
-            ) {
-              return 'tresjs'
-            }
-            // Three.js 核心库
-            if (id.includes('node_modules/three/')) {
-              return 'three-core'
-            }
-            // UI 组件库
-            if (
-              id.includes('node_modules/reka-ui/') ||
-              id.includes('node_modules/lucide-vue-next/') ||
-              id.includes('node_modules/vue-sonner/')
-            ) {
-              return 'ui-vendor'
-            }
-            // CSS 工具库
-            if (
-              id.includes('node_modules/clsx/') ||
-              id.includes('node_modules/tailwind-merge/') ||
-              id.includes('node_modules/class-variance-authority/')
-            ) {
-              return 'css-utils'
-            }
+          advancedChunks: {
+            // Rolldown groups recursively capture dependencies. Assign foundations
+            // first so Vue stays independent of TresJS and Three stays shared.
+            groups: [
+              {
+                name: 'vue-vendor',
+                test: /\/node_modules\/(?:@vue\/|vue\/|pinia\/|@vueuse\/)/,
+                priority: 100,
+              },
+              { name: 'three-core', test: /\/node_modules\/three\//, priority: 90 },
+              { name: 'three-bvh', test: /\/node_modules\/three-mesh-bvh\//, priority: 80 },
+              {
+                name: 'furniture-catalog',
+                test: (id) => isRenderModule(id) && id.endsWith('/furniture/manifest.ts'),
+                priority: 75,
+              },
+              { name: 'furniture-render', test: isRenderModule, priority: 70 },
+              { name: 'tresjs', test: /\/node_modules\/@tresjs\//, priority: 60 },
+              {
+                name: 'ui-vendor',
+                test: /\/node_modules\/(?:reka-ui|lucide-vue-next|vue-sonner)\//,
+                priority: 50,
+              },
+              {
+                name: 'css-utils',
+                test: /\/node_modules\/(?:clsx|tailwind-merge|class-variance-authority)\//,
+                priority: 40,
+              },
+            ],
+            // Capture catalog dependencies before renderer code, keeping the eager
+            // metadata entry independent of the lazy furniture-render chunk.
           },
         },
       },

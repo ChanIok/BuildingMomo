@@ -622,6 +622,11 @@ export const enLocale = {
     success: 'Success',
   },
 
+  asyncView: {
+    failed: 'Unable to load this view. Check your connection and try again.',
+    retry: 'Retry',
+  },
+
   // Editor View
   editor: {
     viewMode: {

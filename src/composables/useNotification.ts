@@ -25,8 +25,8 @@ export function useNotification() {
      * 错误提示
      * @example notification.error('保存失败')
      */
-    error: (message: string) => {
-      toast.error(message)
+    error: (message: string, options?: Parameters<typeof toast.error>[1]) => {
+      toast.error(message, options)
     },
 
     /**
