@@ -1,0 +1,68 @@
+# 手动构建桌面端外壳（Win32 + WebView2）。
+# 只提供 workflow_dispatch，不做 push/PR 自动触发。
+# Release 版固定加载 https://lab.infinitymomo.com，因此不需要构建前端产物。
+
+name: Build Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Build mode'
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-desktop-${{ inputs.mode }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      # xmake 全局目录放在工作区内，否则缓存无法可靠恢复。
+      XMAKE_GLOBALDIR: ${{ github.workspace }}\.xmake-global
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      # vcpkg 由 runner 镜像自带，xmake 通过 VCPKG_INSTALLATION_ROOT 发现它，
+      # 不需要在 CI 里克隆或 bootstrap。
+      - name: Cache xmake dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            desktop/.xmake
+            .xmake-global
+            desktop/build/.packages/v
+          key: xmake-${{ runner.os }}-${{ inputs.mode }}-${{ hashFiles('desktop/xmake.lua', 'desktop/xmake-requires.lock') }}
+          restore-keys: |
+            xmake-${{ runner.os }}-${{ inputs.mode }}-
+
+      - name: Build
+        working-directory: desktop
+        run: |
+          xmake f -p windows -a x64 -m ${{ inputs.mode }} --toolchain=msvc -y
+          xmake build BuildingMomo -y
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BuildingMomo-desktop-${{ inputs.mode }}
+          path: |
+            desktop/build/windows/x64/${{ inputs.mode }}/BuildingMomo.exe
+            desktop/build/windows/x64/${{ inputs.mode }}/BuildingMomo.pdb
+          if-no-files-found: error
+          retention-days: 14
