@@ -284,7 +284,7 @@ export const enLocale = {
     archiveToSet: 'Save to Scheme Sets',
     archiveToGroup: 'Save to Current Group',
     updateCurrent: 'Update This Scheme',
-    open: 'Open to Workspace',
+    open: 'Open',
     moveToTop: 'Move to Top',
     moveUp: 'Move Up',
     moveDown: 'Move Down',

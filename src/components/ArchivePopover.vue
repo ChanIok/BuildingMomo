@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   FolderPlus,
+  FolderOpen,
   Pencil,
   Trash2,
   MoreHorizontal,
@@ -83,16 +84,49 @@ const editingGroupName = ref('')
 const editingEntryId = ref<string | null>(null)
 const editingEntryName = ref('')
 
+type MenuTarget = 'group' | 'entry'
+const activeMenu = ref<{
+  type: MenuTarget
+  id: string
+  reference?: { getBoundingClientRect: () => DOMRect }
+} | null>(null)
+
+function isMenuOpen(type: MenuTarget, id: string) {
+  return activeMenu.value?.type === type && activeMenu.value.id === id
+}
+
+function setMenuOpen(type: MenuTarget, id: string, open: boolean) {
+  if (open) {
+    // 两个入口共用同一菜单；点击省略号时恢复按钮锚点。
+    activeMenu.value = { type, id }
+  } else if (isMenuOpen(type, id)) {
+    activeMenu.value = null
+  }
+}
+
+function openContextMenu(event: MouseEvent, type: MenuTarget, id: string) {
+  const editingId = type === 'group' ? editingGroupId.value : editingEntryId.value
+  if (editingId === id) return
+
+  event.preventDefault()
+  event.stopPropagation()
+  const point = new DOMRect(event.clientX, event.clientY, 0, 0)
+  activeMenu.value = { type, id, reference: { getBoundingClientRect: () => point } }
+}
+
 watch(
   () => props.open,
   async (open) => {
     if (open) {
       await commandStore.fileOps.loadArchiveIndex(true)
+    } else {
+      activeMenu.value = null
     }
   }
 )
 
 watch(selectedGroupId, () => {
+  activeMenu.value = null
   editingGroupId.value = null
   editingEntryId.value = null
 })
@@ -116,6 +150,7 @@ function formatEntryTime(timestamp: number) {
 }
 
 function startCreateGroup() {
+  activeMenu.value = null
   creatingGroup.value = true
   newGroupName.value = ''
   editingGroupId.value = null
@@ -133,6 +168,7 @@ function cancelCreateGroup() {
 }
 
 function beginRenameGroup(groupId: string, name: string) {
+  activeMenu.value = null
   creatingGroup.value = false
   editingEntryId.value = null
   editingGroupId.value = groupId
@@ -146,6 +182,7 @@ async function submitRenameGroup(groupId: string) {
 }
 
 function beginRenameEntry(entryId: string, name: string) {
+  activeMenu.value = null
   editingGroupId.value = null
   editingEntryId.value = entryId
   editingEntryName.value = name
@@ -265,57 +302,64 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
 
       <ScrollArea class="min-h-0 flex-1">
         <div class="p-2">
-          <div
+          <DropdownMenu
             v-for="(group, index) in groups"
             :key="group.id"
-            class="group cursor-pointer rounded-md border border-transparent px-2 py-2 transition-colors"
-            :class="
-              selectedGroupId === group.id
-                ? 'border-border bg-accent text-accent-foreground'
-                : 'hover:bg-accent/50'
-            "
-            @click="selectGroup(group.id)"
+            :open="isMenuOpen('group', group.id)"
+            :modal="false"
+            @update:open="setMenuOpen('group', group.id, $event)"
           >
-            <template v-if="editingGroupId === group.id">
-              <div @click.stop>
-                <Input
-                  v-model="editingGroupName"
-                  size="sm"
-                  class="mb-2"
-                  @keydown.enter="submitRenameGroup(group.id)"
-                  @keydown.escape="editingGroupId = null"
-                />
-                <div class="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
+            <div
+              class="group cursor-default rounded-md border border-transparent px-2 py-2 transition-colors"
+              :class="
+                selectedGroupId === group.id
+                  ? 'border-border bg-accent text-accent-foreground'
+                  : isMenuOpen('group', group.id)
+                    ? 'bg-accent/50'
+                    : 'hover:bg-accent/50'
+              "
+              @click="selectGroup(group.id)"
+              @contextmenu="openContextMenu($event, 'group', group.id)"
+            >
+              <template v-if="editingGroupId === group.id">
+                <div @click.stop>
+                  <Input
+                    v-model="editingGroupName"
                     size="sm"
-                    class="h-7 cursor-pointer text-xs"
-                    @click="editingGroupId = null"
-                  >
-                    {{ t('common.cancel') }}
-                  </Button>
-                  <Button
-                    size="sm"
-                    class="h-7 cursor-pointer text-xs"
-                    @click="submitRenameGroup(group.id)"
-                  >
-                    {{ t('common.confirm') }}
-                  </Button>
+                    class="mb-2"
+                    @keydown.enter="submitRenameGroup(group.id)"
+                    @keydown.escape="editingGroupId = null"
+                  />
+                  <div class="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 cursor-pointer text-xs"
+                      @click="editingGroupId = null"
+                    >
+                      {{ t('common.cancel') }}
+                    </Button>
+                    <Button
+                      size="sm"
+                      class="h-7 cursor-pointer text-xs"
+                      @click="submitRenameGroup(group.id)"
+                    >
+                      {{ t('common.confirm') }}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="flex w-full items-center text-left">
-                <div class="mr-2 flex-1 truncate text-sm font-medium">{{ group.name }}</div>
-                <div class="flex shrink-0 items-center">
-                  <span class="mr-1 text-xs text-muted-foreground">
-                    {{ groupCounts.get(group.id) ?? 0 }}
-                  </span>
-                  <div
-                    class="flex items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-                    @click.stop
-                  >
-                    <DropdownMenu>
+              </template>
+              <template v-else>
+                <div class="flex w-full items-center text-left">
+                  <div class="mr-2 flex-1 truncate text-sm font-medium">{{ group.name }}</div>
+                  <div class="flex shrink-0 items-center">
+                    <span class="mr-1 text-xs text-muted-foreground">
+                      {{ groupCounts.get(group.id) ?? 0 }}
+                    </span>
+                    <div
+                      class="flex items-center opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                      @click.stop
+                    >
                       <DropdownMenuTrigger as-child>
                         <Button
                           variant="ghost"
@@ -325,7 +369,12 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                           <MoreHorizontal class="h-3.5 w-3.5" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" class="w-40">
+                      <DropdownMenuContent
+                        :reference="activeMenu?.reference"
+                        :align="activeMenu?.reference ? 'start' : 'end'"
+                        :side="activeMenu?.reference ? 'right' : 'bottom'"
+                        class="w-40"
+                      >
                         <DropdownMenuItem
                           :disabled="index <= (groups[0]?.id === ARCHIVE_DEFAULT_GROUP_ID ? 1 : 0)"
                           @click="commandStore.fileOps.moveArchiveGroup(group.id, 'top')"
@@ -364,12 +413,12 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                           {{ t('common.delete') }}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
-                    </DropdownMenu>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </template>
-          </div>
+              </template>
+            </div>
+          </DropdownMenu>
         </div>
         <ScrollBar orientation="vertical" />
       </ScrollArea>
@@ -417,61 +466,67 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
           {{ t('archive.emptyGroup') }}
         </div>
         <div v-else class="p-2">
-          <div
+          <DropdownMenu
             v-for="(entry, index) in selectedEntries"
             :key="entry.id"
-            class="group cursor-pointer rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
-            @click="handleOpenEntry(entry.id)"
+            :open="isMenuOpen('entry', entry.id)"
+            :modal="false"
+            @update:open="setMenuOpen('entry', entry.id, $event)"
           >
-            <template v-if="editingEntryId === entry.id">
-              <div @click.stop>
-                <Input
-                  v-model="editingEntryName"
-                  size="sm"
-                  class="mb-2"
-                  @keydown.enter="submitRenameEntry(entry.id)"
-                  @keydown.escape="editingEntryId = null"
-                />
-                <div class="flex justify-end gap-2">
-                  <Button
-                    variant="ghost"
+            <div
+              class="group cursor-default rounded-md px-2 py-2 transition-colors hover:bg-accent/50"
+              :class="{ 'bg-accent/50': isMenuOpen('entry', entry.id) }"
+              @click="handleOpenEntry(entry.id)"
+              @contextmenu="openContextMenu($event, 'entry', entry.id)"
+            >
+              <template v-if="editingEntryId === entry.id">
+                <div @click.stop>
+                  <Input
+                    v-model="editingEntryName"
                     size="sm"
-                    class="h-7 cursor-pointer text-xs"
-                    @click="editingEntryId = null"
-                  >
-                    {{ t('common.cancel') }}
-                  </Button>
-                  <Button
-                    size="sm"
-                    class="h-7 cursor-pointer text-xs"
-                    @click="submitRenameEntry(entry.id)"
-                  >
-                    {{ t('common.confirm') }}
-                  </Button>
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="flex w-full items-center gap-3 text-left">
-                <div class="min-w-0 flex-1">
-                  <div class="truncate text-sm font-medium">{{ entry.name }}</div>
-                  <div class="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{{ t('archive.itemCount', { n: entry.itemCount }) }}</span>
-                    <span>{{ formatEntryTime(entry.updatedAt) }}</span>
+                    class="mb-2"
+                    @keydown.enter="submitRenameEntry(entry.id)"
+                    @keydown.escape="editingEntryId = null"
+                  />
+                  <div class="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 cursor-pointer text-xs"
+                      @click="editingEntryId = null"
+                    >
+                      {{ t('common.cancel') }}
+                    </Button>
+                    <Button
+                      size="sm"
+                      class="h-7 cursor-pointer text-xs"
+                      @click="submitRenameEntry(entry.id)"
+                    >
+                      {{ t('common.confirm') }}
+                    </Button>
                   </div>
                 </div>
-                <div class="flex shrink-0 items-center gap-1" @click.stop>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-7 w-7 cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground"
-                    :disabled="!canUpdateCurrentScheme"
-                    :title="t('archive.updateCurrent')"
-                    @click="handleUpdateArchiveEntry(entry.id)"
-                  >
-                    <RefreshCw class="h-3.5 w-3.5" />
-                  </Button>
-                  <DropdownMenu>
+              </template>
+              <template v-else>
+                <div class="flex w-full items-center gap-3 text-left">
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm font-medium">{{ entry.name }}</div>
+                    <div class="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{{ t('archive.itemCount', { n: entry.itemCount }) }}</span>
+                      <span>{{ formatEntryTime(entry.updatedAt) }}</span>
+                    </div>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1" @click.stop>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7 cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground"
+                      :disabled="!canUpdateCurrentScheme"
+                      :title="t('archive.updateCurrent')"
+                      @click="handleUpdateArchiveEntry(entry.id)"
+                    >
+                      <RefreshCw class="h-3.5 w-3.5" />
+                    </Button>
                     <DropdownMenuTrigger as-child>
                       <Button
                         variant="ghost"
@@ -481,7 +536,17 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                         <MoreHorizontal class="h-3.5 w-3.5" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" class="w-40">
+                    <DropdownMenuContent
+                      :reference="activeMenu?.reference"
+                      :align="activeMenu?.reference ? 'start' : 'end'"
+                      :side="activeMenu?.reference ? 'right' : 'bottom'"
+                      class="w-40"
+                    >
+                      <DropdownMenuItem @click="handleOpenEntry(entry.id)">
+                        <FolderOpen class="mr-2 h-4 w-4" />
+                        {{ t('archive.open') }}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         :disabled="index === 0"
                         @click="commandStore.fileOps.moveArchiveEntry(entry.id, 'top')"
@@ -533,11 +598,11 @@ async function handleMoveEntryToGroup(entryId: string, targetGroupId: string) {
                         {{ t('common.delete') }}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </div>
                 </div>
-              </div>
-            </template>
-          </div>
+              </template>
+            </div>
+          </DropdownMenu>
         </div>
         <ScrollBar orientation="vertical" />
       </ScrollArea>

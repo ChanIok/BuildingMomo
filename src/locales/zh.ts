@@ -279,7 +279,7 @@ export const zhLocale = {
     archiveToSet: '保存到方案集',
     archiveToGroup: '保存到当前分组',
     updateCurrent: '更新此方案',
-    open: '打开到工作区',
+    open: '打开',
     moveToTop: '移至顶部',
     moveUp: '上移',
     moveDown: '下移',
