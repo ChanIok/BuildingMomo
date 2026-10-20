@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, shallowRef, triggerRef, watch } from 'vue'
+import { ref, computed, shallowRef, triggerRef } from 'vue'
 
 // 选择动作类型
 export type SelectionAction = 'new' | 'add' | 'subtract' | 'intersect' | 'toggle'
@@ -56,6 +56,7 @@ function buildSchemeFromSharedSnapshot(
     cloudRoomCode: ref(undefined),
     items: shallowRef(newItems),
     selectedItemIds: shallowRef(new Set()),
+    localEditingItemIds: shallowRef(null),
     maxInstanceId: ref(maxInstId),
     maxGroupId: ref(maxGrpId),
     currentViewConfig: ref(undefined),
@@ -145,8 +146,8 @@ export const useEditorStore = defineStore('editor', () => {
     return map
   })
 
-  // 局部编辑作用域（独立于家具组和历史事务的临时工作集）
-  const localEditingItemIds = shallowRef<ReadonlySet<string> | null>(null)
+  // 局部编辑作用域随方案保留，切换标签不退出；独立于家具组和历史事务。
+  const localEditingItemIds = computed(() => activeScheme.value?.localEditingItemIds.value ?? null)
 
   const localEditingItemCount = computed(() => {
     let count = 0
@@ -173,29 +174,31 @@ export const useEditorStore = defineStore('editor', () => {
       }
     }
     if (ids.size === 0) return
-    localEditingItemIds.value = ids
+    scheme.localEditingItemIds.value = ids
     scheme.selectedItemIds.value = new Set()
     triggerSelectionUpdate()
   }
 
   function includeInLocalEditing(itemIds: Iterable<string>) {
-    const current = localEditingItemIds.value
+    const scheme = activeScheme.value
+    if (!scheme) return
+    const current = scheme.localEditingItemIds.value
     if (current === null) return
     const ids = new Set(current)
     for (const id of itemIds) {
       ids.add(id)
     }
     if (ids.size !== current.size) {
-      localEditingItemIds.value = ids
+      scheme.localEditingItemIds.value = ids
     }
   }
 
   function exitLocalEditing() {
-    localEditingItemIds.value = null
-    if (activeScheme.value) {
-      activeScheme.value.selectedItemIds.value = new Set()
-      triggerSelectionUpdate()
-    }
+    const scheme = activeScheme.value
+    if (!scheme) return
+    scheme.localEditingItemIds.value = null
+    scheme.selectedItemIds.value = new Set()
+    triggerSelectionUpdate()
   }
 
   function constrainSelectionToLocalEditing() {
@@ -211,14 +214,6 @@ export const useEditorStore = defineStore('editor', () => {
     }
     return changed
   }
-
-  watch(
-    activeSchemeId,
-    () => {
-      localEditingItemIds.value = null
-    },
-    { flush: 'sync' }
-  )
 
   // 场景内容版本号：任何已提交的物品变更都统一触发 full rebuild。
   // 拖拽过程中的临时预览仍走实例矩阵直写，但提交后的持久状态只认 sceneVersion。
@@ -353,6 +348,7 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: ref(undefined),
       items: shallowRef([]),
       selectedItemIds: shallowRef(new Set()),
+      localEditingItemIds: shallowRef(null),
       maxInstanceId: ref(999), // 初始值，首个物品将从 1000 开始
       maxGroupId: ref(0), // 初始值，首个组将从 1 开始
       currentViewConfig: ref(undefined),
@@ -423,6 +419,7 @@ export const useEditorStore = defineStore('editor', () => {
         filePath: ref(fileName),
         items: shallowRef(newItems),
         selectedItemIds: shallowRef(new Set()),
+        localEditingItemIds: shallowRef(null),
         maxInstanceId: ref(maxInstId), // 记录导入的最大 InstanceID
         maxGroupId: ref(maxGrpId), // 记录导入的最大 GroupID
         lastModified: ref(fileLastModified),
@@ -475,6 +472,7 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: ref(undefined),
       items: shallowRef(newItems),
       selectedItemIds: shallowRef(new Set()),
+      localEditingItemIds: shallowRef(null),
       maxInstanceId: ref(maxInstId),
       maxGroupId: ref(maxGrpId),
       currentViewConfig: ref(snapshot.currentViewConfig),
@@ -535,6 +533,7 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: scheme.cloudRoomCode,
       items: scheme.items,
       selectedItemIds: scheme.selectedItemIds,
+      localEditingItemIds: scheme.localEditingItemIds,
       maxInstanceId: scheme.maxInstanceId,
       maxGroupId: scheme.maxGroupId,
       currentViewConfig: scheme.currentViewConfig,

@@ -116,25 +116,20 @@
     </ul>
 
     <h3>Local Editing</h3>
-    <p>
-      Select any furniture and choose <strong>Enter Local Editing</strong> from the canvas context
-      menu. Double-clicking a group is a shortcut for entering with all its members. Entry clears
-      the selection and preserves the camera. Only the working set is shown; select and edit
-      individual items within it. Select All, Invert Selection and Select Same Type stay within this
-      set. Added and pasted furniture joins the working set without automatically joining an
-      existing group. Pasting with source IDs is unavailable.
-    </p>
-    <p>
-      Enable <strong>Group select</strong> in the local editing bar or the sidebar editor settings
-      to select group members within the working set. This preference defaults to off and is saved
-      automatically. Switching it leaves the current selection unchanged; hold the
-      individual-selection modifier to temporarily select single items.
-    </p>
-    <p>
-      A single click on empty space clears the selection. Double-click empty space, click
-      <strong>Exit</strong> at the top right, or press <code>Esc</code> with nothing selected to
-      leave. Exiting clears the selection and preserves your camera position and edits.
-    </p>
+    <ul>
+      <li>
+        <strong>Enter</strong>: Select furniture and choose <strong>Enter Local Editing</strong>
+        from the context menu, or double-click a grouped item to enter directly.
+      </li>
+      <li>
+        <strong>Edit</strong>: Only the working set is shown, letting you focus on selecting and
+        adjusting items without surrounding clutter.
+      </li>
+      <li>
+        <strong>Exit</strong>: Double-click empty space, click the <strong>Exit</strong> button at
+        the top right, or press <code>Esc</code>.
+      </li>
+    </ul>
 
     <h2>Advanced Features</h2>
 

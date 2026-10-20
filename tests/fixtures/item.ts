@@ -52,6 +52,7 @@ export function makeScheme(items: AppItem[] = []): HomeScheme {
     cloudRoomCode: ref<string | undefined>(undefined),
     items: shallowRef<AppItem[]>(items),
     selectedItemIds: shallowRef<Set<string>>(new Set()),
+    localEditingItemIds: shallowRef<ReadonlySet<string> | null>(null),
     maxInstanceId: ref(999),
     maxGroupId: ref(0),
     currentViewConfig: ref<{ scale: number; x: number; y: number } | undefined>(undefined),

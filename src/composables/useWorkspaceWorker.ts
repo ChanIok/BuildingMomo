@@ -294,6 +294,7 @@ export function useWorkspaceWorker() {
         cloudRoomCode: ref(s.cloudRoomCode),
         items: shallowRef(s.items),
         selectedItemIds: shallowRef(s.selectedItemIds),
+        localEditingItemIds: shallowRef(null),
         maxInstanceId: ref(maxInstId),
         maxGroupId: ref(maxGrpId),
         currentViewConfig: ref(s.currentViewConfig),

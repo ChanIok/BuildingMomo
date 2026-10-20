@@ -4,6 +4,7 @@ import { effectScope, nextTick, type EffectScope } from 'vue'
 import { Color, Matrix4, OrthographicCamera, Raycaster, Vector3 } from 'three'
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
+import { useTabStore } from '@/stores/tabStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
@@ -183,8 +184,9 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     expect(mesh.count).toBe(3)
   })
 
-  it('builds only local instances, shares slots with picking/colors/preview, and restores the whole scene', async () => {
+  it('keeps local rendering and interaction consistent through tab switches, previews and exit', async () => {
     const { store, scheme, items } = setup()
+    const tabs = useTabStore()
     const settings = useSettingsStore()
     settings.settings.threeDisplayMode = mode
     const renderer = scope.run(() => useThreeInstancedRenderer())!
@@ -209,7 +211,22 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     expect(scheme.items.value).toBe(items)
     scheme.selectedItemIds.value = new Set(['inside'])
     store.triggerSelectionUpdate()
-    await nextTick()
+    store.createScheme('other')
+    expect(renderer.interactionAdapter.value.pick(ray())).toBeNull()
+    const other = store.activeScheme!
+    other.items.value = [item('other-hidden', 0, 0, 300), item('other-visible', 0)]
+    store.triggerSceneUpdate()
+    store.enterLocalEditing(['other-visible'])
+    await vi.waitFor(() =>
+      expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('other-visible')
+    )
+    tabs.openDocTab('guide')
+    expect(renderer.interactionAdapter.value.pick(ray())).toBeNull()
+    tabs.openSchemeTab(scheme.id, 'visibility')
+    await vi.waitFor(() =>
+      expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('inside')
+    )
+    expect(meshRef.value!.count).toBe(2)
     const selected = new Color()
     meshRef.value!.getColorAt(0, selected)
     expect(selected.getHex()).toBe(SELECTED_ITEM_COLOR)
@@ -235,6 +252,11 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     )
     expect(meshRef.value!.count).toBe(3)
     expect(meshRef.value!.material).toBe(material)
+    tabs.openSchemeTab(other.id, 'other')
+    await vi.waitFor(() =>
+      expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('other-visible')
+    )
+    expect(meshRef.value!.count).toBe(1)
   })
 })
 

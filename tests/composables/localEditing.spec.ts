@@ -19,6 +19,7 @@ import { createCodeImportOps } from '../../src/composables/fileOps/codeImport'
 import { NEW_SNAPSHOTS_JSON } from '../fixtures/gameJson'
 import { useEditorManipulation } from '../../src/composables/editor/useEditorManipulation'
 import { useSettingsStore } from '../../src/stores/settingsStore'
+import { buildSharedSchemeSnapshot } from '../../src/lib/schemeSnapshot'
 
 const keyboard = vi.hoisted(() => ({
   listener: null as ((event: KeyboardEvent) => void) | null,
@@ -267,14 +268,127 @@ describe('local editing scope', () => {
     expect(store.isItemEditable('c')).toBe(false)
   })
 
-  it('does not resume a stale scope when switching back to a scheme', () => {
+  it('keeps each scheme scope and selection independently without adding history', () => {
+    const { store, scheme, selection, items } = setup()
+    const tabs = useTabStore()
+    store.enterLocalEditing(['a', 'b'])
+    selection.updateSelection(['b'], false)
+    const scope = store.localEditingItemIds
+    const historyLength = scheme.history.value!.selectionUndoStack.length
+    store.createScheme('other')
+    const other = store.activeScheme!
+    // Even overlapping internal IDs must use the target scheme's own scope.
+    other.items.value = items
+    store.triggerSceneUpdate()
+    expect(store.localEditingItemIds).toBeNull()
+    expect(store.isItemEditable('c')).toBe(true)
+    store.enterLocalEditing(['c'])
+    selection.selectAll()
+    store.includeInLocalEditing(['d'])
+    const otherScope = store.localEditingItemIds
+    tabs.openSchemeTab(scheme.id, 'test')
+    expect(store.localEditingItemIds).toBe(scope)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+    expect(scheme.history.value!.selectionUndoStack).toHaveLength(historyLength)
+    expect(store.isItemEditable('c')).toBe(false)
+    store.exitLocalEditing()
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    tabs.openSchemeTab(other.id, 'other')
+    expect(store.localEditingItemIds).toBe(otherScope)
+    expect(other.selectedItemIds.value).toEqual(new Set(['c']))
+    expect(store.isItemEditable('a')).toBe(false)
+    tabs.openSchemeTab(scheme.id, 'test')
+    expect(store.localEditingItemIds).toBeNull()
+  })
+
+  it('retains the working set across a help tab and ignores local actions without a scheme', () => {
+    const { store, scheme, selection } = setup()
+    store.enterLocalEditing(['a', 'b'])
+    selection.updateSelection(['a'], false)
+    const scope = store.localEditingItemIds
+    const tabs = useTabStore()
+    tabs.openDocTab('guide')
+    expect(store.activeScheme).toBeNull()
+    expect(store.localEditingItemIds).toBeNull()
+    expect(store.localEditingItemCount).toBe(0)
+    expect(store.isItemEditable('a')).toBe(false)
+    store.enterLocalEditing(['c'])
+    store.includeInLocalEditing(['c'])
+    store.exitLocalEditing()
+    tabs.openSchemeTab(scheme.id, 'test')
+    expect(store.localEditingItemIds).toBe(scope)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
+  })
+
+  it('discards a closed scheme scope even when reopening with the same scheme ID', async () => {
     const { store, scheme } = setup()
     store.enterLocalEditing(['a', 'b'])
-    const other = store.createScheme('other')
+    store.createScheme('other')
+    const other = store.activeScheme!
+    other.items.value = [item('other', 0)]
+    store.enterLocalEditing(['other'])
+    const scope = store.localEditingItemIds
+    const tabs = useTabStore()
+    const closedTab = tabs.tabs.find((tab) => tab.schemeId === scheme.id)!
+    tabs.closeTab(closedTab.id)
+    store.closeScheme(scheme.id)
+    expect(store.localEditingItemIds).toBe(scope)
+    const result = await store.reopenClosedScheme()
+    expect(result.success).toBe(true)
+    expect(result.schemeId).toBe(scheme.id)
     expect(store.localEditingItemIds).toBeNull()
+    expect(store.activeScheme!.items.value).toHaveLength(4)
+    tabs.openSchemeTab(other.id, 'other')
+    expect(store.localEditingItemIds).toBe(scope)
+  })
+
+  it('starts archived and cloud schemes outside local editing without sharing the source scope', () => {
+    const { store, scheme } = setup()
+    store.enterLocalEditing(['a', 'b'])
+    const snapshot = buildSharedSchemeSnapshot(scheme)
+    expect(snapshot).not.toHaveProperty('localEditingItemIds')
+    store.openArchivedSchemeSnapshot(snapshot)
+    expect(store.localEditingItemIds).toBeNull()
+    store.enterLocalEditing(['c'])
+    store.openCloudSchemeSnapshot(snapshot, 'room')
+    expect(store.localEditingItemIds).toBeNull()
+  })
+
+  it('preserves the scope during cloud normalization and snapshot replacement on return', () => {
+    const { store, scheme, selection } = setup()
+    store.enterLocalEditing(['a', 'b'])
+    selection.updateSelection(['b'], false)
+    const scope = store.localEditingItemIds
+    const snapshot = buildSharedSchemeSnapshot(scheme)
+    expect(store.normalizeSchemeAsCloudRoom(scheme.id, 'room')).toBe('room')
+    expect(store.localEditingItemIds).toBe(scope)
+    expect(store.activeScheme!.selectedItemIds.value).toEqual(new Set(['b']))
+    store.createScheme('other')
+    store.openCloudSchemeSnapshot(snapshot, 'room')
+    expect(store.localEditingItemIds).toBe(scope)
+    // Full cloud snapshots keep their existing selection-reset behavior.
+    expect(store.activeScheme!.selectedItemIds.value.size).toBe(0)
+    expect(store.isItemEditable('b')).toBe(true)
+    expect(store.isItemEditable('c')).toBe(false)
+    store.replaceSchemeSnapshot('room', { ...snapshot, items: [] })
+    expect(store.localEditingItemCount).toBe(0)
+    expect(store.localEditingItemIds).toBe(scope)
+    store.replaceSchemeSnapshot('room', snapshot)
+    expect(store.localEditingItemCount).toBe(2)
+    expect(store.localEditingItemIds).toBe(scope)
+  })
+
+  it('keeps the existing target scheme scope when cloud normalization merges tabs', () => {
+    const { store, scheme } = setup()
+    store.openCloudSchemeSnapshot(buildSharedSchemeSnapshot(scheme), 'room')
+    store.enterLocalEditing(['c'])
+    const targetScope = store.localEditingItemIds
     useTabStore().openSchemeTab(scheme.id, 'test')
-    expect(store.localEditingItemIds).toBeNull()
-    expect(other).not.toBe(scheme.id)
+    store.enterLocalEditing(['a', 'b'])
+    store.normalizeSchemeAsCloudRoom(scheme.id, 'room')
+    expect(store.activeSchemeId).toBe('room')
+    expect(store.localEditingItemIds).toBe(targetScope)
+    expect(store.getSchemeById(scheme.id)).toBeNull()
   })
 })
 
@@ -287,6 +401,11 @@ describe('local editing insertions and history', () => {
     expect(store.localEditingItemIds).toEqual(new Set(['a', 'b']))
     expect(store.localEditingItemCount).toBe(0)
     expect(store.isItemEditable('a')).toBe(false)
+    const scope = store.localEditingItemIds
+    store.createScheme('other')
+    useTabStore().openSchemeTab(scheme.id, 'test')
+    expect(store.localEditingItemCount).toBe(0)
+    expect(store.localEditingItemIds).toBe(scope)
     history.undo()
     expect(store.localEditingItemCount).toBe(2)
     expect([...scheme.selectedItemIds.value]).toEqual(['a', 'b'])
