@@ -1,6 +1,8 @@
 // All five WorldBase TOD presets reference this same TextureCube. The Night and
 // Midday01* assets are not substituted merely because their names seem relevant.
-export { default as homeEnvironmentAsset } from '@/assets/terrain/home-lighting.hdr?url'
+// Private static asset under the same path the Cloudflare middleware guards, so
+// it must stay in `public/` instead of being bundled with a content hash.
+export const homeEnvironmentAsset = import.meta.env.BASE_URL + 'assets/terrain/home-lighting.hdr'
 
 // T_WorldBase_Midday.json: PackedIrradianceEnvironmentMapData, RGB-interleaved
 // real SH coefficients (nine terms plus three padding terms). These encode

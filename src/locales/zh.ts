@@ -727,6 +727,8 @@ export const zhLocale = {
     desktopSettings: '客户端',
     environment: {
       label: '场景与光照',
+      scene: '场景',
+      grid: '网格线',
       home: '仿真光照',
       homeHint: '模拟真实家园光照，通常不影响渲染性能',
       time: '游戏时间',

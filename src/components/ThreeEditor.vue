@@ -632,6 +632,12 @@ function handleTresReady(context: any) {
 }
 
 watch([terrainEnabled, terrainObject], () => invalidateScene({ shadows: true }), { flush: 'post' })
+// 网格只切换 visible，场景图不变；按需渲染下需要显式请求重绘。
+watch(
+  () => settingsStore.settings.showGrid,
+  () => invalidateScene(),
+  { flush: 'post' }
+)
 
 watch(
   () => [settingsStore.settings.lightingMode, settingsStore.settings.shadowsEnabled] as const,
@@ -1154,6 +1160,7 @@ onDeactivated(() => {
         <!-- 辅助元素 - 适配大场景 - 移至世界空间 -->
         <TresGroup
           v-if="(backgroundTexture || terrainObject) && !isWorldBuildScheme"
+          :visible="settingsStore.settings.showGrid"
           :position="gridPosition"
           :rotation="containerRotation"
         >

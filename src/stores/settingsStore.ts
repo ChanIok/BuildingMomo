@@ -49,6 +49,7 @@ export interface AppSettings {
   lightingMode: 'studio' | 'home'
   todMinute: number // Fixed game time, minutes since midnight.
   homeTerrainEnabled: boolean
+  showGrid: boolean // 地面网格线
   shadowsEnabled: boolean
   modelGroupColorTint: boolean // 模型模式下用组合配色标记同组家具（关闭时保持贴图原色）
   threeSymbolScale: number // 图标/方块缩放比例 (1.0 = 100%)
@@ -106,6 +107,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lightingMode: 'home',
   todMinute: 12 * 60,
   homeTerrainEnabled: false,
+  showGrid: true,
   shadowsEnabled: true,
   modelGroupColorTint: false,
   threeSymbolScale: 1.0,
@@ -157,6 +159,14 @@ export const useSettingsStore = defineStore('settings', () => {
   // 认证状态：已有本地口令即视为已验证，启动时不再请求服务器。
   const isAuthenticated = ref<boolean>(localStorage.getItem(PASSWORD_STORAGE_KEY) !== null)
   const isVerifying = ref<boolean>(false)
+
+  // 场景与光照里只有仿真光照和真实地形依赖私有资产，未鉴权时与
+  // threeDisplayMode 的降级同理，在渲染前把它们关掉；家园背景是随包发布的
+  // 俯瞰图，仍按默认显示，否则未鉴权用户连默认视图都看不到。
+  if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && !isAuthenticated.value) {
+    settings.value.lightingMode = 'studio'
+    settings.value.homeTerrainEnabled = false
+  }
 
   // 重置为默认设置
   function resetSettings(): void {

@@ -743,6 +743,8 @@ export const enLocale = {
     desktopSettings: 'Desktop',
     environment: {
       label: 'Scene and lighting',
+      scene: 'Scene',
+      grid: 'Grid lines',
       home: 'Home lighting',
       homeHint:
         'Simulates in-game home lighting, typically without affecting rendering performance.',

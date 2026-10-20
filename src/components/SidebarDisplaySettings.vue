@@ -281,7 +281,11 @@ function updateThreeSymbolScale(value: number[] | undefined) {
         <div v-if="privateAssetsUnlocked" class="border-t border-sidebar-border"></div>
 
         <section class="flex flex-col gap-4">
-          <h3 class="text-xs font-semibold">{{ t('sidebar.environment.label') }}</h3>
+          <h3 class="text-xs font-semibold">
+            {{
+              t(privateAssetsUnlocked ? 'sidebar.environment.label' : 'sidebar.environment.scene')
+            }}
+          </h3>
           <div class="flex items-center justify-between gap-2">
             <Label class="shrink-0 text-xs">{{ t('settings.background.label') }}</Label>
             <RadioGroup
@@ -301,7 +305,12 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             </RadioGroup>
           </div>
 
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-2">
+            <Label for="scene-grid" class="text-xs">{{ t('sidebar.environment.grid') }}</Label>
+            <Switch id="scene-grid" v-model="settingsStore.settings.showGrid" />
+          </div>
+
+          <div v-if="privateAssetsUnlocked" class="flex items-center justify-between">
             <div class="mr-2 space-y-0.5">
               <Label for="home-lighting" class="text-xs">{{ t('sidebar.environment.home') }}</Label>
               <p class="text-[11px] text-muted-foreground">
@@ -310,7 +319,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             </div>
             <Switch id="home-lighting" v-model="useHomeLighting" :disabled="preparingRender" />
           </div>
-          <div class="flex items-center justify-between gap-2">
+          <div v-if="privateAssetsUnlocked" class="flex items-center justify-between gap-2">
             <Label for="home-tod-time" class="text-xs">{{ t('sidebar.environment.time') }}</Label>
             <Popover v-model:open="timePickerOpen">
               <div class="relative flex items-center">

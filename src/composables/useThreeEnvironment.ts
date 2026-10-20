@@ -91,9 +91,19 @@ export function createSceneEnvironment(
   let disposed = false
   let homeLoading: Promise<void> | undefined
   let generation = 0
+  // Home lighting is a private asset, so a rejected request means the session
+  // lost access to it. Degrade to the studio rig once instead of leaving an
+  // empty environment behind or retrying on every TOD change.
+  let homeFailed = false
+
+  function fallBackToStudio(error: unknown) {
+    homeFailed = true
+    selectedKey = ''
+    console.warn('[Home environment] Home lighting unavailable, using studio lighting:', error)
+  }
 
   function prepare(nextMode: 'studio' | 'home', minute: number) {
-    if (nextMode !== 'home') return Promise.resolve()
+    if (nextMode !== 'home' || homeFailed) return Promise.resolve()
     if (!homeLoading) {
       const version = generation
       const owner = generator
@@ -121,9 +131,11 @@ export function createSceneEnvironment(
           throw error
         })
     }
-    return Promise.all([homeLoading, homeSky.load(), homeSky.update(sampleHomeTod(minute))]).then(
-      () => {}
-    )
+    return Promise.all([homeLoading, homeSky.load(), homeSky.update(sampleHomeTod(minute))])
+      .then(() => {})
+      .catch((error) => {
+        if (!disposed) fallBackToStudio(error)
+      })
   }
 
   function disposeEntry(entry: EnvironmentEntry) {
@@ -164,7 +176,7 @@ export function createSceneEnvironment(
   }
 
   function update(nextMode: 'studio' | 'home', minute: number) {
-    mode = nextMode
+    mode = nextMode === 'home' && homeFailed ? 'studio' : nextMode
     sample = mode === 'home' ? sampleHomeTod(minute) : null
     const selection = sample ? `home:${sample.minute}` : 'studio'
     if (selection === selectedKey) return
@@ -182,13 +194,13 @@ export function createSceneEnvironment(
     let entry = cache.get(key)
     if (!entry) {
       if (sample) {
-        void prepare('home', minute)
-          .then(() => {
-            if (disposed) return
-            selectedKey = ''
-            update(mode, sample?.minute ?? 720)
-          })
-          .catch((error) => console.warn('[Home environment]', error))
+        // prepare() resolves even after a fallback, so this re-runs the update
+        // with the studio rig instead of the empty environment left above.
+        void prepare('home', minute).then(() => {
+          if (disposed) return
+          selectedKey = ''
+          update(mode, sample?.minute ?? 720)
+        })
       } else if (!sample) {
         const room = new RoomEnvironment()
         try {
@@ -273,6 +285,7 @@ export function createSceneEnvironment(
       generation++
       selectedKey = ''
       homeLoading = undefined
+      homeFailed = false
       for (const entry of cache.values()) disposeEntry(entry)
       cache.clear()
       generator.dispose()

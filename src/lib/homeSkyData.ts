@@ -2,7 +2,9 @@ type Vec3 = readonly [number, number, number]
 
 // export-home-sky.ts bundles shared source glTF prototypes and embedded WebP.
 // Runtime converts geometry once to the editor's Z-up centimetres.
-export { default as homeSkyAsset } from '@/assets/terrain/home-sky.glb?url'
+// Private static asset: keep it under the guarded `/assets/terrain/` prefix
+// instead of bundling it into the public JS output with a content hash.
+export const homeSkyAsset = import.meta.env.BASE_URL + 'assets/terrain/home-sky.glb'
 
 interface CloudPlacement {
   mesh: number
