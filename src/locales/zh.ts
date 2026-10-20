@@ -238,6 +238,8 @@ export const zhLocale = {
       started: '监控已启动，等待游戏导出建造数据',
       parseFailed: '监控已启动，找到存档文件但无法解析',
       startFailed: '启动监控失败: {reason}',
+      permissionRequired: '尚未获得目录读写权限，可重试恢复授权或在文件菜单重新选择目录',
+      directoryUnavailable: '原监控目录已不可用，请重新选择游戏目录',
     },
     importWatched: {
       notStarted: '监控模式未启动',
@@ -563,6 +565,9 @@ export const zhLocale = {
 
   // 监控状态
   watchMode: {
+    restorePermission: '恢复目录授权',
+    restorePermissionTip: '授权上次选择的目录，恢复监控',
+    chooseAnotherDirectory: '重新选择游戏目录',
     clickToStart: '选择游戏目录',
     clickToStartTip: '监控存档变动',
     monitoring: '监控中',

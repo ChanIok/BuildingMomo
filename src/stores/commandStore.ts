@@ -143,20 +143,34 @@ export const useCommandStore = defineStore('command', () => {
     },
     {
       id: 'file.startWatchMode',
-      label: t('command.file.startWatchMode'),
+      label: fileOps.canRestoreWatchMode.value
+        ? t('watchMode.chooseAnotherDirectory')
+        : t('command.file.startWatchMode'),
       shortcut: 'Ctrl+O',
       category: 'file',
-      enabled: () => fileOps.isFileSystemAccessSupported && !fileOps.watchState.value.isActive,
+      enabled: () =>
+        fileOps.isFileSystemAccessSupported &&
+        !fileOps.watchState.value.isActive &&
+        !fileOps.isWatchModeBusy.value,
       execute: async () => {
         console.log('[Command] 启动监控模式')
         await fileOps.startWatchMode()
       },
     },
     {
+      id: 'file.restoreWatchMode',
+      label: t('watchMode.restorePermission'),
+      category: 'file',
+      enabled: () => fileOps.canRestoreWatchMode.value && !fileOps.isWatchModeBusy.value,
+      execute: async () => {
+        await fileOps.restoreWatchMode()
+      },
+    },
+    {
       id: 'file.stopWatchMode',
       label: t('command.file.stopWatchMode'),
       category: 'file',
-      enabled: () => fileOps.watchState.value.isActive,
+      enabled: () => fileOps.watchState.value.isActive && !fileOps.isWatchModeBusy.value,
       execute: async () => {
         console.log('[Command] 停止监控模式')
         await fileOps.stopWatchMode()

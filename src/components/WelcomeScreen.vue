@@ -34,10 +34,17 @@ const spinningMomoUrl = computed(() => {
 
 // 检查 File System Access API 是否支持
 const isWatchModeSupported = computed(() => commandStore.fileOps.isFileSystemAccessSupported)
+const canRestoreWatchMode = computed(() => commandStore.fileOps.canRestoreWatchMode)
+const watchStartCommandId = computed(() =>
+  canRestoreWatchMode.value ? 'file.restoreWatchMode' : 'file.startWatchMode'
+)
+const watchStartDescription = computed(() =>
+  t(canRestoreWatchMode.value ? 'watchMode.restorePermissionTip' : 'welcome.selectGameDirDesc')
+)
 
 // 执行命令
 function startWatchMode() {
-  commandStore.executeCommand('file.startWatchMode')
+  commandStore.executeCommand(watchStartCommandId.value)
 }
 
 function importJSON() {
@@ -100,7 +107,7 @@ function openQuickStart() {
           <Item
             as="button"
             @click="startWatchMode"
-            :disabled="!isWatchModeSupported"
+            :disabled="!commandStore.isCommandEnabled(watchStartCommandId)"
             variant="outline"
             :class="[
               'flex h-32 w-72 cursor-pointer p-6 transition-all duration-200',
@@ -108,9 +115,7 @@ function openQuickStart() {
                 ? 'border-amber-300 bg-amber-50/80 hover:border-amber-400 hover:bg-amber-50 dark:border-amber-800/95 dark:bg-amber-950/25 dark:hover:border-amber-700/90 dark:hover:bg-amber-950/30'
                 : 'cursor-not-allowed border-gray-200 bg-gray-50 opacity-60 dark:border-gray-800 dark:bg-gray-900/50',
             ]"
-            :title="
-              isWatchModeSupported ? t('welcome.selectGameDirDesc') : t('welcome.notSupported')
-            "
+            :title="isWatchModeSupported ? watchStartDescription : t('welcome.notSupported')"
           >
             <ItemMedia
               :class="[
@@ -130,7 +135,9 @@ function openQuickStart() {
                   isWatchModeSupported ? 'text-foreground' : 'text-gray-500 dark:text-gray-500',
                 ]"
               >
-                {{ t('welcome.selectGameDir') }}
+                {{
+                  t(canRestoreWatchMode ? 'watchMode.restorePermission' : 'welcome.selectGameDir')
+                }}
               </ItemTitle>
               <ItemDescription
                 :class="[
@@ -140,9 +147,7 @@ function openQuickStart() {
                     : 'text-gray-400 dark:text-gray-600',
                 ]"
               >
-                {{
-                  isWatchModeSupported ? t('welcome.selectGameDirDesc') : t('welcome.notSupported')
-                }}
+                {{ isWatchModeSupported ? watchStartDescription : t('welcome.notSupported') }}
               </ItemDescription>
             </ItemContent>
           </Item>

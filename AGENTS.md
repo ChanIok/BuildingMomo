@@ -29,7 +29,6 @@ BuildingMomo 是基于 Vue 3、TypeScript、Pinia、Three.js/TresJS 的无限暖
 注意：
 
 - 使用 Node.js 24 和 pnpm；安装须应用 `pnpm-workspace.yaml` 中的 TresJS patch，不直接修改 `node_modules`。
-- 构建的 `prebuild` 会抓取数据，可能联网并更新资源。
 - 测试位于 `tests/`，使用独立 Vitest 配置，不加载 PWA 插件。
 - 格式化由 Husky 的 pre-commit `lint-staged` 统一执行。不要主动运行 Prettier 或制造与任务无关的格式化 diff。
 

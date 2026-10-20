@@ -335,6 +335,16 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     return restored
   }
 
+  async function restoreWatchMode(): Promise<boolean> {
+    const restored = await watchOps.restoreWatchMode()
+
+    if (restored && watchOps.watchState.value.isActive) {
+      await archiveOps.loadArchiveIndex(true)
+    }
+
+    return restored
+  }
+
   const { importFromCode, importFromPublicSchemeCode } = createCodeImportOps({
     editorStore,
     notification,
@@ -357,7 +367,10 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     saveToGame: watchOps.saveToGame,
     isFileSystemAccessSupported,
     watchState: watchOps.watchState,
+    canRestoreWatchMode: watchOps.canRestoreWatchMode,
+    isWatchModeBusy: watchOps.isWatchModeBusy,
     startWatchMode,
+    restoreWatchMode,
     restoreWatchModeSilently,
     stopWatchMode: watchOps.stopWatchMode,
     importFromWatchedFile: watchOps.importFromWatchedFile,

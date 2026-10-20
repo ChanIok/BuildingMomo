@@ -82,6 +82,9 @@ const fileCommands = computed(() => {
   const cmds = commandStore.getCommandsByCategory('file')
 
   return cmds.filter((cmd) => {
+    if (cmd.id === 'file.restoreWatchMode') {
+      return commandStore.fileOps.canRestoreWatchMode
+    }
     if (cmd.id === 'file.importFromCode') {
       // 只在 secure 模式且已认证时显示
       return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
@@ -159,10 +162,16 @@ const viewPresetCommands = computed(() =>
 
 // 监控状态
 const watchState = computed(() => commandStore.fileOps.watchState)
+const canRestoreWatchMode = computed(() => commandStore.fileOps.canRestoreWatchMode)
+const watchStartCommandId = computed(() =>
+  canRestoreWatchMode.value ? 'file.restoreWatchMode' : 'file.startWatchMode'
+)
 const schemeHistory = computed(() => commandStore.fileOps.schemeHistoryState)
 const schemeHistoryLoading = computed(() => commandStore.fileOps.schemeHistoryLoading)
 const schemeHistoryAvailable = computed(() => commandStore.fileOps.schemeHistoryAvailable)
-const showWatchButton = computed(() => !!editorStore.activeScheme || watchState.value.isActive)
+const showWatchButton = computed(
+  () => !!editorStore.activeScheme || watchState.value.isActive || canRestoreWatchMode.value
+)
 const showArchiveButton = computed(() => watchState.value.isActive)
 const showCloudButton = computed(() => editorStore.activeScheme?.source.value === 'cloud')
 const hasWatchedFiles = computed(() => watchState.value.fileIndex.size > 0)
@@ -299,7 +308,7 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 function handleStartWatchMode() {
-  handleCommand('file.startWatchMode')
+  handleCommand(watchStartCommandId.value)
 }
 
 async function handleClearHistory() {
@@ -926,13 +935,18 @@ watch(
               variant="outline"
               size="sm"
               class="flex items-center gap-2"
+              :disabled="!isEnabled(watchStartCommandId)"
               @click="handleStartWatchMode"
             >
               <FolderSearch class="h-3.5 w-3.5" />
-              <span class="text-xs">{{ t('watchMode.clickToStart') }}</span>
+              <span class="text-xs">{{
+                t(canRestoreWatchMode ? 'watchMode.restorePermission' : 'watchMode.clickToStart')
+              }}</span>
             </Button>
           </TooltipTrigger>
-          <TooltipContent :side-offset="-6">{{ t('watchMode.clickToStartTip') }}</TooltipContent>
+          <TooltipContent :side-offset="-6">{{
+            t(canRestoreWatchMode ? 'watchMode.restorePermissionTip' : 'watchMode.clickToStartTip')
+          }}</TooltipContent>
         </Tooltip>
 
         <!-- 已监控状态：显示历史 Popover -->

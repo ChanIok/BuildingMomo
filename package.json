@@ -12,8 +12,6 @@
     "preview": "vite preview",
     "test": "vitest run",
     "fetch-data": "node scripts/fetch-data.js",
-    "prebuild": "pnpm run fetch-data",
-    "prebuild:secure": "pnpm run fetch-data",
     "prepare": "husky",
     "dev:cloud-sync-worker": "wrangler dev --config cloud-sync-worker/wrangler.jsonc",
     "dev:cloudflare-functions": "wrangler pages dev . --port 8788",

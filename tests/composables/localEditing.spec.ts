@@ -32,7 +32,12 @@ vi.mock('@vueuse/core', async (original) => ({
   },
   useMagicKeys: () => keyboard.keys,
 }))
-vi.mock('@/composables/useFileOperations', () => ({ useFileOperations: () => ({}) }))
+vi.mock('@/composables/useFileOperations', () => ({
+  useFileOperations: () => ({
+    canRestoreWatchMode: ref(false),
+    isWatchModeBusy: ref(false),
+  }),
+}))
 
 vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 

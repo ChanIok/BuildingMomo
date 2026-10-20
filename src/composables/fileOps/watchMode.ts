@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
 import type { useNotification } from '@/composables/useNotification'
@@ -82,6 +82,11 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     fileIndex: new Map(), // 文件名 → 上次已知内容快照，用于变更检测
   })
 
+  // 启动时预读句柄，让点击恢复时能在用户手势内立即申请权限，不先等待 IndexedDB。
+  const storedRootHandle = shallowRef<FileSystemDirectoryHandle | null>(null)
+  const canRestoreWatchMode = computed(() => !!storedRootHandle.value && !watchState.value.isActive)
+  const isWatchModeBusy = ref(false)
+
   // setTimeout 返回的计时器 ID，null 表示轮询未启动
   let pollTimer: number | null = null
   // 根目录句柄，用于在游戏运行后懒加载发现 BuildRecord 目录
@@ -117,44 +122,33 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     return false
   }
 
-  async function tryRestoreWatchDirectories(): Promise<DirectoryResolveResult | null> {
-    const storedHandle = await WatchHandleStore.getRootHandle()
-    if (!storedHandle) return null
-
-    try {
-      const hasPermission = (await queryPermissionState(storedHandle)) === 'granted'
-      if (!hasPermission) {
-        console.log('[FileWatch] Stored directory handle exists but permission was not granted')
-        return null
-      }
-
-      const rootDirHandle = await findX6GameDirectory(storedHandle)
-      if (!rootDirHandle) {
-        console.warn('[FileWatch] Stored directory handle no longer resolves to X6Game')
-        await WatchHandleStore.clearRootHandle()
-        return null
-      }
-
-      const buildDataDir = await findBuildDataDirectory(rootDirHandle)
-      if (!buildDataDir) {
-        console.warn(
-          '[FileWatch] Stored directory handle no longer contains BuildData, clearing cache'
-        )
-        await WatchHandleStore.clearRootHandle()
-        return null
-      }
-
-      const restoredBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
-      console.log('[FileWatch] Restored directory handle from IndexedDB:', rootDirHandle.name)
-      return {
-        rootDirHandle,
-        buildDataDir,
-        buildRecordDirHandle: restoredBuildRecordDirHandle,
-      }
-    } catch (error) {
-      console.warn('[FileWatch] Failed to restore stored directory handle:', error)
+  async function resolveStoredWatchDirectories(
+    storedHandle: FileSystemDirectoryHandle
+  ): Promise<DirectoryResolveResult | null> {
+    const rootDirHandle = await findX6GameDirectory(storedHandle)
+    if (!rootDirHandle) {
+      console.warn('[FileWatch] Stored directory handle no longer resolves to X6Game')
       await WatchHandleStore.clearRootHandle()
+      storedRootHandle.value = null
       return null
+    }
+
+    const buildDataDir = await findBuildDataDirectory(rootDirHandle)
+    if (!buildDataDir) {
+      console.warn(
+        '[FileWatch] Stored directory handle no longer contains BuildData, clearing cache'
+      )
+      await WatchHandleStore.clearRootHandle()
+      storedRootHandle.value = null
+      return null
+    }
+
+    const restoredBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
+    console.log('[FileWatch] Restored directory handle from IndexedDB:', rootDirHandle.name)
+    return {
+      rootDirHandle,
+      buildDataDir,
+      buildRecordDirHandle: restoredBuildRecordDirHandle,
     }
   }
 
@@ -180,6 +174,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
     const pickedBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
     await WatchHandleStore.saveRootHandle(rootDirHandle)
+    storedRootHandle.value = rootDirHandle
     return {
       rootDirHandle,
       buildDataDir,
@@ -645,7 +640,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
    *   1. 主动弹出目录选择器，让用户显式选择监控目录
    *   2. 在目录中定位 BuildData（必须）和 BuildRecord（可选）子目录
    *   3. 扫描并缓存 BuildData 中所有现有存档文件的快照（fileIndex）
-   *   4. 从 IndexedDB 恢复历史监听记录
+   *   4. 保存目录句柄（访问权限是否跨会话保留由浏览器决定）
    *   5. 启动轮询
    *   6. 若存在最新存档且 NeedRestore 为 true，询问用户是否立即导入
    */
@@ -655,17 +650,18 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       return
     }
 
-    if (watchState.value.isActive) {
+    if (watchState.value.isActive || isWatchModeBusy.value) {
       return
     }
 
-    ensureResourcesReady()
+    isWatchModeBusy.value = true
 
     try {
+      ensureResourcesReady()
       const resolved = await pickWatchDirectories()
       if (!resolved) return
 
-      console.log('[FileWatch] Directory authorization persisted:', resolved.rootDirHandle.name)
+      console.log('[FileWatch] Directory handle saved:', resolved.rootDirHandle.name)
       await activateWatchModeFromDirectories(resolved, 'interactive')
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -677,6 +673,43 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       notification.error(
         t('fileOps.watch.startFailed', { reason: error.message || 'Unknown error' })
       )
+    } finally {
+      isWatchModeBusy.value = false
+    }
+  }
+
+  /** 仅由用户操作触发：对启动时预读的旧句柄重新授权，不重新打开目录选择器。 */
+  async function restoreWatchMode(): Promise<boolean> {
+    const storedHandle = storedRootHandle.value
+    if (!storedHandle || isWatchModeBusy.value) return false
+    if (watchState.value.isActive) return true
+
+    isWatchModeBusy.value = true
+    try {
+      // 此调用前不能等待 IndexedDB、目录扫描或其他异步工作，以保留用户手势。
+      const permission = await (storedHandle as any).requestPermission({ mode: 'readwrite' })
+      if (permission !== 'granted') {
+        notification.warning(t('fileOps.watch.permissionRequired'))
+        return false
+      }
+
+      ensureResourcesReady()
+      const restored = await resolveStoredWatchDirectories(storedHandle)
+      if (!restored) {
+        notification.warning(t('fileOps.watch.directoryUnavailable'))
+        return false
+      }
+
+      await activateWatchModeFromDirectories(restored, 'interactive')
+      return true
+    } catch (error: any) {
+      console.warn('[FileWatch] Interactive restore failed:', error)
+      notification.error(
+        t('fileOps.watch.startFailed', { reason: error.message || 'Unknown error' })
+      )
+      return false
+    } finally {
+      isWatchModeBusy.value = false
     }
   }
 
@@ -688,11 +721,22 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     if (watchState.value.isActive) {
       return true
     }
+    if (isWatchModeBusy.value) return false
 
-    ensureResourcesReady()
+    isWatchModeBusy.value = true
 
     try {
-      const restored = await tryRestoreWatchDirectories()
+      ensureResourcesReady()
+      storedRootHandle.value = (await WatchHandleStore.getRootHandle()) ?? null
+      if (!storedRootHandle.value) return false
+
+      const permission = await queryPermissionState(storedRootHandle.value)
+      if (permission !== 'granted') {
+        console.log('[FileWatch] Stored directory requires authorization:', permission)
+        return false
+      }
+
+      const restored = await resolveStoredWatchDirectories(storedRootHandle.value)
       if (!restored) return false
 
       await activateWatchModeFromDirectories(restored, 'silent')
@@ -701,6 +745,8 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     } catch (error) {
       console.warn('[FileWatch] Silent restore failed:', error)
       return false
+    } finally {
+      isWatchModeBusy.value = false
     }
   }
 
@@ -709,6 +755,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     stopPolling()
     rootDirHandle = null
     buildRecordDirHandle = null
+    storedRootHandle.value = null
     watchState.value = {
       isActive: false,
       dirHandle: null,
@@ -793,7 +840,10 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
   return {
     watchState,
+    canRestoreWatchMode,
+    isWatchModeBusy,
     startWatchMode,
+    restoreWatchMode,
     restoreWatchModeSilently,
     stopWatchMode,
     importFromWatchedFile,

@@ -243,6 +243,10 @@ export const enLocale = {
       started: 'Monitoring started. Waiting for game data...',
       parseFailed: 'Monitoring started. Found file but failed to parse.',
       startFailed: 'Failed to start monitoring: {reason}',
+      permissionRequired:
+        'Folder access was not granted. Retry or choose another folder from the File menu.',
+      directoryUnavailable:
+        'The previous folder is unavailable. Please select the game folder again.',
     },
     importWatched: {
       notStarted: 'Monitoring not started',
@@ -574,6 +578,9 @@ export const enLocale = {
 
   // Watch Mode
   watchMode: {
+    restorePermission: 'Restore Folder Access',
+    restorePermissionTip: 'Allow access to the previous folder',
+    chooseAnotherDirectory: 'Choose Another Game Folder',
     clickToStart: 'Link Game Folder',
     clickToStartTip: 'Watch for updates',
     monitoring: 'Monitoring',
