@@ -8,12 +8,14 @@
 #include "rtss_limiter.hpp"
 #include "memory_cleaner.hpp"
 #include "system_utils.hpp"
+#include "window.hpp"
 
 namespace desktop {
 
 namespace {
 
 wil::com_ptr<ICoreWebView2> g_webview;
+HWND g_window = nullptr;
 DesktopConfig g_config{};
 
 std::optional<std::wstring_view> extract_value_raw(std::wstring_view json, std::wstring_view key) {
@@ -86,10 +88,33 @@ std::optional<int> extract_int(std::wstring_view json, std::wstring_view key) {
   return negative ? -val : val;
 }
 
+// 页面以计算结果字符串下发颜色（如 #181818），只接受 #RRGGBB。
+std::optional<COLORREF> extract_color(std::wstring_view json, std::wstring_view key) {
+  auto hex = extract_string(json, key);
+  if (!hex || hex->size() != 7 || hex->front() != L'#') {
+    return std::nullopt;
+  }
+  unsigned value = 0;
+  for (size_t i = 1; i < 7; ++i) {
+    const wchar_t digit = hex->at(i);
+    if (digit >= L'0' && digit <= L'9') {
+      value = value * 16 + static_cast<unsigned>(digit - L'0');
+    } else if (digit >= L'a' && digit <= L'f') {
+      value = value * 16 + static_cast<unsigned>(digit - L'a') + 10;
+    } else if (digit >= L'A' && digit <= L'F') {
+      value = value * 16 + static_cast<unsigned>(digit - L'A') + 10;
+    } else {
+      return std::nullopt;
+    }
+  }
+  return RGB((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF);
+}
+
 }  // namespace
 
-void init_desktop_bridge(ICoreWebView2* webview) {
+void init_desktop_bridge(ICoreWebView2* webview, HWND window) {
   g_webview = webview;
+  g_window = window;
   init_rtss_limiter([](const RtssStatus&) {
     broadcast_desktop_status();
   });
@@ -98,6 +123,7 @@ void init_desktop_bridge(ICoreWebView2* webview) {
 void shutdown_desktop_bridge() {
   shutdown_rtss_limiter();
   g_webview.reset();
+  g_window = nullptr;
 }
 
 void broadcast_desktop_status() {
@@ -170,6 +196,16 @@ void handle_web_message(const wchar_t* message_json) {
       set_no_admin_marker(!(*enabled));
       broadcast_desktop_status();
     }
+  } else if (type == L"setWindowAppearance") {
+    // 四项必须齐全：页面主题由页面自己解析，宿主不做配色推断。
+    const auto dark = extract_bool(sv, L"dark");
+    const auto caption = extract_color(sv, L"caption");
+    const auto text = extract_color(sv, L"text");
+    const auto border = extract_color(sv, L"border");
+    if (!g_window || !dark || !caption || !text || !border) {
+      return;
+    }
+    apply_window_appearance(g_window, WindowAppearance{*dark, *caption, *text, *border});
   }
 }
 

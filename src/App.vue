@@ -110,6 +110,8 @@ const applyTheme = () => {
     theme === 'dark' ||
     (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   root.classList.toggle('dark', isDark)
+  // 桌面端标题栏跟随页面主题，浏览器内无宿主时为空操作
+  desktopStore.syncWindowAppearance()
 }
 
 // 监听设置变化

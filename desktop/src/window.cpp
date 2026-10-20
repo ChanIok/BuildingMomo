@@ -1,5 +1,7 @@
 #include "window.hpp"
 
+#include <dwmapi.h>
+
 #include "app.hpp"
 #include "system_utils.hpp"
 #include "webview.hpp"
@@ -9,6 +11,31 @@ namespace desktop {
 namespace {
 
 constexpr auto kWindowClass = L"BuildingMomoDesktopWindow";
+
+// DwmSetWindowAttribute 的属性号与取值直接按 ABI 写死，避免依赖 SDK 头文件版本。
+constexpr DWORD kAttrImmersiveDarkMode = 20;      // DWMWA_USE_IMMERSIVE_DARK_MODE（Win10 20H1）
+constexpr DWORD kAttrWindowCornerPreference = 33;  // DWMWA_WINDOW_CORNER_PREFERENCE（Win11 22000）
+constexpr DWORD kAttrBorderColor = 34;             // DWMWA_BORDER_COLOR（Win11 22000）
+constexpr DWORD kAttrCaptionColor = 35;            // DWMWA_CAPTION_COLOR（Win11 22000）
+constexpr DWORD kAttrTextColor = 36;               // DWMWA_TEXT_COLOR（Win11 22000）
+constexpr int kCornerRound = 2;                    // DWMWCP_ROUND
+
+// 页面加载完成前先猜一个与系统主题一致的外观，避免浅色标题栏压在深色内容上。
+auto system_default_appearance() -> WindowAppearance {
+  DWORD apps_use_light_theme = 1;
+  DWORD size = sizeof(apps_use_light_theme);
+  RegGetValueW(HKEY_CURRENT_USER,
+               L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+               L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &apps_use_light_theme, &size);
+  WindowAppearance appearance{};
+  if (apps_use_light_theme == 0) {
+    appearance.dark = true;
+    appearance.caption = RGB(0x18, 0x18, 0x18);
+    appearance.text = RGB(0xCC, 0xCC, 0xCC);
+    appearance.border = RGB(0x3A, 0x3A, 0x3A);
+  }
+  return appearance;
+}
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
   auto* state = reinterpret_cast<AppState*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -77,6 +104,24 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
 
 }  // namespace
 
+auto apply_window_appearance(HWND window, const WindowAppearance& appearance) -> void {
+  // 各属性按系统版本逐个失败，不检查返回值：老系统上缺哪项就少哪项效果。
+  const BOOL dark = appearance.dark ? TRUE : FALSE;
+  DwmSetWindowAttribute(window, kAttrImmersiveDarkMode, &dark, sizeof(dark));
+
+  const int corner = kCornerRound;
+  DwmSetWindowAttribute(window, kAttrWindowCornerPreference, &corner, sizeof(corner));
+
+  const COLORREF caption = appearance.caption;
+  DwmSetWindowAttribute(window, kAttrCaptionColor, &caption, sizeof(caption));
+
+  const COLORREF text = appearance.text;
+  DwmSetWindowAttribute(window, kAttrTextColor, &text, sizeof(text));
+
+  const COLORREF border = appearance.border;
+  DwmSetWindowAttribute(window, kAttrBorderColor, &border, sizeof(border));
+}
+
 auto create_window(AppState& state, int show_command) -> std::expected<void, std::wstring> {
   WNDCLASSEXW window_class{sizeof(WNDCLASSEXW)};
   window_class.lpfnWndProc = window_proc;
@@ -101,6 +146,8 @@ auto create_window(AppState& state, int show_command) -> std::expected<void, std
 
   // 允许低权限实例发送激活窗口消息（绕过 UIPI 限制）
   ChangeWindowMessageFilterEx(state.window, kActivateInstanceMessage, MSGFLT_ALLOW, nullptr);
+
+  apply_window_appearance(state.window, system_default_appearance());
 
   ShowWindow(state.window, show_command);
   UpdateWindow(state.window);

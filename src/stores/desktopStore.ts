@@ -73,6 +73,27 @@ export const useDesktopStore = defineStore('desktop', () => {
   }
 
   /**
+   * 将当前主题下的窗口配色同步给原生宿主，让系统标题栏与工具栏同色。
+   * 颜色直接取渲染后的 CSS 变量，宿主不参与主题判断。
+   */
+  function syncWindowAppearance(): void {
+    const webview = getWebview()
+    if (!webview) return
+
+    const root = document.documentElement
+    const styles = getComputedStyle(root)
+    const readColor = (name: string) => styles.getPropertyValue(name).trim()
+
+    webview.postMessage({
+      type: 'setWindowAppearance',
+      dark: root.classList.contains('dark'),
+      caption: readColor('--header'),
+      text: readColor('--header-foreground'),
+      border: readColor('--border'),
+    })
+  }
+
+  /**
    * 处理原生宿主下发的广播状态消息
    */
   function handleNativeMessage(event: MessageEvent): void {
@@ -186,6 +207,7 @@ export const useDesktopStore = defineStore('desktop', () => {
     // 动作
     init,
     syncConfigToNative,
+    syncWindowAppearance,
     cleanMemory,
     setRunAsAdmin,
   }

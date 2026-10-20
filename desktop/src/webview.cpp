@@ -119,7 +119,7 @@ auto configure_webview(AppState& state) -> HRESULT {
     return result;
   }
 
-  init_desktop_bridge(state.webview.get());
+  init_desktop_bridge(state.webview.get(), state.window);
 
   resize_webview(state);
   state.controller->put_IsVisible(!IsIconic(state.window));

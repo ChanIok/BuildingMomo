@@ -21,7 +21,7 @@ target("BuildingMomo")
     add_packages("vcpkg::webview2", "vcpkg::wil")
     add_defines("UNICODE", "_UNICODE", "NOMINMAX", "WIN32_LEAN_AND_MEAN", "_WIN32_WINNT=0x0A00")
     add_cxflags("/utf-8")
-    add_links("user32", "gdi32", "shell32", "ole32", "shlwapi", "version", "advapi32", "psapi")
+    add_links("user32", "gdi32", "shell32", "ole32", "shlwapi", "version", "advapi32", "psapi", "dwmapi")
     -- manifest 由 app.rc 嵌入，避免链接器再生成另一份清单。
     add_ldflags("/SUBSYSTEM:WINDOWS", "/MANIFEST:NO", {force = true})
     if is_mode("release") then

@@ -13,7 +13,7 @@ struct DesktopConfig {
   int rtss_hang_limit_fps = 15;
 };
 
-void init_desktop_bridge(ICoreWebView2* webview);
+void init_desktop_bridge(ICoreWebView2* webview, HWND window);
 void shutdown_desktop_bridge();
 void handle_web_message(const wchar_t* message_json);
 void broadcast_desktop_status();
