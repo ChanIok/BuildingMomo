@@ -55,7 +55,7 @@ jobs:
         working-directory: desktop
         run: |
           xmake f -p windows -a x64 -m ${{ inputs.mode }} --toolchain=msvc -y
-          xmake build BuildingMomo -y
+          xmake build -y
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
