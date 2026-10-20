@@ -505,7 +505,7 @@ function performCloseTab(tabId: string) {
   }
 }
 
-// 关闭标签（点击 X 按钮）
+// 关闭标签（点击 X 按钮或鼠标中键）
 function handleCloseTabClick(tabId: string, event: Event) {
   event.stopPropagation()
   performCloseTab(tabId)
@@ -804,6 +804,8 @@ watch(
               <button
                 :data-tab-active="tabStore.activeTabId === tab.id"
                 @click="switchTab(tab.id)"
+                @mousedown.middle.prevent
+                @auxclick.middle.prevent="handleCloseTabClick(tab.id, $event)"
                 class="group relative my-2 flex flex-none items-center gap-3 rounded-sm border py-1 pr-2 pl-3 text-sm font-medium shadow-xs transition-all"
                 :class="
                   tabStore.activeTabId === tab.id
