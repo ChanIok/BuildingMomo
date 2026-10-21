@@ -762,6 +762,13 @@ export const enLocale = {
       collapse: 'Collapse Header Tools',
     },
     noSelection: 'Select items to view details or edit',
+    selectionFilter: {
+      title: 'Selection filter',
+      uncategorized: 'Uncategorized',
+      selectAll: 'Select all',
+      deselectAll: 'Deselect all',
+      hint: 'Only select items in checked categories',
+    },
     selectionList: 'Selection',
     groupSingle: 'Group #{id}',
     groupMultiple: '{count} Groups',

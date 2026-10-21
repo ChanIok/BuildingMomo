@@ -1,4 +1,4 @@
-import { ref, markRaw, type Ref } from 'vue'
+import { computed, ref, markRaw, watch, type Ref } from 'vue'
 import { Raycaster, Vector2, type Camera } from 'three'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorStore } from '@/stores/editorStore'
@@ -7,6 +7,7 @@ import { useI18n } from './useI18n'
 import type { InteractionAdapter, RaycastHit } from './renderer/types'
 import { RAYCAST_SKIP_ITEM_THRESHOLD } from '@/types/constants'
 import { SLIDE_PATH_GAME_ID } from '@/lib/slidePath'
+import { useSelectionFilter } from './editor/useSelectionFilter'
 
 export interface ThreeTooltipData {
   name: string
@@ -38,6 +39,15 @@ export function useThreeTooltip(
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()
   const uiStore = useUIStore()
+  const { isItemSelectable } = useSelectionFilter()
+  const isReferencePicking = computed(
+    () =>
+      uiStore.isSelectingGroupOrigin ||
+      uiStore.isSelectingPivotItem ||
+      uiStore.isSelectingAlignReference ||
+      uiStore.isSelectingQuickAlignTarget ||
+      uiStore.isSelectingReplaceTarget
+  )
 
   const tooltipVisible = ref(false)
   const tooltipData = ref<ThreeTooltipData | null>(null)
@@ -46,8 +56,14 @@ export function useThreeTooltip(
   let isRaycasting = false
   // 待处理的检测请求（记录最新位置）
   let pendingRaycast: PendingRaycast | null = null
+  let raycastRevision = 0
+
+  watch([() => editorStore.selectionCategoryIds, isReferencePicking], hideTooltip, {
+    flush: 'sync',
+  })
 
   function hideTooltip() {
+    raycastRevision++
     // 取消进行中的异步检测
     interactionAdapter.value.cancelPick()
     // 清空待处理请求
@@ -79,6 +95,7 @@ export function useThreeTooltip(
     }
 
     isRaycasting = true
+    const revision = raycastRevision
     // 清空待处理请求（开始执行时）
     // 注意：在 await 期间，pendingRaycast 可能会被重新赋值
     pendingRaycast = null
@@ -103,8 +120,11 @@ export function useThreeTooltip(
       return
     }
 
-    // 检测被取消或无结果
-    if (!hit) {
+    // 类别或点选用途变化后，旧请求不能恢复已清除的 tooltip / hover。
+    if (revision !== raycastRevision) return
+
+    // 只判断最近命中，不穿透被过滤的物品；专用参考拾取不限制类别。
+    if (!hit || (!isReferencePicking.value && !isItemSelectable(hit.internalId))) {
       hideTooltip()
       return
     }

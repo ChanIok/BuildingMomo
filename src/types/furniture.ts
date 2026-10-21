@@ -71,6 +71,9 @@ export interface FurnitureCategory {
   parentId: number | null
 }
 
+/** 选择按场景大类过滤；缺少元数据或属于预设目录的物品归入未分类。 */
+export type SelectionCategoryId = number | 'uncategorized'
+
 export interface FurnitureCombinationMember {
   itemId: number
   position: [number, number, number]

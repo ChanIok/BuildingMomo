@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from '../stores/editorStore'
 import { useUIStore } from '../stores/uiStore'
@@ -7,6 +7,7 @@ import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
+import SidebarSelectionFilter from './SidebarSelectionFilter.vue'
 import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
@@ -30,6 +31,7 @@ const { t } = useI18n()
 
 const isCompactSidebar = useMediaQuery('(max-height: 700px)')
 const isHeaderCollapsed = ref(false)
+const hasSelection = computed(() => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0)
 
 watch(
   isCompactSidebar,
@@ -144,19 +146,14 @@ watch(
           </div>
         </div>
 
-        <!-- 全局提示信息 -->
-        <div
-          v-if="
-            (uiStore.sidebarView === 'structure' || uiStore.sidebarView === 'transform') &&
-            (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) === 0
-          "
-          class="pt-10 text-center text-xs text-muted-foreground"
-        >
-          {{ t('sidebar.noSelection') }}
-        </div>
+        <SidebarSelectionFilter
+          v-if="uiStore.sidebarView === 'structure'"
+          :class="hasSelection ? 'max-h-[50%] shrink-0 border-b' : 'min-h-0 flex-1'"
+        />
 
         <div
           v-if="uiStore.sidebarView === 'structure'"
+          v-show="hasSelection"
           class="mt-0 flex min-h-0 flex-1 flex-col gap-3"
         >
           <!-- 选中物品组件 -->
@@ -166,6 +163,9 @@ watch(
         <div v-else-if="uiStore.sidebarView === 'transform'" class="mt-0 min-h-0 flex-1">
           <!-- 变换面板 -->
           <ScrollArea class="h-full">
+            <div v-if="!hasSelection" class="pt-10 text-center text-xs text-muted-foreground">
+              {{ t('sidebar.noSelection') }}
+            </div>
             <SidebarTransform />
 
             <ScrollBar orientation="vertical" class="!w-1.5" />

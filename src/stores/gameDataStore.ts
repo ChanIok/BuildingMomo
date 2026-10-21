@@ -12,6 +12,7 @@ import type {
   BuildingMomoFurniture,
   RawFurnitureCombinationColorPreset,
   FurnitureCombinationColorPreset,
+  SelectionCategoryId,
 } from '../types/furniture'
 
 // 远程数据源 (Build time fetched)
@@ -23,6 +24,8 @@ const FURNITURE_ROOT_URL = import.meta.env.BASE_URL + 'assets/furniture-v2/'
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 const CATEGORY_ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/category-icon/'
+// 预设是背包的组合/工具目录，不是场景家具的选择类别。
+const PRESET_CATEGORY_ID = 1000
 
 function normalizeCombinationColorPresets(
   memberCount: number,
@@ -92,6 +95,23 @@ export const useGameDataStore = defineStore('gameData', () => {
   const furnitureData = ref<Record<string, FurnitureItem>>({})
   const furnitureCategories = ref<Record<number, FurnitureCategory>>({})
   const isFurnitureInitialized = ref(false)
+
+  // 目录分类保留背包中的预设；选择过滤只提供场景家具大类。
+  const minorCategories = computed(() => {
+    const populatedIds = new Set(Object.values(furnitureData.value).map((item) => item.categoryId))
+    return Object.values(furnitureCategories.value)
+      .filter((category) => category.parentId !== null && populatedIds.has(category.id))
+      .sort((a, b) => a.id - b.id)
+  })
+  const majorCategories = computed(() => {
+    const populatedIds = new Set(minorCategories.value.map((category) => category.parentId))
+    return Object.values(furnitureCategories.value)
+      .filter((category) => category.parentId === null && populatedIds.has(category.id))
+      .sort((a, b) => a.id - b.id)
+  })
+  const selectionCategories = computed(() =>
+    majorCategories.value.filter((category) => category.id !== PRESET_CATEGORY_ID)
+  )
 
   // ========== 状态 (Buildable Areas) ==========
   const buildableAreas = shallowRef<Record<string, number[][]> | null>(null)
@@ -253,6 +273,17 @@ export const useGameDataStore = defineStore('gameData', () => {
     return furnitureData.value[itemId.toString()] || null
   }
 
+  function getFurnitureSelectionCategoryId(itemId: number): SelectionCategoryId {
+    const furniture = getFurniture(itemId)
+    if (!furniture) return 'uncategorized'
+    const category = furnitureCategories.value[furniture.categoryId]
+    if (!category) return 'uncategorized'
+    const major =
+      category.parentId === null ? category : furnitureCategories.value[category.parentId]
+    // 场景若保留笔刷或其他预设目录 ID，仍可通过“未分类”控制选择。
+    return major?.parentId === null && major.id !== PRESET_CATEGORY_ID ? major.id : 'uncategorized'
+  }
+
   function getFurnitureScaleRange(itemId: number): [number, number] | null {
     const furniture = getFurniture(itemId)
     return furniture ? getSafeScaleRange(furniture.scaleRange) : null
@@ -330,6 +361,9 @@ export const useGameDataStore = defineStore('gameData', () => {
     // 状态
     furnitureData,
     furnitureCategories,
+    minorCategories,
+    majorCategories,
+    selectionCategories,
     isInitialized: isFurnitureInitialized,
 
     // 状态 (Buildable Areas)
@@ -346,6 +380,7 @@ export const useGameDataStore = defineStore('gameData', () => {
     // 方法
     initialize,
     getFurniture,
+    getFurnitureSelectionCategoryId,
     getFurnitureScaleRange,
     getFurnitureSize,
     getIconUrl,

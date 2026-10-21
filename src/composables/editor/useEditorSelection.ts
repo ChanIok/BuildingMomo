@@ -2,10 +2,13 @@ import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { useSelectionFilter } from './useSelectionFilter'
 
 type SelectionOptions = {
   // 本次操作强制按单件处理（例如按住单件选择修饰键），优先于持久化设置。
   skipGroupExpansion?: boolean
+  // 列表中的明确移除操作可忽略类别过滤，但仍遵守局部编辑范围。
+  ignoreSelectionFilter?: boolean
 }
 
 /**
@@ -18,6 +21,7 @@ export function useEditorSelection() {
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
 
   const { recordSelectionChange } = useEditorHistory()
+  const { isItemSelectable } = useSelectionFilter()
 
   function shouldSkipGroupExpansion(options?: SelectionOptions): boolean {
     // 普通模式仍默认按组选择；只有局部编辑受“按组选择”设置控制。
@@ -29,14 +33,14 @@ export function useEditorSelection() {
 
   /**
    * 将实际命中的家具解析成操作目标：过滤不可编辑项，必要时补入同组成员。
-   * 命中项和补入成员都必须可编辑，过滤不存在的 ID，并限制在当前局部范围内。
+   * 命中项和补入成员都必须可编辑且满足本次过滤条件，过滤不存在的 ID，并限制在当前局部范围内。
    * 此处只计算目标，不修改当前选择；Set 同时消除重复命中和重复组成员。
    */
   function resolveSelectionTargets(
     itemIds: Iterable<string>,
     options?: SelectionOptions
   ): Set<string> {
-    const targets = new Set([...itemIds].filter(store.isItemEditable))
+    const targets = new Set([...itemIds].filter((id) => isSelectionTarget(id, options)))
     if (shouldSkipGroupExpansion(options)) return targets
     const groups = new Set<number>()
     for (const id of targets) {
@@ -45,16 +49,20 @@ export function useEditorSelection() {
     }
     for (const groupId of groups) {
       for (const id of groupsMap.value.get(groupId) ?? []) {
-        if (store.isItemEditable(id)) targets.add(id)
+        if (isSelectionTarget(id, options)) targets.add(id)
       }
     }
     return targets
   }
 
+  function isSelectionTarget(itemId: string, options?: SelectionOptions): boolean {
+    return options?.ignoreSelectionFilter ? store.isItemEditable(itemId) : isItemSelectable(itemId)
+  }
+
   // 单个命中的切换：非追加时替换选择；追加时根据命中家具是否已选中，移除或加入整组目标。
   function toggleSelection(itemId: string, additive: boolean, options?: SelectionOptions) {
     const scheme = activeScheme.value
-    if (!scheme || !store.isItemEditable(itemId)) return
+    if (!scheme || !isSelectionTarget(itemId, options)) return
     const targets = resolveSelectionTargets([itemId], options)
     recordSelectionChange()
     const selected = scheme.selectedItemIds.value
@@ -96,7 +104,7 @@ export function useEditorSelection() {
     const scheme = activeScheme.value
     if (!scheme) return
     // hits 是实际命中项；targets 还包含按组扩展出来的成员，两者语义不同。
-    const hits = new Set(itemIds.filter(store.isItemEditable))
+    const hits = new Set(itemIds.filter((id) => isSelectionTarget(id, options)))
     const targets = resolveSelectionTargets(hits, options)
     if (targets.size === 0) return
     const units = new Map<number | string, Set<string>>()
@@ -139,7 +147,7 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  // 全选可编辑家具（局部编辑时只含局部范围），无需再做组扩展。
+  // 全选当前可选范围（工作集与类别的交集），无需再做组扩展。
   function selectAll() {
     if (!activeScheme.value) return
 
@@ -148,7 +156,7 @@ export function useEditorSelection() {
 
     activeScheme.value.selectedItemIds.value.clear()
     activeScheme.value.items.value.forEach((item) => {
-      if (store.isItemEditable(item.internalId)) {
+      if (isItemSelectable(item.internalId)) {
         activeScheme.value!.selectedItemIds.value.add(item.internalId)
       }
     })
@@ -156,7 +164,7 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  // 对可编辑范围逐件取反，不做组扩展，保留“选中项与未选中项互换”的语义。
+  // 在当前可选范围内生成反选结果；范围外的旧选中项不进入新结果，不做组扩展。
   function invertSelection() {
     if (!activeScheme.value) return
 
@@ -166,7 +174,7 @@ export function useEditorSelection() {
     const newSelection = new Set<string>()
     activeScheme.value.items.value.forEach((item) => {
       if (
-        store.isItemEditable(item.internalId) &&
+        isItemSelectable(item.internalId) &&
         !activeScheme.value!.selectedItemIds.value.has(item.internalId)
       ) {
         newSelection.add(item.internalId)
@@ -211,7 +219,7 @@ export function useEditorSelection() {
     // 遍历所有物品，选中匹配的 gameId（不自动扩展到组）
     const newSelection = new Set<string>()
     activeScheme.value.items.value.forEach((item) => {
-      if (store.isItemEditable(item.internalId) && gameIds.has(item.gameId)) {
+      if (isItemSelectable(item.internalId) && gameIds.has(item.gameId)) {
         newSelection.add(item.internalId)
       }
     })

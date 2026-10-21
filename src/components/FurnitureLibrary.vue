@@ -31,26 +31,8 @@ const furnitureScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
 const minorCategoryScrollRef = ref<InstanceType<typeof ScrollArea> | null>(null)
 const furnitureScrollPositions = new Map<string, number>()
 
-const categoryList = computed(() =>
-  Object.values(gameDataStore.furnitureCategories).sort((a, b) => a.id - b.id)
-)
-
-const populatedMinorIds = computed(
-  () => new Set(Object.values(gameDataStore.furnitureData).map((item) => item.categoryId))
-)
-
-const minorCategoryList = computed(() =>
-  categoryList.value.filter(
-    (category) => category.parentId !== null && populatedMinorIds.value.has(category.id)
-  )
-)
-
-const majorCategories = computed(() => {
-  const populatedMajorIds = new Set(minorCategoryList.value.map((category) => category.parentId))
-  return categoryList.value.filter(
-    (category) => category.parentId === null && populatedMajorIds.has(category.id)
-  )
-})
+const minorCategoryList = computed(() => gameDataStore.minorCategories)
+const majorCategories = computed(() => gameDataStore.majorCategories)
 
 const activeMajorId = computed(() => selectedMajorId.value ?? majorCategories.value[0]?.id ?? null)
 

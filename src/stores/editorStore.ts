@@ -16,6 +16,7 @@ import type {
   ClipboardData,
 } from '../types/editor'
 import type { ArchivedSchemeSnapshot } from '../types/archive'
+import type { SelectionCategoryId } from '../types/furniture'
 import type { SharedSchemeSnapshot } from '../types/cloudScheme'
 import { parseGameDataContent } from '../lib/gameDataFormat'
 import { useTabStore } from './tabStore'
@@ -90,6 +91,8 @@ export const useEditorStore = defineStore('editor', () => {
   const selectionMode = ref<'box' | 'lasso'>('box')
   // 选择行为：新选区/加选/减选/交叉/切换
   const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect' | 'toggle'>('new')
+  // 会话级选择过滤：null 允许全部类别，空 Set 不允许任何类别；不随方案持久化。
+  const selectionCategoryIds = shallowRef<ReadonlySet<SelectionCategoryId> | null>(null)
   // Gizmo 模式：平移/旋转/缩放/不显示
   const gizmoMode = ref<GizmoMode>('translate')
 
@@ -939,6 +942,7 @@ export const useEditorStore = defineStore('editor', () => {
     currentTool,
     selectionMode,
     selectionAction,
+    selectionCategoryIds,
     gizmoMode,
     setGizmoMode,
 

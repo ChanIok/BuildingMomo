@@ -36,7 +36,7 @@ function removeTypeFromSelection(gameId: number, event: Event) {
     .filter((item) => scheme.selectedItemIds.value.has(item.internalId) && item.gameId === gameId)
     .map((item) => item.internalId)
   if (toRemove.length > 0) {
-    deselectItems(toRemove, { skipGroupExpansion: true })
+    deselectItems(toRemove, { skipGroupExpansion: true, ignoreSelectionFilter: true })
   }
 }
 

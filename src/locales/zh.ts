@@ -745,6 +745,13 @@ export const zhLocale = {
       collapse: '收起顶部工具',
     },
     noSelection: '请选择物品查看详情或进行操作',
+    selectionFilter: {
+      title: '选择过滤',
+      uncategorized: '未分类',
+      selectAll: '全选',
+      deselectAll: '取消全选',
+      hint: '仅选择勾选类别的物品',
+    },
     selectionList: '选中列表',
     groupSingle: '组 #{id}',
     groupMultiple: '{count} 个组',

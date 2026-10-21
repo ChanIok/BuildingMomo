@@ -9,6 +9,7 @@ import {
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorSelection } from './editor/useEditorSelection'
+import { useSelectionFilter } from './editor/useSelectionFilter'
 import { useEditorGroups } from './editor/useEditorGroups'
 import { useEditorSelectionAction } from './useEditorSelectionAction'
 import { useEditorHistory } from './editor/useEditorHistory'
@@ -31,12 +32,21 @@ export function useThreeSelection(
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
   const { recordTransaction } = useEditorHistory()
+  const { isItemSelectable } = useSelectionFilter()
 
   const selectionRect = ref<SelectionRect | null>(null)
   const isSelecting = ref(false)
   const lassoPoints = ref<ScreenPoint[]>([])
   const mouseDownPos = ref<ScreenPoint | null>(null)
   let lastClick: { id: string | null; time: number; x: number; y: number } | null = null
+
+  watch(
+    () => editorStore.selectionCategoryIds,
+    () => {
+      lastClick = null
+    },
+    { flush: 'sync' }
+  )
 
   watch(
     () => editorStore.localEditingItemIds,
@@ -462,7 +472,9 @@ export function useThreeSelection(
     pointerNdc.y = -(y / rect.height) * 2 + 1
     raycaster.setFromCamera(pointerNdc, camera)
 
-    const hit = interactionAdapter.value.pick(raycaster)
+    // 只过滤原本的最近命中；被排除的前景物品仍然遮挡后方物品。
+    const picked = interactionAdapter.value.pick(raycaster)
+    const hit = picked && isItemSelectable(picked.internalId) ? picked : null
 
     const id = hit?.internalId ?? null
     const time = evt.timeStamp ?? performance.now()
@@ -576,10 +588,16 @@ export function useThreeSelection(
 
   function applySelectionAction(
     selectedIds: string[],
-    options: { clearOnEmptyNew: boolean; applyIntersectOnEmpty: boolean }
+    options: {
+      clearOnEmptyNew: boolean
+      applyIntersectOnEmpty: boolean
+    }
   ) {
     const action = effectiveAction.value
-    const skipGroupExpansion = forceIndividualSelection.value
+    const selectionOptions = {
+      skipGroupExpansion: forceIndividualSelection.value,
+    }
+    selectedIds = selectedIds.filter(isItemSelectable)
 
     if (selectedIds.length === 0) {
       if (action === 'new' && options.clearOnEmptyNew) {
@@ -593,21 +611,21 @@ export function useThreeSelection(
 
     switch (action) {
       case 'add':
-        updateSelection(selectedIds, true, { skipGroupExpansion })
+        updateSelection(selectedIds, true, selectionOptions)
         break
       case 'subtract':
         // 此处 selectedIds 已由上方的前置检查保证非空
-        deselectItems(selectedIds, { skipGroupExpansion })
+        deselectItems(selectedIds, selectionOptions)
         break
       case 'intersect':
-        intersectSelection(selectedIds, { skipGroupExpansion })
+        intersectSelection(selectedIds, selectionOptions)
         break
       case 'toggle':
-        toggleItems(selectedIds, { skipGroupExpansion })
+        toggleItems(selectedIds, selectionOptions)
         break
       case 'new':
       default:
-        updateSelection(selectedIds, false, { skipGroupExpansion })
+        updateSelection(selectedIds, false, selectionOptions)
         break
     }
   }
