@@ -492,6 +492,19 @@ export function useThreeTransformGizmo(
     setOrbitControlsEnabled(true)
   }
 
+  watch(
+    [() => editorStore.renderItemIds, () => editorStore.effectiveLockedGroupIds],
+    () => {
+      if (!isTransformDragging.value) return
+      updateSelectedInstancesMatrix(
+        buildDisplayWorldMatricesMap(itemStartWorldMatrices.value),
+        true
+      )
+      endTransform()
+    },
+    { flush: 'sync' }
+  )
+
   function handleGizmoDragging(isDragging: boolean) {
     if (!isDragging) {
       endTransform()
@@ -843,7 +856,7 @@ export function useThreeTransformGizmo(
         )
 
         const scheme = editorStore.activeScheme
-        if (scheme) {
+        if (scheme && editorStore.isItemEditable(cachedSlidePathPoint.itemId)) {
           // 将最终世界坐标写回游戏数据坐标，通过 transaction 支持 undo/redo
           recordTransaction('slide_path.point.move', () => {
             let changed = false

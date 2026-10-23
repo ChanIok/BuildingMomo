@@ -123,6 +123,37 @@ describe('render input projection', () => {
 })
 
 describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices', (mode) => {
+  it('hides group instances and pick candidates without touching data', async () => {
+    const { store, scheme, items } = setup()
+    useSettingsStore().settings.threeDisplayMode = mode
+    const renderer = scope.run(() => useThreeInstancedRenderer())!
+    const meshRef =
+      mode === 'box'
+        ? renderer.instancedMesh
+        : mode === 'icon'
+          ? renderer.iconInstancedMesh
+          : renderer.simpleBoxInstancedMesh
+    const ray = new Raycaster(new Vector3(0, 0, 1000), new Vector3(0, 0, -1))
+    await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    store.setGroupHidden(8, true)
+    await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
+    expect(meshRef.value!.count).toBe(2)
+    expect(renderer.interactionAdapter.value.pick(ray)?.internalId).toBe('inside')
+    expect(scheme.items.value).toBe(items)
+    store.showOnly({ kind: 'group', id: 7 })
+    await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
+    expect(meshRef.value!.count).toBe(1)
+    expect(renderer.interactionAdapter.value.pick(ray)?.internalId).toBe('inside')
+    const peerRay = new Raycaster(new Vector3(300, 0, 1000), new Vector3(0, 0, -1))
+    expect(renderer.interactionAdapter.value.pick(peerRay)).toBeNull()
+    store.setGroupLocked(7, true)
+    expect(meshRef.value!.count).toBe(1)
+    store.showAllGroups()
+    await vi.waitFor(() => expect(meshRef.value!.count).toBe(3))
+    expect(store.isItemEditable('inside')).toBe(false)
+  })
+
   it('does not rebuild instances or change selection when the group preference changes', async () => {
     const { store, scheme } = setup()
     const settings = useSettingsStore()
@@ -279,6 +310,25 @@ it('never publishes an old icon load after the working set changes', async () =>
     expect(renderer.interactionAdapter.value.pick(ray)?.internalId).toBe('inside')
   )
   expect(renderer.iconInstancedMesh.value!.count).toBe(2)
+})
+
+it('never publishes a group hidden during asynchronous icon loading', async () => {
+  const { store } = setup()
+  useSettingsStore().settings.threeDisplayMode = 'icon'
+  let finish!: () => void
+  state.load = () =>
+    new Promise<void>((resolve) => {
+      finish = resolve
+    })
+  const renderer = scope.run(() => useThreeInstancedRenderer())!
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  store.setGroupHidden(8, true)
+  state.load = null
+  finish()
+  await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
+  expect(renderer.iconInstancedMesh.value!.count).toBe(2)
+  const ray = new Raycaster(new Vector3(0, 0, 1000), new Vector3(0, 0, -1))
+  expect(renderer.interactionAdapter.value.pick(ray)?.internalId).toBe('inside')
 })
 
 it('retains icon matrices, colors and texture slots while an expanding pool waits for textures', async () => {

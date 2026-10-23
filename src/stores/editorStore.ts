@@ -1,5 +1,12 @@
+import {
+  collectionAncestors,
+  restrictedCollectionGroups,
+  readCollectionTree,
+  UNCLASSIFIED,
+} from '@/lib/collectionTree'
+import { transactionAffectsScene } from '@/lib/editorTransactions'
 import { defineStore } from 'pinia'
-import { ref, computed, shallowRef, triggerRef } from 'vue'
+import { ref, computed, shallowRef, triggerRef, watch } from 'vue'
 
 // 选择动作类型
 export type SelectionAction = 'new' | 'add' | 'subtract' | 'intersect' | 'toggle'
@@ -18,6 +25,7 @@ import type {
 import type { ArchivedSchemeSnapshot } from '../types/archive'
 import type { SelectionCategoryId } from '../types/furniture'
 import type { SharedSchemeSnapshot } from '../types/cloudScheme'
+import { createGroupState, setSchemeItems } from '../lib/groupState'
 import { parseGameDataContent } from '../lib/gameDataFormat'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
@@ -62,6 +70,8 @@ function buildSchemeFromSharedSnapshot(
     maxGroupId: ref(maxGrpId),
     currentViewConfig: ref(undefined),
     viewState: ref(undefined),
+    ...createGroupState(snapshot),
+    collectionsSupported: ref(false),
     groupOrigins: shallowRef(new Map(snapshot.groupOrigins)),
     history: shallowRef(undefined),
   }
@@ -131,8 +141,9 @@ export const useEditorStore = defineStore('editor', () => {
   })
 
   // 性能优化：建立 groupId -> itemIds 的索引映射
-  const groupsMap = computed(() => {
+  const groupIndex = computed(() => {
     const map = new Map<number, Set<string>>()
+    const ungrouped = new Set<string>()
     const list = activeScheme.value?.items.value ?? []
 
     for (const item of list) {
@@ -144,10 +155,12 @@ export const useEditorStore = defineStore('editor', () => {
           map.set(gid, group)
         }
         group.add(item.internalId)
-      }
+      } else ungrouped.add(item.internalId)
     }
-    return map
+    return { groups: map, ungrouped }
   })
+  const groupsMap = computed(() => groupIndex.value.groups)
+  const ungroupedItemIds = computed(() => groupIndex.value.ungrouped)
 
   // 局部编辑作用域随方案保留，切换标签不退出；独立于家具组和历史事务。
   const localEditingItemIds = computed(() => activeScheme.value?.localEditingItemIds.value ?? null)
@@ -160,11 +173,214 @@ export const useEditorStore = defineStore('editor', () => {
     return count
   })
 
-  function isItemEditable(itemId: string): boolean {
+  function isItemInEditingScope(itemId: string): boolean {
     return (
       itemsMap.value.has(itemId) &&
       (localEditingItemIds.value === null || localEditingItemIds.value.has(itemId))
     )
+  }
+
+  function effectiveRestrictions(
+    kind: 'hidden' | 'locked',
+    previous?: ReadonlySet<number>
+  ): ReadonlySet<number> {
+    const scheme = activeScheme.value
+    const own = kind === 'hidden' ? scheme?.hiddenGroupIds.value : scheme?.lockedGroupIds.value
+    const inherited = scheme
+      ? restrictedCollectionGroups(
+          scheme.collectionTree.value,
+          kind === 'hidden' ? scheme.hiddenCollectionIds.value : scheme.lockedCollectionIds.value,
+          groupsMap.value.keys()
+        )
+      : new Set<number>()
+    const next = new Set([...(own ?? []), ...inherited])
+    return previous && previous.size === next.size && [...next].every((id) => previous.has(id))
+      ? previous
+      : next
+  }
+  const effectiveHiddenGroupIds = computed<ReadonlySet<number>>((previous) =>
+    effectiveRestrictions('hidden', previous)
+  )
+  const effectiveLockedGroupIds = computed<ReadonlySet<number>>((previous) =>
+    effectiveRestrictions('locked', previous)
+  )
+
+  function setCollectionRestriction(
+    collectionId: string,
+    kind: 'hidden' | 'locked',
+    enabled: boolean
+  ) {
+    const scheme = activeScheme.value
+    if (
+      !scheme ||
+      (collectionId !== UNCLASSIFIED &&
+        !scheme.collectionTree.value.nodes.some((node) => node.id === collectionId))
+    )
+      return
+    const state = kind === 'hidden' ? scheme.hiddenCollectionIds : scheme.lockedCollectionIds
+    if (state.value.has(collectionId) === enabled) return
+    const ids = new Set(state.value)
+    if (enabled) ids.add(collectionId)
+    else ids.delete(collectionId)
+    state.value = ids
+    triggerSelectionUpdate()
+  }
+
+  function isItemVisible(itemId: string): boolean {
+    const item = itemsMap.value.get(itemId)
+    return (
+      !!item &&
+      isItemInEditingScope(itemId) &&
+      !effectiveHiddenGroupIds.value.has(Math.max(0, item.groupId))
+    )
+  }
+
+  function isItemEditable(itemId: string): boolean {
+    const item = itemsMap.value.get(itemId)
+    return (
+      !!item &&
+      isItemVisible(itemId) &&
+      !effectiveLockedGroupIds.value.has(Math.max(0, item.groupId))
+    )
+  }
+
+  // 渲染器及其异步任务共用同一份可见范围。
+  const renderItemIds = computed<ReadonlySet<string> | null>((previous) => {
+    const hidden = effectiveHiddenGroupIds.value
+    if (
+      !hidden?.size ||
+      !activeScheme.value?.items.value.some((item) => hidden.has(Math.max(0, item.groupId)))
+    ) {
+      return localEditingItemIds.value
+    }
+    const next = new Set(
+      (activeScheme.value?.items.value ?? [])
+        .filter((item) => isItemVisible(item.internalId))
+        .map((item) => item.internalId)
+    )
+    // 变换可见成员不改变范围，也不中断正在进行的拖拽或加载。
+    return previous && previous.size === next.size && [...next].every((id) => previous.has(id))
+      ? previous
+      : next
+  })
+
+  const hiddenGroupCount = computed(
+    () => [...groupsMap.value.keys()].filter((id) => effectiveHiddenGroupIds.value.has(id)).length
+  )
+  const hiddenItemCount = computed(
+    () =>
+      (activeScheme.value?.items.value ?? []).filter((item) =>
+        effectiveHiddenGroupIds.value.has(Math.max(0, item.groupId))
+      ).length
+  )
+
+  /** 更新现有个人显隐状态，实现仅显示指定条目。 */
+  function showOnly(
+    entry: { kind: 'group' | 'ungrouped'; id: number } | { kind: 'collection'; id: string }
+  ) {
+    const scheme = activeScheme.value
+    if (!scheme) return
+    const tree = scheme.collectionTree.value
+    if (entry.kind === 'ungrouped') {
+      if (!ungroupedItemIds.value.size) return
+    } else if (
+      entry.kind === 'group'
+        ? !groupsMap.value.has(entry.id)
+        : entry.id !== UNCLASSIFIED && !tree.nodes.some((node) => node.id === entry.id)
+    )
+      return
+    const assignments = new Map(tree.groups.map((group) => [group.groupId, group.collectionId]))
+    const nodes = new Map(tree.nodes.map((node) => [node.id, node]))
+    const path = new Set(
+      collectionAncestors(
+        nodes,
+        entry.kind === 'collection' ? entry.id : (assignments.get(entry.id) ?? null)
+      )
+    )
+    const hiddenCollections = new Set(scheme.hiddenCollectionIds.value)
+    const hiddenGroups = new Set(scheme.hiddenGroupIds.value)
+    const onlyUnclassified = entry.kind === 'collection' && entry.id === UNCLASSIFIED
+    if (onlyUnclassified || (entry.kind === 'group' && !assignments.get(entry.id)))
+      hiddenCollections.delete(UNCLASSIFIED)
+    for (const id of path) hiddenCollections.delete(id)
+    // 在分支根节点隐藏目标路径之外的分支，并保留后代状态，
+    // 便于之后按住 Alt 点击时显示其他分支，且不清除其子节点设置。
+    for (const node of tree.nodes) {
+      if (
+        !path.has(node.id) &&
+        (node.parentId === null || path.has(node.parentId)) &&
+        !(entry.kind === 'collection' && node.parentId === entry.id)
+      )
+        hiddenCollections.add(node.id)
+    }
+    for (const id of groupsMap.value.keys()) {
+      const parent = assignments.get(id) ?? null
+      if (entry.kind === 'group' && id === entry.id) hiddenGroups.delete(id)
+      else if (
+        !(onlyUnclassified && parent === null) &&
+        (parent === null || path.has(parent)) &&
+        !(entry.kind === 'collection' && parent === entry.id)
+      )
+        hiddenGroups.add(id)
+    }
+    // 组 ID 0 表示未分组类别，不作为目录树节点。
+    if (entry.kind === 'ungrouped') hiddenGroups.delete(0)
+    else hiddenGroups.add(0)
+    const changedGroups =
+      hiddenGroups.size !== scheme.hiddenGroupIds.value.size ||
+      [...hiddenGroups].some((id) => !scheme.hiddenGroupIds.value.has(id))
+    const changedCollections =
+      hiddenCollections.size !== scheme.hiddenCollectionIds.value.size ||
+      [...hiddenCollections].some((id) => !scheme.hiddenCollectionIds.value.has(id))
+    if (!changedGroups && !changedCollections) return
+    if (changedCollections) scheme.hiddenCollectionIds.value = hiddenCollections
+    if (changedGroups) scheme.hiddenGroupIds.value = hiddenGroups
+    triggerSelectionUpdate()
+  }
+
+  function setGroupHidden(groupId: number, hidden: boolean) {
+    const scheme = activeScheme.value
+    if (!scheme || (groupId === 0 ? !ungroupedItemIds.value.size : !groupsMap.value.has(groupId)))
+      return
+    if (scheme.hiddenGroupIds.value.has(groupId) === hidden) return
+    const ids = new Set(scheme.hiddenGroupIds.value)
+    if (hidden) ids.add(groupId)
+    else ids.delete(groupId)
+    scheme.hiddenGroupIds.value = ids
+    triggerSelectionUpdate()
+  }
+
+  function setGroupLocked(groupId: number, locked: boolean) {
+    const scheme = activeScheme.value
+    if (!scheme || (groupId === 0 ? !ungroupedItemIds.value.size : !groupsMap.value.has(groupId)))
+      return
+    if (scheme.lockedGroupIds.value.has(groupId) === locked) return
+    const ids = new Set(scheme.lockedGroupIds.value)
+    if (locked) ids.add(groupId)
+    else ids.delete(groupId)
+    scheme.lockedGroupIds.value = ids
+    triggerSelectionUpdate()
+  }
+
+  function showAllGroups() {
+    if (
+      activeScheme.value &&
+      (activeScheme.value.hiddenGroupIds.value.size ||
+        activeScheme.value.hiddenCollectionIds.value.size)
+    ) {
+      activeScheme.value.hiddenGroupIds.value = new Set()
+      activeScheme.value.hiddenCollectionIds.value = new Set()
+      triggerSelectionUpdate()
+    }
+  }
+
+  function unlockAllGroups() {
+    const scheme = activeScheme.value
+    if (!scheme || (!scheme.lockedGroupIds.value.size && !scheme.lockedCollectionIds.value.size))
+      return
+    scheme.lockedGroupIds.value = new Set()
+    scheme.lockedCollectionIds.value = new Set()
+    triggerSelectionUpdate()
   }
 
   function enterLocalEditing(itemIds: Iterable<string>) {
@@ -204,9 +420,9 @@ export const useEditorStore = defineStore('editor', () => {
     triggerSelectionUpdate()
   }
 
-  function constrainSelectionToLocalEditing() {
+  function constrainSelectionToEditable() {
     const scheme = activeScheme.value
-    if (!scheme || localEditingItemIds.value === null) return false
+    if (!scheme) return false
     let changed = false
     const current = scheme.selectedItemIds.value
     for (const id of current) {
@@ -230,6 +446,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function recordRenderTransaction(transaction: EditorTransaction, fromVersion: number) {
     if (transaction.schemeId !== activeScheme.value?.id) return
+    if (!transactionAffectsScene(transaction)) return
     if (sceneVersion.value === fromVersion) triggerSceneUpdate()
     const items = new Map<string, AppItem | null>()
     for (const operation of transaction.ops) {
@@ -276,7 +493,7 @@ export const useEditorStore = defineStore('editor', () => {
   function triggerSceneUpdate() {
     if (activeScheme.value) {
       triggerRef(activeScheme.value.items)
-      if (constrainSelectionToLocalEditing()) {
+      if (constrainSelectionToEditable()) {
         triggerSelectionUpdate()
       }
       sceneVersion.value++
@@ -285,7 +502,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function triggerSelectionUpdate() {
     if (activeScheme.value) {
-      constrainSelectionToLocalEditing()
+      constrainSelectionToEditable()
       triggerRef(activeScheme.value.selectedItemIds)
       selectionVersion.value++
     }
@@ -356,6 +573,7 @@ export const useEditorStore = defineStore('editor', () => {
       maxGroupId: ref(0), // 初始值，首个组将从 1 开始
       currentViewConfig: ref(undefined),
       viewState: ref(undefined),
+      ...createGroupState(),
       groupOrigins: shallowRef(new Map()),
       history: shallowRef(undefined),
     }
@@ -428,6 +646,7 @@ export const useEditorStore = defineStore('editor', () => {
         lastModified: ref(fileLastModified),
         currentViewConfig: ref(undefined),
         viewState: ref(undefined),
+        ...createGroupState(),
         groupOrigins: shallowRef(new Map()),
         history: shallowRef(undefined),
       }
@@ -480,6 +699,7 @@ export const useEditorStore = defineStore('editor', () => {
       maxGroupId: ref(maxGrpId),
       currentViewConfig: ref(snapshot.currentViewConfig),
       viewState: ref(snapshot.viewState),
+      ...createGroupState(snapshot),
       groupOrigins: shallowRef(new Map(snapshot.groupOrigins)),
       history: shallowRef(undefined),
     }
@@ -541,6 +761,15 @@ export const useEditorStore = defineStore('editor', () => {
       maxGroupId: scheme.maxGroupId,
       currentViewConfig: scheme.currentViewConfig,
       viewState: scheme.viewState,
+      collectionTree: scheme.collectionTree,
+      collapsedCollectionIds: scheme.collapsedCollectionIds,
+      hiddenCollectionIds: scheme.hiddenCollectionIds,
+      lockedCollectionIds: scheme.lockedCollectionIds,
+      activeCollectionId: scheme.activeCollectionId,
+      collectionsSupported: scheme.collectionsSupported,
+      hiddenGroupIds: scheme.hiddenGroupIds,
+      lockedGroupIds: scheme.lockedGroupIds,
+      activeGroupId: scheme.activeGroupId,
       groupOrigins: scheme.groupOrigins,
       history: scheme.history,
     }
@@ -633,11 +862,13 @@ export const useEditorStore = defineStore('editor', () => {
     const scheme = getSchemeById(schemeId)
     if (!scheme) return false
 
+    const collectionTree = readCollectionTree(snapshot.collectionTree)
     scheme.name.value = snapshot.name
     scheme.filePath.value = snapshot.filePath
     scheme.lastModified.value = snapshot.lastModified
-    scheme.items.value = cloneItems(snapshot.items)
+    setSchemeItems(scheme, cloneItems(snapshot.items))
     scheme.selectedItemIds.value = new Set()
+    scheme.collectionTree.value = collectionTree
     scheme.groupOrigins.value = new Map(snapshot.groupOrigins)
 
     if (!options?.preserveViewState) {
@@ -648,8 +879,8 @@ export const useEditorStore = defineStore('editor', () => {
     scheme.history.value = undefined
 
     const { maxInstId, maxGrpId } = getSnapshotMaxValues(scheme.items.value)
-    scheme.maxInstanceId.value = maxInstId
-    scheme.maxGroupId.value = maxGrpId
+    scheme.maxInstanceId.value = Math.max(scheme.maxInstanceId.value, maxInstId)
+    scheme.maxGroupId.value = Math.max(scheme.maxGroupId.value, maxGrpId)
 
     tabStore.updateSchemeTabName(schemeId, snapshot.name)
     triggerRef(scheme.items)
@@ -691,6 +922,12 @@ export const useEditorStore = defineStore('editor', () => {
         name: scheme.name.value,
         fileName: scheme.filePath.value,
         gameData: gameData,
+        collectionTree: structuredClone(scheme.collectionTree.value),
+        collapsedCollectionIds: [...scheme.collapsedCollectionIds.value],
+        hiddenCollectionIds: [...scheme.hiddenCollectionIds.value],
+        lockedCollectionIds: [...scheme.lockedCollectionIds.value],
+        hiddenGroupIds: [...scheme.hiddenGroupIds.value],
+        lockedGroupIds: [...scheme.lockedGroupIds.value],
         lastModified: scheme.lastModified.value,
         closedAt: Date.now(),
       })
@@ -775,7 +1012,9 @@ export const useEditorStore = defineStore('editor', () => {
         { schemeId: history.id }
       )
 
-      if (result.success) {
+      if (result.success && result.schemeId) {
+        const restored = getSchemeById(result.schemeId)!
+        Object.assign(restored, createGroupState(history, history))
         // 从历史记录中移除（避免重复恢复）
         closedSchemesHistory.value.splice(historyIndex, 1)
       }
@@ -925,6 +1164,8 @@ export const useEditorStore = defineStore('editor', () => {
     return !!top && top.stale
   })
 
+  watch(activeScheme, () => triggerSelectionUpdate(), { flush: 'sync' })
+
   return {
     // 多方案状态
     schemes,
@@ -932,12 +1173,27 @@ export const useEditorStore = defineStore('editor', () => {
     activeScheme,
     itemsMap,
     groupsMap,
+    ungroupedItemIds,
     localEditingItemIds,
     localEditingItemCount,
     includeInLocalEditing,
     enterLocalEditing,
     exitLocalEditing,
     isItemEditable,
+    effectiveHiddenGroupIds,
+    effectiveLockedGroupIds,
+    setCollectionRestriction,
+    isItemVisible,
+    isItemInEditingScope,
+    constrainSelectionToEditable,
+    renderItemIds,
+    hiddenGroupCount,
+    hiddenItemCount,
+    showOnly,
+    setGroupHidden,
+    setGroupLocked,
+    showAllGroups,
+    unlockAllGroups,
     clipboardList: clipboardRef,
     currentTool,
     selectionMode,

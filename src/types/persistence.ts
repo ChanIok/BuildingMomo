@@ -1,3 +1,4 @@
+import type { CollectionTree } from '@/lib/collectionTree'
 import type { AppItem, SchemeSource, ThreeViewState } from './editor'
 import type { Tab } from './tab'
 
@@ -12,6 +13,12 @@ export interface HomeSchemeSnapshot {
   selectedItemIds: Set<string> // IDB supports Set
   currentViewConfig?: { scale: number; x: number; y: number }
   viewState?: ThreeViewState
+  collectionTree?: CollectionTree
+  collapsedCollectionIds?: ReadonlySet<string>
+  hiddenCollectionIds?: ReadonlySet<string>
+  lockedCollectionIds?: ReadonlySet<string>
+  hiddenGroupIds?: ReadonlySet<number>
+  lockedGroupIds?: ReadonlySet<number>
   groupOrigins: Map<number, string> // IDB supports Map: groupId -> originItemId
 }
 
@@ -25,6 +32,12 @@ export interface WorkspaceSnapshot {
     tabs: Tab[]
     activeTabId: string | null
   }
+}
+
+/** 个人目录视图状态，不携带家具数据，也不触发家具数据失效。 */
+export interface WorkspaceCollectionViewState {
+  id: string
+  collapsedCollectionIds: ReadonlySet<string>
 }
 
 export interface ValidationResult {

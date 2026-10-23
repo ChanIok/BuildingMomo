@@ -115,6 +115,42 @@
       </li>
     </ul>
 
+    <h3>Groups Panel</h3>
+    <p>
+      Click <strong>Groups</strong> in the bottom canvas toolbar, or press <code>O</code> to open
+      the panel.
+    </p>
+    <ul>
+      <li>
+        <strong>Collections</strong>: Create collections to organize groups, with support for
+        nesting. Drag groups or collections, or right-click and choose “Move to” to change their
+        location.
+      </li>
+      <li>
+        <strong>Selection and batch moves</strong>: Click to select a group or collection,
+        <code>Ctrl</code>-click to select multiple, and <code>Shift</code>-click to select a range.
+        Drag the selection or use “Move to” for batch moves. “Ungrouped” lists furniture with no
+        group.
+      </li>
+      <li>
+        <strong>Rename and collapse</strong>: Double-click a name or press <code>F2</code> to
+        rename. Click the arrow beside a collection to expand or collapse it. Deleting a collection
+        keeps its furniture.
+      </li>
+      <li>
+        <strong>Hide</strong>: Click the eye to toggle visibility, or <code>Alt</code>-click to show
+        only that item. Click “Show all” to restore visibility. Hidden furniture is still exported.
+      </li>
+      <li>
+        <strong>Lock</strong>: Click the lock to prevent furniture in a group or collection from
+        being selected or edited. Click “Unlock all” to clear all locks.
+      </li>
+    </ul>
+    <p>
+      Group names and collections are saved with the scheme, but are not included in game JSON.
+      Visibility, locks and collapse state are saved only in your own workspace.
+    </p>
+
     <h3>Local Editing</h3>
     <ul>
       <li>

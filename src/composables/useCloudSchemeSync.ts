@@ -4,6 +4,8 @@ import {
   cloudHistoryCountsFromItemBuckets,
   collectTransactionItemBuckets,
   collectTransactionTouchedItemIds,
+  collectTransactionTouchedGroupIds,
+  transactionAffectsScene,
 } from '@/lib/editorTransactions'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
@@ -11,6 +13,12 @@ import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useNotification } from '@/composables/useNotification'
 import { useI18n } from '@/composables/useI18n'
 import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
+import {
+  getGroupChanges,
+  reconcileCollectionGroups,
+  applyCollectionStructure,
+  patchGroupNames,
+} from '@/lib/collectionTree'
 import type {
   CloudSchemeDocument,
   CloudSnapshotResponse,
@@ -190,6 +198,7 @@ export function useCloudSchemeSync() {
       removedCount: event.removedCount,
       updatedCount: event.updatedCount,
       itemBuckets: event.itemBuckets,
+      collectionTreeChanged: event.collectionTreeChanged,
     })
   }
 
@@ -255,6 +264,11 @@ export function useCloudSchemeSync() {
     if (session && !isActiveSession(session)) {
       return
     }
+    if (document.collectionTreeVersion !== 2) {
+      if (session) abortSessionAttempt(session)
+      notification.error(t('groups.syncUnavailable'))
+      return
+    }
 
     isApplyingRemoteUpdate.value = true
 
@@ -271,6 +285,9 @@ export function useCloudSchemeSync() {
         }
       }
 
+      const restoredScheme = editorStore.getSchemeById(schemeId)
+      if (restoredScheme)
+        restoredScheme.collectionsSupported.value = document.collectionTreeVersion === 2
       editorStore.clearPendingTransactions(schemeId)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',
@@ -291,17 +308,44 @@ export function useCloudSchemeSync() {
     }
   }
 
-  function applyCommittedTransaction(transaction: { schemeId: string; ops: unknown[] }) {
+  function applyCommittedTransaction(transaction: EditorTransaction) {
     const renderVersion = editorStore.sceneVersion
     const scheme = editorStore.getSchemeById(transaction.schemeId)
     if (!scheme) return
 
+    const previousItems = scheme.items.value
+    const queuedMetadata = editorStore.pendingTransactions
+      .filter((pending) => pending.schemeId === scheme.id && pending.id !== transaction.id)
+      .flatMap((pending) =>
+        pending.ops.filter(
+          (op) => op.type === 'set_collection_tree' || op.type === 'set_group_names'
+        )
+      )
+
     isApplyingRemoteUpdate.value = true
     try {
-      applyEditorTransactionToScheme(scheme, transaction as never)
+      applyEditorTransactionToScheme(scheme, transaction)
+      const changes = getGroupChanges(previousItems, scheme.items.value)
+      // 较早的服务端确认不能回退之后排队的改名或移动操作。
+      for (const operation of queuedMetadata) {
+        if (operation.type === 'set_collection_tree') {
+          const structure = reconcileCollectionGroups(operation.after, changes)
+          scheme.collectionTree.value = applyCollectionStructure(
+            scheme.collectionTree.value,
+            structure
+          )
+        } else {
+          scheme.collectionTree.value = patchGroupNames(
+            scheme.collectionTree.value,
+            operation.before,
+            operation.after
+          )
+        }
+      }
       triggerRef(scheme.groupOrigins)
-      editorStore.triggerSceneUpdate()
-      editorStore.recordRenderTransaction(transaction as never, renderVersion)
+      if (transactionAffectsScene(transaction)) editorStore.triggerSceneUpdate()
+      else if (editorStore.constrainSelectionToEditable()) editorStore.triggerSelectionUpdate()
+      editorStore.recordRenderTransaction(transaction, renderVersion)
     } finally {
       isApplyingRemoteUpdate.value = false
     }
@@ -321,6 +365,13 @@ export function useCloudSchemeSync() {
     const transaction = editorStore.peekPendingTransaction(session.schemeId)
     if (!transaction) return
 
+    if (
+      transaction.ops.some((op) => op.type === 'set_collection_tree') &&
+      !editorStore.getSchemeById(session.schemeId)?.collectionsSupported.value
+    ) {
+      cloudStore.setError(t('groups.syncUnavailable'))
+      return
+    }
     session.inFlightTransactionId = transaction.id
     cloudStore.status = 'syncing'
     session.socket.send(
@@ -344,6 +395,15 @@ export function useCloudSchemeSync() {
 
     switch (message.type) {
       case 'hello':
+        if (session.schemeId) {
+          const scheme = editorStore.getSchemeById(session.schemeId)
+          if (scheme) scheme.collectionsSupported.value = message.collectionTreeVersion === 2
+        }
+        if (message.collectionTreeVersion !== 2) {
+          abortSessionAttempt(session)
+          notification.error(t('groups.syncUnavailable'))
+          return
+        }
         cloudStore.revision = message.revision
         cloudStore.status = 'connected'
         if (pendingConnectedEventType.value) {
@@ -388,17 +448,29 @@ export function useCloudSchemeSync() {
 
         const isOwn = message.authorClientId === session.clientId
         // 撤销栈是否标脏：看谁 touch 了哪些 id（与历史展示的 buckets 正交）
-        const touchedItemIds = collectTransactionTouchedItemIds(message.transaction)
+        const touchedItemIds = collectTransactionTouchedItemIds(
+          message.transaction,
+          editorStore.getSchemeById(message.transaction.schemeId)?.items.value
+        )
         // 历史列表：按物品 id 分桶 + 派生 count，避免「8 次移动同一物」显示成 8 个更新
-        const itemBuckets = collectTransactionItemBuckets(message.transaction as EditorTransaction)
+        const itemBuckets = collectTransactionItemBuckets(message.transaction)
         const counts = cloudHistoryCountsFromItemBuckets(itemBuckets)
 
         if (isOwn) {
           editorStore.acknowledgePendingTransaction(message.transaction.id)
-          markTransactionCommitted(message.transaction.schemeId, message.transaction.id)
+          markTransactionCommitted(
+            message.transaction.schemeId,
+            message.transaction.id,
+            message.transaction
+          )
           session.inFlightTransactionId = null
         } else {
-          markTransactionsStale(message.transaction.schemeId, touchedItemIds)
+          markTransactionsStale(
+            message.transaction.schemeId,
+            touchedItemIds,
+            collectTransactionTouchedGroupIds(message.transaction),
+            message.transaction.ops.some((op) => op.type === 'set_collection_tree')
+          )
         }
 
         appendHistoryEvent({
@@ -409,6 +481,9 @@ export function useCloudSchemeSync() {
           removedCount: counts.removedCount,
           updatedCount: counts.updatedCount,
           itemBuckets,
+          collectionTreeChanged: message.transaction.ops.some(
+            (op) => op.type === 'set_collection_tree'
+          ),
         })
 
         void flushPendingTransactions()
@@ -423,7 +498,7 @@ export function useCloudSchemeSync() {
     closeSessionSocket(session)
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/cloud-schemes/ws?code=${encodeURIComponent(session.roomCode)}&clientId=${encodeURIComponent(session.clientId)}&displayName=${encodeURIComponent(session.displayName)}`
+    const wsUrl = `${protocol}//${window.location.host}/api/cloud-schemes/ws?code=${encodeURIComponent(session.roomCode)}&clientId=${encodeURIComponent(session.clientId)}&displayName=${encodeURIComponent(session.displayName)}&collectionTreeVersion=2`
 
     return new Promise<boolean>((resolve, reject) => {
       const nextSocket = new WebSocket(wsUrl)
@@ -576,12 +651,17 @@ export function useCloudSchemeSync() {
         return null
       }
 
+      if (data.document.collectionTreeVersion !== 2) {
+        throw new Error(t('groups.syncUnavailable'))
+      }
       const schemeId = editorStore.normalizeSchemeAsCloudRoom(sourceSchemeId, data.roomCode, {
         resetHistory: true,
       })
       if (!schemeId) {
         throw new Error('Failed to normalize cloud scheme identity')
       }
+      editorStore.getSchemeById(schemeId)!.collectionsSupported.value =
+        data.document.collectionTreeVersion === 2
 
       const started = await startSession(session, {
         roomCode: data.roomCode,
@@ -638,6 +718,7 @@ export function useCloudSchemeSync() {
         return null
       }
 
+      if (data.document.collectionTreeVersion !== 2) throw new Error(t('groups.syncUnavailable'))
       const schemeId = editorStore.openCloudSchemeSnapshot(data.document.scheme, roomCode)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',
@@ -702,6 +783,7 @@ export function useCloudSchemeSync() {
         return false
       }
 
+      if (data.document.collectionTreeVersion !== 2) throw new Error(t('groups.syncUnavailable'))
       const schemeId = editorStore.openCloudSchemeSnapshot(data.document.scheme, roomCode)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',

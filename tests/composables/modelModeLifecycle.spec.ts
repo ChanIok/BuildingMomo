@@ -10,6 +10,9 @@ const state = vi.hoisted(() => ({
     activeScheme: null as any,
     sceneVersion: 0,
     localEditingItemIds: null as ReadonlySet<string> | null,
+    get renderItemIds(): ReadonlySet<string> | null {
+      return this.localEditingItemIds
+    },
     getRenderChanges: vi.fn(() => null as any),
   },
   settings: { modelAssetProfile: 'full', materialAssetProfile: 'full' },

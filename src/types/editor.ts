@@ -1,3 +1,4 @@
+import type { CollectionTree, GroupMetadata } from '@/lib/collectionTree'
 import type { Ref, ShallowRef } from 'vue'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
@@ -115,6 +116,17 @@ export interface HomeScheme {
   // 存储每个组的原点物品 ID，用于移动和旋转操作
   groupOrigins: ShallowRef<Map<number, string>> // groupId -> originItemId
 
+  // 组名、分类和排序统一存入文档树；显隐等标记属于个人状态。
+  collectionTree: ShallowRef<CollectionTree>
+  collapsedCollectionIds: ShallowRef<ReadonlySet<string>>
+  hiddenCollectionIds: ShallowRef<ReadonlySet<string>>
+  lockedCollectionIds: ShallowRef<ReadonlySet<string>>
+  activeCollectionId: Ref<string | null>
+  collectionsSupported: Ref<boolean>
+  hiddenGroupIds: ShallowRef<ReadonlySet<number>> // 0 隐藏未分组家具，正数 ID 隐藏对应组。
+  lockedGroupIds: ShallowRef<ReadonlySet<number>> // 0 锁定未分组家具，正数 ID 锁定对应组。
+  activeGroupId: Ref<number | null>
+
   // 历史记录栈 (ShallowRef)
   history: ShallowRef<HistoryStack | undefined>
 }
@@ -173,8 +185,28 @@ export interface SetGroupOriginsOperation {
   after: Array<[number, string]>
 }
 
+export interface SetGroupNamesOperation {
+  type: 'set_group_names'
+  // 字段补丁作用于 collectionTree.groups，不单独存储名称。
+  // 仅包含变化的键，某一侧缺少该键表示删除。
+  before: Array<[number, string]>
+  after: Array<[number, string]>
+}
+
+export interface SetCollectionTreeOperation {
+  type: 'set_collection_tree'
+  // 仅包含目录结构的投影；名称通过字段补丁传递。
+  before: CollectionTree
+  after: CollectionTree
+}
+
 export type EditorOperation =
-  PatchItemsOperation | AddItemsOperation | RemoveItemsOperation | SetGroupOriginsOperation
+  | PatchItemsOperation
+  | AddItemsOperation
+  | RemoveItemsOperation
+  | SetGroupOriginsOperation
+  | SetGroupNamesOperation
+  | SetCollectionTreeOperation
 
 export interface EditorTransaction {
   id: string
@@ -218,6 +250,12 @@ export interface ClosedSchemeHistory {
   name: string // Scheme name
   fileName?: string // Original file name if available
   gameData: GameDataFile // Exported game JSON payload
+  collectionTree?: CollectionTree
+  collapsedCollectionIds?: string[]
+  hiddenCollectionIds?: string[]
+  lockedCollectionIds?: string[]
+  hiddenGroupIds?: number[]
+  lockedGroupIds?: number[]
   lastModified?: number // Last modified timestamp
   closedAt: number // Close timestamp
 }
@@ -227,6 +265,7 @@ export interface ClipboardData {
   sourceSchemeId?: string | null // 剪贴板来源方案 ID，用于判断高级粘贴模式可用性
   items: AppItem[] // 复制的物品列表
   groupOrigins: Map<number, string> // 组原点映射 (groupId -> originItemId)
+  groups?: Pick<GroupMetadata, 'groupId' | 'name'>[]
 }
 
 export interface StepRepeatConfig {

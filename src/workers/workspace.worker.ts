@@ -1,7 +1,12 @@
+import type { CollectionTree } from '@/lib/collectionTree'
 import * as Comlink from 'comlink'
 import { saveWorkspaceSnapshot } from '../lib/workspaceSnapshotStore'
 import type { AppItem } from '../types/editor'
-import type { WorkspaceSnapshot, ValidationResult } from '../types/persistence'
+import type {
+  WorkspaceSnapshot,
+  ValidationResult,
+  WorkspaceCollectionViewState,
+} from '../types/persistence'
 import { checkFurnitureColors } from '../lib/furnitureColorValidation'
 import { getSafeScaleRange } from '../lib/scaleLimits'
 
@@ -337,8 +342,15 @@ const api = {
       selectedItemIds: any
       currentViewConfig: any
       viewState: any
+      collectionTree?: CollectionTree
+      collapsedCollectionIds?: ReadonlySet<string>
+      hiddenCollectionIds?: ReadonlySet<string>
+      lockedCollectionIds?: ReadonlySet<string>
+      hiddenGroupIds?: ReadonlySet<number>
+      lockedGroupIds?: ReadonlySet<number>
       groupOrigins: Map<number, string> // 组合原点映射: groupId -> originItemId
     }
+    collectionViewStates?: WorkspaceCollectionViewState[]
     // 是否立即保存（跳过防抖）
     immediate?: boolean
   }): Promise<{ validation?: ValidationResult }> {
@@ -386,6 +398,11 @@ const api = {
       }
     }
 
+    for (const state of payload.collectionViewStates ?? []) {
+      const scheme = currentSnapshot.editor.schemes.find((entry) => entry.id === state.id)
+      if (scheme) scheme.collapsedCollectionIds = state.collapsedCollectionIds
+    }
+
     // 3. 触发保存 (仅当开启自动保存时)
     currentSnapshot.updatedAt = Date.now()
 
@@ -403,11 +420,11 @@ const api = {
       }
     }
 
-    // 4. 返回验证结果 (仅当开启验证且有目标方案时)
-    // 只要有一个验证开关开启，就执行验证
+    // 4. 内容更新和原有结构更新照常校验；个人目录视图更新
+    // 仅持久化视图状态，不触发家具校验。
     const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
 
-    if (shouldValidate) {
+    if (shouldValidate && (payload.activeSchemeData || !payload.collectionViewStates)) {
       if (targetScheme) {
         return { validation: runValidation(targetScheme.items, settings, targetScheme.filePath) }
       } else {

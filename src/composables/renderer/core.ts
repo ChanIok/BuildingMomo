@@ -85,8 +85,9 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   function buildSidebarHoveredItemIds(): Set<string> | null {
     const scheme = editorStore.activeScheme
+    if (!scheme) return null
     const hoveredGameId = uiStore.sidebarHoveredGameId
-    if (!scheme || hoveredGameId === null) return null
+    if (hoveredGameId === null) return null
 
     const selectedIds = scheme.selectedItemIds.value
     if (selectedIds.size === 0) return null
@@ -802,7 +803,7 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   }
 
   watch(
-    () => editorStore.localEditingItemIds,
+    () => editorStore.renderItemIds,
     () => {
       retainVisibleInstances()
       scheduleRebuild()
@@ -917,11 +918,6 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
       const selectedItemIds = editorStore.activeScheme?.selectedItemIds.value ?? new Set()
       const mode = settingsStore.settings.threeDisplayMode
-      const meshTarget = boxMode.mesh.value
-      const iconMeshTarget = iconMode.mesh.value
-      const simpleBoxMeshTarget = simpleBoxMode.mesh.value
-      const currentIndexToIdMap =
-        mode === 'model' ? modelMode.indexToIdMap.value : indexToIdMap.value
 
       if (mode === 'model') {
         selectionOutline.updateMasks(
@@ -931,17 +927,17 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           modelMode.internalIdToMeshInfo.value,
           modelMode.fallbackMesh.value
         )
+        // 模型模式的悬停反馈仅使用轮廓，不修改实例颜色。
+        invalidateScene()
+        return
       }
 
       colorManager.updateInstancesColor(
         mode,
-        meshTarget,
-        iconMeshTarget,
-        simpleBoxMeshTarget,
-        currentIndexToIdMap,
-        mode === 'model' ? modelMode.meshMap.value : undefined,
-        mode === 'model' ? modelMode.internalIdToMeshInfo.value : undefined,
-        mode === 'model' ? modelMode.fallbackMesh.value : undefined
+        boxMode.mesh.value,
+        iconMode.mesh.value,
+        simpleBoxMode.mesh.value,
+        indexToIdMap.value
       )
 
       invalidateScene()

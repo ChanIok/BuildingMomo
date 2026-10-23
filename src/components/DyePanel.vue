@@ -247,7 +247,7 @@ function applyCombinationColorPreset(preset: FurnitureCombinationColorPreset) {
   recordTransaction('dye.apply.combination', () => {
     scheme.items.value = scheme.items.value.map((item) => {
       const colorMap = nextColorMaps.get(item.internalId)
-      if (!colorMap) return item
+      if (!colorMap || !editorStore.isItemEditable(item.internalId)) return item
       return {
         ...item,
         extra: {
@@ -489,7 +489,7 @@ function handleIconError(event: Event) {
 <template>
   <div
     v-if="isVisible"
-    class="dye-panel-container absolute top-4 left-4 z-50 flex max-h-[calc(100%-32px)] w-auto flex-col rounded-md border border-border bg-background/90 shadow-2xl backdrop-blur-md"
+    class="dye-panel-container absolute top-4 left-4 z-50 flex max-h-[calc(100%-32px)] w-auto max-w-[calc(100%-2rem)] flex-col overflow-hidden rounded-md border border-border bg-background/90 shadow-2xl backdrop-blur-md"
   >
     <div class="flex items-center justify-between gap-4 p-3 pr-2">
       <h3 class="text-sm font-semibold">{{ t('dyePanel.title') }}</h3>
@@ -690,6 +690,7 @@ function handleIconError(event: Event) {
       </div>
 
       <ScrollBar orientation="vertical" class="!w-1.5" />
+      <ScrollBar orientation="horizontal" />
     </ScrollArea>
   </div>
 </template>

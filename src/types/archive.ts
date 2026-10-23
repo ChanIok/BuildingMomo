@@ -1,6 +1,8 @@
+import type { CollectionTree } from '@/lib/collectionTree'
 import type { AppItem, ThreeViewState } from './editor'
 
 export const ARCHIVE_INDEX_VERSION = 1
+export const ARCHIVE_SCHEME_VERSION = 1
 export const ARCHIVE_DEFAULT_GROUP_ID = 'default'
 export const ARCHIVE_INDEX_FILE_NAME = 'archive-index.json'
 export const ARCHIVE_SCHEMES_DIR_NAME = 'schemes'
@@ -38,6 +40,7 @@ export interface ArchivedSchemeSnapshot {
   items: AppItem[]
   currentViewConfig?: { scale: number; x: number; y: number }
   viewState?: ThreeViewState
+  collectionTree?: CollectionTree
   groupOrigins: Array<[number, string]>
 }
 

@@ -395,7 +395,7 @@ const interactionAdapter = ref<InteractionAdapter>({
   pickAsync: async (raycaster) => {
     if (!isInteractionReady.value) return null
     const scheme = editorStore.activeScheme
-    const scope = editorStore.localEditingItemIds
+    const scope = editorStore.renderItemIds
     const [sHit, nHit] = await Promise.all([
       slidePathInteractionAdapter.value.pickAsync(raycaster),
       standardInteractionAdapter.value.pickAsync(raycaster),
@@ -403,7 +403,7 @@ const interactionAdapter = ref<InteractionAdapter>({
     if (
       !isInteractionReady.value ||
       editorStore.activeScheme !== scheme ||
-      editorStore.localEditingItemIds !== scope
+      editorStore.renderItemIds !== scope
     )
       return null
     if (!sHit) return nHit

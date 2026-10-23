@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
@@ -25,6 +26,7 @@ import {
   ChevronDown,
   Package,
   Palette,
+  FolderTree,
 } from 'lucide-vue-next'
 import IconSelectionNew from '@/components/icons/IconSelectionNew.vue'
 import IconSelectionAdd from '@/components/icons/IconSelectionAdd.vue'
@@ -35,6 +37,7 @@ import IconSelectionToggle from '@/components/icons/IconSelectionToggle.vue'
 const editorStore = useEditorStore()
 const commandStore = useCommandStore()
 const settingsStore = useSettingsStore()
+const uiStore = useUIStore()
 const { t } = useI18n()
 
 /**
@@ -167,11 +170,20 @@ const showDyePanel = computed({
     }
   },
 })
+
+const showGroupPanel = computed({
+  get: () => uiStore.groupPanelOpen,
+  set: (val) => {
+    if (val !== uiStore.groupPanelOpen) {
+      commandStore.executeCommand('tool.toggleGroupPanel')
+    }
+  },
+})
 </script>
 
 <template>
   <div
-    class="canvas-toolbar flex h-11 items-center gap-2 rounded-lg border bg-background/90 px-2 shadow-md backdrop-blur-sm"
+    class="canvas-toolbar flex h-11 items-center gap-1.5 rounded-lg border bg-background/90 px-2 shadow-md backdrop-blur-sm"
   >
     <TooltipProvider :delay-duration="1000" :skip-delay-duration="300">
       <!-- 1. 选择工具 Toggle 组 -->
@@ -336,6 +348,29 @@ const showDyePanel = computed({
         <TooltipContent side="top" class="text-xs">
           {{ t('command.tool.toggleDyePanel') }}
           <Kbd class="ml-1">C</Kbd>
+        </TooltipContent>
+      </Tooltip>
+
+      <!-- 8. 组面板开关 -->
+      <Tooltip>
+        <TooltipTrigger as-child>
+          <div class="inline-flex">
+            <Toggle
+              size="sm"
+              v-model="showGroupPanel"
+              data-group-panel-toggle
+              :aria-label="t('command.tool.toggleGroupPanel')"
+              :aria-expanded="uiStore.groupPanelOpen"
+              aria-controls="canvas-group-panel"
+              aria-keyshortcuts="O"
+            >
+              <FolderTree class="h-4 w-4" />
+            </Toggle>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" class="text-xs">
+          {{ t('command.tool.toggleGroupPanel') }}
+          <Kbd class="ml-1">O</Kbd>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

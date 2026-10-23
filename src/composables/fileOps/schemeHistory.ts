@@ -1,3 +1,4 @@
+import type { CollectionTree } from '@/lib/collectionTree'
 import { ref, toRaw, watch, type WatchStopHandle } from 'vue'
 import type { AppItem } from '@/types/editor'
 import type { useEditorStore } from '@/stores/editorStore'
@@ -52,9 +53,12 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
   const dirtySchemeIds = new Set<string>()
   /** 需要绕过节流的方案：改名等低频显式操作，写完立即从本集合移除 */
   const urgentSchemeIds = new Set<string>()
-  /** schemeId → 上次成功写入的内容，用于跳过无变化的重复写入 */
-  const writtenState = new Map<string, { items: AppItem[]; name: string; filePath?: string }>()
   const lastWriteAt = new Map<string, number>()
+  /** schemeId → 上次成功写入的内容，用于跳过无变化的重复写入 */
+  const writtenState = new Map<
+    string,
+    { items: AppItem[]; name: string; filePath?: string; collectionTree: CollectionTree }
+  >()
 
   let isWriting = false
   let flushTimer: number | null = null
@@ -161,10 +165,12 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
 
     const name = scheme.name.value
     const filePath = scheme.filePath.value
+    const collectionTree = scheme.collectionTree.value
     const previous = writtenState.get(schemeId)
     if (
       previous &&
       previous.items === items &&
+      previous.collectionTree === collectionTree &&
       previous.name === name &&
       previous.filePath === filePath
     ) {
@@ -183,6 +189,7 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
           items,
           currentViewConfig: toRaw(scheme.currentViewConfig.value) ?? undefined,
           viewState: toRaw(scheme.viewState.value) ?? undefined,
+          collectionTree: scheme.collectionTree.value,
           groupOrigins: new Map(toRaw(scheme.groupOrigins.value)),
         },
         now
@@ -194,7 +201,7 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
       const writable = await fileHandle.createWritable()
       await writable.write(content)
       await writable.close()
-      writtenState.set(schemeId, { items, name, filePath })
+      writtenState.set(schemeId, { items, name, filePath, collectionTree })
       lastWriteAt.set(schemeId, now)
       syncEntry(
         {
@@ -350,6 +357,7 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
           items: historyFile.items,
           currentViewConfig: historyFile.currentViewConfig,
           viewState: historyFile.viewState,
+          collectionTree: historyFile.collectionTree,
           groupOrigins: historyFile.groupOrigins,
         },
         { schemeId: historyFile.schemeId, archiveName: historyFile.name }
@@ -417,6 +425,7 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
         editorStore.schemes.map((scheme) => ({
           id: scheme.id,
           items: scheme.items.value,
+          collectionTree: scheme.collectionTree.value,
           name: scheme.name.value,
           filePath: scheme.filePath.value,
         })),
@@ -430,7 +439,11 @@ export function createSchemeHistoryOps(params: CreateSchemeHistoryOpsParams) {
 
           if (before.items !== entry.items) {
             markDirty(entry.id)
-          } else if (before.name !== entry.name || before.filePath !== entry.filePath) {
+          } else if (
+            before.name !== entry.name ||
+            before.filePath !== entry.filePath ||
+            before.collectionTree !== entry.collectionTree
+          ) {
             markDirty(entry.id, true)
           }
         }

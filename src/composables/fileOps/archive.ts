@@ -13,6 +13,7 @@ import {
   ARCHIVE_DEFAULT_GROUP_ID,
   ARCHIVE_INDEX_FILE_NAME,
   ARCHIVE_INDEX_VERSION,
+  ARCHIVE_SCHEME_VERSION,
   ARCHIVE_SCHEMES_DIR_NAME,
 } from '@/types/archive'
 
@@ -139,6 +140,7 @@ function buildArchivedSchemeSnapshot(
     items: toRaw(scheme.items.value),
     currentViewConfig: toRaw(scheme.currentViewConfig.value),
     viewState: toRaw(scheme.viewState.value),
+    collectionTree: structuredClone(scheme.collectionTree.value),
     groupOrigins: Array.from(toRaw(scheme.groupOrigins.value).entries()),
   }
 }
@@ -631,7 +633,7 @@ export function createArchiveOps(params: CreateArchiveOpsParams) {
       const schemeFile = `${entryId}.json`
       const snapshot = buildArchivedSchemeSnapshot(scheme)
       const archivedSchemeFile: ArchivedSchemeFile = {
-        version: ARCHIVE_INDEX_VERSION,
+        version: ARCHIVE_SCHEME_VERSION,
         archivedAt: Date.now(),
         scheme: snapshot,
       }
@@ -714,7 +716,7 @@ export function createArchiveOps(params: CreateArchiveOpsParams) {
 
       const snapshot = buildArchivedSchemeSnapshot(scheme)
       const archivedSchemeFile: ArchivedSchemeFile = {
-        version: ARCHIVE_INDEX_VERSION,
+        version: ARCHIVE_SCHEME_VERSION,
         archivedAt: Date.now(),
         scheme: snapshot,
       }

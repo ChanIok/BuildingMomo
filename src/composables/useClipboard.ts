@@ -1,3 +1,5 @@
+import { patchGroupNames } from '@/lib/collectionTree'
+import { setSchemeItems } from '../lib/groupState'
 import { computed, triggerRef } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
@@ -92,6 +94,7 @@ function cloneClipboardData(clipboardData: ClipboardData): ClipboardData {
     sourceSchemeId: clipboardData.sourceSchemeId ?? null,
     items: clipboardData.items.map(cloneItem),
     groupOrigins: new Map(clipboardData.groupOrigins),
+    groups: clipboardData.groups?.map((group) => ({ ...group })),
   }
 }
 
@@ -256,6 +259,9 @@ export function useClipboard() {
       sourceSchemeId: scheme.id,
       items: copiedItems,
       groupOrigins: copiedGroupOrigins,
+      groups: scheme.collectionTree.value.groups
+        .filter((group) => involvedGroupIds.has(group.groupId) && group.name !== undefined)
+        .map(({ groupId, name }) => ({ groupId, name })),
     }
   }
 
@@ -272,8 +278,11 @@ export function useClipboard() {
     recordTransaction('clipboard.cut', () => {
       copyToClipboard()
 
-      activeScheme.value!.items.value = activeScheme.value!.items.value.filter(
-        (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
+      setSchemeItems(
+        activeScheme.value!,
+        activeScheme.value!.items.value.filter(
+          (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
+        )
       )
       activeScheme.value!.selectedItemIds.value.clear()
 
@@ -418,6 +427,15 @@ export function useClipboard() {
         }
       }
 
+      // 保留来源 ID 时，也可能需要重映射其他家具的染色引用。
+      if (
+        nextExistingItems.some(
+          (item, index) => item !== existingItems[index] && !store.isItemEditable(item.internalId)
+        )
+      ) {
+        return { newIds: [], newItems: [] }
+      }
+
       // 逐件生成新 internalId；instanceId / groupId 由上两种模式之一决定
       for (const item of clipboardData.items) {
         const newInternalId = generateUUID()
@@ -455,8 +473,17 @@ export function useClipboard() {
         }
       })
 
-      scheme.groupOrigins.value = nextGroupOrigins
+      // 先协调已有组，再添加新粘贴组的名称，
+      // 因为新组可能有意复用腾出的来源 ID。
+      setSchemeItems(scheme, nextExistingItems)
       scheme.items.value = [...nextExistingItems, ...newItems]
+      const names: Array<[number, string]> = []
+      for (const group of clipboardData.groups ?? []) {
+        const groupId = targetGroupIdMap.get(group.groupId)
+        if (groupId !== undefined && group.name) names.push([groupId, group.name])
+      }
+      scheme.collectionTree.value = patchGroupNames(scheme.collectionTree.value, [], names)
+      scheme.groupOrigins.value = nextGroupOrigins
       scheme.maxInstanceId.value = currentMaxInstanceId
       scheme.maxGroupId.value = currentMaxGroupId
 

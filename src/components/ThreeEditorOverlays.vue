@@ -16,11 +16,19 @@ import { useEditorStore } from '@/stores/editorStore'
 import { Toggle } from '@/components/ui/toggle'
 import type { Command } from '@/stores/commandStore'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
-import { PanelBottomClose, PanelBottomOpen, PanelRightClose, PanelRightOpen } from 'lucide-vue-next'
+import {
+  PanelBottomClose,
+  PanelBottomOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  EyeOff,
+} from 'lucide-vue-next'
 import LoadingProgress from './LoadingProgress.vue'
 import CanvasToolbar from './CanvasToolbar.vue'
 import FurnitureLibrary from './FurnitureLibrary.vue'
 import DyePanel from './DyePanel.vue'
+import GroupPanel from './GroupPanel.vue'
+import { useCanvasPanels } from '@/composables/editor/useCanvasPanels'
 import DebugPanel from './DebugPanel.vue'
 import FpsMonitor from './FpsMonitor.vue'
 
@@ -79,6 +87,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { dyePanelStyle } = useCanvasPanels(props.commandStore)
 
 const localEditingCommand = computed<Command>(() =>
   props.commandStore.commandMap.get(
@@ -165,6 +174,24 @@ function handleViewInfoClick() {
 </script>
 
 <template>
+  <div
+    v-if="editorStore.hiddenItemCount && !uiStore.groupPanelOpen"
+    role="status"
+    class="absolute bottom-16 left-4 z-30 flex h-8 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border bg-background/90 px-2.5 text-xs shadow-xs backdrop-blur-sm"
+    @pointerdown.stop
+    @pointerup.stop
+    @dblclick.stop
+  >
+    <EyeOff class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+    <span>{{ t('groups.hiddenItemCount', { count: editorStore.hiddenItemCount }) }}</span>
+    <button
+      type="button"
+      class="rounded-sm font-medium text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      @click.stop="editorStore.showAllGroups()"
+    >
+      {{ t('groups.showAll') }}
+    </button>
+  </div>
   <!-- 右上角状态信息组（禁止选中文本，避免拖拽/点击时误选） -->
   <div class="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 select-none">
     <div
@@ -306,7 +333,19 @@ function handleViewInfoClick() {
 
   <!-- 左侧面板 -->
   <FurnitureLibrary v-model:open="commandStore.showFurnitureLibrary" />
-  <DyePanel v-model:open="commandStore.showDyePanel" />
+  <!-- 关闭时保留面板挂载，以保持搜索和滚动位置。 -->
+  <div
+    v-show="uiStore.groupPanelOpen"
+    id="canvas-group-panel"
+    class="absolute top-4 bottom-18 left-4 z-40 w-70 max-w-[calc(100%-2rem)] overflow-hidden rounded-md border border-border shadow-2xl backdrop-blur-sm"
+    @pointerdown.stop
+    @pointerup.stop
+    @dblclick.stop
+    @contextmenu.stop
+  >
+    <GroupPanel />
+  </div>
+  <DyePanel v-model:open="commandStore.showDyePanel" :style="dyePanelStyle" />
 
   <!-- 右键菜单 -->
   <DropdownMenu v-model:open="contextMenuOpen" :modal="false">
@@ -457,7 +496,7 @@ function handleViewInfoClick() {
   <!-- FPS 监视器 -->
   <div
     v-if="settingsStore.settings.showFpsMonitor"
-    class="pointer-events-none absolute top-4 left-4 z-50 rounded-lg bg-black/65 px-2.5 py-2 backdrop-blur-sm"
+    class="pointer-events-none absolute top-4 left-4 z-30 rounded-lg bg-black/65 px-2.5 py-2 backdrop-blur-sm"
   >
     <FpsMonitor />
   </div>

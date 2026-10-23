@@ -7,6 +7,7 @@ export function buildSharedSchemeSnapshot(scheme: HomeScheme): SharedSchemeSnaps
     filePath: scheme.filePath.value,
     lastModified: scheme.lastModified.value,
     items: structuredClone(scheme.items.value),
+    collectionTree: structuredClone(scheme.collectionTree.value),
     groupOrigins: structuredClone(Array.from(scheme.groupOrigins.value.entries())),
   }
 }

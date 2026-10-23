@@ -9,7 +9,7 @@ import {
   invertEditorTransaction,
 } from '@/lib/editorTransactions'
 import type { AppItem, EditorTransaction } from '@/types/editor'
-import { makeAppItem, makeScheme } from '../fixtures/item'
+import { makeAppItem, makeScheme, groupNamesOf, setGroupNames } from '../fixtures/item'
 
 /** 走完整的「改场景 → 建事务 → 逆事务 → 应用」链路。 */
 function roundTrip(scheme: ReturnType<typeof makeScheme>, mutate: () => void): EditorTransaction {
@@ -25,6 +25,76 @@ function roundTrip(scheme: ReturnType<typeof makeScheme>, mutate: () => void): E
 }
 
 describe('buildTransactionByRef', () => {
+  it('replays only changed group-name keys, preserving concurrent unrelated names', () => {
+    const scheme = makeScheme([
+      makeAppItem({ internalId: 'a', groupId: 7 }),
+      makeAppItem({ internalId: 'b', groupId: 8 }),
+    ])
+    setGroupNames(scheme, [
+      [7, 'Wall'],
+      [8, 'Floor'],
+    ])
+    const before = captureSchemeSnapshot(scheme)
+    setGroupNames(scheme, [
+      [7, 'Walls'],
+      [8, 'Floor'],
+    ])
+    const transaction = buildTransactionByRef({
+      schemeId: scheme.id,
+      intent: 'group.rename',
+      before,
+      after: captureSchemeSnapshot(scheme),
+    })!
+    expect(transaction.ops).toEqual([
+      { type: 'set_group_names', before: [[7, 'Wall']], after: [[7, 'Walls']] },
+    ])
+    setGroupNames(scheme, [
+      [7, 'Walls'],
+      [8, 'New floor'],
+    ])
+    applyEditorTransactionToScheme(scheme, invertEditorTransaction(transaction))
+    expect(groupNamesOf(scheme)).toEqual(
+      new Map([
+        [7, 'Wall'],
+        [8, 'New floor'],
+      ])
+    )
+    applyEditorTransactionToScheme(scheme, transaction)
+    expect(groupNamesOf(scheme)).toEqual(
+      new Map([
+        [7, 'Walls'],
+        [8, 'New floor'],
+      ])
+    )
+  })
+
+  it('follows personal flags through group renumbering and its inverse', () => {
+    const original = makeAppItem({ groupId: 7 })
+    const scheme = makeScheme([original])
+    scheme.hiddenGroupIds.value = new Set([7])
+    scheme.lockedGroupIds.value = new Set([7])
+    const transaction: EditorTransaction = {
+      id: 'remap',
+      schemeId: scheme.id,
+      createdAt: 0,
+      intent: 'test',
+      ops: [
+        {
+          type: 'patch_items',
+          changes: [
+            { itemId: original.internalId, before: original, after: { ...original, groupId: 10 } },
+          ],
+        },
+      ],
+    }
+    applyEditorTransactionToScheme(scheme, transaction)
+    expect(scheme.hiddenGroupIds.value).toEqual(new Set([10]))
+    expect(scheme.lockedGroupIds.value).toEqual(new Set([10]))
+    applyEditorTransactionToScheme(scheme, invertEditorTransaction(transaction))
+    expect(scheme.hiddenGroupIds.value).toEqual(new Set([7]))
+    expect(scheme.lockedGroupIds.value).toEqual(new Set([7]))
+  })
+
   it('只记录引用发生变化的家具', () => {
     const a = makeAppItem({ internalId: 'a', x: 0 })
     const b = makeAppItem({ internalId: 'b' })

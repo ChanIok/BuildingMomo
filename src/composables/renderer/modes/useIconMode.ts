@@ -127,7 +127,7 @@ export function useIconMode() {
   async function rebuild(
     items: readonly AppItem[] = selectRenderItems(
       editorStore.activeScheme?.items.value ?? [],
-      editorStore.localEditingItemIds ?? null
+      editorStore.renderItemIds ?? null
     ),
     isStale: () => boolean = () => false
   ): Promise<boolean> {

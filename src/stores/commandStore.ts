@@ -353,6 +353,17 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'tool.toggleGroupPanel',
+      label: t('command.tool.toggleGroupPanel'),
+      shortcut: 'O',
+      allowRepeat: false,
+      category: 'tool',
+      enabled: () => editorStore.activeScheme !== null && uiStore.viewMode === '3d',
+      execute: () => {
+        uiStore.groupPanelOpen = !uiStore.groupPanelOpen
+      },
+    },
+    {
       id: 'tool.quickAlign',
       label: t('command.tool.quickAlign'),
       shortcut: 'T',

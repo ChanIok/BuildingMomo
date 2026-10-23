@@ -1,3 +1,12 @@
+import {
+  collectionTreesEqual,
+  collectionStructure,
+  applyCollectionStructure,
+  groupNameEntries,
+  patchGroupNames,
+  type CollectionTree,
+} from './collectionTree'
+import { setSchemeItems } from './groupState'
 import type {
   AppItem,
   EditorOperation,
@@ -21,6 +30,7 @@ import type { CloudHistoryItemBuckets } from '@/types/cloudScheme'
 export interface SchemeTransactionSnapshot {
   items: AppItem[] // 数组引用，不拷贝
   groupOrigins: Map<number, string> // Map 引用，不拷贝
+  collectionTree: CollectionTree
 }
 
 /**
@@ -31,6 +41,7 @@ export function captureSchemeSnapshot(scheme: HomeScheme): SchemeTransactionSnap
   return {
     items: scheme.items.value,
     groupOrigins: scheme.groupOrigins.value,
+    collectionTree: scheme.collectionTree.value,
   }
 }
 
@@ -55,6 +66,13 @@ function cloneGroupOriginsToEntries(
 
 // 保留对外导出（cloudScheme 等仍使用）
 export { cloneGroupOriginsToEntries as cloneGroupOriginsEntries }
+
+/** 名称和目录结构不影响场景实例或变换控件。 */
+export function transactionAffectsScene(transaction: EditorTransaction): boolean {
+  return transaction.ops.some(
+    (op) => op.type !== 'set_collection_tree' && op.type !== 'set_group_names'
+  )
+}
 
 // ========== 事务构建 ==========
 
@@ -137,6 +155,29 @@ export function buildTransactionByRef(params: {
     })
   }
 
+  if (before.collectionTree !== after.collectionTree) {
+    const beforeNames = new Map(groupNameEntries(before.collectionTree))
+    const afterNames = new Map(groupNameEntries(after.collectionTree))
+    const changed = new Set([...beforeNames.keys(), ...afterNames.keys()])
+    for (const id of changed) {
+      if (beforeNames.get(id) === afterNames.get(id)) changed.delete(id)
+    }
+    if (changed.size)
+      ops.push({
+        type: 'set_group_names',
+        before: [...beforeNames].filter(([id]) => changed.has(id)),
+        after: [...afterNames].filter(([id]) => changed.has(id)),
+      })
+    const previous = collectionStructure(before.collectionTree),
+      next = collectionStructure(after.collectionTree)
+    if (!collectionTreesEqual(previous, next))
+      ops.push({
+        type: 'set_collection_tree',
+        before: structuredClone(previous),
+        after: structuredClone(next),
+      })
+  }
+
   // 3. 一张空头支票不需记录到脑海里，直接返回废弃
   if (ops.length === 0) {
     return null
@@ -197,6 +238,18 @@ export function invertEditorTransaction(transaction: EditorTransaction): EditorT
           type: 'add_items',
           items: cloneAppItems(operation.items),
         }
+      case 'set_collection_tree':
+        return {
+          type: 'set_collection_tree',
+          before: structuredClone(operation.after),
+          after: structuredClone(operation.before),
+        }
+      case 'set_group_names':
+        return {
+          type: 'set_group_names',
+          before: structuredClone(operation.after),
+          after: structuredClone(operation.before),
+        }
       case 'set_group_origins':
         return {
           type: 'set_group_origins',
@@ -219,10 +272,21 @@ export function invertEditorTransaction(transaction: EditorTransaction): EditorT
  * 分析这笔操作都碰了哪些家具的ID？
  * 这是专门为了能够让系统分析“别人动的家具和自己动的有冲突不”的功能入口
  */
-export function collectTransactionTouchedItemIds(transaction: EditorTransaction) {
+export function collectTransactionTouchedItemIds(
+  transaction: EditorTransaction,
+  items: readonly AppItem[] = []
+) {
   const touchedIds = new Set<string>()
 
   for (const operation of transaction.ops) {
+    if (operation.type === 'set_group_names' || operation.type === 'set_group_origins') {
+      const before = new Map(operation.before)
+      const after = new Map(operation.after)
+      const changed = new Set(
+        [...before.keys(), ...after.keys()].filter((id) => before.get(id) !== after.get(id))
+      )
+      for (const item of items) if (changed.has(item.groupId)) touchedIds.add(item.internalId)
+    }
     if (operation.type === 'patch_items') {
       operation.changes.forEach((change) => touchedIds.add(change.itemId))
     }
@@ -233,6 +297,28 @@ export function collectTransactionTouchedItemIds(transaction: EditorTransaction)
   }
 
   return touchedIds
+}
+
+/** 即使最后一个成员已删除，组元数据修改仍须与组删除判定为冲突。 */
+export function collectTransactionTouchedGroupIds(transaction: EditorTransaction) {
+  const ids = new Set<number>()
+  for (const operation of transaction.ops) {
+    if (operation.type === 'set_group_names' || operation.type === 'set_group_origins') {
+      const before = new Map(operation.before)
+      const after = new Map(operation.after)
+      for (const id of new Set([...before.keys(), ...after.keys()])) {
+        if (before.get(id) !== after.get(id)) ids.add(id)
+      }
+    } else if (operation.type === 'patch_items') {
+      for (const change of operation.changes) {
+        if (change.before.groupId > 0) ids.add(change.before.groupId)
+        if (change.after.groupId > 0) ids.add(change.after.groupId)
+      }
+    } else if (operation.type === 'add_items' || operation.type === 'remove_items') {
+      for (const item of operation.items) if (item.groupId > 0) ids.add(item.groupId)
+    }
+  }
+  return ids
 }
 
 /**
@@ -323,7 +409,10 @@ function recomputeSchemeAllocators(scheme: HomeScheme) {
  */
 export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: EditorTransaction) {
   // 执行阶段使用“浅拷贝数组 + 命中项替换”策略，避免整表 structuredClone
-  let nextItems = scheme.items.value.slice()
+  const previousItems = scheme.items.value
+  let nextItems = previousItems
+  let explicitTree: CollectionTree | undefined
+  const nameOperations: Extract<EditorOperation, { type: 'set_group_names' }>[] = []
   let nextGroupOrigins = new Map<number, string>(scheme.groupOrigins.value)
   let needsAllocatorRecompute = false
   let idToIndex: Map<string, number> | null = null
@@ -339,7 +428,12 @@ export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: 
 
   for (const operation of transaction.ops) {
     switch (operation.type) {
+      case 'set_collection_tree': {
+        explicitTree = structuredClone(operation.after)
+        break
+      }
       case 'patch_items': {
+        if (nextItems === previousItems) nextItems = previousItems.slice()
         const indexMap = ensureIdToIndex()
         for (const change of operation.changes) {
           const index = indexMap.get(change.itemId)
@@ -355,6 +449,7 @@ export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: 
         break
       }
       case 'add_items': {
+        if (nextItems === previousItems) nextItems = previousItems.slice()
         const indexMap = ensureIdToIndex()
         for (const incoming of operation.items) {
           const existingIndex = indexMap.get(incoming.internalId)
@@ -377,6 +472,10 @@ export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: 
         needsAllocatorRecompute = true
         break
       }
+      case 'set_group_names': {
+        nameOperations.push(operation)
+        break
+      }
       case 'set_group_origins': {
         nextGroupOrigins = new Map(operation.after)
         break
@@ -384,8 +483,19 @@ export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: 
     }
   }
 
-  // 这两句是唯一产生重写渲染开销的地方
-  scheme.items.value = nextItems
+  // 应用目录和名称字段补丁前，先协调家具所属组的 ID。
+  setSchemeItems(scheme, nextItems)
+  if (explicitTree)
+    scheme.collectionTree.value = applyCollectionStructure(
+      scheme.collectionTree.value,
+      explicitTree
+    )
+  for (const operation of nameOperations)
+    scheme.collectionTree.value = patchGroupNames(
+      scheme.collectionTree.value,
+      operation.before,
+      operation.after
+    )
   scheme.groupOrigins.value = nextGroupOrigins
   if (needsAllocatorRecompute) {
     recomputeSchemeAllocators(scheme)

@@ -202,7 +202,7 @@ export function useSlidePathRenderer() {
 
     const items = selectRenderItems(
       editorStore.activeScheme?.items.value ?? [],
-      editorStore.localEditingItemIds ?? null
+      editorStore.renderItemIds ?? null
     ).filter(shouldRenderAsSlidePath)
     let requiredSegments = 0
     let requiredPoints = 0
@@ -453,7 +453,7 @@ export function useSlidePathRenderer() {
     [
       () => editorStore.activeSchemeId,
       () => editorStore.sceneVersion,
-      () => editorStore.localEditingItemIds,
+      () => editorStore.renderItemIds,
     ],
     () => {
       hoveredHit = null

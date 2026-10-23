@@ -230,6 +230,7 @@ export function useEditorSelection() {
   }
 
   return {
+    resolveSelectionTargets,
     toggleSelection,
     toggleItems,
     updateSelection,

@@ -118,6 +118,8 @@ function getHistoryLabel(event: CloudHistoryEvent): string {
 
   switch (event.type) {
     case 'remote_tx': {
+      if (event.collectionTreeChanged && !event.itemCount)
+        return t('groups.directoryUpdated', { actor: actorName })
       const added = event.addedCount || 0
       const removed = event.removedCount || 0
       const updated = event.updatedCount || 0
@@ -184,6 +186,7 @@ function mergeAdjacentHistoryEvents(events: CloudHistoryEvent[]): DisplayHistory
     const canMergeRemoteTx =
       previous.type === 'remote_tx' &&
       event.type === 'remote_tx' &&
+      !!previous.collectionTreeChanged === !!event.collectionTreeChanged &&
       previousTimeLabel === timeLabel &&
       previous.actorClientId === event.actorClientId
 

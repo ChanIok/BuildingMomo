@@ -68,6 +68,9 @@ export function createGizmoSnapEngine({
 
     const modelManager = getThreeModelManager()
     for (const item of scheme.items.value) {
+      // 隐藏组和范围外家具不能成为不可见的吸附目标。
+      // 可见但锁定的家具仍可作为静态吸附参照。
+      if (!editorStore.isItemVisible(item.internalId)) continue
       // 选中与静态家具使用同一套显示补偿、模型边界和底部原点语义。
       const body = createTranslationSnapBody(
         item.internalId,

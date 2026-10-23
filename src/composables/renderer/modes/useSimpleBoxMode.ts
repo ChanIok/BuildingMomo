@@ -67,7 +67,7 @@ export function useSimpleBoxMode() {
   function rebuild(
     items: readonly AppItem[] = selectRenderItems(
       editorStore.activeScheme?.items.value ?? [],
-      editorStore.localEditingItemIds ?? null
+      editorStore.renderItemIds ?? null
     )
   ) {
     const instanceCount = requiredInstanceCount(items.length)

@@ -1,3 +1,5 @@
+import { patchGroupNames } from '@/lib/collectionTree'
+import { setSchemeItems } from '@/lib/groupState'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
@@ -38,9 +40,30 @@ export function useEditorGroups() {
   }
 
   function canEditGroupOrigin(groupId: number): boolean {
-    if (store.localEditingItemIds === null) return true
     const items = getGroupItems(groupId)
     return items.length > 0 && items.every((item) => store.isItemEditable(item.internalId))
+  }
+
+  function canRenameGroup(groupId: number): boolean {
+    const ids = groupsMap.value.get(groupId)
+    return !!ids?.size && [...ids].every((id) => store.isItemInEditingScope(id))
+  }
+
+  function renameGroup(groupId: number, value: string) {
+    const scheme = activeScheme.value
+    if (!scheme || !canRenameGroup(groupId)) return
+    const name = value.trim().slice(0, 200)
+    const previous = scheme.collectionTree.value.groups.find(
+      (group) => group.groupId === groupId
+    )?.name
+    if ((previous ?? '') === name) return
+    recordTransaction('group.rename', () => {
+      scheme.collectionTree.value = patchGroupNames(
+        scheme.collectionTree.value,
+        previous ? [[groupId, previous]] : [],
+        name ? [[groupId, name]] : []
+      )
+    })
   }
 
   // Preserve origins on untouched members, including existing external anchors.
@@ -79,8 +102,11 @@ export function useEditorGroups() {
       // 【核心优化点】必须使用 `.map()` 产出新的家具列表，并且只对改动的家具使用 `{...item}` 解构深拷贝。
       // 如此操作后，没有修改过的家具的内存引用(===)不会变化，
       // 这能让历史系统立刻“跳过”排查上千个没有动过的对象，极大加速系统！
-      activeScheme.value!.items.value = items.map((item) =>
-        selected.has(item.internalId) ? { ...item, groupId: newGroupId } : item
+      setSchemeItems(
+        activeScheme.value!,
+        items.map((item) =>
+          selected.has(item.internalId) ? { ...item, groupId: newGroupId } : item
+        )
       )
       activeScheme.value!.maxGroupId.value = newGroupId
       reconcileGroupOrigins(items, selected)
@@ -114,8 +140,11 @@ export function useEditorGroups() {
 
       // 同上：严格遵循不直接写 item.groupId = 0 而是用解构产出新对象的方法
       // 维系响应式引用的历史系统的极速快进性能
-      activeScheme.value!.items.value = items.map((item) =>
-        selected.has(item.internalId) && item.groupId > 0 ? { ...item, groupId: 0 } : item
+      setSchemeItems(
+        activeScheme.value!,
+        items.map((item) =>
+          selected.has(item.internalId) && item.groupId > 0 ? { ...item, groupId: 0 } : item
+        )
       )
 
       reconcileGroupOrigins(items, selected)
@@ -199,6 +228,8 @@ export function useEditorGroups() {
   }
 
   return {
+    renameGroup,
+    canRenameGroup,
     groupSelected,
     ungroupSelected,
     getGroupItems,

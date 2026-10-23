@@ -20,6 +20,9 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.2.0
         version: 4.3.3(rolldown-vite@7.3.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@25.9.9)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
+      '@tanstack/vue-virtual':
+        specifier: 3.13.46
+        version: 3.13.46(vue@3.5.44(typescript@5.9.3))
       '@tresjs/cientos':
         specifier: ^5.4.0
         version: 5.9.3(@tresjs/core@5.9.3(patch_hash=a0646270ab2372375a5bfd68ef162de9641cbdc2529e338d49ff5f9220e473e8)(three@0.183.2)(vue@3.5.44(typescript@5.9.3)))(three@0.183.2)(vue@3.5.44(typescript@5.9.3))

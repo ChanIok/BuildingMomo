@@ -1,3 +1,5 @@
+import { groupNameEntries, patchGroupNames } from '@/lib/collectionTree'
+import { createGroupState } from '@/lib/groupState'
 import { ref, shallowRef } from 'vue'
 import type { AppItem, HistoryStack, HomeScheme, ThreeViewState } from '@/types/editor'
 
@@ -44,6 +46,7 @@ export function makeAppItems(
  */
 export function makeScheme(items: AppItem[] = []): HomeScheme {
   return {
+    ...createGroupState(),
     id: 'scheme-test',
     name: ref('测试方案'),
     filePath: ref<string | undefined>(undefined),
@@ -60,4 +63,16 @@ export function makeScheme(items: AppItem[] = []): HomeScheme {
     groupOrigins: shallowRef<Map<number, string>>(new Map()),
     history: shallowRef<HistoryStack | undefined>(undefined),
   }
+}
+
+/** 为测试数据提供统一组元数据的便捷投影。 */
+export function groupNamesOf(scheme: HomeScheme) {
+  return new Map(groupNameEntries(scheme.collectionTree.value))
+}
+export function setGroupNames(scheme: HomeScheme, names: Iterable<readonly [number, string]>) {
+  scheme.collectionTree.value = patchGroupNames(
+    scheme.collectionTree.value,
+    groupNameEntries(scheme.collectionTree.value),
+    [...names]
+  )
 }

@@ -1,3 +1,4 @@
+import { createGroupState } from '../lib/groupState'
 import { ref, shallowRef, toRaw, watch, onUnmounted, computed } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { loadWorkspaceSnapshot } from '../lib/workspaceSnapshotStore'
@@ -9,9 +10,13 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useValidationStore } from '../stores/validationStore'
 import { workerApi } from '../workers/client'
 import type { HomeScheme } from '../types/editor'
-import type { WorkspaceSnapshot, HomeSchemeSnapshot } from '../types/persistence'
+import type {
+  WorkspaceSnapshot,
+  HomeSchemeSnapshot,
+  WorkspaceCollectionViewState,
+} from '../types/persistence'
 
-const CURRENT_VERSION = 1
+const CURRENT_VERSION = 2
 
 /** localStorage 快路径标记：有 tab 时为 true，App 启动时据此决定是否读取 IndexedDB */
 const SESSION_MARKER_KEY = 'has_unsaved_session'
@@ -40,9 +45,27 @@ export function useWorkspaceWorker() {
 
   // --- 增量同步 (主线程 -> Worker) ---
 
-  // 统一同步逻辑：结构 + 内容
-  const syncWorkspace = async (immediate = false) => {
-    if (isRestoring.value) return
+  let contentPending = false
+  let immediatePending = false
+  const pendingViewStates = new Set<string>()
+
+  // 通过同一个防抖通道合并内容与轻量视图更新，包括切换方案前的折叠操作；
+  // 仅更新视图时不发送家具数据。
+  const syncWorkspace = async () => {
+    if (isRestoring.value || !isMonitoring.value) return
+    const includeContent = contentPending
+    const immediate = immediatePending
+    const collectionViewStates = [...pendingViewStates].flatMap<WorkspaceCollectionViewState>(
+      (id) => {
+        const scheme = editorStore.getSchemeById(id)
+        return scheme
+          ? [{ id, collapsedCollectionIds: new Set(scheme.collapsedCollectionIds.value) }]
+          : []
+      }
+    )
+    contentPending = false
+    immediatePending = false
+    pendingViewStates.clear()
 
     // 0. 更新轻量级标记
     updateSessionMarker()
@@ -63,7 +86,7 @@ export function useWorkspaceWorker() {
 
     // 2. 准备当前激活方案的内容 (Active Scheme Data)
     let activeSchemeData = undefined
-    if (editorStore.activeScheme) {
+    if (includeContent && editorStore.activeScheme) {
       const scheme = editorStore.activeScheme
       activeSchemeData = {
         id: scheme.id,
@@ -72,6 +95,12 @@ export function useWorkspaceWorker() {
         currentViewConfig: toRaw(scheme.currentViewConfig.value),
         viewState: toRaw(scheme.viewState.value),
         groupOrigins: toRaw(scheme.groupOrigins.value),
+        collectionTree: toRaw(scheme.collectionTree.value),
+        collapsedCollectionIds: toRaw(scheme.collapsedCollectionIds.value),
+        hiddenCollectionIds: toRaw(scheme.hiddenCollectionIds.value),
+        lockedCollectionIds: toRaw(scheme.lockedCollectionIds.value),
+        hiddenGroupIds: toRaw(scheme.hiddenGroupIds.value),
+        lockedGroupIds: toRaw(scheme.lockedGroupIds.value),
       }
     }
 
@@ -80,6 +109,8 @@ export function useWorkspaceWorker() {
       const result = await workerApi.updateState({
         meta,
         activeSchemeData,
+        collectionViewStates:
+          !includeContent || collectionViewStates.length ? collectionViewStates : undefined,
         immediate,
       })
 
@@ -96,6 +127,11 @@ export function useWorkspaceWorker() {
 
   // 统一防抖 (300ms) - 任何变化都归流到这一个出口
   const debouncedSyncWorkspace = useDebounceFn(syncWorkspace, 300)
+  function scheduleSync(content = true, immediate = false) {
+    contentPending ||= content
+    immediatePending ||= immediate
+    debouncedSyncWorkspace()
+  }
 
   // 3. 同步设置 (特别是 AutoSave)
   const syncSettings = async () => {
@@ -222,7 +258,7 @@ export function useWorkspaceWorker() {
           })),
       ],
       () => {
-        debouncedSyncWorkspace(true)
+        scheduleSync(true, true)
       },
       { deep: true }
     )
@@ -230,12 +266,33 @@ export function useWorkspaceWorker() {
 
     // 2b. 内容性变化 (Scene, Selection) -> 延迟保存 (Worker 端保持 2s 节流)
     const unwatchContent = watch(
-      [() => editorStore.sceneVersion, () => editorStore.selectionVersion],
+      [
+        () => editorStore.sceneVersion,
+        () => editorStore.selectionVersion,
+        () => editorStore.activeScheme?.hiddenGroupIds.value,
+        () => editorStore.activeScheme?.lockedGroupIds.value,
+        () => editorStore.activeScheme?.collectionTree.value,
+        () => editorStore.activeScheme?.hiddenCollectionIds.value,
+        () => editorStore.activeScheme?.lockedCollectionIds.value,
+      ],
       () => {
-        debouncedSyncWorkspace(false)
+        scheduleSync()
       }
     )
     cleanupFns.push(unwatchContent)
+
+    cleanupFns.push(
+      watch(
+        () => editorStore.activeScheme?.collapsedCollectionIds.value,
+        (ids) => {
+          const scheme = editorStore.activeScheme
+          if (!scheme || !ids) return
+          pendingViewStates.add(scheme.id)
+          scheduleSync(false)
+        },
+        { flush: 'sync' }
+      )
+    )
 
     // 2c. 监听可建造区域变化 (独立逻辑)
     const unwatchAreas = watch(
@@ -250,7 +307,7 @@ export function useWorkspaceWorker() {
     cleanupFns.push(watch(() => gameDataStore.isInitialized, syncFurnitureConstraints))
 
     // 初始同步
-    debouncedSyncWorkspace()
+    scheduleSync()
   }
 
   // 统一监听 Worker 激活状态
@@ -299,6 +356,7 @@ export function useWorkspaceWorker() {
         maxGroupId: ref(maxGrpId),
         currentViewConfig: ref(s.currentViewConfig),
         viewState: ref(s.viewState),
+        ...createGroupState(s, s),
         groupOrigins: shallowRef(
           s.groupOrigins instanceof Map ? s.groupOrigins : new Map(s.groupOrigins || [])
         ), // 向后兼容：支持旧版本的数组格式
@@ -310,6 +368,7 @@ export function useWorkspaceWorker() {
 
     tabStore.tabs = snapshot.tab.tabs
     tabStore.activeTabId = snapshot.tab.activeTabId
+    editorStore.triggerSelectionUpdate()
 
     // 恢复完成后，确认一下标记状态 (防止极端情况下的不一致)
     updateSessionMarker()
@@ -329,7 +388,7 @@ export function useWorkspaceWorker() {
 
       if (!snapshot) {
         console.log('[Persistence] No snapshot found')
-      } else if (snapshot.version !== CURRENT_VERSION) {
+      } else if (snapshot.version !== 1 && snapshot.version !== CURRENT_VERSION) {
         console.warn('[Persistence] Version mismatch, skipping restore')
       } else if (snapshot.tab.tabs.length === 0 && snapshot.editor.schemes.length === 0) {
         // 空快照不 hydrate；restore 结束后会清除会话标记
@@ -365,6 +424,12 @@ export function useWorkspaceWorker() {
       currentViewConfig: toRaw(scheme.currentViewConfig.value),
       viewState: toRaw(scheme.viewState.value),
       groupOrigins: toRaw(scheme.groupOrigins.value),
+      collectionTree: toRaw(scheme.collectionTree.value),
+      collapsedCollectionIds: toRaw(scheme.collapsedCollectionIds.value),
+      hiddenCollectionIds: toRaw(scheme.hiddenCollectionIds.value),
+      lockedCollectionIds: toRaw(scheme.lockedCollectionIds.value),
+      hiddenGroupIds: toRaw(scheme.hiddenGroupIds.value),
+      lockedGroupIds: toRaw(scheme.lockedGroupIds.value),
     }))
 
     return {

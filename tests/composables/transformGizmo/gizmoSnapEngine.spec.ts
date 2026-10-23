@@ -50,7 +50,11 @@ function engineFixture(mode: 'box' | 'model' = 'box', modelBox: Box3 | null = nu
     selectedItemIds: { value: new Set(['m', 'm2']) },
   } as any
 
-  const editorStore = { gizmoMode: 'translate' } as any
+  const hidden = new Set<string>()
+  const editorStore = {
+    gizmoMode: 'translate',
+    isItemVisible: (id: string) => !hidden.has(id),
+  } as any
   const settingsStore = {
     settings: { threeDisplayMode: mode, enableSurfaceSnap: true, surfaceSnapThreshold: 20 },
   } as any
@@ -89,6 +93,7 @@ function engineFixture(mode: 'box' | 'model' = 'box', modelBox: Box3 | null = nu
 
   return {
     engine,
+    hidden,
     start,
     translate,
     items,
@@ -107,6 +112,15 @@ function near(actual: number, expected: number) {
 }
 
 describe('createGizmoSnapEngine', () => {
+  it('does not snap against invisible groups', () => {
+    const fixture = engineFixture()
+    fixture.hidden.add('t')
+    fixture.hidden.add('t2')
+    fixture.prepare()
+    const raw = fixture.translate(50)
+    expect(fixture.engine.applyCollisionSnap(raw)).toBe(raw)
+  })
+
   beforeEach(() => {
     hoisted.modelBox = null
     hoisted.gameData.getFurnitureSize = () => [100, 100, 10]

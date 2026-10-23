@@ -1,3 +1,4 @@
+import { readCollectionTree, type CollectionTree } from './collectionTree'
 import type { AppItem, SchemeSource, ThreeViewState } from '@/types/editor'
 import { SCHEME_HISTORY_VERSION } from '@/types/schemeHistory'
 import type { SchemeHistoryFile } from '@/types/schemeHistory'
@@ -32,6 +33,7 @@ export interface SchemeHistorySnapshotInput {
   items: AppItem[]
   currentViewConfig?: { scale: number; x: number; y: number }
   viewState?: ThreeViewState
+  collectionTree?: CollectionTree
   groupOrigins: Map<number, string>
 }
 
@@ -50,6 +52,7 @@ export function buildSchemeHistoryFile(
     items: input.items,
     currentViewConfig: input.currentViewConfig,
     viewState: input.viewState,
+    collectionTree: input.collectionTree,
     groupOrigins: Array.from(input.groupOrigins.entries()),
   }
 }
@@ -63,6 +66,12 @@ export function parseSchemeHistoryFile(raw: unknown): SchemeHistoryFile | null {
   if (typeof candidate.schemeId !== 'string' || candidate.schemeId.length === 0) return null
   if (!Array.isArray(candidate.items) || !Array.isArray(candidate.groupOrigins)) return null
 
+  let collectionTree: CollectionTree
+  try {
+    collectionTree = readCollectionTree(candidate.collectionTree)
+  } catch {
+    return null
+  }
   return {
     version: SCHEME_HISTORY_VERSION,
     schemeId: candidate.schemeId,
@@ -74,6 +83,7 @@ export function parseSchemeHistoryFile(raw: unknown): SchemeHistoryFile | null {
     items: candidate.items,
     currentViewConfig: candidate.currentViewConfig,
     viewState: candidate.viewState,
+    collectionTree,
     groupOrigins: candidate.groupOrigins,
   }
 }

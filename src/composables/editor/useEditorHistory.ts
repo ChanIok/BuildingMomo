@@ -6,10 +6,13 @@ import {
   buildTransactionByRef,
   captureSchemeSnapshot,
   collectTransactionTouchedItemIds,
+  collectTransactionTouchedGroupIds,
   createReplayTransaction,
   invertEditorTransaction,
+  transactionAffectsScene,
 } from '../../lib/editorTransactions'
 import type {
+  EditorTransaction,
   HistoryStack,
   SelectionHistoryEntry,
   TransactionHistoryEntry,
@@ -162,6 +165,9 @@ export function useEditorHistory() {
       return execute()
     }
 
+    // 所有编辑入口统一校验选择范围和保护限制。
+    if (store.constrainSelectionToEditable()) store.triggerSelectionUpdate()
+
     // [第①步]：零开销缓存当前的引用状态
     const before = captureSchemeSnapshot(scheme)
     const renderVersion = store.sceneVersion
@@ -297,7 +303,7 @@ export function useEditorHistory() {
     const touchedIds = collectTransactionTouchedItemIds(entry.transaction)
     let outside = [...touchedIds].some((id) => !scope.has(id))
     for (const op of entry.transaction.ops) {
-      if (op.type !== 'set_group_origins') continue
+      if (op.type !== 'set_group_origins' && op.type !== 'set_group_names') continue
       const before = new Map(op.before)
       const after = new Map(op.after)
       for (const groupId of new Set([...before.keys(), ...after.keys()])) {
@@ -333,7 +339,7 @@ export function useEditorHistory() {
 
     // [收尾工作] 最后必须重置回当时操作发生前的选区，以便使用者能清晰明确他们回退了什么物体
     scheme.selectedItemIds.value = cloneSelection(entry.selectionBefore)
-    store.triggerSceneUpdate()
+    if (transactionAffectsScene(entry.transaction)) store.triggerSceneUpdate()
     store.recordRenderTransaction(invertEditorTransaction(entry.transaction), renderVersion)
     store.triggerSelectionUpdate()
     store.triggerHistoryUpdate()
@@ -382,7 +388,7 @@ export function useEditorHistory() {
 
     // 由于是快进，所以把选区设置为当时的改变结束后（selectionAfter）的样子
     scheme.selectedItemIds.value = cloneSelection(entry.selectionAfter)
-    store.triggerSceneUpdate()
+    if (transactionAffectsScene(entry.transaction)) store.triggerSceneUpdate()
     store.recordRenderTransaction(entry.transaction, renderVersion)
     store.triggerSelectionUpdate()
     store.triggerHistoryUpdate()
@@ -477,13 +483,18 @@ export function useEditorHistory() {
    *
    * 必须被设置为 true(不再处于 pending状态)才能让这步交易可撤回。
    */
-  function markTransactionCommitted(schemeId: string, transactionId: string) {
+  function markTransactionCommitted(
+    schemeId: string,
+    transactionId: string,
+    authoritative?: EditorTransaction
+  ) {
     const scheme = store.getSchemeById(schemeId)
     const history = scheme?.history.value
     if (!history) return
 
     for (const stackEntry of [...history.transactionUndoStack, ...history.transactionRedoStack]) {
       if (stackEntry.transaction.id === transactionId) {
+        if (authoritative) stackEntry.transaction = structuredClone(authoritative)
         stackEntry.committed = true
       }
     }
@@ -497,8 +508,13 @@ export function useEditorHistory() {
    * 人们就会产生诡异的前往未来的“不可预测的时空错位”，这种问题称作 “Stale Undo (废旧过期撤销)”。
    * 此方法标记受到服务器覆盖冲突的历史节点为 stale: true。
    */
-  function markTransactionsStale(schemeId: string, touchedItemIds: Set<string>) {
-    if (touchedItemIds.size === 0) return
+  function markTransactionsStale(
+    schemeId: string,
+    touchedItemIds: Set<string>,
+    touchedGroupIds = new Set<number>(),
+    treeChanged = false
+  ) {
+    if (!treeChanged && touchedItemIds.size === 0 && touchedGroupIds.size === 0) return
 
     const scheme = store.getSchemeById(schemeId)
     const history = scheme?.history.value
@@ -507,9 +523,33 @@ export function useEditorHistory() {
     let changed = false
     // 检查历史动作里，有谁关联的家具有在这个新发生的事件(受到别人的物品拖曳或添加事件)中被触摸过
     for (const stackEntry of [...history.transactionUndoStack, ...history.transactionRedoStack]) {
+      if (
+        treeChanged &&
+        stackEntry.transaction.ops.some((op) => op.type === 'set_collection_tree')
+      ) {
+        stackEntry.stale = true
+        changed = true
+        continue
+      }
       if (stackEntry.stale) continue // 如果本就废弃就无需二次标注
 
-      const localTouchedIds = collectTransactionTouchedItemIds(stackEntry.transaction)
+      if (
+        stackEntry.transaction.ops.some(
+          (op) => op.type === 'set_group_names' || op.type === 'set_group_origins'
+        )
+      ) {
+        const groups = collectTransactionTouchedGroupIds(stackEntry.transaction)
+        if ([...groups].some((id) => touchedGroupIds.has(id))) {
+          stackEntry.stale = true
+          changed = true
+          continue
+        }
+      }
+
+      const localTouchedIds = collectTransactionTouchedItemIds(
+        stackEntry.transaction,
+        scheme!.items.value
+      )
       for (const itemId of touchedItemIds) {
         if (localTouchedIds.has(itemId)) {
           // 找到了：这笔自己的旧记录试图修改的部分，被别人(别人服务器端)截胡了

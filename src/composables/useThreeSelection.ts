@@ -49,7 +49,7 @@ export function useThreeSelection(
   )
 
   watch(
-    () => editorStore.localEditingItemIds,
+    [() => editorStore.renderItemIds, () => editorStore.effectiveLockedGroupIds],
     () => {
       lastClick = null
       interactionAdapter.value.cancelPick()
@@ -339,7 +339,8 @@ export function useThreeSelection(
     const moveIds = new Set(selectedIds)
     recordTransaction('quickAlign.position', () => {
       scheme.items.value = scheme.items.value.map((item) => {
-        if (!moveIds.has(item.internalId)) return item
+        if (!moveIds.has(item.internalId) || !editorStore.isItemEditable(item.internalId))
+          return item
         return {
           ...item,
           x: item.x + delta.x,
@@ -424,7 +425,8 @@ export function useThreeSelection(
     recordTransaction('replace.gameId', () => {
       let currentMaxInstanceId = scheme.maxInstanceId.value
       scheme.items.value = scheme.items.value.map((item) => {
-        if (!replaceIds.has(item.internalId)) return item
+        if (!replaceIds.has(item.internalId) || !editorStore.isItemEditable(item.internalId))
+          return item
         currentMaxInstanceId++
         return replaceItemGameIdInPlace(item, newGameId, currentMaxInstanceId)
       })

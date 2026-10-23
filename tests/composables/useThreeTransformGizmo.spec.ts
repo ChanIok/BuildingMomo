@@ -19,6 +19,7 @@ const hoisted = vi.hoisted(() => ({
       groupOrigins: { value: new Map<number, string>() },
     },
     gizmoMode: 'translate' as string,
+    isItemVisible: () => true,
     itemsMap: new Map<string, AppItem>(),
   },
 }))

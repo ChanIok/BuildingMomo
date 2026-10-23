@@ -246,7 +246,7 @@ export function useModelMode() {
     isStale?: () => boolean
   }): Promise<boolean> {
     const current = editorStore.activeScheme
-    const scope = editorStore.localEditingItemIds ?? null
+    const scope = editorStore.renderItemIds ?? null
     const items = options?.items ?? selectRenderItems(current?.items.value ?? [], scope)
     const isCapped = scope === null && (current?.items.value.length ?? 0) > items.length
     const scopeOrCapChanged = scope !== renderScope || isCapped !== renderWasCapped
@@ -271,7 +271,7 @@ export function useModelMode() {
       signal.aborted ||
       options?.isStale?.() ||
       editorStore.activeScheme !== current ||
-      (editorStore.localEditingItemIds ?? null) !== scope ||
+      (editorStore.renderItemIds ?? null) !== scope ||
       editorStore.sceneVersion !== version
 
     let session = furnitureRender.value

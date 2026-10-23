@@ -1,3 +1,4 @@
+import type { CollectionTree } from '@/lib/collectionTree'
 import type { AppItem, EditorTransaction } from './editor'
 
 export interface SharedSchemeSnapshot {
@@ -5,11 +6,13 @@ export interface SharedSchemeSnapshot {
   filePath?: string
   lastModified?: number
   items: AppItem[]
+  collectionTree?: CollectionTree
   groupOrigins: Array<[number, string]>
 }
 
 export interface CloudSchemeDocument {
   roomCode: string
+  collectionTreeVersion?: number
   revision: number
   updatedAt: number
   scheme: SharedSchemeSnapshot
@@ -22,12 +25,7 @@ export interface CloudPresenceUser {
 }
 
 export type CloudHistoryEventType =
-  | 'remote_tx'
-  | 'user_joined'
-  | 'user_left'
-  | 'connected'
-  | 'reconnected'
-  | 'conflict_reload'
+  'remote_tx' | 'user_joined' | 'user_left' | 'connected' | 'reconnected' | 'conflict_reload'
 
 /**
  * 云同步历史里一笔「远程事务」涉及的物品 id，按操作语义分三类（云 Popover 里按「几个物品」展示、合并时做并集去重）。
@@ -48,6 +46,7 @@ export interface CloudHistoryEvent {
   actorClientId?: string
   actorDisplayName?: string
   /** 展示/混合统计用数字；有 itemBuckets 时应与 buckets 派生值一致 */
+  collectionTreeChanged?: boolean
   itemCount?: number
   addedCount?: number
   removedCount?: number
@@ -70,6 +69,7 @@ export interface CloudSnapshotResponse {
 
 export interface CloudWsHelloMessage {
   type: 'hello'
+  collectionTreeVersion?: number
   roomCode: string
   revision: number
 }

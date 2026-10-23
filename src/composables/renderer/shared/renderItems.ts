@@ -14,8 +14,7 @@ export function selectRenderItems(
 
 export function useRenderItems() {
   const store = useEditorStore()
-  return () =>
-    selectRenderItems(store.activeScheme?.items.value ?? [], store.localEditingItemIds ?? null)
+  return () => selectRenderItems(store.activeScheme?.items.value ?? [], store.renderItemIds ?? null)
 }
 
 /** Visibility changes are rendering changes, not document transactions. */

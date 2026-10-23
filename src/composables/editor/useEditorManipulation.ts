@@ -1,4 +1,5 @@
 import { storeToRefs } from 'pinia'
+import { setSchemeItems } from '@/lib/groupState'
 import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -86,8 +87,11 @@ export function useEditorManipulation() {
     if (!activeScheme.value) return
 
     recordTransaction('items.delete', () => {
-      activeScheme.value!.items.value = activeScheme.value!.items.value.filter(
-        (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
+      setSchemeItems(
+        activeScheme.value!,
+        activeScheme.value!.items.value.filter(
+          (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
+        )
       )
       activeScheme.value!.selectedItemIds.value.clear()
 
@@ -664,7 +668,7 @@ export function useEditorManipulation() {
       // 这里必须重产新引用以便事务引擎抓包
       activeScheme.value!.items.value = activeScheme.value!.items.value.map((item) => {
         const update = updateMap.get(item.internalId)
-        if (!update) return item
+        if (!update || !store.isItemEditable(item.internalId)) return item
 
         // 位置始终来自本次批量结果；未参与的旋转或缩放字段保留原引用/原值。
         return {
