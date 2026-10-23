@@ -532,7 +532,8 @@ export const zhLocale = {
     renderQuality: {
       label: '画质',
       original: '原画',
-      economy: '性能',
+      performance: '均衡',
+      economy: '流畅',
     },
     renderResolution: {
       label: '分辨率',
