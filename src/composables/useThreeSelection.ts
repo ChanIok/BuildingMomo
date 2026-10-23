@@ -38,20 +38,10 @@ export function useThreeSelection(
   const isSelecting = ref(false)
   const lassoPoints = ref<ScreenPoint[]>([])
   const mouseDownPos = ref<ScreenPoint | null>(null)
-  let lastClick: { id: string | null; time: number; x: number; y: number } | null = null
-
-  watch(
-    () => editorStore.selectionCategoryIds,
-    () => {
-      lastClick = null
-    },
-    { flush: 'sync' }
-  )
 
   watch(
     [() => editorStore.renderItemIds, () => editorStore.effectiveLockedGroupIds],
     () => {
-      lastClick = null
       interactionAdapter.value.cancelPick()
       uiStore.setActiveSlidePathPoint(null)
       uiStore.setSidebarHoveredGameId(null)
@@ -132,16 +122,11 @@ export function useThreeSelection(
     }
   }
 
-  function resetSelectionSession() {
+  function cancelSelectionSession() {
     mouseDownPos.value = null
     isSelecting.value = false
     selectionRect.value = null
     lassoPoints.value = []
-  }
-
-  function cancelSelectionSession() {
-    lastClick = null
-    resetSelectionSession()
   }
 
   function handlePointerUp(evt: any) {
@@ -171,15 +156,12 @@ export function useThreeSelection(
     // 此处再次检查 distance 作为兜底，确保微小移动不被当作框选提交。
     if (!isSelecting.value || distance < 3) {
       performClickSelection(evt)
-      resetSelectionSession()
-    } else {
-      if (editorStore.selectionMode === 'lasso') {
-        performLassoSelection(lasso)
-      } else if (rectInfo) {
-        performBoxSelection(rectInfo)
-      }
-      cancelSelectionSession()
+    } else if (editorStore.selectionMode === 'lasso') {
+      performLassoSelection(lasso)
+    } else if (rectInfo) {
+      performBoxSelection(rectInfo)
     }
+    cancelSelectionSession()
   }
 
   function handleGroupOriginClick(evt: any) {
@@ -477,38 +459,6 @@ export function useThreeSelection(
     // 只过滤原本的最近命中；被排除的前景物品仍然遮挡后方物品。
     const picked = interactionAdapter.value.pick(raycaster)
     const hit = picked && isItemSelectable(picked.internalId) ? picked : null
-
-    const id = hit?.internalId ?? null
-    const time = evt.timeStamp ?? performance.now()
-    const previous = lastClick
-    const isDoubleClick =
-      evt.pointerType !== 'touch' &&
-      !evt.ctrlKey &&
-      !evt.metaKey &&
-      !evt.shiftKey &&
-      !evt.altKey &&
-      previous !== null &&
-      previous.id === id &&
-      time - previous.time < 400 &&
-      Math.hypot(evt.clientX - previous.x, evt.clientY - previous.y) < 5
-
-    if (isDoubleClick) {
-      lastClick = null
-      if (!hit && editorStore.localEditingItemIds !== null) {
-        editorStore.exitLocalEditing()
-        return
-      }
-      if (hit && editorStore.localEditingItemIds === null) {
-        const item = editorStore.itemsMap.get(hit.internalId)
-        const group = item && editorStore.groupsMap.get(item.groupId)
-        if (group) {
-          editorStore.enterLocalEditing(group)
-          return
-        }
-      }
-    } else {
-      lastClick = { id, time, x: evt.clientX, y: evt.clientY }
-    }
 
     if (hit?.kind === 'slide-path-point' && hit.pointIndex !== undefined) {
       updateSelection([hit.internalId], false, { skipGroupExpansion: true })

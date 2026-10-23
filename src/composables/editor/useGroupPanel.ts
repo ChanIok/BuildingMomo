@@ -8,7 +8,6 @@ export interface PanelGroup {
   id: number
   name: string
   count: number
-  scopeCount: number
   selectedCount: number
   selectableCount: number
   selectedSelectableCount: number
@@ -35,12 +34,10 @@ export function useGroupPanel() {
   ): PanelGroup {
     const scheme = store.activeScheme!
     let selectedCount = 0,
-      scopeCount = 0,
       selectableCount = 0,
       selectedSelectableCount = 0
     for (const member of members) {
       if (scheme.selectedItemIds.value.has(member)) selectedCount++
-      if (store.isItemInEditingScope(member)) scopeCount++
       if (store.isItemEditable(member)) {
         selectableCount++
         if (scheme.selectedItemIds.value.has(member)) selectedSelectableCount++
@@ -50,7 +47,6 @@ export function useGroupPanel() {
       id,
       name,
       count: members.size,
-      scopeCount,
       selectedCount,
       selectableCount,
       selectedSelectableCount,

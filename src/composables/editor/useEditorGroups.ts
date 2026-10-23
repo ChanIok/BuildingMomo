@@ -46,7 +46,7 @@ export function useEditorGroups() {
 
   function canRenameGroup(groupId: number): boolean {
     const ids = groupsMap.value.get(groupId)
-    return !!ids?.size && [...ids].every((id) => store.isItemInEditingScope(id))
+    return !!ids?.size
   }
 
   function renameGroup(groupId: number, value: string) {
@@ -186,7 +186,7 @@ export function useEditorGroups() {
   function setGroupOrigin(groupId: number, itemId: string) {
     const scheme = activeScheme.value
     if (!scheme || !canEditGroupOrigin(groupId)) return
-    if (store.localEditingItemIds !== null && !store.isItemEditable(itemId)) return
+    if (!store.isItemEditable(itemId)) return
 
     if (scheme.groupOrigins.value.get(groupId) === itemId) {
       return

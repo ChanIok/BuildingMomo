@@ -24,7 +24,6 @@ const props = defineProps<{
   draft: string
   draggable: boolean
   searching: boolean
-  localScope: boolean
   dropPosition: 'inside' | 'before' | 'after' | null
   hiddenReason?: string
   lockedReason?: string
@@ -167,7 +166,7 @@ function cancelSelection(event: MouseEvent) {
       class="min-w-0 flex-1 truncate rounded-sm py-1 text-left text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
       :class="
         row.kind !== 'collection'
-          ? { 'text-muted-foreground': row.group.hidden || row.group.scopeCount === 0 }
+          ? { 'text-muted-foreground': row.group.hidden }
           : {
               'font-medium': !row.virtual,
               'text-muted-foreground': row.hidden || row.inheritedHidden || row.virtual,
@@ -219,17 +218,11 @@ function cancelSelection(event: MouseEvent) {
       :aria-label="
         row.kind === 'collection'
           ? t('groups.groupCount', { count: row.count })
-          : localScope
-            ? t('groups.scopeCount', { count: row.group.scopeCount, total: row.group.count })
-            : t('groups.itemCount', { count: row.group.count })
+          : t('groups.itemCount', { count: row.group.count })
       "
     >
       {{
-        row.kind === 'collection'
-          ? t('groups.groupCount', { count: row.count })
-          : localScope && row.group.scopeCount !== row.group.count
-            ? `${row.group.scopeCount}/${row.group.count}`
-            : row.group.count
+        row.kind === 'collection' ? t('groups.groupCount', { count: row.count }) : row.group.count
       }}
     </span>
     <div class="flex shrink-0">

@@ -109,7 +109,7 @@ it('replaces, adds, removes and completes a partial group as one unit, including
   expect(scheme.history.value!.selectionUndoStack).toHaveLength(count)
 })
 
-it('selects the ungrouped aggregate with modifiers, partial coverage, history and scope protection', () => {
+it('selects the ungrouped aggregate with modifiers, partial coverage, history and visibility protection', () => {
   const { store, scheme, group, ids, selection, history } = setup()
   scheme.items.value = [...scheme.items.value, makeAppItem({ internalId: 'loose-2', groupId: 0 })]
   const loose = { kind: 'ungrouped', id: 0 } as const
@@ -132,11 +132,10 @@ it('selects the ungrouped aggregate with modifiers, partial coverage, history an
   expect(ids()).toEqual(['g6'])
   history.redo()
   expect(ids()).toEqual(['g6', 'loose', 'loose-2'])
-  store.enterLocalEditing(['loose'])
   store.selectionCategoryIds = new Set()
   click()
-  expect(ids()).toEqual(['loose'])
-  expect(selection.selectionCoverage(loose)).toEqual({ selected: 1, total: 1 })
+  expect(ids()).toEqual(['loose', 'loose-2'])
+  expect(selection.selectionCoverage(loose)).toEqual({ selected: 2, total: 2 })
   store.setGroupHidden(0, true)
   click()
   expect(ids()).toEqual([])
@@ -251,24 +250,23 @@ it('distinguishes explicit collection nodes from content coverage, including emp
   expect(selection.isSelected(house)).toBe(false)
 })
 
-it('honors protection and local scope, ignores category filters and marks all selectable members as full', () => {
+it('honors protection, ignores category filters and marks all selectable members as full', () => {
   const { store, scheme, collection, group, selection, ids } = setup(true)
-  store.enterLocalEditing(['g1-a', 'g2', 'g3', 'g4'])
   store.setGroupLocked(2, true)
   store.setGroupHidden(3, true)
   store.selectionCategoryIds = new Set()
   collection('a')
-  expect(ids()).toEqual(['g1-a'])
+  expect(ids()).toEqual(['g1-a', 'g1-b'])
   expect(selection.selectionState({ kind: 'group', id: 1 })).toBe('full')
   expect(selection.selectionState({ kind: 'collection', id: 'a' })).toBe('full')
   group(2, { ctrlKey: true })
-  expect(ids()).toEqual(['g1-a'])
+  expect(ids()).toEqual(['g1-a', 'g1-b'])
   collection('b', { ctrlKey: true })
-  expect(ids()).toEqual(['g1-a'])
+  expect(ids()).toEqual(['g1-a', 'g1-b'])
   collection(UNCLASSIFIED, { ctrlKey: true })
-  expect(ids()).toEqual(['g1-a', 'g4'])
+  expect(ids()).toEqual(['g1-a', 'g1-b', 'g4', 'g5', 'g6'])
   collection('a', { ctrlKey: true })
-  expect(ids()).toEqual(['g4'])
+  expect(ids()).toEqual(['g4', 'g5', 'g6'])
   expect(scheme.items.value).toHaveLength(8)
 })
 

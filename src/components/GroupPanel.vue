@@ -503,7 +503,6 @@ function rowProps(row: CollectionRow) {
       row.kind !== 'ungrouped' &&
       !(row.kind === 'collection' && row.virtual),
     searching: !!query.value.trim(),
-    localScope: store.localEditingItemIds !== null,
     dropPosition: dropPosition(row),
     hiddenReason: inheritedReason(row, 'hidden'),
     lockedReason: inheritedReason(row, 'locked'),
@@ -671,13 +670,6 @@ watch(
       >
         {{ t('groups.syncUnavailable') }}
       </p>
-      <div
-        v-if="store.localEditingItemIds !== null"
-        class="shrink-0 px-3 pb-2 text-xs leading-5 text-muted-foreground"
-      >
-        {{ t('groups.localScope') }}
-      </div>
-
       <div
         ref="list"
         class="flex min-h-0 flex-1 flex-col"

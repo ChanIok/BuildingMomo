@@ -33,7 +33,6 @@ export const zhLocale = {
     noResults: '没有匹配的组',
     itemCount: '{count} 件家具',
     selectionCount: '已选 {count} / {total} 件',
-    scopeCount: '范围内 {count} / {total} 件',
     hide: '隐藏“{name}”',
     show: '显示“{name}”',
     lock: '锁定“{name}”，防止编辑',
@@ -44,18 +43,6 @@ export const zhLocale = {
     allVisible: '未手动隐藏家具',
     showAll: '全部显示',
     unlockAll: '全部解锁',
-    localScope: '局部编辑中，数量显示范围内成员 / 全组成员。',
-  },
-  localEdit: {
-    groupSelection: '按组选择',
-    groupSelectionLabel: '局部编辑时按组选择',
-    groupSelectionHint: '联动选择局部范围内的同组家具。',
-    status: '局部编辑 · {count}件家具',
-    enter: '进入局部编辑',
-    exit: '退出',
-    exitAction: '退出局部编辑',
-    exitHint: '双击空白处或按 ESC',
-    pasteHint: '局部编辑时仅支持分配新编号粘贴，以免修改范围外家具。',
   },
   // 方案相关
   scheme: {

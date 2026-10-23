@@ -1,7 +1,7 @@
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 
-/** 普通选择共用的可选范围：当前编辑工作集与家具类别的交集。 */
+/** 普通选择共用的可选范围：可编辑家具与家具类别的交集。 */
 export function useSelectionFilter() {
   const editorStore = useEditorStore()
   const gameDataStore = useGameDataStore()

@@ -189,7 +189,6 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
       scheme.maxGroupId.value = currentMaxGroupId
       scheme.selectedItemIds.value = new Set(newInternalIds)
 
-      editorStore.includeInLocalEditing(newInternalIds)
       editorStore.triggerSceneUpdate()
       editorStore.triggerSelectionUpdate()
       insertedCount = insertedItems.length

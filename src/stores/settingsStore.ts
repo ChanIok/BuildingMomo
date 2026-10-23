@@ -37,7 +37,6 @@ export interface AppSettings {
   enableLimitDetection: boolean
   enableAutoSave: boolean
   mirrorWithRotation: boolean // 镜像时同时旋转
-  localGroupSelection: boolean // 局部编辑时联动选择范围内的同组家具
   enableWatchNotification: boolean // 文件监控弹窗提示
 
   // 3D 视图设置
@@ -97,7 +96,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableLimitDetection: true,
   enableAutoSave: true,
   mirrorWithRotation: true,
-  localGroupSelection: false,
   enableWatchNotification: true,
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'lite',

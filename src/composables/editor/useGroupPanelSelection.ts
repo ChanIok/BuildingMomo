@@ -192,7 +192,7 @@ export function useGroupPanelSelection(
     },
     { flush: 'sync' }
   )
-  watch(() => [store.activeSchemeId, store.localEditingItemIds], followCanvas, { flush: 'sync' })
+  watch(() => store.activeSchemeId, followCanvas, { flush: 'sync' })
   watch(query, reset, { flush: 'sync' })
   watch(
     () => rows.value.map(groupRowKey),

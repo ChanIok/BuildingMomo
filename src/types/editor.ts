@@ -101,9 +101,6 @@ export interface HomeScheme {
   // 选择集 (使用 ShallowRef)
   selectedItemIds: ShallowRef<Set<string>>
 
-  // 方案级临时局部工作集；null 表示普通模式，不写入存档或共享快照。
-  localEditingItemIds: ShallowRef<ReadonlySet<string> | null>
-
   // ID 分配器（Ref，记录历史最大值，永不回退）
   maxInstanceId: Ref<number>
   maxGroupId: Ref<number>

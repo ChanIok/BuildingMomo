@@ -21,7 +21,6 @@ function group(id: number, parentId: string | null = null): CollectionRow {
       id,
       name: `Group ${id}`,
       count: 1,
-      scopeCount: 1,
       selectedCount: 0,
       selectableCount: 1,
       selectedSelectableCount: 0,

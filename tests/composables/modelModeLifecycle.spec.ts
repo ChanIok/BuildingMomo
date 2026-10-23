@@ -9,10 +9,7 @@ const state = vi.hoisted(() => ({
   editor: {
     activeScheme: null as any,
     sceneVersion: 0,
-    localEditingItemIds: null as ReadonlySet<string> | null,
-    get renderItemIds(): ReadonlySet<string> | null {
-      return this.localEditingItemIds
-    },
+    renderItemIds: null as ReadonlySet<string> | null,
     getRenderChanges: vi.fn(() => null as any),
   },
   settings: { modelAssetProfile: 'full', materialAssetProfile: 'full' },
@@ -65,7 +62,7 @@ beforeEach(() => {
   state.settings.materialAssetProfile = 'full'
   state.editor.activeScheme = { id: 'scheme-a', items: { value: [item('a')] } }
   state.editor.sceneVersion = 0
-  state.editor.localEditingItemIds = null
+  state.editor.renderItemIds = null
   state.editor.getRenderChanges.mockReset().mockReturnValue(null)
   state.prepare.mockReset().mockResolvedValue(undefined)
   state.available = true
@@ -605,7 +602,7 @@ it('projects mixed model/fallback batches on scope changes without a scene trans
   const mesh = state.layer.getInstance('inside').mesh
   expect(mode.fallbackMesh.value!.count).toBe(2)
   mode.fallbackMesh.value!.setColorAt(0, new Color(0x123456))
-  state.editor.localEditingItemIds = new Set(['inside', 'fallback'])
+  state.editor.renderItemIds = new Set(['inside', 'fallback'])
   const pending = mode.rebuild()
   expect(state.layer.root.visible).toBe(true)
   expect([...mode.idToIndexMap.value.keys()]).toEqual(['inside', 'fallback'])
@@ -622,7 +619,7 @@ it('projects mixed model/fallback batches on scope changes without a scene trans
   expect(mode.fallbackMesh.value!.count).toBe(1)
   expect(state.editor.activeScheme.items.value).toBe(items)
   expect(state.editor.sceneVersion).toBe(0)
-  state.editor.localEditingItemIds = null
+  state.editor.renderItemIds = null
   await mode.rebuild()
   expect(mode.idToIndexMap.value.size).toBe(4)
   expect(mode.fallbackMesh.value!.count).toBe(2)
@@ -636,7 +633,7 @@ it('ignores hidden edits and updates membership through the normal incremental s
     outside = item('outside', 2, 8),
     peer = item('peer', 1, 0)
   state.editor.activeScheme.items.value = [outside, inside, peer]
-  state.editor.localEditingItemIds = new Set(['inside', 'peer'])
+  state.editor.renderItemIds = new Set(['inside', 'peer'])
   const mode = useModelMode()
   await mode.rebuild()
   state.layer.load.mockClear()
@@ -656,7 +653,7 @@ it('ignores hidden edits and updates membership through the normal incremental s
   expect(state.layer.updateMatrices.mock.calls.at(-1)[0][0].matrix.elements[12]).toBe(42)
   const incoming = { ...hiddenChange, groupId: 7 }
   state.editor.activeScheme.items.value = [incoming, { ...moved, groupId: 8 }, peer]
-  state.editor.localEditingItemIds = new Set(['outside', 'peer'])
+  state.editor.renderItemIds = new Set(['outside', 'peer'])
   state.editor.sceneVersion++
   await mode.rebuild()
   expect(state.layer.getInstance('inside')).toBeUndefined()
@@ -666,7 +663,7 @@ it('ignores hidden edits and updates membership through the normal incremental s
   mode.dispose()
 })
 
-it('keeps local models and fallbacks visible while only the missing furniture is prepared on exit', async () => {
+it('retains visible models and fallbacks while preparing newly shown furniture', async () => {
   state.editor.activeScheme.items.value = [
     item('outside', 2),
     item('inside', 1),
@@ -677,7 +674,7 @@ it('keeps local models and fallbacks visible while only the missing furniture is
     id === 99 ? undefined : { componentCount: 1, customData: [0], colorings: {} }
   const mode = useModelMode()
   await mode.rebuild()
-  state.editor.localEditingItemIds = new Set(['inside', 'fallback'])
+  state.editor.renderItemIds = new Set(['inside', 'fallback'])
   await mode.rebuild()
   const mesh = state.layer.getInstance('inside').mesh
   const fallback = mode.fallbackMesh.value
@@ -689,7 +686,7 @@ it('keeps local models and fallbacks visible while only the missing furniture is
         finish = resolve
       })
   )
-  state.editor.localEditingItemIds = null
+  state.editor.renderItemIds = null
   const pending = mode.rebuild()
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
   expect(state.layer.root.visible).toBe(true)
@@ -714,7 +711,7 @@ it('keeps local models and fallbacks visible while only the missing furniture is
   mode.dispose()
 })
 
-it('restores pruned instances even when a cancelled entry returns to the last committed scope', async () => {
+it('restores pruned instances when a cancelled visibility change returns to the last committed range', async () => {
   state.editor.activeScheme.items.value = [item('inside', 1), item('outside', 2)]
   const mode = useModelMode()
   await mode.rebuild()
@@ -726,11 +723,11 @@ it('restores pruned instances even when a cancelled entry returns to the last co
         finish = resolve
       })
   )
-  state.editor.localEditingItemIds = new Set(['inside'])
+  state.editor.renderItemIds = new Set(['inside'])
   const obsolete = mode.rebuild()
   expect(state.layer.root.visible).toBe(true)
   expect(state.layer.getInstance('outside')).toBeUndefined()
-  state.editor.localEditingItemIds = null
+  state.editor.renderItemIds = null
   expect(await mode.rebuild()).toBe(true)
   expect(state.layer.getInstance('inside').mesh).toBe(mesh)
   expect(state.layer.getInstance('outside')).toBeDefined()
@@ -740,11 +737,11 @@ it('restores pruned instances even when a cancelled entry returns to the last co
   mode.dispose()
 })
 
-it('does not let a late load restore a scope that has already been left', async () => {
+it('does not let a late load restore an outdated visible range', async () => {
   state.editor.activeScheme.items.value = [item('inside', 1, 7), item('outside', 2, 8)]
   const mode = useModelMode()
   await mode.rebuild()
-  state.editor.localEditingItemIds = new Set(['inside'])
+  state.editor.renderItemIds = new Set(['inside'])
   await mode.rebuild()
   let finish!: () => void
   state.layer.load.mockImplementationOnce(
@@ -753,10 +750,10 @@ it('does not let a late load restore a scope that has already been left', async 
         finish = resolve
       })
   )
-  state.editor.localEditingItemIds = null
+  state.editor.renderItemIds = null
   const obsolete = mode.rebuild()
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
-  state.editor.localEditingItemIds = new Set(['inside'])
+  state.editor.renderItemIds = new Set(['inside'])
   expect(await mode.rebuild()).toBe(true)
   finish()
   expect(await obsolete).toBe(false)
@@ -773,9 +770,9 @@ it('reconciles actual layer slots after a cancelled build removed a previously c
   const remove = state.layer.remove.getMockImplementation()!
   state.layer.remove.mockImplementationOnce((ids: string[]) => {
     remove(ids)
-    state.editor.localEditingItemIds = new Set(['b'])
+    state.editor.renderItemIds = new Set(['b'])
   })
-  state.editor.localEditingItemIds = new Set(['a'])
+  state.editor.renderItemIds = new Set(['a'])
   expect(await mode.rebuild()).toBe(false)
   expect(state.layer.getInstance('b')).toBeUndefined()
   expect(await mode.rebuild()).toBe(true)

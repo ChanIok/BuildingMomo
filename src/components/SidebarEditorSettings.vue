@@ -475,22 +475,6 @@ const fmt = (n: number, decimals: number = 0) => {
             {{ t('sidebar.editAssist.label') }}
           </h3>
 
-          <div class="flex items-center justify-between gap-2">
-            <div class="space-y-0.5">
-              <Label for="local-group-selection" class="text-xs">{{
-                t('localEdit.groupSelectionLabel')
-              }}</Label>
-              <p id="local-group-selection-hint" class="text-[11px] text-muted-foreground">
-                {{ t('localEdit.groupSelectionHint') }}
-              </p>
-            </div>
-            <Switch
-              id="local-group-selection"
-              v-model="settingsStore.settings.localGroupSelection"
-              aria-describedby="local-group-selection-hint"
-            />
-          </div>
-
           <!-- 重复物品检测开关 -->
           <div class="flex items-center justify-between">
             <div class="mr-2 space-y-0.5">

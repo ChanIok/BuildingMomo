@@ -64,22 +64,21 @@ function setup() {
 }
 
 describe('group management', () => {
-  it('selects complete groups explicitly, ignoring category filters but respecting local scope', () => {
+  it('selects complete groups explicitly, ignoring category filters but respecting protection', () => {
     const { store, scheme, panel, selectGroup } = setup()
     store.selectionCategoryIds = new Set()
     selectGroup(7)
     expect([...scheme.selectedItemIds.value]).toEqual(['a', 'b'])
-    store.enterLocalEditing(['a', 'c'])
-    selectGroup(7)
-    expect([...scheme.selectedItemIds.value]).toEqual(['a'])
     expect(panel.groups.value.find((group) => group.id === 7)).toMatchObject({
       count: 2,
-      selectedCount: 1,
-      scopeCount: 1,
+      selectedCount: 2,
     })
-    expect(panel.canRenameGroup(7)).toBe(false)
-    panel.renameGroup(7, 'outside scope')
-    expect(groupNamesOf(scheme).size).toBe(0)
+    store.setGroupLocked(7, true)
+    selectGroup(7)
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    expect(panel.canRenameGroup(7)).toBe(true)
+    panel.renameGroup(7, 'locked group')
+    expect(groupNamesOf(scheme).get(7)).toBe('locked group')
   })
 
   it('renames with undo/redo and keeps unrelated item references', () => {
@@ -221,14 +220,13 @@ describe('group management', () => {
     expect(store.setItemInstanceId('d', 1001)).toBe(false)
   })
 
-  it('does not turn show-all into exit-local-editing or include personal flags in shared snapshots', () => {
+  it('shows all without unlocking furniture or including personal flags in shared snapshots', () => {
     const { store, scheme } = setup()
-    store.enterLocalEditing(['a'])
     store.setGroupHidden(7, true)
     store.setGroupLocked(8, true)
     store.showAllGroups()
-    expect(store.localEditingItemIds).toEqual(new Set(['a']))
-    expect(store.isItemVisible('b')).toBe(false)
+    expect(store.isItemVisible('b')).toBe(true)
+    expect(store.isItemEditable('c')).toBe(false)
     const shared = buildSharedSchemeSnapshot(scheme)
     expect(shared).not.toHaveProperty('hiddenGroupIds')
     expect(shared).not.toHaveProperty('lockedGroupIds')
@@ -395,6 +393,30 @@ it('validates incoming metadata before replacing any part of an existing scheme'
   expect(scheme.collectionTree.value).toBe(tree)
 })
 
+it.each(['hidden', 'locked'] as const)(
+  'replays global history without clearing %s group flags',
+  (restriction) => {
+    const { store, scheme, history } = setup()
+    useEditorSelection().updateSelection(['a'], false)
+    useEditorManipulation().translateSelectedItems({ x: 10, y: 0, z: 0 })
+    expect(store.itemsMap.get('a')!.x).toBe(10)
+    if (restriction === 'hidden') store.setGroupHidden(7, true)
+    else store.setGroupLocked(7, true)
+    const flags = restriction === 'hidden' ? scheme.hiddenGroupIds : scheme.lockedGroupIds
+    const protectedGroups = flags.value
+    history.undo()
+    expect(store.itemsMap.get('a')!.x).toBe(0)
+    expect(flags.value).toBe(protectedGroups)
+    expect(store.isItemEditable('a')).toBe(false)
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    history.redo()
+    expect(store.itemsMap.get('a')!.x).toBe(10)
+    expect(flags.value).toBe(protectedGroups)
+    expect(store.isItemEditable('a')).toBe(false)
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+  }
+)
+
 it.each(['unclassified', 'ungrouped'] as const)(
   'blocks selection and stale edit entry points for locked %s furniture',
   (kind) => {
@@ -410,7 +432,6 @@ it.each(['unclassified', 'ungrouped'] as const)(
     expect(scheme.selectedItemIds.value.size).toBe(0)
     selection.selectAll()
     expect(scheme.selectedItemIds.value.has(id)).toBe(false)
-    store.enterLocalEditing([id])
     panelSelection.select(
       kind === 'ungrouped' ? { kind: 'ungrouped', id: 0 } : { kind: 'group', id: 7 },
       { ctrlKey: false, metaKey: false, shiftKey: false }
@@ -426,7 +447,9 @@ it.each(['unclassified', 'ungrouped'] as const)(
     expect(scheme.items.value.every((item, index) => item === items[index])).toBe(true)
     expect(scheme.history.value!.transactionUndoStack).toHaveLength(historySize)
     history.undo()
-    expect(scheme.selectedItemIds.value.size).toBe(0)
+    expect(scheme.selectedItemIds.value.has(id)).toBe(false)
+    expect([...scheme.selectedItemIds.value].every((id) => store.isItemEditable(id))).toBe(true)
+    expect(store.isItemEditable(id)).toBe(false)
   }
 )
 
@@ -450,7 +473,7 @@ it('retains ungrouped flags across grouping and ungrouping without applying them
   expect(store.isItemEditable('d')).toBe(true)
 })
 
-it('unlocks the active scheme including empty collections while preserving visibility, scope and history', () => {
+it('unlocks the active scheme including empty collections while preserving visibility, selection and history', () => {
   useEditorStore().createScheme('other')
   const otherScheme = useEditorStore().activeScheme!
   otherScheme.lockedGroupIds.value = new Set([7])
@@ -463,13 +486,11 @@ it('unlocks the active scheme including empty collections while preserving visib
   store.setGroupLocked(0, true)
   store.setCollectionRestriction(UNCLASSIFIED, 'locked', true)
   store.setCollectionRestriction(empty, 'locked', true)
-  store.enterLocalEditing(['a', 'd'])
   const items = scheme.items.value,
     tree = scheme.collectionTree.value
   const hidden = scheme.hiddenGroupIds.value,
     hiddenCollections = scheme.hiddenCollectionIds.value
-  const scope = store.localEditingItemIds,
-    selected = new Set(scheme.selectedItemIds.value)
+  const selected = new Set(scheme.selectedItemIds.value)
   const count = scheme.history.value!.transactionUndoStack.length
   const sequence = scheme.history.value!.nextSequence
   store.unlockAllGroups()
@@ -478,7 +499,6 @@ it('unlocks the active scheme including empty collections while preserving visib
   expect(store.effectiveLockedGroupIds.size).toBe(0)
   expect(scheme.hiddenGroupIds.value).toBe(hidden)
   expect(scheme.hiddenCollectionIds.value).toBe(hiddenCollections)
-  expect(store.localEditingItemIds).toBe(scope)
   expect(scheme.selectedItemIds.value).toEqual(selected)
   expect(scheme.items.value).toBe(items)
   expect(scheme.collectionTree.value).toBe(tree)

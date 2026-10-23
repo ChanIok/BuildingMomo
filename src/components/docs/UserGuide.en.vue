@@ -151,24 +151,6 @@
       Visibility, locks and collapse state are saved only in your own workspace.
     </p>
 
-    <h3>Local Editing</h3>
-    <ul>
-      <li>
-        <strong>Enter</strong>: Select furniture and press <code>Shift + F</code> or choose
-        <strong>Enter Local Editing</strong> from the context menu. You can also double-click a
-        grouped item to enter directly.
-      </li>
-      <li>
-        <strong>Edit</strong>: Only the working set is shown, letting you focus on selecting and
-        adjusting items without surrounding clutter.
-      </li>
-      <li>
-        <strong>Exit</strong>: Press <code>Shift + F</code> again, double-click empty space, or
-        click the <strong>Exit</strong> button at the top right. You can also press <code>Esc</code>
-        to cancel a temporary operation, clear the selection, then exit.
-      </li>
-    </ul>
-
     <h2>Advanced Features</h2>
 
     <h3>Coordinate System</h3>
@@ -264,9 +246,8 @@
         fine-tuning.
       </li>
       <li>
-        <strong>Use local editing for complex buildings</strong>: Select the furniture you need and
-        enter local editing, or double-click a group, to work without surrounding furniture getting
-        in the way.
+        <strong>Organize complex buildings with groups</strong>: Hide or lock other groups in the
+        Groups Panel to focus on the part you are editing.
       </li>
     </ul>
   </div>

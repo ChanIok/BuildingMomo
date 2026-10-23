@@ -154,36 +154,7 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     expect(store.isItemEditable('inside')).toBe(false)
   })
 
-  it('does not rebuild instances or change selection when the group preference changes', async () => {
-    const { store, scheme } = setup()
-    const settings = useSettingsStore()
-    settings.settings.threeDisplayMode = mode
-    const renderer = scope.run(() => useThreeInstancedRenderer())!
-    store.enterLocalEditing(['inside', 'peer'])
-    await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
-    useEditorSelection().updateSelection(['inside'], false, { skipGroupExpansion: true })
-    await nextTick()
-    const meshRef =
-      mode === 'box'
-        ? renderer.instancedMesh
-        : mode === 'icon'
-          ? renderer.iconInstancedMesh
-          : renderer.simpleBoxInstancedMesh
-    const mesh = meshRef.value!
-    const version = mesh.instanceMatrix.version
-    const colorVersion = mesh.instanceColor!.version
-    const workingSet = store.localEditingItemIds
-    settings.settings.localGroupSelection = true
-    await nextTick()
-    expect(meshRef.value).toBe(mesh)
-    expect(mesh.instanceMatrix.version).toBe(version)
-    expect(mesh.instanceColor!.version).toBe(colorVersion)
-    expect(mesh.count).toBe(2)
-    expect(store.localEditingItemIds).toBe(workingSet)
-    expect(scheme.selectedItemIds.value).toEqual(new Set(['inside']))
-  })
-
-  it('retains visible furniture when exiting instead of resetting its instance count', async () => {
+  it('retains visible furniture when showing all instead of resetting its instance count', async () => {
     const { store } = setup()
     useSettingsStore().settings.threeDisplayMode = mode
     const renderer = scope.run(() => useThreeInstancedRenderer())!
@@ -194,7 +165,7 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
           ? renderer.iconInstancedMesh
           : renderer.simpleBoxInstancedMesh
     await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
-    store.enterLocalEditing(['inside', 'peer'])
+    store.setGroupHidden(8, true)
     await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
     const mesh = meshRef.value!
     const counts: number[] = []
@@ -207,7 +178,7 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
         counts.push(value)
       },
     })
-    store.exitLocalEditing()
+    store.showAllGroups()
     expect(meshRef.value).toBe(mesh)
     expect(mesh.count).toBeGreaterThanOrEqual(2)
     await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
@@ -215,7 +186,7 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     expect(mesh.count).toBe(3)
   })
 
-  it('keeps local rendering and interaction consistent through tab switches, previews and exit', async () => {
+  it('keeps visibility and interaction consistent through tab switches, previews and showing all', async () => {
     const { store, scheme, items } = setup()
     const tabs = useTabStore()
     const settings = useSettingsStore()
@@ -232,7 +203,7 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
       expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('outside')
     )
     const material = meshRef.value!.material
-    store.enterLocalEditing(['inside', 'peer'])
+    store.setGroupHidden(8, true)
     await vi.waitFor(() =>
       expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('inside')
     )
@@ -245,9 +216,9 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     store.createScheme('other')
     expect(renderer.interactionAdapter.value.pick(ray())).toBeNull()
     const other = store.activeScheme!
-    other.items.value = [item('other-hidden', 0, 0, 300), item('other-visible', 0)]
+    other.items.value = [item('other-hidden', 8, 0, 300), item('other-visible', 0)]
     store.triggerSceneUpdate()
-    store.enterLocalEditing(['other-visible'])
+    store.setGroupHidden(8, true)
     await vi.waitFor(() =>
       expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('other-visible')
     )
@@ -277,7 +248,7 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     )
     expect(renderer.interactionAdapter.value.pick(ray(600))?.internalId).toBe('inside')
     expect(store.itemsMap.get('inside')!.x).toBe(0)
-    store.exitLocalEditing()
+    store.showAllGroups()
     await vi.waitFor(() =>
       expect(renderer.interactionAdapter.value.pick(ray())?.internalId).toBe('outside')
     )
@@ -289,27 +260,6 @@ describe.each(['box', 'simple-box', 'icon'] as const)('%s visibility and indices
     )
     expect(meshRef.value!.count).toBe(1)
   })
-})
-
-it('never publishes an old icon load after the working set changes', async () => {
-  const { store } = setup()
-  useSettingsStore().settings.threeDisplayMode = 'icon'
-  let finish!: () => void
-  state.load = () =>
-    new Promise<void>((resolve) => {
-      finish = resolve
-    })
-  const renderer = scope.run(() => useThreeInstancedRenderer())!
-  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
-  store.enterLocalEditing(['inside', 'peer'])
-  const ray = new Raycaster(new Vector3(0, 0, 1000), new Vector3(0, 0, -1))
-  expect(renderer.interactionAdapter.value.pick(ray)).toBeNull()
-  state.load = null
-  finish()
-  await vi.waitFor(() =>
-    expect(renderer.interactionAdapter.value.pick(ray)?.internalId).toBe('inside')
-  )
-  expect(renderer.iconInstancedMesh.value!.count).toBe(2)
 })
 
 it('never publishes a group hidden during asynchronous icon loading', async () => {
@@ -346,7 +296,7 @@ it('retains icon matrices, colors and texture slots while an expanding pool wait
     new Promise<void>((resolve) => {
       finish = resolve
     })
-  store.enterLocalEditing(['inside', 'peer'])
+  store.setGroupHidden(8, true)
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
   expect(mesh.count).toBe(2)
   expect(attributes.getX(0)).toBe(7)
@@ -361,7 +311,7 @@ it('retains icon matrices, colors and texture slots while an expanding pool wait
   finish!()
   await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
 
-  // Simulate additional hidden furniture arriving after the local pool was built.
+  // 模拟实例池建立后，又有隐藏家具通过远端更新加入。
   scheme.items.value = [
     ...items,
     ...Array.from({ length: 80 }, (_, i) => item(`remote${i}`, 8, i * 300)),
@@ -374,7 +324,7 @@ it('retains icon matrices, colors and texture slots while an expanding pool wait
     new Promise<void>((resolve) => {
       finish = resolve
     })
-  store.exitLocalEditing()
+  store.showAllGroups()
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
   await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(false))
   expect(renderer.iconInstancedMesh.value).toBe(mesh)
@@ -395,12 +345,12 @@ it('retains icon matrices, colors and texture slots while an expanding pool wait
   expect(renderer.iconInstancedMesh.value).not.toBe(mesh)
 })
 
-it('keeps the latest icon intersection visible when an exit is superseded by another entry', async () => {
+it('keeps the latest icon intersection visible when show-all is superseded by show-only', async () => {
   const { store } = setup()
   useSettingsStore().settings.threeDisplayMode = 'icon'
   const renderer = scope.run(() => useThreeInstancedRenderer())!
   await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
-  store.enterLocalEditing(['inside', 'peer'])
+  store.setGroupHidden(8, true)
   await vi.waitFor(() => expect(renderer.isInteractionReady.value).toBe(true))
   const mesh = renderer.iconInstancedMesh.value!
   let finish!: () => void
@@ -408,10 +358,10 @@ it('keeps the latest icon intersection visible when an exit is superseded by ano
     new Promise<void>((resolve) => {
       finish = resolve
     })
-  store.exitLocalEditing()
+  store.showAllGroups()
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
   expect(mesh.count).toBe(2)
-  store.enterLocalEditing(['peer'])
+  store.showOnly({ kind: 'ungrouped', id: 0 })
   expect(renderer.iconInstancedMesh.value).toBe(mesh)
   expect(mesh.count).toBe(1)
   const matrix = new Matrix4()
@@ -429,7 +379,7 @@ it('updates the visible subset after transactions, undo and redo without modifyi
   const { store, scheme, items } = setup()
   useSettingsStore().settings.threeDisplayMode = 'simple-box'
   const renderer = scope.run(() => useThreeInstancedRenderer())!
-  store.enterLocalEditing(['inside', 'peer'])
+  store.setGroupHidden(8, true)
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(2))
   const history = useEditorHistory()
   history.recordTransaction('remove.peer', () => {
@@ -441,17 +391,17 @@ it('updates the visible subset after transactions, undo and redo without modifyi
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(2))
   history.redo()
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(1))
-  expect(store.localEditingItemIds).toEqual(new Set(['inside', 'peer']))
+  expect(scheme.hiddenGroupIds.value).toEqual(new Set([8]))
   expect(scheme.items.value[0]).toBe(items[0])
 })
 
-it('keeps visibility independent of group IDs and the original selection region', async () => {
+it('keeps other group visibility unchanged when moving and regrouping visible furniture', async () => {
   const { store, scheme, items } = setup()
   useSettingsStore().settings.threeDisplayMode = 'simple-box'
   const renderer = scope.run(() => useThreeInstancedRenderer())!
-  store.enterLocalEditing(['inside', 'peer'])
+  store.setGroupHidden(8, true)
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(2))
-  const workingSet = store.localEditingItemIds
+  const hidden = scheme.hiddenGroupIds.value
   const history = useEditorHistory()
   history.recordTransaction('regroup.and.move', () => {
     scheme.items.value = scheme.items.value.map((item) =>
@@ -464,15 +414,15 @@ it('keeps visibility independent of group IDs and the original selection region'
     expect(renderer.interactionAdapter.value.pick(ray)?.internalId).toBe('inside')
   )
   expect(renderer.simpleBoxInstancedMesh.value!.count).toBe(2)
-  expect(store.localEditingItemIds).toBe(workingSet)
+  expect(scheme.hiddenGroupIds.value).toBe(hidden)
   expect(scheme.items.value[0]).toBe(items[0])
 })
 
-it('renders newly added furniture, stays empty after deleting the working set, and restores on undo', async () => {
+it('renders new furniture, keeps hidden furniture after deleting visible items, and restores on undo', async () => {
   const { store, scheme, items } = setup()
   useSettingsStore().settings.threeDisplayMode = 'simple-box'
   const renderer = scope.run(() => useThreeInstancedRenderer())!
-  store.enterLocalEditing(['inside', 'peer'])
+  store.setGroupHidden(8, true)
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(2))
   const added = useEditorItemAdd().addFurnitureItem(1)!
   expect(added.groupId).toBe(0)
@@ -480,15 +430,12 @@ it('renders newly added furniture, stays empty after deleting the working set, a
   useEditorSelection().selectAll()
   useEditorManipulation().deleteSelected()
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(0))
-  expect(store.localEditingItemCount).toBe(0)
-  expect(store.localEditingItemIds).not.toBeNull()
   expect(scheme.items.value).toEqual([items[0]])
   useEditorHistory().undo()
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(3))
-  expect(store.localEditingItemCount).toBe(3)
 })
 
-it('filters slide-path segments and nodes through the same local scope', () => {
+it('filters slide-path segments and nodes through group visibility', () => {
   const { store, scheme } = setup()
   scheme.items.value = [7, 8].map((group, index) => ({
     ...item(`path${group}`, group, index * 1000),
@@ -507,10 +454,10 @@ it('filters slide-path segments and nodes through the same local scope', () => {
   const renderer = scope.run(() => useSlidePathRenderer())!
   expect(renderer.segmentMesh.value!.count).toBe(2)
   expect(renderer.pointMesh.value!.count).toBe(4)
-  store.enterLocalEditing(['path7'])
+  store.setGroupHidden(8, true)
   expect(renderer.segmentMesh.value!.count).toBe(1)
   expect(renderer.pointMesh.value!.count).toBe(2)
-  store.exitLocalEditing()
+  store.showAllGroups()
   expect(renderer.segmentMesh.value!.count).toBe(2)
   expect(renderer.pointMesh.value!.count).toBe(4)
 })

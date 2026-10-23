@@ -264,15 +264,13 @@ it('inherits restrictions without overwriting child flags and filters selection/
   expect(store.hiddenGroupCount).toBe(1)
   store.setCollectionRestriction(root, 'hidden', false)
   expect(store.isItemVisible('a')).toBe(false)
-  store.enterLocalEditing(['a'])
   store.showAllGroups()
-  expect(store.localEditingItemIds).toEqual(new Set(['a']))
   expect(store.isItemVisible('a')).toBe(true)
   expect(store.isItemEditable('a')).toBe(false)
   expect(store.hiddenGroupCount).toBe(0)
 })
 
-it('shows a hidden collection through its ancestors while retaining child hiding and local scope', () => {
+it('shows a hidden collection through its ancestors while retaining child hiding', () => {
   const { store, scheme, panel, root, child, query } = setup()
   const sibling = panel.createCollection(root)!,
     hiddenChild = panel.createCollection(child)!
@@ -311,14 +309,11 @@ it('shows a hidden collection through its ancestors while retaining child hiding
   // 按住 Alt 点击组，即使上级分支被隐藏也应能显示该组。
   store.showOnly({ kind: 'group', id: 9 })
   expect(store.renderItemIds).toEqual(new Set(['hidden-child']))
-  store.enterLocalEditing(['a', 'loose'])
-  const scope = store.localEditingItemIds
   store.showOnly({ kind: 'collection', id: sibling })
-  expect(store.renderItemIds).toEqual(new Set())
-  expect(store.localEditingItemIds).toBe(scope)
+  expect(store.renderItemIds).toEqual(new Set(['b']))
   store.showAllGroups()
-  expect(store.renderItemIds).toBe(scope)
-  expect(store.isItemVisible('b')).toBe(false)
+  expect(store.renderItemIds).toBeNull()
+  expect(store.isItemVisible('b')).toBe(true)
   expect(scheme.items.value).toBe(items)
   expect(scheme.collectionTree.value).toBe(tree)
 })
@@ -550,7 +545,7 @@ it('applies unclassified restrictions dynamically without overwriting group flag
   expect(scheme.hiddenCollectionIds.value.size).toBe(0)
 })
 
-it('shows only unclassified groups while retaining their own hiding and local scope', () => {
+it('shows only unclassified groups while retaining their own hiding', () => {
   const { store, scheme, panel } = setup()
   setSchemeItems(scheme, [
     ...scheme.items.value,
@@ -567,11 +562,8 @@ it('shows only unclassified groups while retaining their own hiding and local sc
   store.setCollectionRestriction(UNCLASSIFIED, 'hidden', true)
   store.showOnly({ kind: 'group', id: 8 })
   expect(store.renderItemIds).toEqual(new Set(['b']))
-  store.enterLocalEditing(['a', 'loose'])
-  const scope = store.localEditingItemIds
   store.showOnly({ kind: 'collection', id: UNCLASSIFIED })
-  expect(store.renderItemIds).toEqual(new Set())
-  expect(store.localEditingItemIds).toBe(scope)
+  expect(store.renderItemIds).toEqual(new Set(['b']))
   expect(scheme.collectionTree.value).toBe(tree)
   expect(panel.restriction(null, 'hidden')).toBeUndefined()
 })

@@ -97,12 +97,7 @@ it.each([false, true])(
             commandStore: {
               showFurnitureLibrary: false,
               showDyePanel: false,
-              commandMap: new Map([
-                [
-                  'edit.enterLocalEditing',
-                  { id: 'edit.enterLocalEditing', label: 'Local editing' },
-                ],
-              ]),
+              commandMap: new Map([]),
               isCommandEnabled: () => false,
               executeCommand: vi.fn(),
             },

@@ -557,17 +557,8 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.deselectAll'),
       shortcut: 'Escape',
       category: 'selection',
-      enabled: () =>
-        editorStore.localEditingItemIds !== null ||
-        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
       execute: () => {
-        if (
-          editorStore.localEditingItemIds !== null &&
-          !editorStore.activeScheme?.selectedItemIds.value.size
-        ) {
-          editorStore.exitLocalEditing()
-          return
-        }
         clearSelection()
       },
     },
@@ -591,30 +582,6 @@ export const useCommandStore = defineStore('command', () => {
       execute: () => {
         console.log('[Command] 选择同类')
         selectSameType()
-      },
-    },
-    {
-      id: 'edit.enterLocalEditing',
-      label: t('localEdit.enter'),
-      shortcut: 'Shift+F',
-      allowRepeat: false,
-      category: 'edit',
-      enabled: () =>
-        editorStore.localEditingItemIds === null &&
-        (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
-      execute: () => {
-        editorStore.enterLocalEditing(editorStore.activeScheme?.selectedItemIds.value ?? [])
-      },
-    },
-    {
-      id: 'edit.exitLocalEditing',
-      label: t('localEdit.exitAction'),
-      shortcut: 'Shift+F',
-      allowRepeat: false,
-      category: 'edit',
-      enabled: () => editorStore.localEditingItemIds !== null,
-      execute: () => {
-        editorStore.exitLocalEditing()
       },
     },
     {

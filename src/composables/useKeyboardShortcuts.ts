@@ -15,13 +15,11 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
 
   // 构建快捷键映射表（响应式）
   const shortcutMap = computed(() => {
-    const map = new Map<string, Command[]>()
+    const map = new Map<string, Command>()
     commands.forEach((cmd) => {
       if (cmd.shortcut) {
         const shortcut = normalizeShortcut(cmd.shortcut)
-        const candidates = map.get(shortcut) ?? []
-        candidates.push(cmd)
-        map.set(shortcut, candidates)
+        map.set(shortcut, cmd)
       }
     })
     return map
@@ -90,9 +88,7 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
 
       // 匹配快捷键命令
       const shortcut = eventToShortcut(event)
-      const candidates = shortcutMap.value.get(shortcut)
-      // 进入/退出等互斥命令可共享快捷键；一次按键只执行当前可用的命令。
-      const command = candidates?.find((cmd) => cmd.enabled()) ?? candidates?.[0]
+      const command = shortcutMap.value.get(shortcut)
       const commandId = command?.id
 
       if (command && commandId) {

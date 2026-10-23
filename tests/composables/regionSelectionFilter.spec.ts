@@ -5,7 +5,6 @@ import { OrthographicCamera } from 'three'
 import { useEditorStore, type SelectionAction } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useSettingsStore } from '@/stores/settingsStore'
 import { useTabStore } from '@/stores/tabStore'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
@@ -231,14 +230,12 @@ describe('shared category filtering', () => {
     expect(scheme.selectedItemIds.value.size).toBe(0)
   })
 
-  it('combines category and local scope restrictions while preserving individual mode', () => {
+  it('combines category and lock restrictions while preserving individual mode', () => {
     const { store, scheme, selection } = setup()
-    useSettingsStore().settings.localGroupSelection = true
-    store.enterLocalEditing(['wall', 'lamp'])
+    store.setGroupLocked(0, true)
     store.selectionCategoryIds = new Set([5000])
-    selection.updateSelection(['wall', 'lamp'], false)
-    expect(scheme.selectedItemIds.value).toEqual(new Set(['wall']))
-    store.exitLocalEditing()
+    selection.updateSelection(['wall', 'lamp', 'tree'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['wall', 'peer-wall']))
     selection.updateSelection(['wall', 'lamp'], false, { skipGroupExpansion: true })
     expect(scheme.selectedItemIds.value).toEqual(new Set(['wall']))
   })
@@ -290,14 +287,13 @@ describe('region filter integration', () => {
 })
 
 describe('selection filter boundaries and history', () => {
-  it('does not pick through excluded foreground hits or enter their group on double-click', () => {
+  it('does not pick through excluded foreground hits on repeated clicks', () => {
     const { store, scheme, click } = setupPointer()
     store.selectionCategoryIds = new Set([5000])
     click()
     expect(scheme.selectedItemIds.value.size).toBe(0)
     click()
     expect(scheme.selectedItemIds.value.size).toBe(0)
-    expect(store.localEditingItemIds).toBeNull()
   })
 
   it('filters group members when the nearest hit is selectable', () => {
@@ -355,20 +351,16 @@ describe('selection filter boundaries and history', () => {
   })
 
   it.each([
-    ['selectAll', ['wall', 'tree']],
-    ['invertSelection', ['tree']],
-    ['selectSameType', ['wall']],
-  ] as const)(
-    'restricts %s to the intersection of categories and the working set',
-    (command, expected) => {
-      const { store, scheme, selection } = setup()
-      store.enterLocalEditing(['wall', 'lamp', 'tree'])
-      selection.updateSelection(['wall', 'lamp'], false, { skipGroupExpansion: true })
-      store.selectionCategoryIds = new Set([5000, 6000])
-      selection[command]()
-      expect(scheme.selectedItemIds.value).toEqual(new Set(expected))
-    }
-  )
+    ['selectAll', ['wall', 'peer-wall', 'tree']],
+    ['invertSelection', ['peer-wall', 'tree']],
+    ['selectSameType', ['wall', 'peer-wall']],
+  ] as const)('restricts %s to the enabled categories', (command, expected) => {
+    const { store, scheme, selection } = setup()
+    selection.updateSelection(['wall', 'lamp'], false, { skipGroupExpansion: true })
+    store.selectionCategoryIds = new Set([5000, 6000])
+    selection[command]()
+    expect(scheme.selectedItemIds.value).toEqual(new Set(expected))
+  })
 
   it('makes selection commands empty when no categories are enabled, but permits explicit deselection', () => {
     const { store, scheme, selection } = setup()

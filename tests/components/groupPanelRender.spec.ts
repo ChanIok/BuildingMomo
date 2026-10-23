@@ -178,7 +178,6 @@ it.each([false, true])(
           makeAppItem({ internalId: 'loose-a' }),
           makeAppItem({ internalId: 'loose-b' }),
         ]
-        store.enterLocalEditing(['loose-a'])
         if (hidden) store.setGroupHidden(0, true)
         return () => h(GroupPanel)
       },
@@ -187,7 +186,7 @@ it.each([false, true])(
     const html = await renderToString(app)
     expect(html.match(/<li\b/g)).toHaveLength(1)
     expect(html).toContain('data-ungrouped="true"')
-    expect(html).toContain('范围内 1 / 2 件')
+    expect(html).toContain('2 件家具')
     expect(html).toContain(hidden ? '显示“未分组”' : '隐藏“未分组”')
     expect(html).not.toContain('还没有组')
     expect(html).not.toContain('data-group-id="0"')

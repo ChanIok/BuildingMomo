@@ -34,7 +34,6 @@ export const enLocale = {
     noResults: 'No matching groups',
     itemCount: '{count} items',
     selectionCount: '{count} / {total} selected',
-    scopeCount: '{count} / {total} in scope',
     hide: 'Hide “{name}”',
     show: 'Show “{name}”',
     lock: 'Lock “{name}” to prevent editing',
@@ -45,19 +44,6 @@ export const enLocale = {
     allVisible: 'No furniture hidden',
     showAll: 'Show all',
     unlockAll: 'Unlock all',
-    localScope: 'Local editing: counts show members in scope / all members.',
-  },
-  localEdit: {
-    groupSelection: 'Group select',
-    groupSelectionLabel: 'Select by group in local editing',
-    groupSelectionHint: 'Select matching group members within the local working set.',
-    status: 'Local editing · {count} items',
-    enter: 'Enter Local Editing',
-    exit: 'Exit',
-    exitAction: 'Exit Local Editing',
-    exitHint: 'Double-click empty space or press Esc',
-    pasteHint:
-      'Local editing supports pasting with new IDs only, to avoid changing furniture outside the working set.',
   },
   // Scheme
   scheme: {

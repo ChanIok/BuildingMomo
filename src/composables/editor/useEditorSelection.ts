@@ -1,13 +1,12 @@
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
-import { useSettingsStore } from '../../stores/settingsStore'
 import { useSelectionFilter } from './useSelectionFilter'
 
 type SelectionOptions = {
-  // 本次操作强制按单件处理（例如按住单件选择修饰键），优先于持久化设置。
+  // 本次操作按单件处理（例如按住单件选择修饰键），不扩展到同组家具。
   skipGroupExpansion?: boolean
-  // 列表中的明确移除操作可忽略类别过滤，但仍遵守局部编辑范围。
+  // 列表中的明确移除操作可忽略类别过滤，但仍遵守隐藏和锁定限制。
   ignoreSelectionFilter?: boolean
 }
 
@@ -17,23 +16,14 @@ type SelectionOptions = {
  */
 export function useEditorSelection() {
   const store = useEditorStore()
-  const settingsStore = useSettingsStore()
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
 
   const { recordSelectionChange } = useEditorHistory()
   const { isItemSelectable } = useSelectionFilter()
 
-  function shouldSkipGroupExpansion(options?: SelectionOptions): boolean {
-    // 普通模式仍默认按组选择；只有局部编辑受“按组选择”设置控制。
-    return Boolean(
-      options?.skipGroupExpansion ||
-      (store.localEditingItemIds !== null && !settingsStore.settings.localGroupSelection)
-    )
-  }
-
   /**
    * 将实际命中的家具解析成操作目标：过滤不可编辑项，必要时补入同组成员。
-   * 命中项和补入成员都必须可编辑且满足本次过滤条件，过滤不存在的 ID，并限制在当前局部范围内。
+   * 命中项和补入成员都必须可编辑且满足本次过滤条件，过滤不存在的 ID。
    * 此处只计算目标，不修改当前选择；Set 同时消除重复命中和重复组成员。
    */
   function resolveSelectionTargets(
@@ -41,7 +31,7 @@ export function useEditorSelection() {
     options?: SelectionOptions
   ): Set<string> {
     const targets = new Set([...itemIds].filter((id) => isSelectionTarget(id, options)))
-    if (shouldSkipGroupExpansion(options)) return targets
+    if (options?.skipGroupExpansion) return targets
     const groups = new Set<number>()
     for (const id of targets) {
       const groupId = itemsMap.value.get(id)!.groupId
@@ -108,7 +98,7 @@ export function useEditorSelection() {
     const targets = resolveSelectionTargets(hits, options)
     if (targets.size === 0) return
     const units = new Map<number | string, Set<string>>()
-    const skipGroups = shouldSkipGroupExpansion(options)
+    const skipGroups = options?.skipGroupExpansion
     for (const id of targets) {
       const groupId = itemsMap.value.get(id)!.groupId
       // 按组时用数字组 ID 归并，否则用字符串家具 ID；不同键类型不会相互冲突。
@@ -147,7 +137,7 @@ export function useEditorSelection() {
     store.triggerSelectionUpdate()
   }
 
-  // 全选当前可选范围（工作集与类别的交集），无需再做组扩展。
+  // 全选当前可选范围（可编辑家具与类别的交集），无需再做组扩展。
   function selectAll() {
     if (!activeScheme.value) return
 

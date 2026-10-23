@@ -45,29 +45,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('omits per-scheme local scopes from full and incremental workspace snapshots and restores normal mode', async () => {
-  const store = useEditorStore()
-  store.createScheme('test')
-  store.activeScheme!.items.value = [makeAppItem()]
-  store.enterLocalEditing(['item-1'])
-  const workspace = scope.run(() => useWorkspaceWorker())!
-  await workspace.startMonitoring()
-
-  const snapshot: WorkspaceSnapshot = state.api.initWorkspace.mock.calls[0]![0]
-  expect(snapshot.editor.schemes[0]).not.toHaveProperty('localEditingItemIds')
-  await vi.runOnlyPendingTimersAsync()
-  expect(state.api.updateState).toHaveBeenCalled()
-  const update = state.api.updateState.mock.calls[0]![0]
-  expect(update.activeSchemeData).not.toHaveProperty('localEditingItemIds')
-  expect(update.meta.schemes[0]).not.toHaveProperty('localEditingItemIds')
-
-  state.load.mockResolvedValue({ snapshot: structuredClone(snapshot), source: 'primary' })
-  await workspace.restore()
-  expect(store.localEditingItemIds).toBeNull()
-  store.enterLocalEditing(['item-1'])
-  expect(store.localEditingItemIds).toEqual(new Set(['item-1']))
-})
-
 it('saves names and personal group flags in workspace snapshots and restores protected selections safely', async () => {
   const store = useEditorStore()
   store.createScheme('groups')
@@ -119,7 +96,6 @@ it('saves names and personal group flags in workspace snapshots and restores pro
   expect(store.activeScheme!.lockedCollectionIds.value).toEqual(new Set(['house', UNCLASSIFIED]))
   expect(store.activeScheme!.collapsedCollectionIds.value).toEqual(new Set(['house', UNCLASSIFIED]))
   expect(store.activeScheme!.selectedItemIds.value.size).toBe(0)
-  expect(store.localEditingItemIds).toBeNull()
 })
 
 it('coalesces folds into lightweight state without resending furniture or clearing validation', async () => {

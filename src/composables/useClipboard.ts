@@ -323,11 +323,6 @@ export function useClipboard() {
       triggerUpdates = true,
     } = options
 
-    // Preserving source IDs can renumber unrelated existing furniture.
-    if (store.localEditingItemIds !== null && idMode === 'preserve-source') {
-      return { newIds: [], newItems: [] }
-    }
-
     const executeInsert = () => {
       const existingItems = scheme.items.value
       let currentMaxInstanceId = scheme.maxInstanceId.value
@@ -487,7 +482,6 @@ export function useClipboard() {
       scheme.maxInstanceId.value = currentMaxInstanceId
       scheme.maxGroupId.value = currentMaxGroupId
 
-      if (triggerUpdates) store.includeInLocalEditing(newIds)
       if (updateSelection) {
         selectInsertedItems(newIds)
       }
@@ -622,7 +616,6 @@ export function useClipboard() {
       }
 
       if (createdIds.length > 0) {
-        store.includeInLocalEditing(createdIds)
         selectInsertedItems(createdIds)
         triggerRef(activeScheme.value!.groupOrigins)
         store.triggerSceneUpdate()
@@ -647,7 +640,6 @@ export function useClipboard() {
   /** 只有「剪贴板来自另一个方案」时才允许做「保留源 ID」粘贴，否则会和本方案自己冲突。 */
   const canPreserveSourceIds = computed(
     () =>
-      store.localEditingItemIds === null &&
       !!activeScheme.value &&
       !!clipboard.value.sourceSchemeId &&
       clipboard.value.sourceSchemeId !== activeScheme.value.id

@@ -50,10 +50,8 @@ function pressO(extra: Partial<KeyboardEvent> = {}) {
 it('toggles the group panel through the shared command and ignores held-key repeats', () => {
   const { ui, store, commands, shortcutMap } = setup()
   store.createScheme('keyboard')
-  expect(shortcutMap.value.get('o')?.map((command) => command.id)).toEqual([
-    'tool.toggleGroupPanel',
-  ])
-  expect(shortcutMap.value.get('control+o')?.[0]?.id).toBe('file.startWatchMode')
+  expect(shortcutMap.value.get('o')?.id).toBe('tool.toggleGroupPanel')
+  expect(shortcutMap.value.get('control+o')?.id).toBe('file.startWatchMode')
   expect(ui.groupPanelOpen).toBe(false)
   pressO()
   expect(ui.groupPanelOpen).toBe(true)

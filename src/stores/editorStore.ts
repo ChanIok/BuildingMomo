@@ -65,7 +65,6 @@ function buildSchemeFromSharedSnapshot(
     cloudRoomCode: ref(undefined),
     items: shallowRef(newItems),
     selectedItemIds: shallowRef(new Set()),
-    localEditingItemIds: shallowRef(null),
     maxInstanceId: ref(maxInstId),
     maxGroupId: ref(maxGrpId),
     currentViewConfig: ref(undefined),
@@ -162,24 +161,6 @@ export const useEditorStore = defineStore('editor', () => {
   const groupsMap = computed(() => groupIndex.value.groups)
   const ungroupedItemIds = computed(() => groupIndex.value.ungrouped)
 
-  // 局部编辑作用域随方案保留，切换标签不退出；独立于家具组和历史事务。
-  const localEditingItemIds = computed(() => activeScheme.value?.localEditingItemIds.value ?? null)
-
-  const localEditingItemCount = computed(() => {
-    let count = 0
-    for (const id of localEditingItemIds.value ?? []) {
-      if (itemsMap.value.has(id)) count++
-    }
-    return count
-  })
-
-  function isItemInEditingScope(itemId: string): boolean {
-    return (
-      itemsMap.value.has(itemId) &&
-      (localEditingItemIds.value === null || localEditingItemIds.value.has(itemId))
-    )
-  }
-
   function effectiveRestrictions(
     kind: 'hidden' | 'locked',
     previous?: ReadonlySet<number>
@@ -228,11 +209,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function isItemVisible(itemId: string): boolean {
     const item = itemsMap.value.get(itemId)
-    return (
-      !!item &&
-      isItemInEditingScope(itemId) &&
-      !effectiveHiddenGroupIds.value.has(Math.max(0, item.groupId))
-    )
+    return !!item && !effectiveHiddenGroupIds.value.has(Math.max(0, item.groupId))
   }
 
   function isItemEditable(itemId: string): boolean {
@@ -251,7 +228,7 @@ export const useEditorStore = defineStore('editor', () => {
       !hidden?.size ||
       !activeScheme.value?.items.value.some((item) => hidden.has(Math.max(0, item.groupId)))
     ) {
-      return localEditingItemIds.value
+      return null
     }
     const next = new Set(
       (activeScheme.value?.items.value ?? [])
@@ -380,43 +357,6 @@ export const useEditorStore = defineStore('editor', () => {
       return
     scheme.lockedGroupIds.value = new Set()
     scheme.lockedCollectionIds.value = new Set()
-    triggerSelectionUpdate()
-  }
-
-  function enterLocalEditing(itemIds: Iterable<string>) {
-    const scheme = activeScheme.value
-    if (!scheme || localEditingItemIds.value !== null) return
-    const ids = new Set<string>()
-    for (const id of itemIds) {
-      if (itemsMap.value.has(id)) {
-        ids.add(id)
-      }
-    }
-    if (ids.size === 0) return
-    scheme.localEditingItemIds.value = ids
-    scheme.selectedItemIds.value = new Set()
-    triggerSelectionUpdate()
-  }
-
-  function includeInLocalEditing(itemIds: Iterable<string>) {
-    const scheme = activeScheme.value
-    if (!scheme) return
-    const current = scheme.localEditingItemIds.value
-    if (current === null) return
-    const ids = new Set(current)
-    for (const id of itemIds) {
-      ids.add(id)
-    }
-    if (ids.size !== current.size) {
-      scheme.localEditingItemIds.value = ids
-    }
-  }
-
-  function exitLocalEditing() {
-    const scheme = activeScheme.value
-    if (!scheme) return
-    scheme.localEditingItemIds.value = null
-    scheme.selectedItemIds.value = new Set()
     triggerSelectionUpdate()
   }
 
@@ -568,7 +508,6 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: ref(undefined),
       items: shallowRef([]),
       selectedItemIds: shallowRef(new Set()),
-      localEditingItemIds: shallowRef(null),
       maxInstanceId: ref(999), // 初始值，首个物品将从 1000 开始
       maxGroupId: ref(0), // 初始值，首个组将从 1 开始
       currentViewConfig: ref(undefined),
@@ -640,7 +579,6 @@ export const useEditorStore = defineStore('editor', () => {
         filePath: ref(fileName),
         items: shallowRef(newItems),
         selectedItemIds: shallowRef(new Set()),
-        localEditingItemIds: shallowRef(null),
         maxInstanceId: ref(maxInstId), // 记录导入的最大 InstanceID
         maxGroupId: ref(maxGrpId), // 记录导入的最大 GroupID
         lastModified: ref(fileLastModified),
@@ -694,7 +632,6 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: ref(undefined),
       items: shallowRef(newItems),
       selectedItemIds: shallowRef(new Set()),
-      localEditingItemIds: shallowRef(null),
       maxInstanceId: ref(maxInstId),
       maxGroupId: ref(maxGrpId),
       currentViewConfig: ref(snapshot.currentViewConfig),
@@ -756,7 +693,6 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: scheme.cloudRoomCode,
       items: scheme.items,
       selectedItemIds: scheme.selectedItemIds,
-      localEditingItemIds: scheme.localEditingItemIds,
       maxInstanceId: scheme.maxInstanceId,
       maxGroupId: scheme.maxGroupId,
       currentViewConfig: scheme.currentViewConfig,
@@ -1067,7 +1003,7 @@ export const useEditorStore = defineStore('editor', () => {
         .map((item) => item.internalId)
     )
 
-    // Renumbering hidden furniture would cross the local editing boundary.
+    // 编号冲突处理不能间接修改隐藏或锁定的家具。
     if ([...conflictingItemIds].some((id) => !isItemEditable(id))) return false
 
     const conflictRemap = new Map<string, number>()
@@ -1174,17 +1110,11 @@ export const useEditorStore = defineStore('editor', () => {
     itemsMap,
     groupsMap,
     ungroupedItemIds,
-    localEditingItemIds,
-    localEditingItemCount,
-    includeInLocalEditing,
-    enterLocalEditing,
-    exitLocalEditing,
     isItemEditable,
     effectiveHiddenGroupIds,
     effectiveLockedGroupIds,
     setCollectionRestriction,
     isItemVisible,
-    isItemInEditingScope,
     constrainSelectionToEditable,
     renderItemIds,
     hiddenGroupCount,
