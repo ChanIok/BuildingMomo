@@ -1,9 +1,17 @@
 import { patchGroupNames } from '@/lib/collectionTree'
-import { setSchemeItems } from '@/lib/groupState'
+import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
+import { useUIStore } from '../../stores/uiStore'
 import { useEditorHistory } from './useEditorHistory'
 import type { AppItem } from '../../types/editor'
+
+/** 成组动作将要作用的目标；多个候选必须由调用方选择。 */
+export type GroupRequest =
+  | { kind: 'none' }
+  | { kind: 'create' }
+  | { kind: 'merge'; targetId: number }
+  | { kind: 'choose'; candidates: number[] }
 
 export function useEditorGroups() {
   const store = useEditorStore()
@@ -66,56 +74,121 @@ export function useEditorGroups() {
     })
   }
 
-  // Preserve origins on untouched members, including existing external anchors.
-  function reconcileGroupOrigins(
-    previousItems: readonly AppItem[],
-    selectedIds: ReadonlySet<string>
-  ) {
-    const scheme = activeScheme.value!
-    const nextOrigins = new Map(scheme.groupOrigins.value)
-    for (const item of previousItems) {
-      if (!selectedIds.has(item.internalId) || item.groupId <= 0) continue
-      if (!groupsMap.value.has(item.groupId) || nextOrigins.get(item.groupId) === item.internalId) {
-        nextOrigins.delete(item.groupId)
-      }
+  // ========== 成组与合并 ==========
+
+  /**
+   * 选区中出现过的组，按组 ID 升序。
+   * 不区分整组选中与部分选中：部分选中的组同样是可以保留身份的目标。
+   */
+  function getSelectedGroupIds(): number[] {
+    const scheme = activeScheme.value
+    if (!scheme) return []
+    const ids = new Set<number>()
+    for (const itemId of scheme.selectedItemIds.value) {
+      const groupId = itemsMap.value.get(itemId)?.groupId ?? 0
+      if (groupId > 0 && groupsMap.value.has(groupId)) ids.add(groupId)
     }
-    if (nextOrigins.size !== scheme.groupOrigins.value.size) scheme.groupOrigins.value = nextOrigins
+    return [...ids].sort((left, right) => left - right)
   }
 
-  // 成组：将选中的物品成组
-  function groupSelected() {
-    if (!activeScheme.value) return
-    if (activeScheme.value.selectedItemIds.value.size < 2) {
-      console.warn('[Group] 至少需要选中2个物品才能成组')
-      return
+  /** 选区中是否存在不属于该组的家具。 */
+  function hasMemberOutside(groupId: number): boolean {
+    const scheme = activeScheme.value
+    if (!scheme) return false
+    for (const itemId of scheme.selectedItemIds.value) {
+      if ((itemsMap.value.get(itemId)?.groupId ?? 0) !== groupId) return true
     }
+    return false
+  }
 
-    const newGroupId = activeScheme.value.maxGroupId.value + 1
+  /** 唯一候选组直接合并；选区涉及多个组时交由调用方选择目标。 */
+  function resolveGroupRequest(): GroupRequest {
+    const scheme = activeScheme.value
+    const selected = scheme?.selectedItemIds.value
+    if (!scheme || !selected || selected.size < 2) return { kind: 'none' }
+    const candidates = getSelectedGroupIds()
+    if (!candidates.length) return { kind: 'create' }
+    if (candidates.length > 1) return { kind: 'choose', candidates }
+    const targetId = candidates[0]!
+    if (hasMemberOutside(targetId)) return { kind: 'merge', targetId }
+    // 选区完全落在该组内部时没有可并入的家具：整组选中无事可做，部分成员则拆分为新组。
+    const members = groupsMap.value.get(targetId)
+    return !members || members.size !== selected.size ? { kind: 'create' } : { kind: 'none' }
+  }
 
-    recordTransaction('group.create', () => {
-      const items = activeScheme.value!.items.value
-      const selected = activeScheme.value!.selectedItemIds.value
+  /** 成组入口是否可用。 */
+  function canGroupSelection(): boolean {
+    return resolveGroupRequest().kind !== 'none'
+  }
 
-      const hasSelected = items.some((item) => selected.has(item.internalId))
-      if (!hasSelected) return
+  /**
+   * 把选中的家具并入 targetId；targetId 为 null 时新建组。
+   * 合并沿用目标组 ID，因此名称、所属集合、顺序、显隐锁定与组原点都保持不变。
+   */
+  function groupInto(targetId: number | null): boolean {
+    const scheme = activeScheme.value
+    if (!scheme) return false
+    if (scheme.selectedItemIds.value.size < 2) return false
+    if (targetId !== null && !groupsMap.value.has(targetId)) return false
 
+    const nextGroupId = targetId ?? scheme.maxGroupId.value + 1
+
+    return recordTransaction(targetId === null ? 'group.create' : 'group.merge', () => {
+      const selected = scheme.selectedItemIds.value
+      const items = scheme.items.value
+      // 只收集归属真正发生变化的家具，未命中的对象必须保留原引用。
+      const moving = new Set<string>()
+      for (const item of items) {
+        if (selected.has(item.internalId) && item.groupId !== nextGroupId)
+          moving.add(item.internalId)
+      }
+      if (!moving.size) return false
+
+      const previousTree = scheme.collectionTree.value
       // 【核心优化点】必须使用 `.map()` 产出新的家具列表，并且只对改动的家具使用 `{...item}` 解构深拷贝。
       // 如此操作后，没有修改过的家具的内存引用(===)不会变化，
       // 这能让历史系统立刻“跳过”排查上千个没有动过的对象，极大加速系统！
       setSchemeItems(
-        activeScheme.value!,
+        scheme,
         items.map((item) =>
-          selected.has(item.internalId) ? { ...item, groupId: newGroupId } : item
+          moving.has(item.internalId) ? { ...item, groupId: nextGroupId } : item
         )
       )
-      activeScheme.value!.maxGroupId.value = newGroupId
-      reconcileGroupOrigins(items, selected)
+      if (targetId === null) scheme.maxGroupId.value = nextGroupId
+      // 目标组身份独占：只移除已解散的组，不把源组名称或所属集合搬到目标组上。
+      const live = new Set<number>()
+      for (const item of scheme.items.value) if (item.groupId > 0) live.add(item.groupId)
+      const groups = previousTree.groups.filter((group) => live.has(group.groupId))
+      if (groups.length !== previousTree.groups.length) {
+        scheme.collectionTree.value = { ...previousTree, groups }
+      }
+      scheme.groupOrigins.value = reconcileGroupOrigins(
+        scheme.groupOrigins.value,
+        scheme.items.value
+      )
       store.triggerSceneUpdate()
+      return true
     })
+  }
 
-    console.log(
-      `[Group] 成功创建组 #${newGroupId}，包含 ${activeScheme.value.selectedItemIds.value.size} 个物品`
-    )
+  /** 兼容入口：可直接执行的动作立即执行，需要选择目标或无事可做时返回 false。 */
+  function groupSelected(): boolean {
+    const request = resolveGroupRequest()
+    if (request.kind === 'none' || request.kind === 'choose') return false
+    return groupInto(request.kind === 'merge' ? request.targetId : null)
+  }
+
+  /** 成组入口：目标唯一时立即执行，涉及多个组时打开目标选择对话框。 */
+  function requestGroup(): boolean {
+    const request = resolveGroupRequest()
+    if (request.kind === 'none') return false
+    if (request.kind !== 'choose') {
+      return groupInto(request.kind === 'merge' ? request.targetId : null)
+    }
+    const uiStore = useUIStore()
+    uiStore.groupMergeCandidates = [...request.candidates]
+    uiStore.groupMergeOpen = true
+    return false
   }
 
   // 取消组合：将选中的物品解散组
@@ -147,7 +220,10 @@ export function useEditorGroups() {
         )
       )
 
-      reconcileGroupOrigins(items, selected)
+      activeScheme.value!.groupOrigins.value = reconcileGroupOrigins(
+        activeScheme.value!.groupOrigins.value,
+        activeScheme.value!.items.value
+      )
 
       store.triggerSceneUpdate()
     })
@@ -231,6 +307,11 @@ export function useEditorGroups() {
     renameGroup,
     canRenameGroup,
     groupSelected,
+    groupInto,
+    requestGroup,
+    resolveGroupRequest,
+    canGroupSelection,
+    getSelectedGroupIds,
     ungroupSelected,
     getGroupItems,
     getItemGroupId,

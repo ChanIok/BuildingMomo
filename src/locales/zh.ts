@@ -43,6 +43,13 @@ export const zhLocale = {
     allVisible: '未手动隐藏家具',
     showAll: '全部显示',
     unlockAll: '全部解锁',
+    mergeDialog: {
+      title: '合并到哪个组',
+      description: '选区涉及多个组，合并后只保留一个。',
+      keepHint: '保留名称与集合',
+      newGroup: '新建组',
+      newGroupHint: '默认名称，未分类',
+    },
   },
   // 方案相关
   scheme: {

@@ -19,7 +19,8 @@ import type { AppItem } from '@/types/editor'
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const uiStore = useUIStore()
-const { getGroupItems, groupSelected, ungroupSelected, clearGroupOrigin } = useEditorGroups()
+const { getGroupItems, requestGroup, canGroupSelection, ungroupSelected, clearGroupOrigin } =
+  useEditorGroups()
 const { recordTransaction } = useEditorHistory()
 const { deselectItems } = useEditorSelection()
 const { t, locale } = useI18n()
@@ -284,6 +285,9 @@ const currentGroupId = computed(() => {
   if (selectedGroupInfo.value.type !== 'single') return null
   return selectedGroupInfo.value.groupId
 })
+
+// 成组入口同时负责“合并到已有组”，可用性统一由组编辑入口判定。
+const canGroup = computed(() => canGroupSelection())
 
 // 当前原点物品
 const currentOriginItem = computed(() => {
@@ -562,15 +566,7 @@ function handleIconError(e: Event) {
 
     <!-- 成组/取消组合按钮 -->
     <div class="flex gap-2 pt-2 pr-2">
-      <Button
-        @click="groupSelected()"
-        :disabled="
-          (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) < 2 || isEntireGroupSelected
-        "
-        class="flex-1"
-        size="sm"
-        title="Ctrl+G"
-      >
+      <Button @click="requestGroup()" :disabled="!canGroup" class="flex-1" size="sm" title="Ctrl+G">
         {{ t('sidebar.group') }}
       </Button>
       <Button

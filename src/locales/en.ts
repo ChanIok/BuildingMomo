@@ -44,6 +44,13 @@ export const enLocale = {
     allVisible: 'No furniture hidden',
     showAll: 'Show all',
     unlockAll: 'Unlock all',
+    mergeDialog: {
+      title: 'Which group to keep',
+      description: 'Several groups are selected; only one can remain.',
+      keepHint: 'Keeps its name and collection',
+      newGroup: 'New group',
+      newGroupHint: 'Default name, unclassified',
+    },
   },
   // Scheme
   scheme: {

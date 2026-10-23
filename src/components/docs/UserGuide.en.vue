@@ -111,7 +111,8 @@
       </li>
       <li>
         <strong>Grouping</strong>: <code>Ctrl + G</code> (group), <code>Ctrl + Shift + G</code>
-        (ungroup). Grouped items can be moved/copied as a whole.
+        (ungroup). When the selection already touches a group, the rest is merged into it; with
+        several groups you choose which one to keep.
       </li>
     </ul>
 

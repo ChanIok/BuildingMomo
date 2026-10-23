@@ -11,6 +11,7 @@ import WelcomeScreen from './components/WelcomeScreen.vue'
 import RotateHintDialog from './components/RotateHintDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
 import AdvancedPasteDialog from './components/AdvancedPasteDialog.vue'
+import GroupMergeDialog from './components/GroupMergeDialog.vue'
 import { defineAsyncView } from './lib/asyncView'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
@@ -304,6 +305,9 @@ onUnmounted(() => {
 
   <!-- 高级粘贴对话框 -->
   <AdvancedPasteDialog v-model:open="commandStore.showAdvancedPasteDialog" />
+
+  <!-- 成组合并目标选择 -->
+  <GroupMergeDialog v-model:open="uiStore.groupMergeOpen" />
 
   <!-- 全局 AlertDialog -->
   <GlobalAlertDialog />

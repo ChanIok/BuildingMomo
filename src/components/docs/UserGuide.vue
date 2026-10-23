@@ -93,7 +93,7 @@
       <li><strong>移动/旋转</strong>：选中后拖拽三色轴，或在右侧变换面板输入数值。</li>
       <li>
         <strong>成组</strong>：<code>Ctrl + G</code> (成组)、<code>Ctrl + Shift + G</code>
-        (解散组)。成组后可整体移动/复制。
+        (解散组)。选区已包含组时，其余家具会并入该组；涉及多个组时可选择保留哪一个。
       </li>
     </ul>
 

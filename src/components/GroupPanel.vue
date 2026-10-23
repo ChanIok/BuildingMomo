@@ -4,6 +4,7 @@ import { FolderPlus, Layers, ListChevronsDownUp, Search, X } from 'lucide-vue-ne
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
+import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { useGroupPanel } from '@/composables/editor/useGroupPanel'
 import {
   useCollectionPanel,
@@ -33,7 +34,8 @@ import {
 const store = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { groups, ungrouped, renameGroup, canRenameGroup, groupSelected } = useGroupPanel()
+const { groups, ungrouped, renameGroup, canRenameGroup } = useGroupPanel()
+const { canGroupSelection, requestGroup } = useEditorGroups()
 const query = ref('')
 const {
   rows,
@@ -112,10 +114,8 @@ const hasLocked = computed(
     )
 )
 let panelSelectionVersion = -1
-const canGroup = computed(() => {
-  const ids = store.activeScheme?.selectedItemIds.value
-  return !!ids && ids.size >= 2 && store.getGroupIdIfEntireGroupSelected(ids) === null
-})
+// 成组命令同时负责“合并到已有组”，可用性与执行统一由组编辑入口判定。
+const canGroup = computed(() => canGroupSelection())
 
 function close() {
   uiStore.groupPanelOpen = false
@@ -675,7 +675,7 @@ watch(
               <Layers class="h-8 w-8 text-muted-foreground/40" />
               <p class="text-sm font-medium">{{ t('groups.empty') }}</p>
               <p class="text-xs leading-5 text-muted-foreground">{{ t('groups.emptyHint') }}</p>
-              <Button size="sm" variant="outline" :disabled="!canGroup" @click="groupSelected()">{{
+              <Button size="sm" variant="outline" :disabled="!canGroup" @click="requestGroup()">{{
                 t('groups.create')
               }}</Button>
             </div>

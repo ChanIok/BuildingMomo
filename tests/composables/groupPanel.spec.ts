@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, ref, type EffectScope } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
 import { setSchemeItems } from '@/lib/groupState'
 import { UNCLASSIFIED } from '@/lib/collectionTree'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
@@ -113,32 +114,113 @@ describe('group management', () => {
     expect(groupNamesOf(scheme).get(7)).toBe('墙')
   })
 
-  it('uses the same identity mapping for regrouping, personal locks and undo/redo', () => {
-    const { store, scheme, panel, history, selectGroup } = setup()
+  it('merges the selection into the single group it touches and keeps that identity', () => {
+    const { scheme, history } = setup()
     scheme.collectionTree.value = {
       nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
       groups: [{ groupId: 7, name: 'Walls', collectionId: 'house', order: 0 }],
     }
+    scheme.groupOrigins.value = new Map([[7, 'a']])
     scheme.activeGroupId.value = 7
-    selectGroup(7)
-    panel.groupSelected()
-    const nextId = scheme.items.value[0]!.groupId
-    expect(nextId).toBeGreaterThan(8)
-    expect(scheme.activeGroupId.value).toBe(nextId)
-    expect(scheme.collectionTree.value.groups).toEqual([
-      { groupId: nextId, name: 'Walls', collectionId: 'house', order: 0 },
+    const maxGroupId = scheme.maxGroupId.value
+    scheme.selectedItemIds.value = new Set(['a', 'b', 'd'])
+    const groups = useEditorGroups()
+    expect(groups.resolveGroupRequest()).toEqual({ kind: 'merge', targetId: 7 })
+    expect(groups.requestGroup()).toBe(true)
+    expect(scheme.items.value.map((item) => [item.internalId, item.groupId])).toEqual([
+      ['a', 7],
+      ['b', 7],
+      ['c', 8],
+      ['d', 7],
     ])
-    store.setGroupLocked(nextId, true)
-    history.undo()
+    expect(scheme.collectionTree.value.groups).toEqual([
+      { groupId: 7, name: 'Walls', collectionId: 'house', order: 0 },
+    ])
+    expect(scheme.groupOrigins.value.get(7)).toBe('a')
+    expect(scheme.maxGroupId.value).toBe(maxGroupId)
     expect(scheme.activeGroupId.value).toBe(7)
-    expect(scheme.lockedGroupIds.value).toEqual(new Set([7]))
+    history.undo()
+    expect(scheme.items.value.find((item) => item.internalId === 'd')!.groupId).toBe(0)
     expect(scheme.collectionTree.value.groups).toEqual([
       { groupId: 7, name: 'Walls', collectionId: 'house', order: 0 },
     ])
     history.redo()
-    expect(scheme.activeGroupId.value).toBe(nextId)
-    expect(scheme.lockedGroupIds.value).toEqual(new Set([nextId]))
-    expect(scheme.selectedItemIds.value.size).toBe(0)
+    expect(scheme.items.value.find((item) => item.internalId === 'd')!.groupId).toBe(7)
+  })
+
+  it('asks for a target when the selection spans several groups and keeps only the chosen identity', () => {
+    const { scheme, history } = setup()
+    scheme.collectionTree.value = {
+      nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
+      groups: [
+        { groupId: 8, name: 'Roof', collectionId: 'house', order: 1 },
+        { groupId: 7, name: 'Walls', collectionId: 'house', order: 0 },
+      ],
+    }
+    scheme.selectedItemIds.value = new Set(['a', 'b', 'c'])
+    const groups = useEditorGroups()
+    const ui = useUIStore()
+    expect(groups.resolveGroupRequest()).toEqual({ kind: 'choose', candidates: [7, 8] })
+    expect(groups.requestGroup()).toBe(false)
+    expect(ui.groupMergeOpen).toBe(true)
+    expect(ui.groupMergeCandidates).toEqual([7, 8])
+    expect(groups.groupInto(8)).toBe(true)
+    expect(scheme.items.value.map((item) => item.groupId)).toEqual([8, 8, 8, 0])
+    expect(scheme.collectionTree.value.groups).toEqual([
+      { groupId: 8, name: 'Roof', collectionId: 'house', order: 1 },
+    ])
+    history.undo()
+    expect(groupNamesOf(scheme)).toEqual(
+      new Map([
+        [7, 'Walls'],
+        [8, 'Roof'],
+      ])
+    )
+    expect(scheme.collectionTree.value.groups.find((group) => group.groupId === 7)).toEqual({
+      groupId: 7,
+      name: 'Walls',
+      collectionId: 'house',
+      order: 0,
+    })
+    history.redo()
+    expect(groupNamesOf(scheme)).toEqual(new Map([[8, 'Roof']]))
+  })
+
+  it('does not move a dissolved group name onto an unnamed target', () => {
+    const { scheme } = setup()
+    scheme.collectionTree.value = {
+      nodes: [],
+      groups: [{ groupId: 8, name: 'Roof', collectionId: null, order: 8 }],
+    }
+    scheme.selectedItemIds.value = new Set(['a', 'b', 'c'])
+    const groups = useEditorGroups()
+    expect(groups.groupInto(7)).toBe(true)
+    expect(scheme.items.value.map((item) => item.groupId)).toEqual([7, 7, 7, 0])
+    expect(scheme.collectionTree.value.groups).toEqual([])
+  })
+
+  it('keeps a whole group selection a no-op and only splits a partial subset', () => {
+    const { scheme } = setup()
+    const groups = useEditorGroups()
+    scheme.selectedItemIds.value = new Set(['a', 'b'])
+    expect(groups.canGroupSelection()).toBe(false)
+    expect(groups.requestGroup()).toBe(false)
+    scheme.selectedItemIds.value = new Set(['a'])
+    expect(groups.canGroupSelection()).toBe(false)
+    scheme.items.value = [
+      ...scheme.items.value,
+      makeAppItem({ internalId: 'e', groupId: 7, instanceId: 1005 }),
+    ]
+    scheme.selectedItemIds.value = new Set(['a', 'b'])
+    expect(groups.resolveGroupRequest()).toEqual({ kind: 'create' })
+    expect(groups.requestGroup()).toBe(true)
+    expect(scheme.items.value.map((item) => [item.internalId, item.groupId])).toEqual([
+      ['a', 9],
+      ['b', 9],
+      ['c', 8],
+      ['d', 0],
+      ['e', 7],
+    ])
   })
 
   it('keeps protected groups manageable without putting their members into editable selection', () => {

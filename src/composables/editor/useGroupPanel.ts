@@ -19,7 +19,7 @@ export interface PanelGroup {
 
 export function useGroupPanel() {
   const store = useEditorStore()
-  const { renameGroup, canRenameGroup, groupSelected } = useEditorGroups()
+  const { renameGroup, canRenameGroup } = useEditorGroups()
   const { t } = useI18n()
 
   const names = computed(
@@ -86,5 +86,5 @@ export function useGroupPanel() {
       : null
   )
 
-  return { groups, ungrouped, renameGroup, canRenameGroup, groupSelected }
+  return { groups, ungrouped, renameGroup, canRenameGroup }
 }

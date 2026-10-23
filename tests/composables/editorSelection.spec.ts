@@ -186,18 +186,33 @@ describe('partial grouping and protected origins', () => {
     expect(commands.isCommandEnabled('edit.group')).toBe(false)
   })
 
-  it('allows partial grouping and ungrouping without changing unselected furniture', () => {
+  it('opens the merge target chooser from the command when the selection spans two groups', () => {
+    const { store, scheme, selection } = setup()
+    const ui = useUIStore()
+    selection.updateSelection(['a', 'c'], false, { skipGroupExpansion: true })
+    const commands = useCommandStore()
+    expect(commands.isCommandEnabled('edit.group')).toBe(true)
+    commands.executeCommand('edit.group')
+    expect(ui.groupMergeOpen).toBe(true)
+    expect(ui.groupMergeCandidates).toEqual([7, 8])
+    expect(store.itemsMap.get('a')!.groupId).toBe(7)
+    expect(store.itemsMap.get('c')!.groupId).toBe(8)
+    expect(scheme.history.value?.transactionUndoStack ?? []).toHaveLength(0)
+  })
+
+  it('merges a partial selection into the group it touches without changing unselected furniture', () => {
     const { store, scheme, items, selection, history } = setup()
     selection.updateSelection(['b', 'd'], false, { skipGroupExpansion: true })
     const groups = useEditorGroups()
+    expect(groups.resolveGroupRequest()).toEqual({ kind: 'merge', targetId: 7 })
     groups.groupSelected()
-    expect(store.itemsMap.get('b')!.groupId).toBe(9)
-    expect(store.itemsMap.get('d')!.groupId).toBe(9)
+    expect(store.itemsMap.get('b')!.groupId).toBe(7)
+    expect(store.itemsMap.get('d')!.groupId).toBe(7)
     expect(scheme.groupOrigins.value.get(7)).toBe('a')
     expect(store.itemsMap.get('a')).toBe(items[0])
     expect(store.itemsMap.get('c')).toBe(items[2])
     history.undo()
-    expect(store.itemsMap.get('b')!.groupId).toBe(7)
+    expect(store.itemsMap.get('d')!.groupId).toBe(0)
     history.redo()
     groups.ungroupSelected()
     expect(store.itemsMap.get('b')!.groupId).toBe(0)
@@ -215,17 +230,28 @@ describe('partial grouping and protected origins', () => {
     expect(store.itemsMap.get('b')!.groupId).toBe(7)
   })
 
-  it('clears the origin when its member leaves the group, for both grouping operations', () => {
+  it('clears the origin only when its member actually leaves the group', () => {
     const { store, scheme, selection, history } = setup()
     selection.updateSelection(['a'], false, { skipGroupExpansion: true })
     useEditorGroups().ungroupSelected()
     expect(scheme.groupOrigins.value.has(7)).toBe(false)
     history.undo()
     expect(scheme.groupOrigins.value.get(7)).toBe('a')
+    // 并入本组不会让原点成员离开；并入另一个组才会。
     selection.updateSelection(['a', 'd'], false, { skipGroupExpansion: true })
     useEditorGroups().groupSelected()
+    expect(scheme.groupOrigins.value.get(7)).toBe('a')
+    expect(store.itemsMap.get('d')!.groupId).toBe(7)
+    selection.updateSelection(['a', 'c'], false, { skipGroupExpansion: true })
+    const groups = useEditorGroups()
+    expect(groups.resolveGroupRequest()).toEqual({ kind: 'choose', candidates: [7, 8] })
+    expect(groups.groupInto(8)).toBe(true)
     expect(scheme.groupOrigins.value.has(7)).toBe(false)
+    expect(scheme.groupOrigins.value.get(8)).toBe('c')
     expect(store.itemsMap.get('b')!.groupId).toBe(7)
+    expect(store.itemsMap.get('a')!.groupId).toBe(8)
+    history.undo()
+    expect(scheme.groupOrigins.value.get(7)).toBe('a')
   })
 
   it('protects group origins and rejects hidden or locked external anchors', () => {

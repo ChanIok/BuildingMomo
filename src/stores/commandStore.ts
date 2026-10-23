@@ -40,7 +40,7 @@ export const useCommandStore = defineStore('command', () => {
     buildClipboardDataFromSelection,
   } = useClipboard()
   const { selectAll, clearSelection, invertSelection, selectSameType } = useEditorSelection()
-  const { groupSelected, ungroupSelected } = useEditorGroups()
+  const { requestGroup, canGroupSelection, ungroupSelected } = useEditorGroups()
   const { deleteSelected } = useEditorManipulation()
 
   const uiStore = useUIStore()
@@ -589,16 +589,11 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.group'),
       shortcut: 'Ctrl+G',
       category: 'edit',
-      enabled: () => {
-        const scheme = editorStore.activeScheme
-        if (!scheme || scheme.selectedItemIds.value.size < 2) return false
-
-        // Only an already-complete group needs no further grouping.
-        return editorStore.getGroupIdIfEntireGroupSelected(scheme.selectedItemIds.value) === null
-      },
+      // 选区无组时新建；只涉及一个组时并入该组；涉及多个组时打开目标选择。
+      enabled: () => canGroupSelection(),
       execute: () => {
         console.log('[Command] 成组')
-        groupSelected()
+        requestGroup()
       },
     },
     {
