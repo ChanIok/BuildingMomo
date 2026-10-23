@@ -160,7 +160,7 @@ it('renders named groups and a hidden summary without listing furniture members'
   expect(html).toContain('屋顶')
   expect(html).toContain('2 件家具已隐藏')
   expect(html).toContain('全部显示')
-  expect(html).toContain('搜索集合、组名或编号')
+  expect(html).toContain('搜索集合或组名')
   expect(html).not.toContain('member-a')
 })
 

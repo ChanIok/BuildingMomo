@@ -7,7 +7,7 @@ import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
-import SidebarSelectionFilter from './SidebarSelectionFilter.vue'
+import SidebarSelectionSettings from './SidebarSelectionSettings.vue'
 import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
@@ -146,10 +146,7 @@ watch(
           </div>
         </div>
 
-        <SidebarSelectionFilter
-          v-if="uiStore.sidebarView === 'structure'"
-          :class="hasSelection ? 'max-h-[50%] shrink-0 border-b' : 'min-h-0 flex-1'"
-        />
+        <SidebarSelectionSettings v-show="uiStore.sidebarView === 'structure'" />
 
         <div
           v-if="uiStore.sidebarView === 'structure'"

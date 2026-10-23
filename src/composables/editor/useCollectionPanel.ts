@@ -140,7 +140,6 @@ export function useCollectionPanel(
           const path = parent ? (paths.value.get(parent) ?? []) : []
           const match =
             group.name.toLocaleLowerCase().includes(text) ||
-            String(group.id).includes(text) ||
             path.some((id) => matchedFolders.has(id))
           if (match) for (const id of path) visibleFolders.add(id)
           return match

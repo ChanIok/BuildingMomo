@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch, watchPostEffect } from 'vue'
-import { ChevronsDownUp, FolderPlus, Layers, Plus, Search, X } from 'lucide-vue-next'
+import { FolderPlus, Layers, ListChevronsDownUp, Search, X } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
@@ -581,7 +581,7 @@ watch(
       @pointerdown.capture="dismissOnPointer"
       @keydown.esc.stop.prevent="close"
     >
-      <header class="flex h-10 shrink-0 items-center gap-1.5 border-b px-2">
+      <header class="flex h-10 shrink-0 items-center gap-1.5 px-2">
         <h2 class="text-sm font-semibold">{{ t('groups.title') }}</h2>
         <span class="text-xs text-muted-foreground tabular-nums">{{ groups.length }}</span>
         <div class="ml-auto flex">
@@ -610,26 +610,8 @@ watch(
             :disabled="!store.activeScheme?.collectionTree.value.nodes.length"
             :aria-label="t('groups.collapseAll')"
             @click="collapseAll"
-            ><ChevronsDownUp class="h-4 w-4"
+            ><ListChevronsDownUp class="h-4 w-4"
           /></Button>
-          <Tooltip :delay-duration="300">
-            <TooltipTrigger as-child>
-              <span class="inline-flex">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="h-7 w-7"
-                  :disabled="!canGroup"
-                  :aria-label="t('groups.create')"
-                  @click="groupSelected()"
-                  ><Plus class="h-4 w-4"
-                /></Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" class="text-xs" :side-offset="-8">{{
-              t('groups.create')
-            }}</TooltipContent>
-          </Tooltip>
           <Tooltip :delay-duration="300">
             <TooltipTrigger as-child>
               <Button

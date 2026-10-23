@@ -86,6 +86,15 @@ function setup(tree = false) {
   })!
 }
 
+it('keeps explicit list group selection when automatic group expansion is disabled', () => {
+  const { store, group, ids } = setup()
+  store.autoExpandGroupSelection = false
+  group(1)
+  expect(ids()).toEqual(['g1-a', 'g1-b'])
+  group(1, { ctrlKey: true })
+  expect(ids()).toEqual([])
+})
+
 it('replaces, adds, removes and completes a partial group as one unit, including Cmd', () => {
   const { scheme, group, ids, selection } = setup()
   useEditorSelection().updateSelection(['loose'], false)
@@ -302,8 +311,9 @@ it('resets range state after canvas changes, searches, hidden anchors and scheme
   expect(selection.anchor.value).toBeNull()
   group(4, { shiftKey: true })
   expect(ids()).toEqual(['g4'])
+  setGroupNames(scheme, [[6, 'Windows']])
   group(2)
-  query.value = '6'
+  query.value = 'Windows'
   group(6, { shiftKey: true })
   expect(ids()).toEqual(['g6'])
   query.value = ''

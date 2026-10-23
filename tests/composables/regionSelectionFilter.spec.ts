@@ -262,6 +262,18 @@ describe('shared category filtering', () => {
 })
 
 describe('region filter integration', () => {
+  it.each(['box', 'lasso'] as const)(
+    'keeps category filtering with automatic group expansion disabled for %s',
+    (mode) => {
+      const { store, scheme, drag } = setupPointer()
+      store.autoExpandGroupSelection = false
+      store.selectionMode = mode
+      store.selectionCategoryIds = new Set([5000])
+      drag()
+      expect(scheme.selectedItemIds.value).toEqual(new Set(['wall']))
+    }
+  )
+
   it.each(['box', 'lasso'] as const)('filters %s hits and expanded group members', (mode) => {
     const { store, scheme, drag } = setupPointer()
     store.selectionMode = mode

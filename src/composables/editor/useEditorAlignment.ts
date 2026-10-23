@@ -128,41 +128,28 @@ export function useEditorAlignment() {
   /**
    * 按组聚合选中物品，构建对齐单元
    *
-   * 策略：任一成员选中 → 整组参与
-   * - 如果选中的物品属于某个组，将整个组作为一个单元
-   * - 未成组的物品各自独立为一个单元
+   * 完整选中的组作为一个单元；部分选中的组成员和未分组物品各自独立。
+   * 只使用实际选中且可编辑的家具，不扩大操作范围。
    *
    * @param selectedIds 选中的物品ID集合
    * @returns 对齐单元数组
    */
   function buildAlignUnits(selectedIds: Set<string>): AlignUnit[] {
-    const processedGroups = new Set<number>()
+    const selectedGroups = new Map<number, AlignUnit>()
     const units: AlignUnit[] = []
 
     for (const itemId of selectedIds) {
       const item = store.itemsMap.get(itemId)
-      if (!item) continue
+      if (!item || !store.isItemEditable(itemId)) continue
 
       if (item.groupId > 0) {
-        // 有组的物品 → 整组作为一个单元（避免重复处理）
-        if (processedGroups.has(item.groupId)) continue
-        processedGroups.add(item.groupId)
-
-        // 获取组内所有物品（不仅仅是选中的）
-        const groupMemberIds = store.groupsMap.get(item.groupId)
-        if (!groupMemberIds) continue
-
-        const allGroupMembers: AppItem[] = []
-        groupMemberIds.forEach((memberId) => {
-          const member = store.itemsMap.get(memberId)
-          if (member) allGroupMembers.push(member)
-        })
-
-        units.push({
-          type: 'group',
-          groupId: item.groupId,
-          items: allGroupMembers,
-        })
+        let unit = selectedGroups.get(item.groupId)
+        if (!unit) {
+          unit = { type: 'group', groupId: item.groupId, items: [] }
+          selectedGroups.set(item.groupId, unit)
+          units.push(unit)
+        }
+        unit.items.push(item)
       } else {
         // 未成组的独立物品
         units.push({
@@ -173,7 +160,12 @@ export function useEditorAlignment() {
       }
     }
 
-    return units
+    return units.flatMap((unit): AlignUnit[] => {
+      if (unit.groupId === null || unit.items.length === store.groupsMap.get(unit.groupId)?.size) {
+        return [unit]
+      }
+      return unit.items.map((item) => ({ type: 'single', groupId: null, items: [item] }))
+    })
   }
 
   /**
@@ -184,7 +176,7 @@ export function useEditorAlignment() {
    * - Simple-box / Icon 模式：使用中心点进行对齐
    *
    * 支持工作坐标系：当工作坐标系启用时，在工作坐标系下进行对齐
-   * 支持组合：选中的物品如果属于组，整个组作为一个单元参与对齐
+   * 支持组合：完整选中的组作为一个单元参与对齐，部分选中的成员各自对齐
    * 支持参照物：如果设置了参照物，则对齐到参照物而非选区边界
    *
    * @param axis - 对齐轴 ('x' | 'y' | 'z')
@@ -664,7 +656,7 @@ export function useEditorAlignment() {
    * 分布选中物品（沿指定轴均匀分布）
    *
    * 支持工作坐标系：当工作坐标系启用时，在工作坐标系下进行分布
-   * 支持组合：选中的物品如果属于组，整个组作为一个单元参与分布
+   * 支持组合：完整选中的组作为一个单元参与分布，部分选中的成员各自分布
    *
    * @param axis - 分布轴 ('x' | 'y' | 'z')
    */

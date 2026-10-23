@@ -13,6 +13,7 @@ import { useI18n } from '@/composables/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorStore } from '@/stores/editorStore'
+import { Button } from '@/components/ui/button'
 import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
 import {
   PanelBottomClose,
@@ -169,20 +170,22 @@ function handleViewInfoClick() {
   <div
     v-if="editorStore.hiddenItemCount && !uiStore.groupPanelOpen"
     role="status"
-    class="absolute bottom-16 left-4 z-30 flex h-8 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border bg-background/90 px-2.5 text-xs shadow-xs backdrop-blur-sm"
+    class="absolute bottom-18 left-4 z-30 flex h-8 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border bg-background/90 px-2.5 text-xs shadow-xs backdrop-blur-sm"
     @pointerdown.stop
     @pointerup.stop
     @dblclick.stop
   >
     <EyeOff class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
     <span>{{ t('groups.hiddenItemCount', { count: editorStore.hiddenItemCount }) }}</span>
-    <button
+    <Button
       type="button"
-      class="rounded-sm font-medium text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      variant="ghost"
+      size="sm"
+      class="h-6 px-1.5 text-xs"
       @click.stop="editorStore.showAllGroups()"
     >
       {{ t('groups.showAll') }}
-    </button>
+    </Button>
   </div>
   <!-- 右上角状态信息组（禁止选中文本，避免拖拽/点击时误选） -->
   <div class="absolute top-4 right-4 z-30 flex flex-col items-end gap-2 select-none">

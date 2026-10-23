@@ -798,8 +798,11 @@ export const enLocale = {
       collapse: 'Collapse Header Tools',
     },
     noSelection: 'Select items to view details or edit',
+    selectionSettings: 'Selection settings',
+    autoSelectGroup: 'Auto-select whole groups',
+    autoSelectGroupHint: 'Turn off to select furniture within a group without ungrouping.',
     selectionFilter: {
-      title: 'Selection filter',
+      title: 'Selectable categories',
       uncategorized: 'Uncategorized',
       selectAll: 'Select all',
       deselectAll: 'Deselect all',

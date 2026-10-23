@@ -72,6 +72,46 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('group selection actions', () => {
+  it('keeps group expansion as session state without changing selection or history', () => {
+    const { store, scheme, selection } = setup()
+    expect(store.autoExpandGroupSelection).toBe(true)
+    selection.updateSelection(['a'], false)
+    const selected = scheme.selectedItemIds.value
+    const historyLength = scheme.history.value!.selectionUndoStack.length
+    store.autoExpandGroupSelection = false
+    expect(scheme.selectedItemIds.value).toBe(selected)
+    expect(selected).toEqual(new Set(['a', 'b']))
+    expect(scheme.history.value!.selectionUndoStack).toHaveLength(historyLength)
+    store.createScheme('another scheme')
+    expect(store.autoExpandGroupSelection).toBe(false)
+    setActivePinia(createPinia())
+    expect(useEditorStore().autoExpandGroupSelection).toBe(true)
+  })
+
+  it('applies individual selection consistently when automatic expansion is disabled', () => {
+    const { store, scheme, items, selection, history } = setup()
+    store.autoExpandGroupSelection = false
+    // 显式传入 false 也不能覆盖会话开关。
+    selection.toggleSelection('a', false, { skipGroupExpansion: false })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
+    selection.updateSelection(['b', 'c'], true)
+    selection.deselectItems(['b'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'c']))
+    selection.toggleItems(['a', 'b'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b', 'c']))
+    history.undo()
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'c']))
+    history.redo()
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b', 'c']))
+    expect(store.autoExpandGroupSelection).toBe(false)
+    selection.intersectSelection(['a', 'c'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['c']))
+    expect(scheme.items.value).toBe(items)
+    store.autoExpandGroupSelection = true
+    selection.updateSelection(['a'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+  })
+
   it('lets explicit individual actions skip group expansion', () => {
     const { scheme, selection } = setup()
     selection.toggleSelection('a', false, { skipGroupExpansion: true })
@@ -83,6 +123,15 @@ describe('group selection actions', () => {
     selection.selectAll()
     selection.deselectItems(['a'], { skipGroupExpansion: true })
     selection.intersectSelection(['b'], { skipGroupExpansion: true })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
+  })
+
+  it('still excludes hidden and locked furniture when automatic expansion is disabled', () => {
+    const { store, scheme, selection } = setup()
+    store.autoExpandGroupSelection = false
+    store.setGroupHidden(8, true)
+    store.setGroupLocked(0, true)
+    selection.updateSelection(['b', 'c', 'd'], false)
     expect(scheme.selectedItemIds.value).toEqual(new Set(['b']))
   })
 
@@ -275,6 +324,61 @@ describe('selection pointer gestures', () => {
     click(3000)
     expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
   })
+
+  it('uses the session switch for clicks while keeping Ctrl as an individual toggle', () => {
+    const { store, scheme, click } = pointerSetup()
+    store.autoExpandGroupSelection = false
+    click(1000)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a']))
+    keyboard.keys.ctrl.value = true
+    click(2000, { ctrlKey: true })
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    keyboard.keys.ctrl.value = false
+    store.autoExpandGroupSelection = true
+    click(3000)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['a', 'b']))
+  })
+
+  for (const mode of ['box', 'lasso'] as const) {
+    it.each([
+      ['new', ['a']],
+      ['add', ['a', 'c']],
+      ['subtract', ['c']],
+      ['intersect', ['a']],
+      ['toggle', ['c']],
+    ] as const)(`handles ${mode} %s without expanding groups`, (action, expected) => {
+      const { store, scheme, selection, controller, setCandidates } = pointerSetup()
+      selection.updateSelection(['a', 'c'], false, { skipGroupExpansion: true })
+      store.autoExpandGroupSelection = false
+      store.selectionAction = action
+      store.selectionMode = mode
+      setCandidates(['a'])
+      const event = (x: number, y: number) => ({
+        button: 0,
+        buttons: 1,
+        clientX: x,
+        clientY: y,
+        type: 'pointerup',
+        pointerType: 'mouse',
+      })
+      controller.handlePointerDown(event(10, 10))
+      if (mode === 'box') {
+        controller.handlePointerMove(event(90, 90))
+        controller.handlePointerUp(event(90, 90))
+      } else {
+        for (const [x, y] of [
+          [90, 10],
+          [90, 90],
+          [10, 90],
+          [10, 10],
+        ] as const) {
+          controller.handlePointerMove(event(x, y))
+        }
+        controller.handlePointerUp(event(20, 20))
+      }
+      expect(scheme.selectedItemIds.value).toEqual(new Set(expected))
+    })
+  }
 
   it('expands a box hit to all selectable group members', () => {
     const { store, scheme, selection, controller, setCandidates } = pointerSetup()

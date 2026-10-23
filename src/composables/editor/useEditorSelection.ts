@@ -21,6 +21,10 @@ export function useEditorSelection() {
   const { recordSelectionChange } = useEditorHistory()
   const { isItemSelectable } = useSelectionFilter()
 
+  function shouldExpandGroups(options?: SelectionOptions): boolean {
+    return store.autoExpandGroupSelection && !options?.skipGroupExpansion
+  }
+
   /**
    * 将实际命中的家具解析成操作目标：过滤不可编辑项，必要时补入同组成员。
    * 命中项和补入成员都必须可编辑且满足本次过滤条件，过滤不存在的 ID。
@@ -31,7 +35,7 @@ export function useEditorSelection() {
     options?: SelectionOptions
   ): Set<string> {
     const targets = new Set([...itemIds].filter((id) => isSelectionTarget(id, options)))
-    if (options?.skipGroupExpansion) return targets
+    if (!shouldExpandGroups(options)) return targets
     const groups = new Set<number>()
     for (const id of targets) {
       const groupId = itemsMap.value.get(id)!.groupId
@@ -98,11 +102,11 @@ export function useEditorSelection() {
     const targets = resolveSelectionTargets(hits, options)
     if (targets.size === 0) return
     const units = new Map<number | string, Set<string>>()
-    const skipGroups = options?.skipGroupExpansion
+    const expandGroups = shouldExpandGroups(options)
     for (const id of targets) {
       const groupId = itemsMap.value.get(id)!.groupId
       // 按组时用数字组 ID 归并，否则用字符串家具 ID；不同键类型不会相互冲突。
-      const key = !skipGroups && groupId > 0 ? groupId : id
+      const key = expandGroups && groupId > 0 ? groupId : id
       let unit = units.get(key)
       if (!unit) {
         unit = new Set()

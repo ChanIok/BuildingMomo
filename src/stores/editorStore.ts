@@ -100,6 +100,8 @@ export const useEditorStore = defineStore('editor', () => {
   const selectionMode = ref<'box' | 'lasso'>('box')
   // 选择行为：新选区/加选/减选/交叉/切换
   const selectionAction = ref<'new' | 'add' | 'subtract' | 'intersect' | 'toggle'>('new')
+  // 会话级选择行为：仅影响后续选择，不改变分组、当前选区或历史。
+  const autoExpandGroupSelection = ref(true)
   // 会话级选择过滤：null 允许全部类别，空 Set 不允许任何类别；不随方案持久化。
   const selectionCategoryIds = shallowRef<ReadonlySet<SelectionCategoryId> | null>(null)
   // Gizmo 模式：平移/旋转/缩放/不显示
@@ -1128,6 +1130,7 @@ export const useEditorStore = defineStore('editor', () => {
     currentTool,
     selectionMode,
     selectionAction,
+    autoExpandGroupSelection,
     selectionCategoryIds,
     gizmoMode,
     setGizmoMode,

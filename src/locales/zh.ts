@@ -23,7 +23,7 @@ export const zhLocale = {
 
     title: '组',
     defaultName: '组 {id}',
-    search: '搜索集合、组名或编号',
+    search: '搜索集合或组名',
     create: '将选中家具成组',
     close: '收起组面板',
     toggle: '展开或收起组面板',
@@ -781,8 +781,11 @@ export const zhLocale = {
       collapse: '收起顶部工具',
     },
     noSelection: '请选择物品查看详情或进行操作',
+    selectionSettings: '选择设置',
+    autoSelectGroup: '自动选择整组',
+    autoSelectGroupHint: '关闭后，可直接选择组内家具，保留原分组。',
     selectionFilter: {
-      title: '选择过滤',
+      title: '可选类别',
       uncategorized: '未分类',
       selectAll: '全选',
       deselectAll: '取消全选',
