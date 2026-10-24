@@ -27,7 +27,7 @@ const emit = defineEmits<{
 const store = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { groupInto } = useEditorGroups()
+const { groupInto, canGroupSelection } = useEditorGroups()
 
 // 唯一候选组已在上层静默合并，因此这里至少涉及两个组，默认落在“新建组”。
 const NEW_GROUP = 'new'
@@ -59,22 +59,36 @@ const options = computed(() => {
   })
 })
 
+const canSubmit = computed(
+  () =>
+    !!uiStore.groupMergeTarget &&
+    canGroupSelection(uiStore.groupMergeTarget) &&
+    (target.value === NEW_GROUP || options.value.some((option) => option.id === target.value))
+)
+
 watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) target.value = NEW_GROUP
+    else {
+      uiStore.groupMergeTarget = null
+      uiStore.groupMergeCandidates = []
+    }
   }
 )
+
+watch(() => store.activeSchemeId, close)
 
 function close() {
   emit('update:open', false)
 }
 
 function submit() {
+  const scope = uiStore.groupMergeTarget
+  if (!scope || !canSubmit.value) return
   const targetId = target.value === NEW_GROUP ? null : Number(target.value)
   close()
-  // 目标组可能已被远端删除，groupInto 会自行放弃。
-  groupInto(targetId)
+  groupInto(targetId, scope)
 }
 </script>
 
@@ -133,7 +147,7 @@ function submit() {
 
       <DialogFooter>
         <Button variant="outline" @click="close">{{ t('common.cancel') }}</Button>
-        <Button @click="submit">{{ t('common.confirm') }}</Button>
+        <Button :disabled="!canSubmit" @click="submit">{{ t('common.confirm') }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

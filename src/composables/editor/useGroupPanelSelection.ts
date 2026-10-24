@@ -17,7 +17,7 @@ export function useGroupPanelSelection(
   query: Ref<string>
 ) {
   const store = useEditorStore()
-  const { updateSelection, resolveSelectionTargets } = useEditorSelection()
+  const { updateSelection, resolveSelectionTargets, clearSelection } = useEditorSelection()
   const anchor = shallowRef<CollectionEntry | null>(null)
   const indices = computed(() => new Map(rows.value.map((row, index) => [groupRowKey(row), index])))
   // 目录选择只记录节点，不另存一份家具选择。
@@ -61,6 +61,11 @@ export function useGroupPanelSelection(
     explicit.value = null
     carried = new Set()
     reset()
+  }
+  function clear() {
+    // 空集合、受保护组和画布额外选区都要清除；已为空时不新增选择历史。
+    followCanvas()
+    if (store.activeScheme?.selectedItemIds.value.size) clearSelection()
   }
   function targetsFor(nodes: Iterable<CollectionEntry>) {
     const items = new Set<string>()
@@ -208,5 +213,15 @@ export function useGroupPanelSelection(
     { flush: 'sync' }
   )
 
-  return { select, deselect, selectionState, selectionCoverage, isSelected, entries, reset, anchor }
+  return {
+    select,
+    deselect,
+    clear,
+    selectionState,
+    selectionCoverage,
+    isSelected,
+    entries,
+    reset,
+    anchor,
+  }
 }

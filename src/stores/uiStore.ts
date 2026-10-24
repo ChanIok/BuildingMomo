@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import type { WorkingCoordinateSystem } from '../types/editor'
+import type { GroupEditTarget, WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
 import {
   convertPositionWorkingToGlobal,
@@ -42,9 +42,10 @@ export const useUIStore = defineStore('ui', () => {
   // 结构面板 hover 的物品类型（gameId），用于联动画布高亮
   const sidebarHoveredGameId = ref<number | null>(null)
   const groupPanelOpen = ref(false)
-  // 成组合并的目标选择：候选 ID 在打开时快照，避免列表跟随选区抖动。
+  // 成组合并时同时快照候选组、操作范围和方案，确认时不读取另一个选区。
   const groupMergeOpen = ref(false)
   const groupMergeCandidates = shallowRef<readonly number[]>([])
+  const groupMergeTarget = shallowRef<GroupEditTarget | null>(null)
 
   // Three.js 容器的布局信息（用于性能优化，避免频繁调用 getBoundingClientRect）
   const editorContainerRect = ref<{ left: number; top: number; width: number; height: number }>({
@@ -431,6 +432,7 @@ export const useUIStore = defineStore('ui', () => {
     groupPanelOpen,
     groupMergeOpen,
     groupMergeCandidates,
+    groupMergeTarget,
     customPivotEnabled,
     customPivotPosition,
     isSelectingGroupOrigin,

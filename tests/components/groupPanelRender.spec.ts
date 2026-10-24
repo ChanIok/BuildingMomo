@@ -552,6 +552,7 @@ it('navigates beyond the mounted slice and keeps rename, drag and menu rows aliv
       )
       handlers = GroupPanel.setup({}, { expose: () => {} })
       handlers.list.value = {
+        focus: vi.fn(),
         contains: () => true,
         querySelector: (selector: string) =>
           selector === 'input' ? { focus: inputFocus, select } : viewport,
@@ -610,8 +611,10 @@ it('navigates beyond the mounted slice and keeps rename, drag and menu rows aliv
     const blank = menuEvent()
     handlers.prepareMenu(blank)
     handlers.setMenuOpen(true)
-    expect(blank.preventDefault).toHaveBeenCalledOnce()
-    expect(handlers.openMenu.value).toBeNull()
+    expect(blank.preventDefault).not.toHaveBeenCalled()
+    expect(handlers.openMenu.value).toBe('background')
+    expect(useEditorStore().activeScheme!.selectedItemIds.value.size).toBe(0)
+    handlers.setMenuOpen(false)
     vi.stubGlobal(
       'MouseEvent',
       class {
@@ -647,7 +650,7 @@ it('navigates beyond the mounted slice and keeps rename, drag and menu rows aliv
     await nextTick()
     expect(handlers.focused.value).toEqual({ kind: 'collection', id: 'house' })
     expect(handlers.rows.value).toHaveLength(1)
-    expect(store.activeScheme!.selectedItemIds.value).toEqual(new Set(['item-0']))
+    expect(store.activeScheme!.selectedItemIds.value.size).toBe(0)
   } finally {
     app.unmount()
   }
@@ -861,6 +864,295 @@ it('keeps list selections in place and applies keyboard modifiers from a focused
     app.unmount()
   }
 })
+
+it('routes protected panel nodes through the merge dialog without changing its captured scope or stealing focus', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+  const { default: GroupPanel } = await server.ssrLoadModule('/src/components/GroupPanel.vue')
+  const { default: GroupMergeDialog } = await server.ssrLoadModule(
+    '/src/components/GroupMergeDialog.vue'
+  )
+  const { useEditorStore } = await server.ssrLoadModule('/src/stores/editorStore.ts')
+  const { useUIStore } = await server.ssrLoadModule('/src/stores/uiStore.ts')
+  const { useEditorSelection } = await server.ssrLoadModule(
+    '/src/composables/editor/useEditorSelection.ts'
+  )
+  const { useEditorHistory } = await server.ssrLoadModule(
+    '/src/composables/editor/useEditorHistory.ts'
+  )
+  let panel: any, dialog: any, scheme: any
+  const props = shallowReactive({ open: false })
+  const focus = vi.fn()
+  const viewport = {
+    scrollTop: 0,
+    scrollTo: vi.fn(),
+    querySelectorAll: () =>
+      panel.rows.value.map((row: any) => ({
+        dataset: { rowKey: panel.keyOf(row) },
+        focus,
+      })),
+  }
+  const { createApp } = createRenderer<object, object>({
+    createElement: () => ({}),
+    createText: () => ({}),
+    createComment: () => ({}),
+    insert: () => {},
+    remove: () => {},
+    setText: () => {},
+    setElementText: () => {},
+    parentNode: () => null,
+    nextSibling: () => null,
+    patchProp: () => {},
+  })
+  const app = createApp({
+    setup() {
+      const store = useEditorStore(),
+        ui = useUIStore()
+      store.createScheme('panel merge integration')
+      scheme = store.activeScheme!
+      scheme.items.value = [1, 2, 3].map((groupId) =>
+        makeAppItem({ internalId: `item-${groupId}`, groupId })
+      )
+      scheme.maxGroupId.value = 3
+      scheme.collectionTree.value = {
+        nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
+        groups: [1, 2].map((groupId) => ({ groupId, collectionId: 'house', order: groupId })),
+      }
+      store.setGroupHidden(1, true)
+      store.setGroupLocked(2, true)
+      ui.groupPanelOpen = true
+      panel = GroupPanel.setup({}, { expose: () => {} })
+      panel.list.value = { contains: () => true, querySelector: () => viewport }
+      watch(
+        () => ui.groupMergeOpen,
+        (open) => {
+          props.open = open
+        }
+      )
+      dialog = GroupMergeDialog.setup(props, {
+        expose: () => {},
+        emit: (_event: string, open: boolean) => {
+          ui.groupMergeOpen = open
+        },
+      })
+      return () => h('div')
+    },
+  })
+  app.use(createPinia())
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  const menu = (key: string) => ({
+    target: { closest: () => ({ dataset: { rowKey: key } }) },
+    preventDefault: vi.fn(),
+  })
+  try {
+    await nextTick()
+    const house = panel.rows.value[0]
+    panel.activate(house, { ctrlKey: false, metaKey: false, shiftKey: false })
+    panel.prepareMenu(menu('collection:house'))
+    panel.setMenuOpen(true)
+    expect(panel.singleMenuEntry.value).toBe(true)
+    expect(panel.menuGroupTarget.value.groupIds).toEqual([1, 2])
+    expect(panel.canGroupSelection(panel.menuGroupTarget.value)).toBe(true)
+    expect(panel.canUngroupSelection(panel.menuGroupTarget.value)).toBe(true)
+    panel.requestGroup(panel.menuGroupTarget.value)
+    panel.setMenuOpen(false)
+    panel.restoreMenuFocus({ preventDefault: vi.fn() })
+    await nextTick()
+    expect(focus).not.toHaveBeenCalled()
+    expect(props.open).toBe(true)
+    dialog.target.value = '2'
+    useEditorSelection().updateSelection(['item-3'], false)
+    await nextTick()
+    expect(dialog.canSubmit.value).toBe(true)
+    dialog.submit()
+    await nextTick()
+    expect(scheme.items.value.map((item: any) => item.groupId)).toEqual([2, 2, 3])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-3']))
+    expect(useUIStore().groupMergeTarget).toBeNull()
+    expect(props.open).toBe(false)
+    useEditorHistory().undo()
+    panel.prepareMenu(menu('collection:house'))
+    panel.setMenuOpen(true)
+    panel.ungroupSelected(panel.menuGroupTarget.value)
+    expect(scheme.items.value.map((item: any) => item.groupId)).toEqual([0, 0, 3])
+    useEditorHistory().undo()
+    panel.prepareMenu(menu('collection:house'))
+    panel.requestGroup(panel.menuGroupTarget.value)
+    await nextTick()
+    useEditorStore().createScheme('different scheme')
+    await nextTick()
+    expect(props.open).toBe(false)
+    expect(useUIStore().groupMergeTarget).toBeNull()
+  } finally {
+    app.unmount()
+  }
+})
+
+it('clears background selections and creates a top-level collection without treating controls as blank space', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+  const { default: GroupPanel } = await server.ssrLoadModule('/src/components/GroupPanel.vue')
+  const { useEditorStore } = await server.ssrLoadModule('/src/stores/editorStore.ts')
+  const { useUIStore } = await server.ssrLoadModule('/src/stores/uiStore.ts')
+  const { useEditorHistory } = await server.ssrLoadModule(
+    '/src/composables/editor/useEditorHistory.ts'
+  )
+  let panel: any, scheme: any
+  const focus = vi.fn(),
+    inputFocus = vi.fn(),
+    selectText = vi.fn()
+  const outside = { closest: () => null }
+  const viewport = { scrollTop: 0, scrollTo: vi.fn(), querySelectorAll: () => [] }
+  const { createApp } = createRenderer<object, object>({
+    createElement: () => ({}),
+    createText: () => ({}),
+    createComment: () => ({}),
+    insert: () => {},
+    remove: () => {},
+    setText: () => {},
+    setElementText: () => {},
+    parentNode: () => null,
+    nextSibling: () => null,
+    patchProp: () => {},
+  })
+  const app = createApp({
+    setup() {
+      const store = useEditorStore()
+      store.createScheme('background interaction')
+      scheme = store.activeScheme!
+      scheme.items.value = [0, 1, 2, 3].map((groupId) =>
+        makeAppItem({ internalId: `item-${groupId}`, groupId })
+      )
+      scheme.collectionTree.value = {
+        nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
+        groups: [1, 2].map((groupId) => ({ groupId, collectionId: 'house', order: groupId })),
+      }
+      store.setGroupHidden(1, true)
+      store.setGroupLocked(2, true)
+      useUIStore().groupPanelOpen = true
+      panel = GroupPanel.setup({}, { expose: () => {} })
+      panel.list.value = {
+        focus,
+        contains: (target: unknown) => target !== outside,
+        querySelector: (selector: string) =>
+          selector === 'input' ? { focus: inputFocus, select: selectText } : viewport,
+      }
+      return () => h('div')
+    },
+  })
+  app.use(createPinia())
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  const mouse = { ctrlKey: false, metaKey: false, shiftKey: false }
+  const event = (target: object, button = 0) => ({ target, button, preventDefault: vi.fn() })
+  const blank = { closest: () => null }
+  const row = (id: number) =>
+    panel.rows.value.find((entry: any) => entry.kind === 'group' && entry.id === id)
+  try {
+    await nextTick()
+    const house = panel.rows.value[0]
+    panel.activate(house, mouse)
+    panel.activate(row(3), { ...mouse, ctrlKey: true })
+    const items = scheme.items.value,
+      tree = scheme.collectionTree.value
+    const hidden = scheme.hiddenGroupIds.value,
+      locked = scheme.lockedGroupIds.value
+    const collapsed = scheme.collapsedCollectionIds.value
+    const count = scheme.history.value.selectionUndoStack.length
+    for (const selector of [
+      '[data-row-key]',
+      'button',
+      'input',
+      '[data-slot="scroll-area-scrollbar"]',
+    ]) {
+      const control = { closest: (query: string) => (query.includes(selector) ? {} : null) }
+      panel.clickBackground(event(control))
+      expect(scheme.selectedItemIds.value).toEqual(new Set(['item-3']))
+    }
+    panel.clickBackground(event(outside))
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-3']))
+    panel.clickBackground(event(blank))
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    expect(panel.selectedEntries.value).toEqual([])
+    expect(scheme.activeGroupId.value).toBeNull()
+    expect(scheme.activeCollectionId.value).toBeNull()
+    expect(panel.focused.value).toBeNull()
+    expect(scheme.history.value.selectionUndoStack).toHaveLength(count + 1)
+    panel.clickBackground(event(blank))
+    expect(scheme.history.value.selectionUndoStack).toHaveLength(count + 1)
+    expect(scheme.hiddenGroupIds.value).toBe(hidden)
+    expect(scheme.lockedGroupIds.value).toBe(locked)
+    expect(scheme.collapsedCollectionIds.value).toBe(collapsed)
+
+    panel.activate(row(3), mouse)
+    panel.menuPointerDown({ ...event(blank), pointerType: 'touch' })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-3']))
+    panel.setMenuOpen(true)
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    panel.setMenuOpen(false)
+    panel.activate(house, mouse)
+    panel.activate(row(3), { ...mouse, ctrlKey: true })
+    panel.activate(panel.rows.value.at(-1), { ...mouse, ctrlKey: true })
+    panel.query.value = 'no matching rows'
+    const rightClick = event(blank, 2)
+    panel.prepareMenu(rightClick)
+    panel.setMenuOpen(true)
+    await nextTick()
+    expect(rightClick.preventDefault).not.toHaveBeenCalled()
+    expect(panel.openMenu.value).toBe('background')
+    expect(panel.menuRow.value).toBeUndefined()
+    expect(panel.menuEntries.value).toEqual([])
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    await panel.addCollection()
+    panel.setMenuOpen(false)
+    const created = scheme.collectionTree.value.nodes.find((node: any) => node.id !== 'house')
+    expect(created.parentId).toBeNull()
+    expect(panel.editing.value).toEqual({ kind: 'collection', id: created.id })
+    expect(panel.query.value).toBe('')
+    expect(inputFocus).toHaveBeenCalledOnce()
+    expect(selectText).toHaveBeenCalledOnce()
+    expect(scheme.items.value).toBe(items)
+    expect(scheme.collectionTree.value.groups).toEqual(tree.groups)
+    const focusCount = focus.mock.calls.length
+    panel.restoreMenuFocus({ preventDefault: vi.fn() })
+    expect(focus).toHaveBeenCalledTimes(focusCount)
+    panel.rowActions.cancelRename()
+    useEditorHistory().undo()
+    expect(scheme.collectionTree.value).toEqual(tree)
+  } finally {
+    app.unmount()
+  }
+})
+
+it.each([false, true])(
+  'keeps the whole list as a context-menu trigger with no rows (search: %s)',
+  async (searching) => {
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+    const { default: GroupPanel } = await server.ssrLoadModule('/src/components/GroupPanel.vue')
+    const { useEditorStore } = await server.ssrLoadModule('/src/stores/editorStore.ts')
+    const Panel = {
+      ...GroupPanel,
+      setup(props: object, context: object) {
+        const bindings = GroupPanel.setup(props, context)
+        if (searching) bindings.query.value = 'no matching rows'
+        return bindings
+      },
+    }
+    const app = createSSRApp({
+      setup() {
+        const store = useEditorStore()
+        store.createScheme('empty list trigger')
+        if (searching) store.activeScheme!.items.value = [makeAppItem({ groupId: 7 })]
+        return () => h(Panel)
+      },
+    })
+    app.use(createPinia())
+    const html = await renderToString(app)
+    const trigger = html.match(/<div\b[^>]*data-slot="context-menu-trigger"[^>]*>/)?.[0]
+    expect(trigger).toContain('flex-1')
+    expect(trigger).toContain('tabindex="-1"')
+    expect(html).toContain(searching ? '没有匹配的组' : '还没有组')
+  }
+)
 
 it('renders working visibility and lock controls for unclassified and ungrouped rows', async () => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })

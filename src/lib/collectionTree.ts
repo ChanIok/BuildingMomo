@@ -186,7 +186,7 @@ export function collectionAncestors(
   return result
 }
 
-/** 文档元数据与个人工作状态共用同一份组 ID 映射。 */
+/** 只有一对一重新编号才迁移组身份；合并不能把源组的个人状态带到目标组。 */
 export function getGroupChanges(
   previous: readonly { internalId: string; groupId: number }[],
   next: readonly { internalId: string; groupId: number }[]
@@ -194,16 +194,26 @@ export function getGroupChanges(
   const live = new Set(next.map((item) => item.groupId))
   const nextById = new Map(next.map((item) => [item.internalId, item.groupId]))
   const destinations = new Map<number, Set<number>>()
+  const sources = new Map<number, Set<number>>()
   for (const item of previous) {
     const to = nextById.get(item.internalId)
     if (item.groupId <= 0 || to === undefined) continue
     if (!destinations.has(item.groupId)) destinations.set(item.groupId, new Set())
     destinations.get(item.groupId)!.add(to)
+    if (!sources.has(to)) sources.set(to, new Set())
+    sources.get(to)!.add(item.groupId)
   }
   const remap = new Map<number, number>()
   for (const [from, targets] of destinations) {
     const to = [...targets][0]!
-    if (targets.size === 1 && to > 0 && to !== from) remap.set(from, to)
+    if (
+      targets.size === 1 &&
+      to > 0 &&
+      to !== from &&
+      !destinations.has(to) &&
+      sources.get(to)?.size === 1
+    )
+      remap.set(from, to)
   }
   return { live, remap }
 }

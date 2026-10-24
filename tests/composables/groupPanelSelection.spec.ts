@@ -95,6 +95,61 @@ it('keeps explicit list group selection when automatic group expansion is disabl
   expect(ids()).toEqual([])
 })
 
+it('clears panel nodes and carried canvas selection once, preserving data and resetting ranges', () => {
+  const { store, scheme, group, collection, selection, ids, history } = setup(true)
+  store.setGroupLocked(2, true)
+  store.setGroupHidden(3, true)
+  useEditorSelection().updateSelection(['loose'], false)
+  collection('a', { ctrlKey: true })
+  collection('b', { ctrlKey: true })
+  collection('empty', { ctrlKey: true })
+  const before = ids()
+  const count = scheme.history.value!.selectionUndoStack.length
+  const items = scheme.items.value,
+    tree = scheme.collectionTree.value
+  const hidden = scheme.hiddenGroupIds.value,
+    locked = scheme.lockedGroupIds.value
+  const collapsed = scheme.collapsedCollectionIds.value,
+    version = store.sceneVersion
+  selection.clear()
+  expect(ids()).toEqual([])
+  expect(selection.entries.value).toEqual([])
+  expect(selection.anchor.value).toBeNull()
+  expect(scheme.history.value!.selectionUndoStack).toHaveLength(count + 1)
+  selection.clear()
+  expect(scheme.history.value!.selectionUndoStack).toHaveLength(count + 1)
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(0)
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.collectionTree.value).toBe(tree)
+  expect(scheme.hiddenGroupIds.value).toBe(hidden)
+  expect(scheme.lockedGroupIds.value).toBe(locked)
+  expect(scheme.collapsedCollectionIds.value).toBe(collapsed)
+  expect(store.sceneVersion).toBe(version)
+  history.undo()
+  expect(ids()).toEqual(before)
+  history.redo()
+  expect(ids()).toEqual([])
+  group(4, { shiftKey: true })
+  group(5, { ctrlKey: true })
+  expect(ids()).toEqual(['g4', 'g5'])
+})
+
+it('clears empty and protected nodes even when the canvas selection is already empty', () => {
+  const { store, scheme, group, collection, selection, ids } = setup(true)
+  store.setGroupHidden(1, true)
+  store.setGroupLocked(2, true)
+  group(1)
+  group(2, { ctrlKey: true })
+  collection('empty', { ctrlKey: true })
+  expect(ids()).toEqual([])
+  expect(selection.entries.value).toHaveLength(3)
+  const count = scheme.history.value?.selectionUndoStack.length ?? 0
+  selection.clear()
+  expect(selection.entries.value).toEqual([])
+  expect(selection.anchor.value).toBeNull()
+  expect(scheme.history.value?.selectionUndoStack.length ?? 0).toBe(count)
+})
+
 it('replaces, adds, removes and completes a partial group as one unit, including Cmd', () => {
   const { scheme, group, ids, selection } = setup()
   useEditorSelection().updateSelection(['loose'], false)

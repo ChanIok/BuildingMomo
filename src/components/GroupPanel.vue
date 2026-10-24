@@ -5,6 +5,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
+import type { GroupEditTarget } from '@/types/editor'
 import { useGroupPanel } from '@/composables/editor/useGroupPanel'
 import {
   useCollectionPanel,
@@ -35,7 +36,7 @@ const store = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
 const { groups, ungrouped, renameGroup, canRenameGroup } = useGroupPanel()
-const { canGroupSelection, requestGroup } = useEditorGroups()
+const { canGroupSelection, canUngroupSelection, requestGroup, ungroupSelected } = useEditorGroups()
 const query = ref('')
 const {
   rows,
@@ -56,6 +57,7 @@ const {
 const {
   select,
   deselect,
+  clear: clearSelection,
   selectionState,
   selectionCoverage,
   isSelected,
@@ -76,20 +78,34 @@ const draft = ref('')
 const list = ref<HTMLElement | null>(null)
 const viewport = shallowRef<HTMLElement | null>(null)
 const focused = ref<CollectionEntry | null>(null)
-const openMenu = ref<CollectionEntry | null>(null)
-const menuTarget = ref<CollectionEntry | null>(null)
+type MenuTarget = CollectionEntry | 'background'
+const openMenu = ref<MenuTarget | null>(null)
+const menuTarget = ref<MenuTarget | null>(null)
 let menuInteractedOutside = false
-const pinnedEntries = computed(() => [editing.value, dragged.value, focused.value, openMenu.value])
+const pinnedEntries = computed(() => [
+  editing.value,
+  dragged.value,
+  focused.value,
+  openMenu.value === 'background' ? null : openMenu.value,
+])
 const { virtualRows, totalHeight, indexByKey, scrollToEntry, elementFor } = useGroupVirtualList(
   rows,
   viewport,
   pinnedEntries
 )
 const menuRow = computed(() => {
-  const index = menuTarget.value ? indexByKey.value.get(keyOf(menuTarget.value)) : undefined
+  const index =
+    menuTarget.value && menuTarget.value !== 'background'
+      ? indexByKey.value.get(keyOf(menuTarget.value))
+      : undefined
   return index === undefined ? undefined : rows.value[index]
 })
 const menuEntries = computed(() => (menuRow.value ? selectedEntries.value : []))
+const menuGroupTarget = computed<GroupEditTarget>(() => ({
+  kind: 'groups',
+  schemeId: store.activeScheme?.id ?? '',
+  groupIds: [...new Set(menuEntries.value.flatMap(groupsForEntry))],
+}))
 const singleMenuEntry = computed(() => menuEntries.value.length === 1)
 const menuDestinations = computed(() =>
   destinations.value.filter((entry) => canMoveMany(menuEntries.value, entry.id))
@@ -315,18 +331,49 @@ function rowFocusOut(event: FocusEvent) {
   if (!list.value?.contains(event.relatedTarget as Node | null)) focused.value = null
 }
 
+function isBackgroundTarget(event: MouseEvent | PointerEvent) {
+  const target = event.target as Element | null
+  return !!(
+    target &&
+    list.value?.contains(target) &&
+    !target.closest('[data-row-key], button, input, [data-slot="scroll-area-scrollbar"]')
+  )
+}
+
+function clearPanelSelection() {
+  clearSelection()
+  const scheme = store.activeScheme
+  if (scheme) {
+    scheme.activeGroupId.value = null
+    scheme.activeCollectionId.value = null
+  }
+  focused.value = null
+  panelSelectionVersion = store.selectionVersion
+  list.value?.focus({ preventScroll: true })
+}
+
+function clickBackground(event: MouseEvent) {
+  if (event.button === 0 && isBackgroundTarget(event)) clearPanelSelection()
+}
+
 function prepareMenu(event: MouseEvent | PointerEvent, selectTarget = true) {
   const element = (event.target as Element | null)?.closest<HTMLElement>('[data-row-key]')
   const index =
     element && list.value?.contains(element)
       ? indexByKey.value.get(element.dataset.rowKey!)
       : undefined
-  menuTarget.value = index === undefined ? null : entryOf(rows.value[index]!)
+  if (!element && isBackgroundTarget(event)) {
+    menuTarget.value = 'background'
+    if (selectTarget) clearPanelSelection()
+  } else menuTarget.value = index === undefined ? null : entryOf(rows.value[index]!)
   if (!menuTarget.value) event.preventDefault()
-  else if (selectTarget && !isSelected(menuTarget.value))
+  else if (menuTarget.value !== 'background' && selectTarget && !isSelected(menuTarget.value))
     activate(rows.value[index!]!, { ctrlKey: false, metaKey: false, shiftKey: false })
   // 未分组项不支持目录操作，混合多选时也一样。
-  if (selectedEntries.value.some((entry) => entry.kind === 'ungrouped')) {
+  if (
+    menuTarget.value !== 'background' &&
+    selectedEntries.value.some((entry) => entry.kind === 'ungrouped')
+  ) {
     menuTarget.value = null
     event.preventDefault()
   }
@@ -353,23 +400,32 @@ function moveMenuEntries(parentId: string | null) {
 }
 
 function setMenuOpen(open: boolean) {
+  if (open && menuTarget.value === 'background') clearPanelSelection()
   if (open && menuRow.value && !isSelected(menuRow.value))
     activate(menuRow.value, { ctrlKey: false, metaKey: false, shiftKey: false })
   if (open) menuInteractedOutside = false
-  openMenu.value = open && menuRow.value ? entryOf(menuRow.value) : null
+  openMenu.value = open
+    ? menuTarget.value === 'background'
+      ? 'background'
+      : menuRow.value
+        ? entryOf(menuRow.value)
+        : null
+    : null
 }
 
 function restoreMenuFocus(event: Event) {
-  // 菜单触发器由整棵树共享，关闭后焦点应回到操作行。
+  // 行菜单回到操作行，空白菜单回到列表；创建后的改名输入不抢焦点。
   event.preventDefault()
   if (
     !menuInteractedOutside &&
     !editing.value &&
+    !uiStore.groupMergeOpen &&
     uiStore.groupPanelOpen &&
-    menuTarget.value &&
-    indexByKey.value.has(keyOf(menuTarget.value))
-  )
-    void focusEntry(menuTarget.value)
+    menuTarget.value
+  ) {
+    if (menuTarget.value === 'background') list.value?.focus({ preventScroll: true })
+    else if (indexByKey.value.has(keyOf(menuTarget.value))) void focusEntry(menuTarget.value)
+  }
 }
 
 function treeKey(event: KeyboardEvent, row: CollectionRow) {
@@ -434,7 +490,12 @@ function treeKey(event: KeyboardEvent, row: CollectionRow) {
 }
 
 watch(rows, (current, previous) => {
-  if (openMenu.value && !indexByKey.value.has(keyOf(openMenu.value))) openMenu.value = null
+  if (
+    openMenu.value &&
+    openMenu.value !== 'background' &&
+    !indexByKey.value.has(keyOf(openMenu.value))
+  )
+    openMenu.value = null
   if (!focused.value || indexByKey.value.has(keyOf(focused.value))) return
   let row = previous.find((entry) => keyOf(entry) === keyOf(focused.value!))
   while (row?.parentId) {
@@ -652,49 +713,56 @@ watch(
       >
         {{ t('groups.syncUnavailable') }}
       </p>
-      <div
-        ref="list"
-        class="flex min-h-0 flex-1 flex-col"
-        @mouseenter="pointerInside = true"
-        @mouseleave="pointerInside = false"
-        @dragover="setDropTarget(null)"
-      >
-        <ScrollArea
-          class="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain"
-          @scroll.capture="dismissMenu()"
-        >
-          <div class="pr-3 pb-2 pl-2">
-            <div
-              v-if="
-                groups.length === 0 &&
-                !ungrouped &&
-                !store.activeScheme?.collectionTree.value.nodes.length
-              "
-              class="flex flex-col items-center gap-3 px-5 pt-12 text-center"
+      <ContextMenu :open="!!openMenu" :modal="false" @update:open="setMenuOpen">
+        <ContextMenuTrigger as-child>
+          <div
+            ref="list"
+            tabindex="-1"
+            class="flex min-h-0 flex-1 flex-col"
+            @mouseenter="pointerInside = true"
+            @mouseleave="pointerInside = false"
+            @dragover="setDropTarget(null)"
+            @click="clickBackground"
+            @contextmenu.capture="prepareMenu"
+            @pointerdown.capture="menuPointerDown"
+          >
+            <ScrollArea
+              class="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain"
+              @scroll.capture="dismissMenu()"
             >
-              <Layers class="h-8 w-8 text-muted-foreground/40" />
-              <p class="text-sm font-medium">{{ t('groups.empty') }}</p>
-              <p class="text-xs leading-5 text-muted-foreground">{{ t('groups.emptyHint') }}</p>
-              <Button size="sm" variant="outline" :disabled="!canGroup" @click="requestGroup()">{{
-                t('groups.create')
-              }}</Button>
-            </div>
-            <p
-              v-else-if="rows.length === 0"
-              class="px-3 pt-8 text-center text-xs text-muted-foreground"
-            >
-              {{ t('groups.noResults') }}
-            </p>
-            <ContextMenu v-else :open="!!openMenu" :modal="false" @update:open="setMenuOpen">
-              <ContextMenuTrigger as-child>
+              <div class="pr-3 pb-2 pl-2">
+                <div
+                  v-if="
+                    groups.length === 0 &&
+                    !ungrouped &&
+                    !store.activeScheme?.collectionTree.value.nodes.length
+                  "
+                  class="flex flex-col items-center gap-3 px-5 pt-12 text-center"
+                >
+                  <Layers class="h-8 w-8 text-muted-foreground/40" />
+                  <p class="text-sm font-medium">{{ t('groups.empty') }}</p>
+                  <p class="text-xs leading-5 text-muted-foreground">{{ t('groups.emptyHint') }}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    :disabled="!canGroup"
+                    @click="requestGroup()"
+                    >{{ t('groups.create') }}</Button
+                  >
+                </div>
+                <p
+                  v-else-if="rows.length === 0"
+                  class="px-3 pt-8 text-center text-xs text-muted-foreground"
+                >
+                  {{ t('groups.noResults') }}
+                </p>
                 <ul
+                  v-else
                   role="tree"
                   aria-multiselectable="true"
                   class="relative select-none"
                   :aria-label="t('groups.title')"
                   :style="{ height: `${totalHeight}px` }"
-                  @contextmenu.capture="prepareMenu"
-                  @pointerdown.capture="menuPointerDown"
                 >
                   <GroupPanelRow
                     v-for="{ row, offset } in virtualRows"
@@ -703,75 +771,91 @@ watch(
                     :offset="offset"
                   />
                 </ul>
-              </ContextMenuTrigger>
-              <ContextMenuContent
-                @close-auto-focus="restoreMenuFocus"
-                @interact-outside="menuInteractedOutside = true"
-              >
-                <template v-if="menuRow">
-                  <ContextMenuLabel v-if="!singleMenuEntry">{{
-                    t('groups.selectedNodes', { count: menuEntries.length })
-                  }}</ContextMenuLabel>
-                  <template
-                    v-if="singleMenuEntry && menuRow.kind === 'collection' && !menuRow.virtual"
-                  >
-                    <ContextMenuItem :disabled="!canEdit" @select="addCollection(menuRow.id)">{{
-                      t('groups.createSubcollection')
-                    }}</ContextMenuItem>
-                    <ContextMenuItem :disabled="!canEdit" @select="startRename(menuRow)">{{
-                      t('groups.renameCollection')
-                    }}</ContextMenuItem>
-                  </template>
-                  <ContextMenuItem
-                    v-else-if="singleMenuEntry && menuRow.kind === 'group'"
-                    :disabled="!canRenameGroup(menuRow.id)"
-                    @select="startRename(menuRow)"
-                    >{{ t('groups.rename') }}</ContextMenuItem
-                  >
-                  <ContextMenuSub>
-                    <ContextMenuSubTrigger
-                      :disabled="!canEdit || !normalizeEntries(menuEntries).length"
-                      >{{ t('groups.moveTo') }}</ContextMenuSubTrigger
-                    >
-                    <ContextMenuSubContent class="max-h-64 max-w-80 overflow-y-auto">
-                      <ContextMenuItem
-                        :disabled="!canMoveMany(menuEntries, null)"
-                        @select="moveMenuEntries(null)"
-                        >{{
-                          t(
-                            menuEntries.every((entry) => entry.kind === 'group')
-                              ? 'groups.unclassified'
-                              : 'groups.root'
-                          )
-                        }}</ContextMenuItem
-                      >
-                      <ContextMenuItem
-                        v-for="destination in menuDestinations"
-                        :key="destination.id"
-                        @select="moveMenuEntries(destination.id)"
-                        >{{ destination.name }}</ContextMenuItem
-                      >
-                    </ContextMenuSubContent>
-                  </ContextMenuSub>
-                  <template
-                    v-if="singleMenuEntry && menuRow.kind === 'collection' && !menuRow.virtual"
-                  >
-                    <ContextMenuSeparator />
-                    <ContextMenuItem :disabled="!canEdit" @select="deleteCollection(menuRow.id)">{{
-                      t('groups.deleteCollection')
-                    }}</ContextMenuItem>
-                  </template>
-                  <ContextMenuItem
-                    v-if="singleMenuEntry && menuRow.kind === 'collection' && menuRow.virtual"
-                    @select="collapseAll()"
-                    >{{ t('groups.collapseAll') }}</ContextMenuItem
-                  >
-                </template>
-              </ContextMenuContent>
-            </ContextMenu>
+              </div>
+            </ScrollArea>
           </div>
-        </ScrollArea>
-      </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent
+          @close-auto-focus="restoreMenuFocus"
+          @interact-outside="menuInteractedOutside = true"
+        >
+          <ContextMenuItem
+            v-if="menuTarget === 'background'"
+            :disabled="!canEdit"
+            @select="addCollection()"
+            >{{ t('groups.createCollection') }}</ContextMenuItem
+          >
+          <template v-else-if="menuRow">
+            <ContextMenuLabel v-if="!singleMenuEntry">{{
+              t('groups.selectedNodes', { count: menuEntries.length })
+            }}</ContextMenuLabel>
+            <template v-if="singleMenuEntry && menuRow.kind === 'collection' && !menuRow.virtual">
+              <ContextMenuItem :disabled="!canEdit" @select="addCollection(menuRow.id)">{{
+                t('groups.createSubcollection')
+              }}</ContextMenuItem>
+              <ContextMenuItem :disabled="!canEdit" @select="startRename(menuRow)">{{
+                t('groups.renameCollection')
+              }}</ContextMenuItem>
+            </template>
+            <ContextMenuItem
+              v-else-if="singleMenuEntry && menuRow.kind === 'group'"
+              :disabled="!canRenameGroup(menuRow.id)"
+              @select="startRename(menuRow)"
+              >{{ t('groups.rename') }}</ContextMenuItem
+            >
+            <ContextMenuSeparator
+              v-if="singleMenuEntry && (menuRow.kind !== 'collection' || !menuRow.virtual)"
+            />
+            <ContextMenuItem
+              :disabled="!canEdit || !canGroupSelection(menuGroupTarget)"
+              @select="requestGroup(menuGroupTarget)"
+              >{{ t('command.edit.group') }}</ContextMenuItem
+            >
+            <ContextMenuItem
+              :disabled="!canEdit || !canUngroupSelection(menuGroupTarget)"
+              @select="ungroupSelected(menuGroupTarget)"
+              >{{ t('command.edit.ungroup') }}</ContextMenuItem
+            >
+            <ContextMenuSeparator />
+            <ContextMenuSub>
+              <ContextMenuSubTrigger
+                :disabled="!canEdit || !normalizeEntries(menuEntries).length"
+                >{{ t('groups.moveTo') }}</ContextMenuSubTrigger
+              >
+              <ContextMenuSubContent class="max-h-64 max-w-80 overflow-y-auto">
+                <ContextMenuItem
+                  :disabled="!canMoveMany(menuEntries, null)"
+                  @select="moveMenuEntries(null)"
+                  >{{
+                    t(
+                      menuEntries.every((entry) => entry.kind === 'group')
+                        ? 'groups.unclassified'
+                        : 'groups.root'
+                    )
+                  }}</ContextMenuItem
+                >
+                <ContextMenuItem
+                  v-for="destination in menuDestinations"
+                  :key="destination.id"
+                  @select="moveMenuEntries(destination.id)"
+                  >{{ destination.name }}</ContextMenuItem
+                >
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <template v-if="singleMenuEntry && menuRow.kind === 'collection' && !menuRow.virtual">
+              <ContextMenuSeparator />
+              <ContextMenuItem :disabled="!canEdit" @select="deleteCollection(menuRow.id)">{{
+                t('groups.deleteCollection')
+              }}</ContextMenuItem>
+            </template>
+            <ContextMenuItem
+              v-if="singleMenuEntry && menuRow.kind === 'collection' && menuRow.virtual"
+              @select="collapseAll()"
+              >{{ t('groups.collapseAll') }}</ContextMenuItem
+            >
+          </template>
+        </ContextMenuContent>
+      </ContextMenu>
 
       <GroupPanelHints
         :container="list"

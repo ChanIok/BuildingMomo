@@ -4,6 +4,12 @@ import type { ViewPreset } from '../composables/useThreeCamera'
 
 export type SchemeSource = 'local' | 'cloud'
 
+/** 成组/解组的明确范围。面板按整组整理，不受画布显隐、锁定和选区限制。 */
+export type GroupEditTarget = { schemeId: string } & (
+  | { kind: 'selection'; itemIds: readonly string[] }
+  | { kind: 'groups'; groupIds: readonly number[] }
+)
+
 // 内部 ColorMap 的兼容格式；导出到新版游戏时由 gameDataFormat 统一写成 colors 数组。
 // 导入数据中的 ColorMap/colors 有两种格式：
 // 1. 对象格式：{ "0": 0 } 或 { "0": 1 }
