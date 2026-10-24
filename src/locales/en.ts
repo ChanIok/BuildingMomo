@@ -1,5 +1,18 @@
 export const enLocale = {
   groups: {
+    importInfo: 'Import group info',
+    importDialog: {
+      title: 'Import group info',
+      description: 'Choose a source scheme. Group IDs and all members must match exactly.',
+      empty: 'Open another scheme first.',
+      matched: '{count} / {total} groups matched',
+      overwrite:
+        'Update names, collections, order, and origins for {count} groups. Unmatched groups stay unchanged.',
+      noChanges: 'No group information needs updating.',
+      skippedOrigins: '{count} group origins cannot be uniquely identified and will be cleared.',
+      confirm: 'Import',
+      success: 'Imported information for {count} groups.',
+    },
     partiallySelected: 'Some furniture selected',
     allFurnitureSelected: 'All selectable furniture selected',
     selectedNodes: '{count} items selected',
@@ -260,6 +273,7 @@ export const enLocale = {
     },
     import: {
       success: 'Import Successful',
+      groupsInherited: 'Scheme imported. Inherited information for {count} groups.',
       failed: 'Import Failed: {reason}',
       readFailed: 'Failed to read file',
     },
@@ -483,6 +497,10 @@ export const enLocale = {
 
   // Settings
   settings: {
+    groupInheritance: {
+      label: 'Auto-inherit group info',
+      hint: 'On import, inherit group info from the most recently saved-to-game scheme, if it is still open.',
+    },
     title: 'Settings',
     version: 'Version',
     desktopClient: 'Desktop',

@@ -38,6 +38,8 @@ export interface AppSettings {
   enableAutoSave: boolean
   mirrorWithRotation: boolean // 镜像时同时旋转
   enableWatchNotification: boolean // 文件监控弹窗提示
+  autoInheritGroupMetadata: boolean
+  lastSavedToGameSchemeId: string | null
 
   // 3D 视图设置
   threeDisplayMode: 'box' | 'icon' | 'simple-box' | 'model' // 3D 显示模式：立方体、图标、简化方块或模型
@@ -97,6 +99,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   enableAutoSave: true,
   mirrorWithRotation: true,
   enableWatchNotification: true,
+  autoInheritGroupMetadata: true,
+  lastSavedToGameSchemeId: null,
   threeDisplayMode: 'simple-box',
   modelAssetProfile: 'lite',
   materialAssetProfile: 'lite',

@@ -1,5 +1,17 @@
 export const zhLocale = {
   groups: {
+    importInfo: '导入组信息',
+    importDialog: {
+      title: '导入组信息',
+      description: '选择来源方案，仅导入组 ID 和全部成员一致的组信息。',
+      empty: '请先打开其他方案。',
+      matched: '匹配 {count} / {total} 个组',
+      overwrite: '将更新 {count} 个组的名称、集合关系、排序和原点；未匹配组保持不动。',
+      noChanges: '没有需要更新的组信息。',
+      skippedOrigins: '{count} 个组原点无法唯一定位，将清除对应设置。',
+      confirm: '导入',
+      success: '已导入 {count} 个组的信息。',
+    },
     partiallySelected: '部分家具已选中',
     allFurnitureSelected: '可选家具已全部选中',
     selectedNodes: '已选 {count} 个项目',
@@ -257,6 +269,7 @@ export const zhLocale = {
     },
     import: {
       success: '导入成功',
+      groupsInherited: '方案已导入，已继承 {count} 个组的信息。',
       failed: '导入失败: {reason}',
       readFailed: '文件读取失败',
     },
@@ -471,6 +484,10 @@ export const zhLocale = {
 
   // 设置
   settings: {
+    groupInheritance: {
+      label: '自动继承组信息',
+      hint: '导入方案时，从最近保存到游戏且仍打开的方案继承组信息。',
+    },
     title: '设置',
     version: '版本',
     desktopClient: '桌面端',

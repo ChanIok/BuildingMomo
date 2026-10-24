@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch, watchPostEffect } from 'vue'
-import { FolderPlus, Layers, ListChevronsDownUp, Search, X } from 'lucide-vue-next'
+import { FolderInput, FolderPlus, Layers, ListChevronsDownUp, Search, X } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
@@ -16,6 +16,7 @@ import {
 } from '@/composables/editor/useCollectionPanel'
 import GroupPanelRow from './GroupPanelRow.vue'
 import GroupPanelHints from './GroupPanelHints.vue'
+import GroupMetadataImportDialog from './GroupMetadataImportDialog.vue'
 import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelection'
 import { groupRowKey as keyOf, useGroupVirtualList } from '@/composables/editor/useGroupVirtualList'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,7 @@ const {
   pasteItems,
 } = useClipboard()
 const query = ref('')
+const importDialogOpen = ref(false)
 const {
   rows,
   destinations,
@@ -742,6 +744,25 @@ watch(
                   size="icon"
                   class="h-7 w-7"
                   :disabled="!canEdit"
+                  :aria-label="t('groups.importInfo')"
+                  @click="importDialogOpen = true"
+                >
+                  <FolderInput class="h-4 w-4" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" class="text-xs" :side-offset="-8">{{
+              t('groups.importInfo')
+            }}</TooltipContent>
+          </Tooltip>
+          <Tooltip :delay-duration="300">
+            <TooltipTrigger as-child>
+              <span class="inline-flex">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-7 w-7"
+                  :disabled="!canEdit"
                   :aria-label="t('groups.createCollection')"
                   @click="addCollection()"
                   ><FolderPlus class="h-4 w-4"
@@ -971,7 +992,7 @@ watch(
 
       <GroupPanelHints
         :container="list"
-        :active="uiStore.groupPanelOpen && !openMenu && !dragged && !editing"
+        :active="uiStore.groupPanelOpen && !openMenu && !dragged && !editing && !importDialogOpen"
         :rows="rows"
       />
 
@@ -1009,5 +1030,6 @@ watch(
         </div>
       </footer>
     </section>
+    <GroupMetadataImportDialog v-if="importDialogOpen" v-model:open="importDialogOpen" />
   </TooltipProvider>
 </template>

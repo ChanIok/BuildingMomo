@@ -151,6 +151,14 @@
       Group names and collections are saved with the scheme, but are not included in game JSON.
       Visibility, locks and collapse state are saved only in your own workspace.
     </p>
+    <p>
+      After importing from the game, click <strong>Import group info</strong> at the top of the
+      Groups Panel and choose another open scheme to restore names, collection paths, order, and
+      origins. Only groups with the same group ID and all the same instance and furniture type IDs
+      are replaced; the operation can be undone. <strong>Auto-inherit group info</strong>
+      in the right-hand editor settings is on by default and uses the most recently saved-to-game
+      scheme that is still open.
+    </p>
 
     <h2>Advanced Features</h2>
 

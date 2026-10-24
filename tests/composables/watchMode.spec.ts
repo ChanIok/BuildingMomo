@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { markRaw } from 'vue'
 import { createWatchModeOps } from '@/composables/fileOps/watchMode'
 import { WatchHandleStore } from '@/lib/watchHandleStore'
+import { makeScheme, makeAppItem } from '../fixtures/item'
 
 vi.mock('@/lib/watchHandleStore', () => ({
   WatchHandleStore: {
@@ -61,14 +62,145 @@ function setup() {
     ensureResourcesReady: vi.fn(),
     preloadActiveSchemeResources: vi.fn(),
     prepareDataForSave: vi.fn(),
+    onSchemeImported: vi.fn(),
   } as unknown as Parameters<typeof createWatchModeOps>[0]
-  return { root, buildData, picker, notification, ops: createWatchModeOps(params) }
+  return {
+    root,
+    buildData,
+    savedData,
+    picker,
+    notification,
+    params,
+    ops: createWatchModeOps(params),
+  }
 }
 
 beforeEach(() => {
   vi.resetAllMocks()
   vi.useFakeTimers()
 })
+
+function saveSetup() {
+  const context = setup()
+  const scheme = makeScheme([makeAppItem({ groupId: 7 })])
+  scheme.filePath.value = 'BUILD_SAVEDATA_123.json'
+  Object.assign(context.params.editorStore, { activeScheme: scheme })
+  context.params.settingsStore.settings.lastSavedToGameSchemeId = 'previous'
+  context.params.settingsStore.settings.autoInheritGroupMetadata = false
+  const writable = {
+    write: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+  }
+  const file = markRaw({
+    kind: 'file',
+    name: scheme.filePath.value,
+    queryPermission: vi.fn().mockResolvedValue('granted'),
+    requestPermission: vi.fn().mockResolvedValue('denied'),
+    createWritable: vi.fn().mockResolvedValue(writable),
+    getFile: vi.fn().mockResolvedValue({ lastModified: 100 }),
+  })
+  const getFileHandle = vi.fn().mockResolvedValue(file)
+  Object.assign(context.buildData, { getFileHandle })
+  context.ops.watchState.value.isActive = true
+  context.ops.watchState.value.dirHandle = context.buildData
+  vi.mocked(context.params.prepareDataForSave).mockResolvedValue([])
+  return { ...context, scheme, writable, file, getFileHandle }
+}
+
+it('records the actually saved scheme even when switching tabs during validation and auto inheritance is off', async () => {
+  const { ops, params, scheme, getFileHandle, writable, notification } = saveSetup()
+  vi.mocked(params.prepareDataForSave).mockImplementation(async (saving) => {
+    expect(saving).toBe(scheme)
+    Object.assign(params.editorStore, {
+      activeScheme: { ...scheme, id: 'other', filePath: { value: 'BUILD_SAVEDATA_999.json' } },
+    })
+    return []
+  })
+  await ops.saveToGame()
+  expect(getFileHandle).toHaveBeenCalledWith('BUILD_SAVEDATA_123.json', { create: true })
+  expect(writable.close).toHaveBeenCalledOnce()
+  expect(params.settingsStore.settings.lastSavedToGameSchemeId).toBe(scheme.id)
+  expect(notification.success).toHaveBeenCalledWith('fileOps.saveToGame.success')
+  ops.cleanup()
+})
+
+it.each(['cancel', 'permission', 'write', 'close'])(
+  'does not replace the saved source after %s',
+  async (failure) => {
+    const { ops, params, writable, file, notification } = saveSetup()
+    if (failure === 'cancel') vi.mocked(params.prepareDataForSave).mockResolvedValue(null)
+    if (failure === 'permission') file.queryPermission.mockResolvedValue('denied')
+    if (failure === 'write') writable.write.mockRejectedValue(new Error('write failed'))
+    if (failure === 'close') writable.close.mockRejectedValue(new Error('close failed'))
+    await ops.saveToGame()
+    expect(params.settingsStore.settings.lastSavedToGameSchemeId).toBe('previous')
+    expect(notification.success).not.toHaveBeenCalled()
+    ops.cleanup()
+  }
+)
+
+it('retains the saved source after a successful write even if the subsequent file-cache read fails', async () => {
+  const { ops, params, scheme, file } = saveSetup()
+  file.getFile.mockRejectedValue(new Error('cache read failed'))
+  await ops.saveToGame()
+  expect(params.settingsStore.settings.lastSavedToGameSchemeId).toBe(scheme.id)
+  ops.cleanup()
+})
+
+it.each(['build-data', 'record'])(
+  'routes %s imports through automatic inheritance before the imported-history callback',
+  async (mode) => {
+    const { ops, params, buildData, savedData, root, notification } = setup()
+    params.settingsStore.settings.autoInheritGroupMetadata = true
+    params.settingsStore.settings.lastSavedToGameSchemeId = 'saved-source'
+    const importJSONAsScheme = vi
+      .fn()
+      .mockResolvedValue({ success: true, schemeId: 'new', inheritedGroupCount: 2 })
+    Object.assign(params.editorStore, { importJSONAsScheme })
+    ops.watchState.value.isActive = true
+    ops.watchState.value.dirHandle = buildData
+    if (mode === 'record') {
+      const file = {
+        kind: 'file',
+        name: '123.record',
+        getFile: async () => ({ name: '123.record', lastModified: 1, text: async () => '[]' }),
+      }
+      const record = directory('BuildRecord')
+      record.values = vi.fn(async function* () {
+        yield file
+      }) as typeof record.values
+      savedData.getDirectoryHandle.mockImplementation(async (child) => {
+        if (child === 'BuildRecord') return record
+        if (child === 'BuildData') return buildData
+        throw new DOMException('Directory not found', 'NotFoundError')
+      })
+      // 恢复入口设置真实的根目录上下文，随后从 BuildRecord 读取。
+      root.queryPermission.mockResolvedValue('granted')
+      ops.watchState.value.isActive = false
+      await ops.restoreWatchModeSilently()
+    } else {
+      const file = {
+        kind: 'file',
+        name: 'BUILD_SAVEDATA_123.json',
+        getFile: async () => ({
+          name: 'BUILD_SAVEDATA_123.json',
+          lastModified: 1,
+          text: async () => '{"Snapshots":[]}',
+        }),
+      }
+      buildData.values = vi.fn(async function* () {
+        yield file
+      }) as typeof buildData.values
+    }
+    await ops.importFromWatchedFile()
+    expect(importJSONAsScheme).toHaveBeenCalledWith(expect.any(String), expect.any(String), 1, {
+      inheritGroupsFromSchemeId: 'saved-source',
+    })
+    expect(notification.success).toHaveBeenLastCalledWith('fileOps.import.groupsInherited')
+    expect(params.onSchemeImported).toHaveBeenCalledWith('new')
+    ops.cleanup()
+  }
+)
 
 afterEach(() => {
   vi.clearAllTimers()

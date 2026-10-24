@@ -475,6 +475,22 @@ const fmt = (n: number, decimals: number = 0) => {
             {{ t('sidebar.editAssist.label') }}
           </h3>
 
+          <div class="flex items-center justify-between">
+            <div class="mr-2 space-y-0.5">
+              <Label for="auto-inherit-groups" class="text-xs">{{
+                t('settings.groupInheritance.label')
+              }}</Label>
+              <p id="auto-inherit-groups-hint" class="text-[11px] text-muted-foreground">
+                {{ t('settings.groupInheritance.hint') }}
+              </p>
+            </div>
+            <Switch
+              id="auto-inherit-groups"
+              v-model="settingsStore.settings.autoInheritGroupMetadata"
+              aria-describedby="auto-inherit-groups-hint"
+            />
+          </div>
+
           <!-- 重复物品检测开关 -->
           <div class="flex items-center justify-between">
             <div class="mr-2 space-y-0.5">

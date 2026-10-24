@@ -2,7 +2,8 @@ import { computed, ref, shallowRef } from 'vue'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
 import type { useNotification } from '@/composables/useNotification'
-import type { FileWatchState, GameItem } from '@/types/editor'
+import type { FileWatchState, GameItem, HomeScheme } from '@/types/editor'
+import { createGameImportOps } from './gameImport'
 import { WatchHandleStore } from '@/lib/watchHandleStore'
 import {
   SAVE_DATA_FILENAME_REGEX,
@@ -39,7 +40,7 @@ interface CreateWatchModeOpsParams {
   t: TranslateFn
   ensureResourcesReady: () => void
   preloadActiveSchemeResources: () => void
-  prepareDataForSave: () => Promise<GameItem[] | null>
+  prepareDataForSave: (scheme?: HomeScheme | null) => Promise<GameItem[] | null>
   /** 导入成功后回调：让方案历史立即备份这份新进入工作台的数据 */
   onSchemeImported?: (schemeId: string) => void
 }
@@ -72,6 +73,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     prepareDataForSave,
     onSchemeImported,
   } = params
+  const { importGameJSON } = createGameImportOps(editorStore, settingsStore, t)
 
   // 监听模式的全局响应式状态
   const watchState = ref<FileWatchState>({
@@ -306,7 +308,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       console.log(`[FileWatch] Importing content: ${fileName} (UID: ${uid})`)
 
       // 调用 editorStore 解析 JSON 并创建/更新对应的 scheme tab
-      const importResult = await editorStore.importJSONAsScheme(content, fileName, lastModified)
+      const importResult = await importGameJSON(content, fileName, lastModified)
 
       if (importResult.success) {
         console.log(`[FileWatch] Successfully imported: ${fileName}`)
@@ -321,7 +323,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
           })
         }
 
-        notification.success(t('fileOps.import.success'))
+        notification.success(importResult.message)
         // 提前预加载当前 scheme 所需的 3D 资源
         preloadActiveSchemeResources()
         if (importResult.schemeId) onSchemeImported?.(importResult.schemeId)
@@ -377,19 +379,20 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       return
     }
 
-    if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
+    const scheme = editorStore.activeScheme
+    if (!scheme?.items.value.length) {
       notification.warning(t('fileOps.saveToGame.noData'))
       return
     }
 
     // 准备经过验证、修正后的导出数据
-    const gameItems = await prepareDataForSave()
+    const gameItems = await prepareDataForSave(scheme)
     if (!gameItems) return
 
     let handle: FileSystemFileHandle | null = null
     let finalFileName = ''
 
-    const currentFileName = editorStore.activeScheme?.filePath.value
+    const currentFileName = scheme.filePath.value
     const match = currentFileName?.match(SAVE_DATA_FILENAME_REGEX)
 
     // UID 恰好为 13 位时通常是游戏自动生成的临时 ID，不作为写入目标
@@ -428,6 +431,8 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       const writable = await handle.createWritable()
       await writable.write(jsonString)
       await writable.close()
+
+      settingsStore.settings.lastSavedToGameSchemeId = scheme.id
 
       // 读取写入后的实际 lastModified，加 1000ms 偏移量防止轮询误判为外部变更
       const updatedFile = await handle.getFile()

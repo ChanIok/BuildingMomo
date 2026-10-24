@@ -178,6 +178,99 @@ it('closes advanced paste after inserting an empty collection, but not when noth
   }
 })
 
+async function setupGroupImportDialog() {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+  const { default: Dialog } = await server.ssrLoadModule(
+    '/src/components/GroupMetadataImportDialog.vue'
+  )
+  const { useEditorStore } = await server.ssrLoadModule('/src/stores/editorStore.ts')
+  const { useTabStore } = await server.ssrLoadModule('/src/stores/tabStore.ts')
+  const emit = vi.fn()
+  let dialog: any, store: any, source: any, target: any
+  const app = mountSetup(() => {
+    store = useEditorStore()
+    store.createScheme('Source')
+    source = store.activeScheme!
+    source.items.value = [makeAppItem({ groupId: 7 })]
+    source.collectionTree.value = {
+      nodes: [],
+      groups: [{ groupId: 7, name: 'Walls', collectionId: null, order: 7 }],
+    }
+    store.createScheme('Empty source')
+    store.createScheme('Target')
+    target = store.activeScheme!
+    target.items.value = [makeAppItem({ internalId: 'target-item', groupId: 7 })]
+    useTabStore().openDocTab()
+    useTabStore().openSchemeTab(target.id, 'Target')
+    dialog = Dialog.setup(shallowReactive({ open: true }), { expose: () => {}, emit })
+    dialog.notification.success = vi.fn()
+  })
+  return { app, emit, dialog, store, source, target }
+}
+
+it('renders the default-enabled inheritance switch with the agreed concise description', async () => {
+  const { default: Settings } = await server.ssrLoadModule(
+    '/src/components/SidebarEditorSettings.vue'
+  )
+  const app = createSSRApp(Settings)
+  app.use(createPinia())
+  const html = await renderToString(app)
+  expect(html).toContain('自动继承组信息')
+  expect(html).toContain('导入方案时，从最近保存到游戏且仍打开的方案继承组信息。')
+  expect(html).toMatch(/<button[^>]*id="auto-inherit-groups"[^>]*aria-checked="true"/)
+  expect(html).toContain('aria-describedby="auto-inherit-groups-hint"')
+})
+
+it('lists other scheme tabs in order, previews without editing, and imports once with no no-op history', async () => {
+  const { app, emit, dialog, source, target } = await setupGroupImportDialog()
+  try {
+    expect(dialog.sources.value.map((source: any) => source.name)).toEqual([
+      'Source',
+      'Empty source',
+    ])
+    expect(dialog.canSubmit.value).toBe(false)
+    dialog.sourceId.value = source.id
+    expect(dialog.result.value.matchedGroupCount).toBe(1)
+    expect(dialog.canSubmit.value).toBe(true)
+    expect(target.collectionTree.value.groups).toEqual([])
+    dialog.submit()
+    expect(emit).toHaveBeenCalledWith('update:open', false)
+    expect(target.collectionTree.value.groups[0].name).toBe('Walls')
+    expect(target.history.value.transactionUndoStack).toHaveLength(1)
+    expect(dialog.canSubmit.value).toBe(false)
+    dialog.submit()
+    expect(target.history.value.transactionUndoStack).toHaveLength(1)
+  } finally {
+    app.unmount()
+  }
+})
+
+it('clears a closed source and prevents submission to a different target even before the close watcher runs', async () => {
+  const { app, emit, dialog, store, source, target } = await setupGroupImportDialog()
+  try {
+    dialog.sourceId.value = source.id
+    store.closeScheme(source.id)
+    await nextTick()
+    expect(dialog.sourceId.value).toBe('')
+    expect(dialog.canSubmit.value).toBe(false)
+    // 让另一个来源与新目标同样可以精确匹配，确保由目标身份保护而非无匹配阻止提交。
+    const replacement = store.schemes.find((scheme: any) => scheme.name.value === 'Empty source')
+    replacement.items.value = source.items.value
+    replacement.collectionTree.value = source.collectionTree.value
+    dialog.sourceId.value = replacement.id
+    store.createScheme('Other target')
+    store.activeScheme.items.value = target.items.value
+    expect(dialog.canSubmit.value).toBe(true)
+    dialog.submit()
+    expect(store.activeScheme.collectionTree.value.groups).toEqual([])
+    expect(target.collectionTree.value.groups).toEqual([])
+    await nextTick()
+    expect(emit).toHaveBeenCalledWith('update:open', false)
+  } finally {
+    app.unmount()
+  }
+})
+
 it('delegates delayed hints and keeps clicked controls dismissed until re-entry', async () => {
   const { default: GroupPanelHints } = await server.ssrLoadModule(
     '/src/components/GroupPanelHints.vue'

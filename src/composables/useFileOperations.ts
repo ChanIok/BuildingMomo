@@ -1,10 +1,9 @@
 import { ref, onUnmounted, toRaw } from 'vue'
 import type { useEditorStore } from '../stores/editorStore'
-import type { GameItem } from '../types/editor'
+import type { GameItem, HomeScheme } from '../types/editor'
 import { useNotification } from './useNotification'
 import { useSettingsStore } from '../stores/settingsStore'
 import type { AlertDetailItem } from '../stores/notificationStore'
-import { storeToRefs } from 'pinia'
 import { useValidationStore } from '../stores/validationStore'
 import { useGameDataStore } from '../stores/gameDataStore'
 import { getIconLoader } from './useIconLoader'
@@ -14,6 +13,7 @@ import { createCodeImportOps } from './fileOps/codeImport'
 import { createWatchModeOps } from './fileOps/watchMode'
 import { createArchiveOps } from './fileOps/archive'
 import { createSchemeHistoryOps } from './fileOps/schemeHistory'
+import { createGameImportOps } from './fileOps/gameImport'
 import { serializeBuildData } from '@/lib/gameDataFormat'
 import { getSafeScaleRange } from '@/lib/scaleLimits'
 import { cleanFurnitureColors } from '@/lib/furnitureColorValidation'
@@ -29,10 +29,9 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   const notification = useNotification()
   const { t } = useI18n()
   const settingsStore = useSettingsStore()
+  const { importGameJSON } = createGameImportOps(editorStore, settingsStore, t)
   const gameDataStore = useGameDataStore()
   const validationStore = useValidationStore()
-  const { hasDuplicate, duplicateItemCount, hasLimitIssues, limitIssues } =
-    storeToRefs(validationStore)
 
   function preloadImage(url: string) {
     const img = new Image()
@@ -56,7 +55,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     preloadImage(backgroundUrl)
   }
 
-  async function prepareDataForSave(): Promise<GameItem[] | null> {
+  async function prepareDataForSave(
+    scheme: HomeScheme | null = editorStore.activeScheme
+  ): Promise<GameItem[] | null> {
+    // 数据与目标方案绑定；校验或确认弹窗期间切换标签不改变本次保存。
+    const items = scheme?.items.value ?? []
     // 保存不能依赖防抖中的旧检测结果，否则提示与实际修正可能不一致。
     if (settingsStore.settings.enableLimitDetection) {
       await gameDataStore.initialize()
@@ -64,31 +67,35 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         Object.fromEntries(gameDataStore.getFurnitureConstraintsMap())
       )
     }
-    const scheme = editorStore.activeScheme
-    validationStore.setValidationResults(
-      await workerApi.validate(
-        toRaw(scheme?.items.value ?? []),
-        {
-          enableDuplicateDetection: settingsStore.settings.enableDuplicateDetection,
-          enableLimitDetection: settingsStore.settings.enableLimitDetection,
-        },
-        scheme?.filePath.value
-      )
+    const validation = await workerApi.validate(
+      toRaw(items),
+      {
+        enableDuplicateDetection: settingsStore.settings.enableDuplicateDetection,
+        enableLimitDetection: settingsStore.settings.enableLimitDetection,
+      },
+      scheme?.filePath.value
     )
+    if (editorStore.activeScheme?.id === scheme?.id)
+      validationStore.setValidationResults(validation)
+    const saveIssues = validation.limitIssues
 
     const details: AlertDetailItem[] = []
 
-    if (settingsStore.settings.enableDuplicateDetection && hasDuplicate.value) {
+    if (settingsStore.settings.enableDuplicateDetection && validation.duplicateGroups.length > 0) {
+      const duplicateItemCount = validation.duplicateGroups.reduce(
+        (count, group) => count + group.length - 1,
+        0
+      )
       details.push({
         type: 'warning',
         title: t('fileOps.duplicate.title'),
-        text: `${t('fileOps.duplicate.desc', { n: duplicateItemCount.value })}\n${t('fileOps.duplicate.detail')}`,
+        text: `${t('fileOps.duplicate.desc', { n: duplicateItemCount })}\n${t('fileOps.duplicate.detail')}`,
       })
     }
 
-    if (hasLimitIssues.value) {
+    if (Object.values(saveIssues).some((ids) => ids.length > 0)) {
       const { outOfBoundsItemIds, oversizedGroups, invalidScaleItemIds, invalidRotationItemIds } =
-        limitIssues.value
+        saveIssues
       const limitMsgs: string[] = []
 
       if (outOfBoundsItemIds.length > 0) {
@@ -115,14 +122,12 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     }
 
     const colorMsgs: string[] = []
-    if (limitIssues.value.invalidColorItemIds.length > 0) {
-      colorMsgs.push(
-        t('fileOps.color.invalidColor', { n: limitIssues.value.invalidColorItemIds.length })
-      )
+    if (saveIssues.invalidColorItemIds.length > 0) {
+      colorMsgs.push(t('fileOps.color.invalidColor', { n: saveIssues.invalidColorItemIds.length }))
     }
-    if (limitIssues.value.conflictingColorItemIds.length > 0) {
+    if (saveIssues.conflictingColorItemIds.length > 0) {
       colorMsgs.push(
-        t('fileOps.color.conflictingColor', { n: limitIssues.value.conflictingColorItemIds.length })
+        t('fileOps.color.conflictingColor', { n: saveIssues.conflictingColorItemIds.length })
       )
     }
     if (colorMsgs.length > 0) {
@@ -153,11 +158,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
       }
     }
 
-    const outOfBoundsIds = new Set(limitIssues.value.outOfBoundsItemIds)
-    const oversizedGroupIds = new Set(limitIssues.value.oversizedGroups)
-    const invalidRotationIds = new Set(limitIssues.value.invalidRotationItemIds)
+    const outOfBoundsIds = new Set(saveIssues.outOfBoundsItemIds)
+    const oversizedGroupIds = new Set(saveIssues.oversizedGroups)
+    const invalidRotationIds = new Set(saveIssues.invalidRotationItemIds)
 
-    const gameItems: GameItem[] = (editorStore.activeScheme?.items.value ?? [])
+    const gameItems: GameItem[] = items
       .filter((item) => !outOfBoundsIds.has(item.internalId))
       .map((item) => {
         const originalGroupId = item.groupId
@@ -233,11 +238,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
         const reader = new FileReader()
         reader.onload = async (e) => {
           const content = e.target?.result as string
-          const result = await editorStore.importJSONAsScheme(content, file.name, file.lastModified)
+          const result = await importGameJSON(content, file.name, file.lastModified)
 
           if (result.success) {
             console.log(`[FileOps] Successfully imported scheme: ${file.name}`)
-            notification.success(t('fileOps.import.success'))
+            notification.success(result.message)
             preloadActiveSchemeResources()
             if (result.schemeId) schemeHistoryOps.markImported(result.schemeId)
           } else {
@@ -292,12 +297,13 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
   })
 
   async function exportJSON(filename?: string): Promise<void> {
-    if ((editorStore.activeScheme?.items.value.length ?? 0) === 0) {
+    const scheme = editorStore.activeScheme
+    if (!scheme?.items.value.length) {
       notification.warning(t('fileOps.export.noData'))
       return
     }
 
-    const gameItems = await prepareDataForSave()
+    const gameItems = await prepareDataForSave(scheme)
     if (!gameItems) return
 
     const jsonString = serializeBuildData(gameItems)
@@ -307,8 +313,7 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
     const link = document.createElement('a')
     link.href = url
     const downloadName =
-      filename ??
-      (await watchOps.resolveManualExportFileName(editorStore.activeScheme?.filePath.value))
+      filename ?? (await watchOps.resolveManualExportFileName(scheme.filePath.value))
     link.download = downloadName
     link.click()
 

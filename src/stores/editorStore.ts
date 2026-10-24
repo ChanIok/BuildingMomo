@@ -28,6 +28,7 @@ import type { SelectionCategoryId } from '../types/furniture'
 import type { SharedSchemeSnapshot } from '../types/cloudScheme'
 import { createGroupState, setSchemeItems } from '../lib/groupState'
 import { parseGameDataContent } from '../lib/gameDataFormat'
+import { groupMetadataInput, inheritGroupMetadata } from '../lib/groupMetadataInheritance'
 import { useTabStore } from './tabStore'
 import { useI18n } from '../composables/useI18n'
 
@@ -532,8 +533,15 @@ export const useEditorStore = defineStore('editor', () => {
     options?: {
       /** 直接指定方案 id；用于恢复误关闭的方案时复用原 id，避免历史目录里出现重复文件 */
       schemeId?: string
+      /** 仅游戏文件导入显式传入；历史、方案码等入口不自动继承。 */
+      inheritGroupsFromSchemeId?: string
     }
-  ): Promise<{ success: boolean; schemeId?: string; error?: string }> {
+  ): Promise<{
+    success: boolean
+    schemeId?: string
+    error?: string
+    inheritedGroupCount?: number
+  }> {
     try {
       const data = parseGameDataContent(fileContent)
 
@@ -588,12 +596,26 @@ export const useEditorStore = defineStore('editor', () => {
         history: shallowRef(undefined),
       }
 
+      const source = options?.inheritGroupsFromSchemeId
+        ? getSchemeById(options.inheritGroupsFromSchemeId)
+        : null
+      const inherited =
+        source && inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(newScheme))
+      if (inherited) {
+        newScheme.collectionTree.value = inherited.collectionTree
+        newScheme.groupOrigins.value = new Map(inherited.groupOrigins)
+      }
+
       schemes.value = [...schemes.value, newScheme]
 
       // 同步到 TabStore
       tabStore.openSchemeTab(newScheme.id, newScheme.name.value)
 
-      return { success: true, schemeId: newScheme.id }
+      return {
+        success: true,
+        schemeId: newScheme.id,
+        inheritedGroupCount: inherited?.changedGroupCount,
+      }
     } catch (error) {
       console.error('Failed to import JSON:', error)
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
