@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, ref, type EffectScope } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
@@ -285,4 +286,167 @@ it('queues complete cloud patches and replays them without sharing personal flag
   expect(peer.collectionTree.value).toEqual(scheme.collectionTree.value)
   expect(peer.hiddenGroupIds.value).toEqual(new Set([7]))
   expect(peer.lockedGroupIds.value.size).toBe(0)
+})
+
+it('deletes a complete protected subtree in one transaction without deleting carried canvas items', () => {
+  const { store, scheme, directory, selection, history, query } = setup()
+  scheme.items.value = [...scheme.items.value, makeAppItem({ internalId: 'e2', groupId: 9 })]
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    nodes: [
+      ...scheme.collectionTree.value.nodes,
+      { id: 'nested-empty', name: 'Nested empty', parentId: 'floor', order: 0 },
+    ],
+  }
+  store.setGroupHidden(7, true)
+  store.setGroupLocked(8, true)
+  store.setCollectionRestriction('house', 'hidden', true)
+  store.setCollectionRestriction('floor', 'locked', true)
+  useEditorSelection().updateSelection(['e'], false, { skipGroupExpansion: true })
+  selection.select(
+    { kind: 'collection', id: 'house' },
+    { ctrlKey: true, metaKey: false, shiftKey: false }
+  )
+  expect(selection.entries.value).toEqual([{ kind: 'collection', id: 'house' }])
+  const before = scheme.items.value,
+    tree = scheme.collectionTree.value,
+    origins = scheme.groupOrigins.value
+  const count = scheme.history.value!.selectionUndoStack.length
+  scheme.activeCollectionId.value = 'house'
+  directory.collapseAll()
+  query.value = 'Walls'
+  expect(directory.deleteEntries(selection.entries.value)).toBe(true)
+  expect(scheme.items.value).toEqual([before[3], before[4], before[5]])
+  expect(scheme.items.value[0]).toBe(before[3])
+  expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['empty'])
+  expect(scheme.collectionTree.value.groups).toEqual([tree.groups[2]])
+  expect(scheme.groupOrigins.value.size).toBe(0)
+  expect(scheme.selectedItemIds.value).toEqual(new Set(['e']))
+  expect(scheme.activeCollectionId.value).toBeNull()
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+  expect(scheme.history.value!.selectionUndoStack).toHaveLength(count)
+  history.undo()
+  expect(new Map(scheme.items.value.map((item) => [item.internalId, item]))).toEqual(
+    new Map(before.map((item) => [item.internalId, item]))
+  )
+  expect(scheme.collectionTree.value).toEqual(tree)
+  expect(scheme.groupOrigins.value).toEqual(origins)
+  expect(store.isItemVisible('a')).toBe(false)
+  expect(store.isItemEditable('c')).toBe(false)
+  expect(scheme.maxGroupId.value).toBe(9)
+  history.redo()
+  expect(scheme.items.value.map((item) => item.internalId)).toEqual(['e', 'd', 'e2'])
+  expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['empty'])
+})
+
+it('deletes an entire group but keeps its containing collection and unrelated metadata', () => {
+  const { scheme, directory } = setup()
+  scheme.activeGroupId.value = 7
+  const tree = scheme.collectionTree.value
+  expect(directory.deleteEntries([{ kind: 'group', id: 7 }])).toBe(true)
+  expect(scheme.items.value.map((item) => item.internalId)).toEqual(['c', 'e', 'd'])
+  expect(scheme.collectionTree.value.nodes).toBe(tree.nodes)
+  expect(scheme.collectionTree.value.groups.map((group) => group.groupId)).toEqual([8, 9])
+  expect(scheme.groupOrigins.value).toEqual(new Map([[8, 'c']]))
+  expect(scheme.activeGroupId.value).toBeNull()
+})
+
+it('deletes empty collections without updating furniture, origins or the scene', () => {
+  const { store, scheme, directory } = setup()
+  const items = scheme.items.value,
+    origins = scheme.groupOrigins.value,
+    sceneVersion = store.sceneVersion
+  expect(directory.deleteEntries([{ kind: 'collection', id: 'empty' }])).toBe(true)
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.groupOrigins.value).toBe(origins)
+  expect(store.sceneVersion).toBe(sceneVersion)
+  expect(scheme.collectionTree.value.nodes.some((node) => node.id === 'empty')).toBe(false)
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+})
+
+it('deduplicates mixed parent, child, group and ungrouped deletion targets', () => {
+  const { scheme, directory } = setup()
+  scheme.selectedItemIds.value = new Set(['e'])
+  expect(
+    directory.deleteEntries([
+      { kind: 'collection', id: 'house' },
+      { kind: 'collection', id: 'floor' },
+      { kind: 'group', id: 7 },
+      { kind: 'group', id: 7 },
+      { kind: 'ungrouped', id: 0 },
+    ])
+  ).toBe(true)
+  expect(scheme.items.value.map((item) => item.internalId)).toEqual(['e'])
+  expect(scheme.selectedItemIds.value).toEqual(new Set(['e']))
+  const remove = scheme.history.value!.transactionUndoStack[0]!.transaction.ops.find(
+    (op) => op.type === 'remove_items'
+  )!
+  expect(remove.items.map((item) => item.internalId)).toEqual(['a', 'b', 'c', 'd'])
+})
+
+it('deletes virtual unclassified contents, including groups without explicit metadata, without touching classified or ungrouped items', () => {
+  const { scheme, directory } = setup()
+  scheme.items.value = [
+    ...scheme.items.value,
+    makeAppItem({ internalId: 'no-metadata', groupId: 10 }),
+  ]
+  scheme.maxGroupId.value = 10
+  scheme.activeCollectionId.value = '@unclassified'
+  expect(directory.deleteEntries([{ kind: 'collection', id: '@unclassified' }])).toBe(true)
+  expect(scheme.items.value.map((item) => item.internalId)).toEqual(['a', 'b', 'c', 'd'])
+  expect(scheme.activeCollectionId.value).toBeNull()
+  expect(scheme.collectionTree.value.nodes).toHaveLength(3)
+})
+
+it('rejects empty, stale and unavailable cloud delete targets without partial deletion', () => {
+  const { scheme, directory } = setup()
+  const items = scheme.items.value,
+    tree = scheme.collectionTree.value
+  for (const entries of [
+    [],
+    [
+      { kind: 'group' as const, id: 7 },
+      { kind: 'collection' as const, id: 'missing' },
+    ],
+  ]) {
+    expect(directory.canDeleteEntries(entries)).toBe(false)
+    expect(directory.deleteEntries(entries)).toBe(false)
+  }
+  scheme.source.value = 'cloud'
+  const entries = [{ kind: 'collection' as const, id: 'house' }]
+  expect(directory.deleteEntries(entries)).toBe(false)
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.collectionTree.value).toBe(tree)
+})
+
+it('replays cloud subtree deletion without sharing or clearing personal restrictions', () => {
+  const { store, scheme, directory } = setup()
+  const before = scheme.items.value,
+    tree = scheme.collectionTree.value,
+    origins = scheme.groupOrigins.value
+  store.setGroupHidden(7, true)
+  scheme.source.value = 'cloud'
+  useCloudSchemeStore().schemeId = scheme.id
+  useCloudSchemeStore().status = 'connected'
+  expect(directory.deleteEntries([{ kind: 'collection', id: 'house' }])).toBe(true)
+  const transaction = store.pendingTransactions[0]!
+  expect(transaction.ops.map((op) => op.type)).toEqual(
+    expect.arrayContaining([
+      'remove_items',
+      'set_collection_tree',
+      'set_group_names',
+      'set_group_origins',
+    ])
+  )
+  store.createScheme('remote deletion')
+  const peer = store.activeScheme!
+  peer.items.value = before
+  peer.collectionTree.value = tree
+  peer.groupOrigins.value = origins
+  applyEditorTransactionToScheme(peer, transaction)
+  expect(peer.items.value).toEqual(scheme.items.value)
+  expect(peer.collectionTree.value).toEqual(scheme.collectionTree.value)
+  expect(peer.groupOrigins.value.size).toBe(0)
+  expect(peer.hiddenGroupIds.value.size).toBe(0)
+  expect(scheme.hiddenGroupIds.value).toEqual(new Set([7]))
 })

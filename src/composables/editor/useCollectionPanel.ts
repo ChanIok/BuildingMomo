@@ -4,6 +4,9 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import { useGroupPanel } from './useGroupPanel'
 import { useI18n } from '@/composables/useI18n'
+import type { CollectionEntry } from '@/types/editor'
+import { resolveCollectionEntries } from '@/lib/collectionTargets'
+import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
 import {
   collectionAncestors,
   collectionTreesEqual,
@@ -12,10 +15,7 @@ import {
   type CollectionTree,
 } from '@/lib/collectionTree'
 
-export type CollectionEntry =
-  | { kind: 'group'; id: number }
-  | { kind: 'collection'; id: string }
-  | { kind: 'ungrouped'; id: number }
+export type { CollectionEntry } from '@/types/editor'
 type Group = ReturnType<typeof useGroupPanel>['groups']['value'][number]
 type FurnitureRow = { group: Group; depth: number; parentId: string | null }
 export type CollectionRow =
@@ -299,6 +299,68 @@ export function useCollectionPanel(
     })
   }
 
+  function deleteTarget(entries: readonly CollectionEntry[]) {
+    const scheme = store.activeScheme
+    if (
+      !scheme ||
+      !canEdit.value ||
+      entries.some((entry) =>
+        entry.kind === 'group'
+          ? !store.groupsMap.has(entry.id)
+          : entry.kind === 'collection' && entry.id !== UNCLASSIFIED && !nodes.value.has(entry.id)
+      )
+    )
+      return null
+    const target = resolveCollectionEntries(scheme, entries)
+    return target.items.length || target.collectionIds.size ? target : null
+  }
+
+  function canDeleteEntries(entries: readonly CollectionEntry[]) {
+    return !!deleteTarget(entries)
+  }
+
+  /** 删除节点及全部内容，与仅移除集合外壳的 deleteCollection 分开。 */
+  function deleteEntries(entries: readonly CollectionEntry[]) {
+    const scheme = store.activeScheme
+    const target = deleteTarget(entries)
+    if (!scheme || !target) return false
+    const removed = new Set(target.items.map((item) => item.internalId))
+    recordTransaction('collection.delete_contents', () => {
+      if (removed.size) {
+        setSchemeItems(
+          scheme,
+          scheme.items.value.filter((item) => !removed.has(item.internalId))
+        )
+        scheme.groupOrigins.value = reconcileGroupOrigins(
+          scheme.groupOrigins.value,
+          scheme.items.value
+        )
+      }
+      if (target.collectionIds.size) {
+        scheme.collectionTree.value = {
+          nodes: tree.value.nodes.filter((node) => !target.collectionIds.has(node.id)),
+          groups: tree.value.groups.filter(
+            (group) => !target.collectionIds.has(group.collectionId ?? '')
+          ),
+        }
+      }
+      if (
+        scheme.activeCollectionId.value &&
+        (target.collectionIds.has(scheme.activeCollectionId.value) ||
+          (scheme.activeCollectionId.value === UNCLASSIFIED &&
+            entries.some((entry) => entry.kind === 'collection' && entry.id === UNCLASSIFIED)))
+      )
+        scheme.activeCollectionId.value = null
+      // 只移除已删除家具的选择；画布上额外选中的家具不属于面板删除范围。
+      scheme.selectedItemIds.value = new Set(
+        [...scheme.selectedItemIds.value].filter((id) => !removed.has(id))
+      )
+      if (removed.size) store.triggerSceneUpdate()
+      store.triggerSelectionUpdate()
+    })
+    return true
+  }
+
   function canMove(entry: CollectionEntry, parentId: string | null) {
     if (entry.kind === 'ungrouped') return false
     if (!canEdit.value || (parentId !== null && !nodes.value.has(parentId))) return false
@@ -457,6 +519,8 @@ export function useCollectionPanel(
     createCollection,
     renameCollection,
     deleteCollection,
+    canDeleteEntries,
+    deleteEntries,
     canMove,
     move,
     canMoveMany,
@@ -464,6 +528,7 @@ export function useCollectionPanel(
     normalizeEntries,
     activateCollection,
     toggleCollection,
+    revealCollection,
     collapseAll,
     restriction,
     groupsForEntry,

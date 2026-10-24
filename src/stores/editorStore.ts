@@ -5,6 +5,7 @@ import {
   UNCLASSIFIED,
 } from '@/lib/collectionTree'
 import { transactionAffectsScene } from '@/lib/editorTransactions'
+import { createEmptyClipboardData } from '@/lib/clipboardStructure'
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef, triggerRef, watch } from 'vue'
 
@@ -84,11 +85,7 @@ export const useEditorStore = defineStore('editor', () => {
   const schemes = shallowRef<HomeScheme[]>([])
 
   // 全局剪贴板（支持跨方案复制粘贴）- 使用 ShallowRef
-  const clipboardRef = shallowRef<ClipboardData>({
-    sourceSchemeId: null,
-    items: [],
-    groupOrigins: new Map(),
-  })
+  const clipboardRef = shallowRef<ClipboardData>(createEmptyClipboardData())
 
   // 关闭方案历史记录（最多保留10条）
   const MAX_CLOSED_HISTORY = 10
@@ -923,11 +920,7 @@ export const useEditorStore = defineStore('editor', () => {
   // 清空数据
   function clearData() {
     schemes.value = []
-    clipboardRef.value = {
-      sourceSchemeId: null,
-      items: [],
-      groupOrigins: new Map(),
-    }
+    clipboardRef.value = createEmptyClipboardData()
     clearPendingTransactions()
   }
 

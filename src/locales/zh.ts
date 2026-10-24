@@ -8,6 +8,7 @@ export const zhLocale = {
     collapseCollection: '折叠集合「{name}」',
     directoryUpdated: '{actor} 更新了集合目录',
     createCollection: '新建集合',
+    copyName: '{name} 副本',
     newCollection: '新集合',
     createSubcollection: '新建子集合',
     renameCollection: '重命名集合',

@@ -1,4 +1,11 @@
-import { patchGroupNames } from '@/lib/collectionTree'
+import {
+  captureClipboardStructure,
+  createEmptyClipboardData,
+  restoreClipboardStructure,
+} from '@/lib/clipboardStructure'
+import { resolveCollectionEntries } from '@/lib/collectionTargets'
+import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
+import { useI18n } from './useI18n'
 import { setSchemeItems } from '../lib/groupState'
 import { computed, triggerRef } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -13,6 +20,8 @@ import type {
   AppItem,
   AdvancedPasteOptions,
   ClipboardData,
+  CollectionEntry,
+  PasteResult,
   StepRepeatConfig,
 } from '../types/editor'
 
@@ -74,7 +83,9 @@ function cloneItemExtra(extra: AppItem['extra']): AppItem['extra'] {
     ...extra,
     Scale: extra.Scale ? { ...extra.Scale } : { X: 1, Y: 1, Z: 1 },
     TempInfo:
-      extra.TempInfo && typeof extra.TempInfo === 'object' ? { ...extra.TempInfo } : undefined,
+      extra.TempInfo && typeof extra.TempInfo === 'object'
+        ? structuredClone(extra.TempInfo)
+        : undefined,
     ColorMap: cloneColorMap(extra.ColorMap),
   }
 }
@@ -85,16 +96,6 @@ function cloneItem(item: AppItem): AppItem {
     ...item,
     rotation: { ...item.rotation },
     extra: cloneItemExtra(item.extra),
-  }
-}
-
-/** 整份剪贴板再拷贝一份（步进复制每一轮都要在副本上改，不动用户手上的那份）。 */
-function cloneClipboardData(clipboardData: ClipboardData): ClipboardData {
-  return {
-    sourceSchemeId: clipboardData.sourceSchemeId ?? null,
-    items: clipboardData.items.map(cloneItem),
-    groupOrigins: new Map(clipboardData.groupOrigins),
-    groups: clipboardData.groups?.map((group) => ({ ...group })),
   }
 }
 
@@ -203,6 +204,10 @@ function getClipboardEffectiveWorkingRotation(
 
 type InsertIdMode = 'regenerate' | 'preserve-source'
 
+function containsClipboardData(data: ClipboardData) {
+  return data.items.length > 0 || data.structure.collectionIds.length > 0
+}
+
 /** insertClipboardData 的选项：是否记入撤销、是否刷新选中、是否通知场景重绘等。 */
 interface InternalInsertOptions {
   idMode?: InsertIdMode
@@ -210,30 +215,57 @@ interface InternalInsertOptions {
   recordHistory?: boolean
   updateSelection?: boolean
   triggerUpdates?: boolean
+  parentId?: string | null
 }
 
 export function useClipboard() {
   const store = useEditorStore()
   const uiStore = useUIStore()
+  const cloud = useCloudSchemeStore()
+  const { t } = useI18n()
   const { activeScheme, clipboardList: clipboard } = storeToRefs(store)
   const { recordTransaction } = useEditorHistory()
 
+  function canInsertClipboard(data: ClipboardData, parentId?: string | null) {
+    const scheme = activeScheme.value
+    if (!scheme || !containsClipboardData(data)) return false
+    const existing = new Set(scheme.collectionTree.value.nodes.map((node) => node.id))
+    if (parentId != null && !existing.has(parentId)) return false
+    // 目录编辑的连接约束只作用于新能力，不阻断原有家具粘贴的离线事务。
+    const editsCollections =
+      parentId !== undefined ||
+      data.structure.collectionIds.length > 0 ||
+      data.structure.tree.nodes.some(
+        (node) => data.sourceSchemeId !== scheme.id || !existing.has(node.id)
+      )
+    return (
+      !editsCollections ||
+      scheme.source.value !== 'cloud' ||
+      (scheme.collectionsSupported.value && cloud.isConnected && cloud.schemeId === scheme.id)
+    )
+  }
+
   /**
-   * 把当前方案里「选中的家具」做成一份剪贴板数据。
-   * 只选一件且它在某个组里时，会脱掉组（groupId 归零），避免贴出来还带半个组。
-   * 多选涉及的组会把「组原点」一并记下来，粘贴后旋转/move 组时行为才正确。
+   * 无参时复制画布家具选区；传节点时复制完整组/集合，不受画布保护和过滤影响。
+   * 画布只选一件时脱组；面板选中的单家具组仍保留组身份。
+   * 目录、组原点和个人标记均在复制时快照，不在粘贴时回读源方案。
    */
-  function buildClipboardDataFromSelection(): ClipboardData {
+  function buildClipboardDataFromSelection(entries?: readonly CollectionEntry[]): ClipboardData {
     const scheme = activeScheme.value
     if (!scheme) {
-      return { sourceSchemeId: null, items: [], groupOrigins: new Map() }
+      return createEmptyClipboardData()
     }
 
-    const copiedItems = scheme.items.value
-      .filter((item) => scheme.selectedItemIds.value.has(item.internalId))
-      .map(cloneItem)
+    const resolved = entries ? resolveCollectionEntries(scheme, entries) : null
+    const sourceItems =
+      resolved?.items ??
+      scheme.items.value.filter(
+        (item) =>
+          scheme.selectedItemIds.value.has(item.internalId) && store.isItemEditable(item.internalId)
+      )
+    const copiedItems = sourceItems.map(cloneItem)
 
-    if (copiedItems.length === 1) {
+    if (!entries && copiedItems.length === 1) {
       const singleItem = copiedItems[0]
       if (singleItem && singleItem.groupId > 0) {
         singleItem.groupId = 0
@@ -259,16 +291,15 @@ export function useClipboard() {
       sourceSchemeId: scheme.id,
       items: copiedItems,
       groupOrigins: copiedGroupOrigins,
-      groups: scheme.collectionTree.value.groups
-        .filter((group) => involvedGroupIds.has(group.groupId) && group.name !== undefined)
-        .map(({ groupId, name }) => ({ groupId, name })),
+      structure: captureClipboardStructure(scheme, involvedGroupIds, resolved?.collectionIds),
     }
   }
 
   /** 根据当前选中内容覆盖内存剪贴板（不写历史）。 */
-  function copyToClipboard() {
+  function copyToClipboard(entries?: readonly CollectionEntry[]) {
     if (!activeScheme.value) return
-    clipboard.value = buildClipboardDataFromSelection()
+    const data = buildClipboardDataFromSelection(entries)
+    if (containsClipboardData(data)) clipboard.value = data
   }
 
   /** 先复制到剪贴板，再删掉选中项；整段包在一笔撤销里，可以一次 Ctrl+Z 找回。 */
@@ -309,10 +340,10 @@ export function useClipboard() {
   function insertClipboardData(
     clipboardData: ClipboardData,
     options: InternalInsertOptions = {}
-  ): { newIds: string[]; newItems: AppItem[] } {
+  ): PasteResult {
     const scheme = activeScheme.value
-    if (!scheme || clipboardData.items.length === 0) {
-      return { newIds: [], newItems: [] }
+    if (!scheme || !canInsertClipboard(clipboardData, options.parentId)) {
+      return { newIds: [], roots: [] }
     }
 
     const {
@@ -321,6 +352,7 @@ export function useClipboard() {
       recordHistory: shouldRecordHistory = true,
       updateSelection = true,
       triggerUpdates = true,
+      parentId,
     } = options
 
     const executeInsert = () => {
@@ -428,7 +460,7 @@ export function useClipboard() {
           (item, index) => item !== existingItems[index] && !store.isItemEditable(item.internalId)
         )
       ) {
-        return { newIds: [], newItems: [] }
+        return { newIds: [], roots: [] }
       }
 
       // 逐件生成新 internalId；instanceId / groupId 由上两种模式之一决定
@@ -468,17 +500,44 @@ export function useClipboard() {
         }
       })
 
-      // 先协调已有组，再添加新粘贴组的名称，
-      // 因为新组可能有意复用腾出的来源 ID。
+      // 先协调已有组，再恢复副本的目录与名称：保留 ID 模式会复用刚腾出的来源编号。
       setSchemeItems(scheme, nextExistingItems)
-      scheme.items.value = [...nextExistingItems, ...newItems]
-      const names: Array<[number, string]> = []
-      for (const group of clipboardData.groups ?? []) {
-        const groupId = targetGroupIdMap.get(group.groupId)
-        if (groupId !== undefined && group.name) names.push([groupId, group.name])
+      if (newItems.length) scheme.items.value = [...nextExistingItems, ...newItems]
+      const structure = clipboardData.structure
+      const restored = restoreClipboardStructure(
+        structure,
+        scheme.collectionTree.value,
+        targetGroupIdMap,
+        clipboardData.sourceSchemeId === scheme.id,
+        parentId,
+        (name) => t('groups.copyName', { name }).slice(0, 200)
+      )
+      scheme.collectionTree.value = restored.tree
+      const newGroupIds = new Set(targetGroupIdMap.values())
+      for (const [state, ids] of [
+        [scheme.hiddenGroupIds, structure.hiddenGroups],
+        [scheme.lockedGroupIds, structure.lockedGroups],
+      ] as const) {
+        // 清除可能复用的来源编号上的旧个人标记，尤其是保留 ID 粘贴。
+        const next = new Set([...state.value].filter((id) => !newGroupIds.has(id)))
+        for (const id of ids) {
+          const mapped = targetGroupIdMap.get(id)
+          if (mapped !== undefined) next.add(mapped)
+        }
+        state.value = next
       }
-      scheme.collectionTree.value = patchGroupNames(scheme.collectionTree.value, [], names)
-      scheme.groupOrigins.value = nextGroupOrigins
+      for (const [state, ids] of [
+        [scheme.hiddenCollectionIds, structure.hiddenCollections],
+        [scheme.lockedCollectionIds, structure.lockedCollections],
+      ] as const) {
+        const next = new Set(state.value)
+        for (const id of ids) {
+          const mapped = restored.collectionMap.get(id)
+          if (mapped) next.add(mapped)
+        }
+        state.value = next
+      }
+      if (newItems.length) scheme.groupOrigins.value = nextGroupOrigins
       scheme.maxInstanceId.value = currentMaxInstanceId
       scheme.maxGroupId.value = currentMaxGroupId
 
@@ -487,14 +546,17 @@ export function useClipboard() {
       }
 
       if (triggerUpdates) {
-        triggerRef(scheme.groupOrigins)
-        store.triggerSceneUpdate()
+        if (newItems.length) {
+          triggerRef(scheme.groupOrigins)
+          store.triggerSceneUpdate()
+        }
         if (updateSelection) {
           store.triggerSelectionUpdate()
+          uiStore.groupPanelPasteTarget = { schemeId: scheme.id, roots: restored.roots }
         }
       }
 
-      return { newIds, newItems }
+      return { newIds, roots: restored.roots }
     }
 
     if (!shouldRecordHistory) {
@@ -505,7 +567,7 @@ export function useClipboard() {
   }
 
   /**
-   * 步进复制的一小步：在一份剪贴板副本上做「相对移动 / 旋转 / 缩放」，得到下一批要落盘的形状。
+   * 步进复制只替换变换后的家具，目录、组原点和个人标记复用只读快照。
    * 底层用编辑器的同一套变换逻辑，所以和你在场景里手动拖一次效果一致。
    */
   function transformClipboardDataStep(
@@ -513,13 +575,12 @@ export function useClipboard() {
     config: StepRepeatConfig,
     pivotData: { x: number; y: number; z: number }
   ): ClipboardData {
-    const nextData = cloneClipboardData(clipboardData)
     // 第一步：每一轮根据当前副本解析有效坐标系，并围绕固定步进 Pivot 建立共享 Frame。
-    const workingRotation = getClipboardEffectiveWorkingRotation(nextData, uiStore)
+    const workingRotation = getClipboardEffectiveWorkingRotation(clipboardData, uiStore)
     const frame = createSelectionTransformFrame(pivotData, workingRotation)
     // 第二步：统一执行 Scale → Rotate → Translate，倍率始终采用界面视觉 x/y/z。
-    nextData.items = applyRelativeSelectionTransform(
-      nextData.items,
+    const items = applyRelativeSelectionTransform(
+      clipboardData.items,
       {
         positionDelta: uiStore.workingDeltaToData(config.positionDelta),
         rotationDelta: { ...config.rotationDelta },
@@ -528,25 +589,31 @@ export function useClipboard() {
       frame
     )
 
-    return nextData
+    return { ...clipboardData, items }
   }
 
-  /** 在数据坐标下平移 dx、dy 后插入（Z 不改）；返回新物品的 internalId 列表。 */
-  function pasteItems(clipboardData: ClipboardData, offsetX: number, offsetY: number): string[] {
+  /** 在数据坐标下平移 dx、dy 后插入（Z 不改），返回新家具 ID 和面板根节点。 */
+  function pasteItems(
+    clipboardData: ClipboardData,
+    offsetX: number,
+    offsetY: number,
+    parentId?: string | null
+  ): PasteResult {
     return insertClipboardData(clipboardData, {
       idMode: 'regenerate',
       offset: { x: offsetX, y: offsetY, z: 0 },
-    }).newIds
+      parentId,
+    })
   }
 
   /** 有选中则写入内存剪贴板（供 UI / 快捷键调用）。 */
-  function copy() {
-    if (!activeScheme.value || activeScheme.value.selectedItemIds.value.size === 0) {
+  function copy(entries?: readonly CollectionEntry[]) {
+    if (!activeScheme.value || (!entries && activeScheme.value.selectedItemIds.value.size === 0)) {
       console.warn('[Clipboard] No items selected to copy')
       return
     }
 
-    copyToClipboard()
+    copyToClipboard(entries)
     console.log(`[Clipboard] Copied ${clipboard.value.items.length} items`)
   }
 
@@ -563,7 +630,7 @@ export function useClipboard() {
 
   /** 剪贴板有内容则在原位置插入一份副本（新编号）。 */
   function paste() {
-    if (clipboard.value.items.length === 0) {
+    if (!hasClipboardData.value) {
       console.warn('[Clipboard] No items in clipboard to paste')
       return
     }
@@ -577,31 +644,32 @@ export function useClipboard() {
    * 1）preserveIds — 从别的方案拷来时保留存档里的 ID；同方案内不能用来「自己贴自己」。
    * 2）stepRepeat — 按设定多次「变一点再贴一份」，多轮插入合成一笔撤销。
    */
-  function advancedPaste(options: AdvancedPasteOptions): string[] {
-    if (!activeScheme.value || clipboard.value.items.length === 0) {
-      return []
+  function advancedPaste(options: AdvancedPasteOptions): PasteResult {
+    if (!canPaste.value) {
+      return { newIds: [], roots: [] }
     }
 
     if (options.mode === 'preserveIds') {
       // 来源就是当前标签：贴进来会和现有物品完全同号，逻辑上无意义，直接跳过
-      if (clipboard.value.sourceSchemeId === activeScheme.value.id) {
-        return []
+      if (clipboard.value.sourceSchemeId === activeScheme.value!.id) {
+        return { newIds: [], roots: [] }
       }
 
       return insertClipboardData(clipboard.value, {
         idMode: 'preserve-source',
-      }).newIds
+      })
     }
 
     if (options.stepRepeat.repeatCount <= 0) {
-      return []
+      return { newIds: [], roots: [] }
     }
 
     return recordTransaction('clipboard.step_repeat', () => {
       const { stepRepeat } = options
       const createdIds: string[] = []
+      const roots: PasteResult['roots'] = []
       const pivot = getClipboardPivot(clipboard.value)
-      let currentClipboardData = cloneClipboardData(clipboard.value)
+      let currentClipboardData = clipboard.value
 
       for (let index = 0; index < stepRepeat.repeatCount; index++) {
         currentClipboardData = transformClipboardDataStep(currentClipboardData, stepRepeat, pivot)
@@ -613,30 +681,31 @@ export function useClipboard() {
           triggerUpdates: false,
         })
         createdIds.push(...result.newIds)
+        roots.push(...result.roots)
       }
 
-      if (createdIds.length > 0) {
+      if (createdIds.length > 0 || roots.length > 0) {
         selectInsertedItems(createdIds)
-        triggerRef(activeScheme.value!.groupOrigins)
-        store.triggerSceneUpdate()
+        if (createdIds.length > 0) {
+          triggerRef(activeScheme.value!.groupOrigins)
+          store.triggerSceneUpdate()
+        }
         store.triggerSelectionUpdate()
+        uiStore.groupPanelPasteTarget = { schemeId: activeScheme.value!.id, roots }
       }
 
-      return createdIds
+      return { newIds: createdIds, roots }
     })
   }
 
   /** 清空内存里的剪贴板内容。 */
   function clearClipboard() {
-    clipboard.value = {
-      sourceSchemeId: null,
-      items: [],
-      groupOrigins: new Map(),
-    }
+    clipboard.value = createEmptyClipboardData()
     console.log('[Clipboard] Cleared')
   }
 
-  const hasClipboardData = computed(() => clipboard.value.items.length > 0)
+  const hasClipboardData = computed(() => containsClipboardData(clipboard.value))
+  const canPaste = computed(() => canInsertClipboard(clipboard.value))
   /** 只有「剪贴板来自另一个方案」时才允许做「保留源 ID」粘贴，否则会和本方案自己冲突。 */
   const canPreserveSourceIds = computed(
     () =>
@@ -648,6 +717,7 @@ export function useClipboard() {
   return {
     clipboard: computed(() => clipboard.value),
     hasClipboardData,
+    canPaste,
     canPreserveSourceIds,
     copy,
     cut,

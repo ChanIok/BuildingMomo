@@ -8,6 +8,7 @@ export const enLocale = {
     collapseCollection: 'Collapse collection “{name}”',
     directoryUpdated: '{actor} updated the collection tree',
     createCollection: 'New collection',
+    copyName: '{name} copy',
     newCollection: 'New collection',
     createSubcollection: 'New subcollection',
     renameCollection: 'Rename collection',

@@ -95,6 +95,18 @@ it('keeps explicit list group selection when automatic group expansion is disabl
   expect(ids()).toEqual([])
 })
 
+it('adopts pasted roots without losing selected ungrouped furniture on additive selection', () => {
+  const { scheme, selection, group, ids } = setup()
+  scheme.selectedItemIds.value = new Set(['g1-a', 'g1-b', 'loose'])
+  selection.adopt([{ kind: 'group', id: 1 }])
+  expect(selection.entries.value).toEqual([{ kind: 'group', id: 1 }])
+  expect(scheme.history.value).toBeUndefined()
+  group(2, { ctrlKey: true })
+  expect(ids()).toEqual(['g1-a', 'g1-b', 'g2', 'loose'])
+  group(1, { ctrlKey: true })
+  expect(ids()).toEqual(['g2', 'loose'])
+})
+
 it('clears panel nodes and carried canvas selection once, preserving data and resetting ranges', () => {
   const { store, scheme, group, collection, selection, ids, history } = setup(true)
   store.setGroupLocked(2, true)

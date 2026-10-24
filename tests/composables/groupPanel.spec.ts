@@ -13,6 +13,7 @@ import { useGroupPanel } from '@/composables/editor/useGroupPanel'
 import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
 import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelection'
 import { useClipboard } from '@/composables/useClipboard'
+import { createEmptyClipboardData } from '@/lib/clipboardStructure'
 import { useValidationStore } from '@/stores/validationStore'
 import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
 import { makeAppItem, groupNamesOf } from '../fixtures/item'
@@ -385,17 +386,16 @@ describe('group management', () => {
     const source = scheme.items.value
       .slice(0, 2)
       .map((item) => ({ ...item, internalId: `source-${item.internalId}` }))
-    store.clipboardList = {
-      sourceSchemeId: 'elsewhere',
-      items: source,
-      groupOrigins: new Map(),
-      groups: [{ groupId: 7, name: '导入墙' }],
-    }
+    const data = createEmptyClipboardData()
+    data.sourceSchemeId = 'elsewhere'
+    data.items = source
+    data.structure.tree.groups = [{ groupId: 7, name: '导入墙', collectionId: null, order: 7 }]
+    store.clipboardList = data
     store.setGroupLocked(7, true)
-    expect(clipboard.advancedPaste({ mode: 'preserveIds' })).toEqual([])
+    expect(clipboard.advancedPaste({ mode: 'preserveIds' })).toEqual({ newIds: [], roots: [] })
     expect(scheme.items.value).toHaveLength(4)
     store.setGroupLocked(7, false)
-    expect(clipboard.advancedPaste({ mode: 'preserveIds' })).toHaveLength(2)
+    expect(clipboard.advancedPaste({ mode: 'preserveIds' }).newIds).toHaveLength(2)
     const oldGroup = scheme.items.value[0]!.groupId
     expect(oldGroup).not.toBe(7)
     expect(groupNamesOf(scheme).get(oldGroup)).toBe('现有墙')
@@ -422,12 +422,13 @@ it('preserves an archived named classification through preserve-ID paste and und
   )
   const scheme = store.getSchemeById(id)!
   expect(scheme).not.toHaveProperty('groupNames')
-  store.clipboardList = {
-    sourceSchemeId: 'another',
-    items: [makeAppItem({ internalId: 'incoming', groupId: 7 })],
-    groupOrigins: new Map(),
-    groups: [{ groupId: 7, name: 'Incoming walls' }],
-  }
+  const data = createEmptyClipboardData()
+  data.sourceSchemeId = 'another'
+  data.items = [makeAppItem({ internalId: 'incoming', groupId: 7 })]
+  data.structure.tree.groups = [
+    { groupId: 7, name: 'Incoming walls', collectionId: null, order: 7 },
+  ]
+  store.clipboardList = data
   const history = useEditorHistory()
   useClipboard().advancedPaste({ mode: 'preserveIds' })
   const oldId = scheme.items.value.find((item) => item.internalId === 'old')!.groupId

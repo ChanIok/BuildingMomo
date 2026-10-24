@@ -5,6 +5,8 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
+import { useClipboard } from '@/composables/useClipboard'
+import { hasTextSelection } from '@/lib/keyboard'
 import type { GroupEditTarget } from '@/types/editor'
 import { useGroupPanel } from '@/composables/editor/useGroupPanel'
 import {
@@ -37,6 +39,13 @@ const uiStore = useUIStore()
 const { t } = useI18n()
 const { groups, ungrouped, renameGroup, canRenameGroup } = useGroupPanel()
 const { canGroupSelection, canUngroupSelection, requestGroup, ungroupSelected } = useEditorGroups()
+const {
+  copy: copyNodes,
+  clipboard,
+  canPaste,
+  buildClipboardDataFromSelection,
+  pasteItems,
+} = useClipboard()
 const query = ref('')
 const {
   rows,
@@ -45,11 +54,14 @@ const {
   createCollection,
   renameCollection,
   deleteCollection,
+  canDeleteEntries,
+  deleteEntries,
   canMoveMany,
   moveMany,
   normalizeEntries,
   activateCollection,
   toggleCollection,
+  revealCollection,
   collapseAll,
   restriction,
   groupsForEntry,
@@ -58,6 +70,7 @@ const {
   select,
   deselect,
   clear: clearSelection,
+  adopt: adoptSelection,
   selectionState,
   selectionCoverage,
   isSelected,
@@ -101,10 +114,13 @@ const menuRow = computed(() => {
   return index === undefined ? undefined : rows.value[index]
 })
 const menuEntries = computed(() => (menuRow.value ? selectedEntries.value : []))
+const canOrganizeMenu = computed(() =>
+  menuEntries.value.every((entry) => entry.kind !== 'ungrouped')
+)
 const menuGroupTarget = computed<GroupEditTarget>(() => ({
   kind: 'groups',
   schemeId: store.activeScheme?.id ?? '',
-  groupIds: [...new Set(menuEntries.value.flatMap(groupsForEntry))],
+  groupIds: canOrganizeMenu.value ? [...new Set(menuEntries.value.flatMap(groupsForEntry))] : [],
 }))
 const singleMenuEntry = computed(() => menuEntries.value.length === 1)
 const menuDestinations = computed(() =>
@@ -356,6 +372,86 @@ function clickBackground(event: MouseEvent) {
   if (event.button === 0 && isBackgroundTarget(event)) clearPanelSelection()
 }
 
+function pasteNodes(parentId?: string | null) {
+  if (canEdit.value && canPaste.value) pasteItems(clipboard.value, 0, 0, parentId)
+}
+
+function pasteMenu() {
+  const row = menuRow.value
+  if (menuTarget.value === 'background') pasteNodes(null)
+  else if (row) pasteNodes(row.kind === 'collection' && !row.virtual ? row.id : row.parentId)
+}
+
+function deleteNodes(entries: readonly CollectionEntry[]) {
+  if (!deleteEntries(entries)) return
+  // 删除后将焦点留在列表，不自动聚焦或选中下一行。
+  focused.value = null
+  dismissMenu()
+  adoptSelection([])
+  panelSelectionVersion = store.selectionVersion
+  list.value?.focus({ preventScroll: true })
+}
+
+// 仅列表焦点下接管节点命令；改名输入和原生文本复制仍由浏览器处理。
+function listKey(event: KeyboardEvent) {
+  if (
+    event.altKey ||
+    (event.target as Element | null)?.closest('input, textarea, [contenteditable]')
+  )
+    return
+  const key = event.key.toLowerCase()
+  const control = event.ctrlKey || event.metaKey
+  const copying = control && key === 'c' && !event.shiftKey
+  const pasting = control && key === 'v' && !event.shiftKey
+  const duplicating = !control && !event.shiftKey && key === 'e'
+  const deleting = !control && !event.shiftKey && key === 'delete'
+  if (!copying && !pasting && !duplicating && !deleting) return
+  if (copying && hasTextSelection()) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (copying) copyNodes(selectedEntries.value)
+  else if (pasting) pasteNodes()
+  else if (deleting) deleteNodes(selectedEntries.value)
+  else if (canEdit.value && selectedEntries.value.length)
+    pasteItems(buildClipboardDataFromSelection(selectedEntries.value), 0, 0)
+}
+
+watch(
+  () => uiStore.groupPanelPasteTarget,
+  async (target) => {
+    if (!target || target.schemeId !== store.activeSchemeId) return
+    const shouldFocus = !!openMenu.value || !!list.value?.contains(document.activeElement)
+    query.value = ''
+    for (const root of target.roots) {
+      const parent =
+        root.kind === 'collection'
+          ? store.activeScheme!.collectionTree.value.nodes.find((node) => node.id === root.id)
+              ?.parentId
+          : store.activeScheme!.collectionTree.value.groups.find(
+              (group) => group.groupId === root.id
+            )?.collectionId
+      revealCollection(parent ?? null)
+    }
+    adoptSelection(target.roots)
+    panelSelectionVersion = store.selectionVersion
+    dismissMenu()
+    const first = target.roots[0]
+    store.activeScheme!.activeCollectionId.value = first?.kind === 'collection' ? first.id : null
+    store.activeScheme!.activeGroupId.value = first?.kind === 'group' ? first.id : null
+    await nextTick()
+    if (
+      !first ||
+      !uiStore.groupPanelOpen ||
+      store.activeSchemeId !== target.schemeId ||
+      uiStore.groupPanelPasteTarget !== target
+    )
+      return
+    if (shouldFocus) void focusEntry(first)
+    else scrollToEntry(first)
+  },
+  { flush: 'sync' }
+)
+
 function prepareMenu(event: MouseEvent | PointerEvent, selectTarget = true) {
   const element = (event.target as Element | null)?.closest<HTMLElement>('[data-row-key]')
   const index =
@@ -369,14 +465,6 @@ function prepareMenu(event: MouseEvent | PointerEvent, selectTarget = true) {
   if (!menuTarget.value) event.preventDefault()
   else if (menuTarget.value !== 'background' && selectTarget && !isSelected(menuTarget.value))
     activate(rows.value[index!]!, { ctrlKey: false, metaKey: false, shiftKey: false })
-  // 未分组项不支持目录操作，混合多选时也一样。
-  if (
-    menuTarget.value !== 'background' &&
-    selectedEntries.value.some((entry) => entry.kind === 'ungrouped')
-  ) {
-    menuTarget.value = null
-    event.preventDefault()
-  }
   // 右键点击其他行时复用同一个弹出菜单。
   if (openMenu.value) openMenu.value = menuTarget.value
 }
@@ -723,6 +811,7 @@ watch(
             @mouseleave="pointerInside = false"
             @dragover="setDropTarget(null)"
             @click="clickBackground"
+            @keydown="listKey"
             @contextmenu.capture="prepareMenu"
             @pointerdown.capture="menuPointerDown"
           >
@@ -778,17 +867,27 @@ watch(
         <ContextMenuContent
           @close-auto-focus="restoreMenuFocus"
           @interact-outside="menuInteractedOutside = true"
+          @keydown.delete="listKey"
         >
-          <ContextMenuItem
-            v-if="menuTarget === 'background'"
-            :disabled="!canEdit"
-            @select="addCollection()"
-            >{{ t('groups.createCollection') }}</ContextMenuItem
-          >
+          <template v-if="menuTarget === 'background'">
+            <ContextMenuItem :disabled="!canEdit" @select="addCollection()">{{
+              t('groups.createCollection')
+            }}</ContextMenuItem>
+            <ContextMenuItem :disabled="!canEdit || !canPaste" @select="pasteMenu()">{{
+              t('command.edit.paste')
+            }}</ContextMenuItem>
+          </template>
           <template v-else-if="menuRow">
             <ContextMenuLabel v-if="!singleMenuEntry">{{
               t('groups.selectedNodes', { count: menuEntries.length })
             }}</ContextMenuLabel>
+            <ContextMenuItem :disabled="!menuEntries.length" @select="copyNodes(menuEntries)">{{
+              t('command.edit.copy')
+            }}</ContextMenuItem>
+            <ContextMenuItem :disabled="!canEdit || !canPaste" @select="pasteMenu()">{{
+              t('command.edit.paste')
+            }}</ContextMenuItem>
+            <ContextMenuSeparator v-if="canOrganizeMenu" />
             <template v-if="singleMenuEntry && menuRow.kind === 'collection' && !menuRow.virtual">
               <ContextMenuItem :disabled="!canEdit" @select="addCollection(menuRow.id)">{{
                 t('groups.createSubcollection')
@@ -804,20 +903,25 @@ watch(
               >{{ t('groups.rename') }}</ContextMenuItem
             >
             <ContextMenuSeparator
-              v-if="singleMenuEntry && (menuRow.kind !== 'collection' || !menuRow.virtual)"
+              v-if="
+                singleMenuEntry &&
+                (menuRow.kind === 'group' || (menuRow.kind === 'collection' && !menuRow.virtual))
+              "
             />
             <ContextMenuItem
+              v-if="canOrganizeMenu"
               :disabled="!canEdit || !canGroupSelection(menuGroupTarget)"
               @select="requestGroup(menuGroupTarget)"
               >{{ t('command.edit.group') }}</ContextMenuItem
             >
             <ContextMenuItem
+              v-if="canOrganizeMenu"
               :disabled="!canEdit || !canUngroupSelection(menuGroupTarget)"
               @select="ungroupSelected(menuGroupTarget)"
               >{{ t('command.edit.ungroup') }}</ContextMenuItem
             >
-            <ContextMenuSeparator />
-            <ContextMenuSub>
+            <ContextMenuSeparator v-if="canOrganizeMenu" />
+            <ContextMenuSub v-if="canOrganizeMenu">
               <ContextMenuSubTrigger
                 :disabled="!canEdit || !normalizeEntries(menuEntries).length"
                 >{{ t('groups.moveTo') }}</ContextMenuSubTrigger
@@ -853,6 +957,14 @@ watch(
               @select="collapseAll()"
               >{{ t('groups.collapseAll') }}</ContextMenuItem
             >
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              :disabled="!canDeleteEntries(menuEntries)"
+              variant="destructive"
+              @select="deleteNodes(menuEntries)"
+            >
+              <span>{{ t('command.edit.delete') }}</span>
+            </ContextMenuItem>
           </template>
         </ContextMenuContent>
       </ContextMenu>

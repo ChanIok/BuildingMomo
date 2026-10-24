@@ -34,6 +34,150 @@ beforeAll(async () => {
   await server.ssrLoadModule('/src/components/GroupPanel.vue')
 })
 
+function mountSetup(setup: () => void) {
+  const { createApp } = createRenderer<object, object>({
+    createElement: () => ({}),
+    createText: () => ({}),
+    createComment: () => ({}),
+    insert: () => {},
+    remove: () => {},
+    setText: () => {},
+    setElementText: () => {},
+    parentNode: () => null,
+    nextSibling: () => null,
+    patchProp: () => {},
+  })
+  const app = createApp({
+    setup() {
+      setup()
+      return () => h('div')
+    },
+  })
+  app.use(createPinia())
+  app.provide(ssrContextKey, { modules: new Set() })
+  app.mount({})
+  return app
+}
+
+function commandKey(key: string, modifiers = {}, input = false) {
+  return {
+    key,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...modifiers,
+    target: { closest: () => (input ? {} : null) },
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+  }
+}
+
+async function setupNodeCommands() {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+  vi.stubGlobal('document', { activeElement: null })
+  vi.stubGlobal('window', { getSelection: () => ({ toString: () => '' }) })
+  const { default: GroupPanel } = await server.ssrLoadModule('/src/components/GroupPanel.vue')
+  const { useEditorStore } = await server.ssrLoadModule('/src/stores/editorStore.ts')
+  const { useUIStore } = await server.ssrLoadModule('/src/stores/uiStore.ts')
+  let panel: any, store: any, scheme: any
+  const listFocus = vi.fn(),
+    rowFocus = vi.fn()
+  const viewport = {
+    scrollTop: 0,
+    scrollTo: vi.fn(),
+    querySelectorAll: () =>
+      panel.rows.value.map((row: any) => ({
+        dataset: { rowKey: panel.keyOf(row) },
+        focus: rowFocus,
+      })),
+  }
+  const app = mountSetup(() => {
+    store = useEditorStore()
+    store.createScheme('panel commands')
+    scheme = store.activeScheme!
+    scheme.items.value = [7, 8, 0, 0].map((groupId, index) =>
+      makeAppItem({ internalId: `item-${index}`, groupId, instanceId: 10 + index })
+    )
+    scheme.maxGroupId.value = 8
+    scheme.maxInstanceId.value = 13
+    scheme.collectionTree.value = {
+      nodes: [
+        { id: 'house', name: 'House', parentId: null, order: 0 },
+        { id: 'empty', name: 'Empty', parentId: null, order: 1 },
+      ],
+      groups: [{ groupId: 7, collectionId: 'house', order: 0 }],
+    }
+    useUIStore().groupPanelOpen = true
+    panel = GroupPanel.setup({}, { expose: () => {} })
+    panel.list.value = { contains: () => true, focus: listFocus, querySelector: () => viewport }
+  })
+  await nextTick()
+  function openMenu(rowKey: string | null) {
+    panel.prepareMenu({
+      target: { closest: () => (rowKey ? { dataset: { rowKey } } : null) },
+      preventDefault: vi.fn(),
+    })
+    panel.setMenuOpen(true)
+  }
+  return { app, panel, store, scheme, openMenu, listFocus, rowFocus }
+}
+
+it('does not adopt the ungrouped category or delete originals after pasting one furniture item', async () => {
+  const { app, panel, scheme } = await setupNodeCommands()
+  try {
+    scheme.selectedItemIds.value = new Set(['item-2'])
+    panel.copyNodes()
+    const result = panel.pasteItems(panel.clipboard.value, 0, 0)
+    await nextTick()
+    expect(scheme.selectedItemIds.value).toEqual(new Set(result.newIds))
+    expect(panel.selectedEntries.value).toEqual([])
+    panel.listKey(commandKey('Delete'))
+    expect(scheme.items.value.map((item: any) => item.internalId)).toEqual([
+      'item-0',
+      'item-1',
+      'item-2',
+      'item-3',
+      ...result.newIds,
+    ])
+  } finally {
+    app.unmount()
+  }
+})
+
+it('closes advanced paste after inserting an empty collection, but not when nothing is pasted', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+  const { default: AdvancedPasteDialog } = await server.ssrLoadModule(
+    '/src/components/AdvancedPasteDialog.vue'
+  )
+  const { useEditorStore } = await server.ssrLoadModule('/src/stores/editorStore.ts')
+  const { useClipboard } = await server.ssrLoadModule('/src/composables/useClipboard.ts')
+  const emit = vi.fn()
+  let dialog: any, clipboard: any
+  const app = mountSetup(() => {
+    const store = useEditorStore()
+    store.createScheme('advanced paste')
+    store.activeScheme!.collectionTree.value = {
+      nodes: [{ id: 'empty', name: 'Empty', parentId: null, order: 0 }],
+      groups: [],
+    }
+    clipboard = useClipboard()
+    clipboard.copy([{ kind: 'collection', id: 'empty' }])
+    dialog = AdvancedPasteDialog.setup({ open: true }, { expose: () => {}, emit })
+    dialog.mode.value = 'stepRepeat'
+  })
+  try {
+    dialog.submit()
+    expect(emit).toHaveBeenCalledWith('update:open', false)
+    emit.mockClear()
+    clipboard.clearClipboard()
+    dialog.submit()
+    expect(emit).not.toHaveBeenCalled()
+  } finally {
+    app.unmount()
+  }
+})
+
 it('delegates delayed hints and keeps clicked controls dismissed until re-entry', async () => {
   const { default: GroupPanelHints } = await server.ssrLoadModule(
     '/src/components/GroupPanelHints.vue'
@@ -858,8 +1002,10 @@ it('keeps list selections in place and applies keyboard modifiers from a focused
     const menu = menuEvent('ungrouped:0')
     handlers.prepareMenu(menu)
     handlers.setMenuOpen(true)
-    expect(menu.preventDefault).toHaveBeenCalledOnce()
-    expect(handlers.openMenu.value).toBeNull()
+    // 未分组行现在也提供复制粘贴，目录操作仍不可用。
+    expect(menu.preventDefault).not.toHaveBeenCalled()
+    expect(handlers.openMenu.value).toEqual({ kind: 'ungrouped', id: 0 })
+    expect(handlers.menuGroupTarget.value.groupIds).toEqual([])
   } finally {
     app.unmount()
   }
@@ -1153,6 +1299,114 @@ it.each([false, true])(
     expect(html).toContain(searching ? '没有匹配的组' : '还没有组')
   }
 )
+
+it('copies panel scope rather than carried canvas items, and duplicates without replacing the clipboard', async () => {
+  const { app, panel, store, scheme } = await setupNodeCommands()
+  try {
+    store.setGroupHidden(7, true)
+    scheme.selectedItemIds.value = new Set(['item-2'])
+    panel.activate(
+      panel.rows.value.find((row: any) => row.id === 'house'),
+      { ctrlKey: true }
+    )
+    const copying = commandKey('c', { ctrlKey: true })
+    panel.listKey(copying)
+    expect(copying.stopPropagation).toHaveBeenCalledOnce()
+    const copied = panel.clipboard.value
+    expect(copied.items.map((item: any) => item.internalId)).toEqual(['item-0'])
+    panel.listKey(commandKey('e'))
+    expect(scheme.items.value).toHaveLength(5)
+    expect(panel.clipboard.value).toBe(copied)
+  } finally {
+    app.unmount()
+  }
+})
+
+it('leaves text input, native copy and advanced-paste shortcuts to their existing handlers', async () => {
+  const { app, panel } = await setupNodeCommands()
+  try {
+    const typing = commandKey('Delete', {}, true)
+    panel.listKey(typing)
+    expect(typing.preventDefault).not.toHaveBeenCalled()
+    vi.stubGlobal('window', { getSelection: () => ({ toString: () => 'selected text' }) })
+    const copying = commandKey('c', { ctrlKey: true })
+    panel.listKey(copying)
+    expect(copying.preventDefault).not.toHaveBeenCalled()
+    const advanced = commandKey('v', { ctrlKey: true, shiftKey: true })
+    panel.listKey(advanced)
+    expect(advanced.stopPropagation).not.toHaveBeenCalled()
+  } finally {
+    app.unmount()
+  }
+})
+
+it('pastes at the menu target and adopts the new node without extra selection history', async () => {
+  const { app, panel, scheme, openMenu, rowFocus } = await setupNodeCommands()
+  try {
+    panel.copyNodes([{ kind: 'collection', id: 'empty' }])
+    const group = (id: number) =>
+      panel.rows.value.find((row: any) => row.kind === 'group' && row.id === id)
+    panel.activate(group(8), { ctrlKey: false })
+    panel.activate(group(7), { ctrlKey: true })
+    panel.query.value = 'House'
+    // 多选时按右键行确定位置，不按先选中的组确定。
+    for (const [rowKey, parentId] of [
+      ['group:7', 'house'],
+      ['collection:house', 'house'],
+      [null, null],
+    ]) {
+      openMenu(rowKey)
+      const count = scheme.history.value.selectionUndoStack.length
+      panel.pasteMenu()
+      await nextTick()
+      await nextTick()
+      const [root] = panel.selectedEntries.value
+      expect(
+        scheme.collectionTree.value.nodes.find((node: any) => node.id === root.id).parentId
+      ).toBe(parentId)
+      expect(scheme.activeCollectionId.value).toBe(root.id)
+      expect(scheme.history.value.selectionUndoStack).toHaveLength(count)
+    }
+    expect(panel.query.value).toBe('')
+    expect(rowFocus).toHaveBeenCalled()
+    // 快捷键粘贴不沿用菜单位置，仍回到来源层级。
+    openMenu('collection:house')
+    panel.listKey(commandKey('v', { ctrlKey: true }))
+    const [root] = panel.selectedEntries.value
+    expect(
+      scheme.collectionTree.value.nodes.find((node: any) => node.id === root.id).parentId
+    ).toBeNull()
+  } finally {
+    app.unmount()
+  }
+})
+
+it('routes Delete to node deletion and leaves focus on the list rather than the next row', async () => {
+  const { app, panel, store, scheme, openMenu, listFocus, rowFocus } = await setupNodeCommands()
+  try {
+    panel.activate(
+      panel.rows.value.find((row: any) => row.kind === 'group' && row.id === 7),
+      { ctrlKey: false }
+    )
+    panel.focused.value = { kind: 'group', id: 7 }
+    openMenu('group:7')
+    const deleting = commandKey('Delete')
+    panel.listKey(deleting)
+    await nextTick()
+    expect(deleting.stopPropagation).toHaveBeenCalledOnce()
+    expect(store.groupsMap.has(7)).toBe(false)
+    expect(panel.selectedEntries.value).toEqual([])
+    expect(panel.focused.value).toBeNull()
+    expect(panel.openMenu.value).toBeNull()
+    expect(listFocus).toHaveBeenCalledOnce()
+    expect(rowFocus).not.toHaveBeenCalled()
+    const remaining = scheme.items.value
+    panel.listKey(commandKey('Delete', { repeat: true }))
+    expect(scheme.items.value).toBe(remaining)
+  } finally {
+    app.unmount()
+  }
+})
 
 it('renders working visibility and lock controls for unclassified and ungrouped rows', async () => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })

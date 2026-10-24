@@ -1,4 +1,4 @@
-import type { CollectionTree, GroupMetadata } from '@/lib/collectionTree'
+import type { CollectionTree } from '@/lib/collectionTree'
 import type { Ref, ShallowRef } from 'vue'
 import type { ViewPreset } from '../composables/useThreeCamera'
 
@@ -264,11 +264,32 @@ export interface ClosedSchemeHistory {
 }
 
 // Clipboard data for cross-scheme copy/paste
+export type CollectionEntry =
+  | { kind: 'group'; id: number }
+  | { kind: 'collection'; id: string }
+  | { kind: 'ungrouped'; id: number }
+
+export interface ClipboardStructure {
+  tree: CollectionTree
+  /** 真正复制的集合；其余节点仅用于恢复来源路径。 */
+  collectionIds: string[]
+  hiddenGroups: number[]
+  lockedGroups: number[]
+  hiddenCollections: string[]
+  lockedCollections: string[]
+}
+
 export interface ClipboardData {
   sourceSchemeId?: string | null // 剪贴板来源方案 ID，用于判断高级粘贴模式可用性
   items: AppItem[] // 复制的物品列表
   groupOrigins: Map<number, string> // 组原点映射 (groupId -> originItemId)
-  groups?: Pick<GroupMetadata, 'groupId' | 'name'>[]
+  structure: ClipboardStructure
+}
+
+export interface PasteResult {
+  newIds: string[]
+  /** 新建的组/集合根节点；未分组类别不能代表本次新增家具的范围。 */
+  roots: Exclude<CollectionEntry, { kind: 'ungrouped' }>[]
 }
 
 export interface StepRepeatConfig {

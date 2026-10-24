@@ -37,6 +37,7 @@ export const useCommandStore = defineStore('command', () => {
     cut: cutCmd,
     pasteItems,
     clipboard,
+    canPaste,
     buildClipboardDataFromSelection,
   } = useClipboard()
   const { selectAll, clearSelection, invertSelection, selectSameType } = useEditorSelection()
@@ -513,7 +514,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.paste'),
       shortcut: 'Ctrl+V',
       category: 'edit',
-      enabled: () => clipboard.value.items.length > 0,
+      enabled: () => canPaste.value,
       execute: () => {
         console.log('[Command] 粘贴')
         pasteItems(clipboard.value, 0, 0)
@@ -524,7 +525,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.advancedPaste'),
       shortcut: 'Ctrl+Shift+V',
       category: 'edit',
-      enabled: () => clipboard.value.items.length > 0 && editorStore.activeScheme !== null,
+      enabled: () => canPaste.value,
       execute: () => {
         console.log('[Command] 打开高级粘贴')
         showAdvancedPasteDialog.value = true

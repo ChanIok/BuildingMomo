@@ -102,7 +102,8 @@ function submit() {
       ? ({ mode: 'preserveIds' } as const)
       : ({ mode: 'stepRepeat', stepRepeat: buildStepRepeatConfig() } as const)
 
-  if (advancedPaste(options).length > 0) {
+  const result = advancedPaste(options)
+  if (result.newIds.length || result.roots.length) {
     emit('update:open', false)
   }
 }

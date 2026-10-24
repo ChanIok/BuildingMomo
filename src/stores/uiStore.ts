@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
-import type { GroupEditTarget, WorkingCoordinateSystem } from '../types/editor'
+import type { GroupEditTarget, PasteResult, WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
 import {
   convertPositionWorkingToGlobal,
@@ -46,6 +46,10 @@ export const useUIStore = defineStore('ui', () => {
   const groupMergeOpen = ref(false)
   const groupMergeCandidates = shallowRef<readonly number[]>([])
   const groupMergeTarget = shallowRef<GroupEditTarget | null>(null)
+  const groupPanelPasteTarget = shallowRef<{
+    schemeId: string
+    roots: PasteResult['roots']
+  } | null>(null)
 
   // Three.js 容器的布局信息（用于性能优化，避免频繁调用 getBoundingClientRect）
   const editorContainerRect = ref<{ left: number; top: number; width: number; height: number }>({
@@ -433,6 +437,7 @@ export const useUIStore = defineStore('ui', () => {
     groupMergeOpen,
     groupMergeCandidates,
     groupMergeTarget,
+    groupPanelPasteTarget,
     customPivotEnabled,
     customPivotPosition,
     isSelectingGroupOrigin,

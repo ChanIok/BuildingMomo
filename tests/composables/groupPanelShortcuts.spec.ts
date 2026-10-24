@@ -5,6 +5,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
+import { useClipboard } from '@/composables/useClipboard'
 
 const keyboard = vi.hoisted(() => ({ listener: null as ((event: KeyboardEvent) => void) | null }))
 vi.mock('@vueuse/core', async (original) => ({
@@ -87,4 +88,19 @@ it('is disabled without a scheme or a 3D viewport', () => {
   expect(commands.isCommandEnabled('tool.toggleGroupPanel')).toBe(false)
   pressO()
   expect(ui.groupPanelOpen).toBe(false)
+})
+
+it('enables shared paste and advanced paste for an empty collection clipboard', () => {
+  const { store, commands } = setup()
+  store.createScheme('empty collection clipboard')
+  store.activeScheme!.collectionTree.value = {
+    nodes: [{ id: 'empty', name: 'Empty', parentId: null, order: 0 }],
+    groups: [],
+  }
+  const clipboard = useClipboard()
+  clipboard.copy([{ kind: 'collection', id: 'empty' }])
+  expect(commands.isCommandEnabled('edit.paste')).toBe(true)
+  expect(commands.isCommandEnabled('edit.advancedPaste')).toBe(true)
+  commands.executeCommand('edit.paste')
+  expect(store.activeScheme!.collectionTree.value.nodes).toHaveLength(2)
 })

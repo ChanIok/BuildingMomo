@@ -67,6 +67,15 @@ export function useGroupPanelSelection(
     followCanvas()
     if (store.activeScheme?.selectedItemIds.value.size) clearSelection()
   }
+  /** 粘贴已在事务中更新家具选区；这里只接管节点，不另记一次选择历史。 */
+  function adopt(entries: readonly CollectionEntry[]) {
+    followCanvas()
+    const represented = targetsFor(entries)
+    carried = new Set(
+      [...(store.activeScheme?.selectedItemIds.value ?? [])].filter((id) => !represented.has(id))
+    )
+    explicit.value = new Map(entries.map((entry) => [groupRowKey(entry), entry]))
+  }
   function targetsFor(nodes: Iterable<CollectionEntry>) {
     const items = new Set<string>()
     for (const entry of nodes) {
@@ -217,6 +226,7 @@ export function useGroupPanelSelection(
     select,
     deselect,
     clear,
+    adopt,
     selectionState,
     selectionCoverage,
     isSelected,
