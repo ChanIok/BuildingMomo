@@ -13,7 +13,7 @@ import { useThreeTooltip } from '@/composables/useThreeTooltip'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { SLIDE_PATH_GAME_ID } from '@/lib/slidePath'
 import type { InteractionAdapter, RaycastHit } from '@/composables/renderer/types'
-import type { FurnitureItem } from '@/types/furniture'
+import { SELECTION_CATEGORY_IDS, type FurnitureItem } from '@/types/furniture'
 import { makeAppItem } from '../fixtures/item'
 
 vi.mock('@vueuse/core', async (original) => ({
@@ -62,6 +62,8 @@ function setupGameData() {
     3005: { id: 3005, name_cn: '灯', name_en: 'Lamp', iconId: 19, parentId: 3000 },
     6000: { id: 6000, name_cn: '景观', name_en: 'Landscape', iconId: 6, parentId: null },
     6002: { id: 6002, name_cn: '树木', name_en: 'Tree', iconId: 32, parentId: 6000 },
+    6004: { id: 6004, name_cn: '山石', name_en: 'Rock', iconId: 35, parentId: 6000 },
+    6005: { id: 6005, name_cn: '地形', name_en: 'Terrain', iconId: 36, parentId: 6000 },
     1000: { id: 1000, name_cn: '预设', name_en: 'Preset', iconId: 1, parentId: null },
     1001: { id: 1001, name_cn: '预设房屋', name_en: 'Preset House', iconId: 8, parentId: 1000 },
   }
@@ -86,7 +88,17 @@ function setup() {
   return { store, scheme, items, gameData, selection: useEditorSelection() }
 }
 
-function setupPointer() {
+function addLandscapeItems({ store, scheme, gameData }: ReturnType<typeof setup>) {
+  gameData.furnitureData = { ...gameData.furnitureData, 4: furniture(6004), 5: furniture(6005) }
+  scheme.items.value = [
+    ...scheme.items.value,
+    makeAppItem({ internalId: 'rock', gameId: 4, groupId: 7 }),
+    makeAppItem({ internalId: 'terrain', gameId: 5, groupId: 7 }),
+  ]
+  store.triggerSceneUpdate()
+}
+
+function setupPointer(candidateIds = ['wall', 'lamp']) {
   const context = setup()
   const { store } = context
   const ui = useUIStore()
@@ -97,7 +109,7 @@ function setupPointer() {
     pickAsync: async () => hit,
     cancelPick: vi.fn(),
     forEachRegionCenterCandidate: (_camera, _viewport, visitor) => {
-      for (const internalId of ['wall', 'lamp']) visitor({ internalId, center: { x: 50, y: 50 } })
+      for (const internalId of candidateIds) visitor({ internalId, center: { x: 50, y: 50 } })
     },
   })
   const controller = scope.run(() =>
@@ -140,21 +152,31 @@ function setupPointer() {
 }
 
 describe('shared furniture categories', () => {
-  it('sorts populated categories and resolves major IDs, including missing metadata', () => {
+  it('separates rocks and terrain from other landscape items', () => {
+    const gameData = setupGameData()
+    gameData.furnitureData = { ...gameData.furnitureData, 4: furniture(6004), 5: furniture(6005) }
+    expect([3, 4, 5].map((id) => gameData.getFurnitureSelectionCategoryId(id))).toEqual([
+      'furniture',
+      'rock',
+      'terrain',
+    ])
+  })
+
+  it('preserves backpack categories and falls back to furniture for missing metadata', () => {
     const gameData = setupGameData()
     expect(gameData.majorCategories.map((category) => category.id)).toEqual([3000, 5000, 6000])
     expect(gameData.minorCategories.map((category) => category.id)).toEqual([3005, 5002, 6002])
-    expect(gameData.getFurnitureSelectionCategoryId(1)).toBe(5000)
-    expect(gameData.getFurnitureSelectionCategoryId(2)).toBe(3000)
-    expect(gameData.getFurnitureSelectionCategoryId(SLIDE_PATH_GAME_ID)).toBe('uncategorized')
+    expect(gameData.getFurnitureSelectionCategoryId(1)).toBe('structure')
+    expect(gameData.getFurnitureSelectionCategoryId(2)).toBe('furniture')
+    expect(gameData.getFurnitureSelectionCategoryId(SLIDE_PATH_GAME_ID)).toBe('furniture')
     gameData.furnitureData = { ...gameData.furnitureData, 4: furniture(9999), 5: furniture(5000) }
-    expect(gameData.getFurnitureSelectionCategoryId(4)).toBe('uncategorized')
-    expect(gameData.getFurnitureSelectionCategoryId(5)).toBe(5000)
+    expect(gameData.getFurnitureSelectionCategoryId(4)).toBe('furniture')
+    expect(gameData.getFurnitureSelectionCategoryId(5)).toBe('structure')
     delete gameData.furnitureCategories[5000]
-    expect(gameData.getFurnitureSelectionCategoryId(1)).toBe('uncategorized')
+    expect(gameData.getFurnitureSelectionCategoryId(1)).toBe('furniture')
   })
 
-  it('keeps presets in the library but classifies scene preset IDs as uncategorized', () => {
+  it('keeps presets in the library but classifies scene preset IDs as furniture', () => {
     const gameData = setupGameData()
     gameData.furnitureCategories[1003] = {
       id: 1003,
@@ -171,14 +193,22 @@ describe('shared furniture categories', () => {
     expect(gameData.majorCategories.map((category) => category.id)).toEqual([
       1000, 3000, 5000, 6000,
     ])
-    expect(gameData.selectionCategories.map((category) => category.id)).toEqual([3000, 5000, 6000])
-    expect(gameData.getFurnitureSelectionCategoryId(4)).toBe('uncategorized')
-    expect(gameData.getFurnitureSelectionCategoryId(1174100001)).toBe('uncategorized')
+    expect(gameData.getFurnitureSelectionCategoryId(4)).toBe('furniture')
+    expect(gameData.getFurnitureSelectionCategoryId(1174100001)).toBe('furniture')
     expect(gameData.furnitureData[1174100001]!.categoryId).toBe(1003)
   })
 })
 
 describe('shared category filtering', () => {
+  it('combines rocks and terrain without selecting other landscape or group members', () => {
+    const context = setup()
+    addLandscapeItems(context)
+    const { store, scheme, selection } = context
+    store.selectionCategoryIds = new Set(['rock', 'terrain'])
+    selection.updateSelection(['rock'], false)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['rock', 'terrain']))
+  })
+
   it('defaults to existing group selection and does not change document data', () => {
     const { store, scheme, items, selection } = setup()
     expect(store.selectionCategoryIds).toBeNull()
@@ -199,7 +229,7 @@ describe('shared category filtering', () => {
     (action, expected) => {
       const { store, scheme, selection } = setup()
       selection.updateSelection(['wall', 'lamp', 'tree'], false, { skipGroupExpansion: true })
-      store.selectionCategoryIds = new Set([5000])
+      store.selectionCategoryIds = new Set(['structure'])
       const before = scheme.history.value!.selectionUndoStack.length
       const hits = ['wall', 'lamp']
       const actions = {
@@ -217,7 +247,7 @@ describe('shared category filtering', () => {
 
   it('cannot trigger a group through an excluded hit', () => {
     const { store, scheme, selection } = setup()
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     selection.updateSelection(['lamp'], false)
     expect(scheme.selectedItemIds.value.size).toBe(0)
   })
@@ -225,7 +255,7 @@ describe('shared category filtering', () => {
   it('ignores excluded hits when deciding which direction to toggle a partial group', () => {
     const { store, scheme, selection } = setup()
     selection.updateSelection(['wall'], false, { skipGroupExpansion: true })
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     selection.toggleItems(['wall', 'lamp'])
     expect(scheme.selectedItemIds.value.size).toBe(0)
   })
@@ -233,7 +263,7 @@ describe('shared category filtering', () => {
   it('combines category and lock restrictions while preserving individual mode', () => {
     const { store, scheme, selection } = setup()
     store.setGroupLocked(0, true)
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     selection.updateSelection(['wall', 'lamp', 'tree'], false)
     expect(scheme.selectedItemIds.value).toEqual(new Set(['wall', 'peer-wall']))
     selection.updateSelection(['wall', 'lamp'], false, { skipGroupExpansion: true })
@@ -241,17 +271,14 @@ describe('shared category filtering', () => {
   })
 
   it('treats categories as a union and makes explicit all equivalent to the default', () => {
-    const { store, scheme, gameData, selection } = setup()
-    store.selectionCategoryIds = new Set([5000, 'uncategorized'])
+    const { store, scheme, selection } = setup()
+    store.selectionCategoryIds = new Set(['structure'])
     selection.selectAll()
-    expect(scheme.selectedItemIds.value).toEqual(new Set(['wall', 'peer-wall', 'slide']))
-    store.selectionCategoryIds = new Set([6000])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['wall', 'peer-wall']))
+    store.selectionCategoryIds = new Set(['furniture'])
     selection.selectAll()
-    expect(scheme.selectedItemIds.value).toEqual(new Set(['tree']))
-    store.selectionCategoryIds = new Set([
-      ...gameData.selectionCategories.map((category) => category.id),
-      'uncategorized',
-    ])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['lamp', 'tree', 'slide']))
+    store.selectionCategoryIds = new Set(SELECTION_CATEGORY_IDS)
     selection.selectAll()
     const explicitAll = new Set(scheme.selectedItemIds.value)
     expect(explicitAll.size).toBe(5)
@@ -263,12 +290,25 @@ describe('shared category filtering', () => {
 
 describe('region filter integration', () => {
   it.each(['box', 'lasso'] as const)(
+    'separates landscape subcategories during %s selection',
+    (mode) => {
+      const context = setupPointer(['wall', 'lamp', 'tree', 'rock', 'terrain'])
+      addLandscapeItems(context)
+      const { store, scheme, drag } = context
+      store.selectionMode = mode
+      store.selectionCategoryIds = new Set(['rock', 'terrain'])
+      drag()
+      expect(scheme.selectedItemIds.value).toEqual(new Set(['rock', 'terrain']))
+    }
+  )
+
+  it.each(['box', 'lasso'] as const)(
     'keeps category filtering with automatic group expansion disabled for %s',
     (mode) => {
       const { store, scheme, drag } = setupPointer()
       store.autoExpandGroupSelection = false
       store.selectionMode = mode
-      store.selectionCategoryIds = new Set([5000])
+      store.selectionCategoryIds = new Set(['structure'])
       drag()
       expect(scheme.selectedItemIds.value).toEqual(new Set(['wall']))
     }
@@ -277,7 +317,7 @@ describe('region filter integration', () => {
   it.each(['box', 'lasso'] as const)('filters %s hits and expanded group members', (mode) => {
     const { store, scheme, drag } = setupPointer()
     store.selectionMode = mode
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     drag()
     expect(scheme.selectedItemIds.value).toEqual(new Set(['wall', 'peer-wall']))
   })
@@ -301,7 +341,7 @@ describe('region filter integration', () => {
 describe('selection filter boundaries and history', () => {
   it('does not pick through excluded foreground hits on repeated clicks', () => {
     const { store, scheme, click } = setupPointer()
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     click()
     expect(scheme.selectedItemIds.value.size).toBe(0)
     click()
@@ -310,7 +350,7 @@ describe('selection filter boundaries and history', () => {
 
   it('filters group members when the nearest hit is selectable', () => {
     const { store, scheme, click, setHit } = setupPointer()
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     setHit({ internalId: 'wall', instanceId: 0, distance: 1 })
     click()
     expect(scheme.selectedItemIds.value).toEqual(new Set(['wall', 'peer-wall']))
@@ -321,7 +361,7 @@ describe('selection filter boundaries and history', () => {
     (action) => {
       const { store, scheme, selection, click } = setupPointer()
       selection.updateSelection(['wall'], false, { skipGroupExpansion: true })
-      store.selectionCategoryIds = new Set([5000])
+      store.selectionCategoryIds = new Set(['structure'])
       store.selectionAction = action
       click()
       expect(scheme.selectedItemIds.value).toEqual(action === 'new' ? new Set() : new Set(['wall']))
@@ -356,20 +396,20 @@ describe('selection filter boundaries and history', () => {
     click()
     expect(scheme.selectedItemIds.value.size).toBe(0)
     expect(ui.activeSlidePathPoint).toBeNull()
-    store.selectionCategoryIds = new Set(['uncategorized'])
+    store.selectionCategoryIds = new Set(['furniture'])
     click()
     expect(scheme.selectedItemIds.value).toEqual(new Set(['slide']))
     expect(ui.activeSlidePathPoint).toEqual({ itemId: 'slide', pointIndex: 2 })
   })
 
   it.each([
-    ['selectAll', ['wall', 'peer-wall', 'tree']],
-    ['invertSelection', ['peer-wall', 'tree']],
+    ['selectAll', ['wall', 'peer-wall']],
+    ['invertSelection', ['peer-wall']],
     ['selectSameType', ['wall', 'peer-wall']],
   ] as const)('restricts %s to the enabled categories', (command, expected) => {
     const { store, scheme, selection } = setup()
     selection.updateSelection(['wall', 'lamp'], false, { skipGroupExpansion: true })
-    store.selectionCategoryIds = new Set([5000, 6000])
+    store.selectionCategoryIds = new Set(['structure'])
     selection[command]()
     expect(scheme.selectedItemIds.value).toEqual(new Set(expected))
   })
@@ -401,7 +441,7 @@ describe('selection filter boundaries and history', () => {
 
   it('does not filter the automatic selection of newly added furniture', () => {
     const { store, scheme } = setup()
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     const added = useEditorItemAdd().addFurnitureItem(2)!
     expect(scheme.selectedItemIds.value).toEqual(new Set([added.internalId]))
     expect(added.gameId).toBe(2)
@@ -413,7 +453,7 @@ describe('selection filter boundaries and history', () => {
     selection.updateSelection(['lamp'], false, { skipGroupExpansion: true })
     const before = scheme.history.value!.selectionUndoStack.length
     const sceneVersion = store.sceneVersion
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     expect(scheme.selectedItemIds.value).toEqual(new Set(['lamp']))
     expect(scheme.history.value!.selectionUndoStack).toHaveLength(before)
     expect(store.sceneVersion).toBe(sceneVersion)
@@ -429,11 +469,11 @@ describe('selection filter boundaries and history', () => {
 
   it('retains session filters across scheme switches', () => {
     const { store, scheme } = setup()
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     store.createScheme('second')
-    expect(store.selectionCategoryIds).toEqual(new Set([5000]))
+    expect(store.selectionCategoryIds).toEqual(new Set(['structure']))
     useTabStore().openSchemeTab(scheme.id, 'filter test')
-    expect(store.selectionCategoryIds).toEqual(new Set([5000]))
+    expect(store.selectionCategoryIds).toEqual(new Set(['structure']))
   })
 })
 
@@ -477,11 +517,11 @@ function setupHover(
 describe('selection-filtered hover', () => {
   it('updates hover eligibility when categories or the picking purpose change', async () => {
     const { store, ui, hovered, tooltip, move } = setupHover()
-    store.selectionCategoryIds = new Set([3000])
+    store.selectionCategoryIds = new Set(['furniture'])
     await move()
     expect(tooltip.tooltipData.value?.gameId).toBe(2)
     expect(hovered).toHaveBeenLastCalledWith('lamp', expect.anything())
-    store.selectionCategoryIds = new Set([5000])
+    store.selectionCategoryIds = new Set(['structure'])
     expect(tooltip.tooltipVisible.value).toBe(false)
     expect(hovered).toHaveBeenLastCalledWith(null, null)
     await move()
@@ -501,7 +541,7 @@ describe('selection-filtered hover', () => {
         })
     )
     const pending = move()
-    store.selectionCategoryIds = new Set([3000]) // lamp 仍可选，不能靠类别判断掩盖过期结果。
+    store.selectionCategoryIds = new Set(['furniture']) // lamp 仍可选，不能靠类别判断掩盖过期结果。
     finish({ internalId: 'lamp', instanceId: 0, distance: 1 })
     await pending
     expect(tooltip.tooltipVisible.value).toBe(false)

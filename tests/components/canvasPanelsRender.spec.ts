@@ -1,4 +1,4 @@
-import { afterAll, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath } from 'node:url'
@@ -29,8 +29,13 @@ const server = await createServer({
     alias: { '@': fileURLToPath(new URL('../../src', import.meta.url)) },
     dedupe: ['vue'],
   },
-  server: { middlewareMode: true, watch: null, hmr: false },
+  server: { middlewareMode: true, watch: null, hmr: false, ws: false },
   appType: 'custom',
+})
+
+beforeAll(async () => {
+  // 组件编译属于测试准备，避免完整回归时挤占首个交互测试的超时时间。
+  await server.ssrLoadModule('/src/components/EditorLayout.vue')
 })
 
 afterAll(async () => {
@@ -121,3 +126,20 @@ it.each([false, true])(
     expect(html).not.toContain('dialog-overlay')
   }
 )
+
+it('renders the four selection categories without loaded furniture metadata', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
+  const { default: SelectionSettings } = await server.ssrLoadModule(
+    '/src/components/SidebarSelectionSettings.vue'
+  )
+  const { TooltipProvider } = await server.ssrLoadModule('/src/components/ui/tooltip/index.ts')
+  const app = createSSRApp({
+    render: () => h(TooltipProvider, null, () => h(SelectionSettings)),
+  })
+  app.use(createPinia())
+  const html = await renderToString(app)
+  for (const name of ['家具', '结构', '山石', '地形']) {
+    expect(html).toContain(`>${name}</span>`)
+  }
+  expect(html.match(/role="checkbox"/g)).toHaveLength(4)
+})

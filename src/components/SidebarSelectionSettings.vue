@@ -2,7 +2,6 @@
 import { computed, ref, useId } from 'vue'
 import { ChevronRight } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
-import { useGameDataStore } from '@/stores/gameDataStore'
 import { useI18n } from '@/composables/useI18n'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
@@ -10,22 +9,20 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { SelectionCategoryId } from '@/types/furniture'
+import { SELECTION_CATEGORY_IDS, type SelectionCategoryId } from '@/types/furniture'
 
 const editorStore = useEditorStore()
-const gameDataStore = useGameDataStore()
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const panelId = useId()
 const expanded = ref(true)
 const hasSelection = computed(() => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0)
 
-const categories = computed(() => [
-  ...gameDataStore.selectionCategories.map((category) => ({
-    id: category.id,
-    name: locale.value === 'zh' ? category.name_cn : category.name_en,
-  })),
-  { id: 'uncategorized' as const, name: t('sidebar.selectionFilter.uncategorized') },
-])
+const categories = computed(() =>
+  SELECTION_CATEGORY_IDS.map((id) => ({
+    id,
+    name: t(`sidebar.selectionFilter.categories.${id}`),
+  }))
+)
 
 function isEnabled(id: SelectionCategoryId): boolean {
   return editorStore.selectionCategoryIds?.has(id) ?? true

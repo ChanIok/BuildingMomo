@@ -811,10 +811,15 @@ export const enLocale = {
     autoSelectGroupHint: 'Turn off to select furniture within a group without ungrouping.',
     selectionFilter: {
       title: 'Selectable categories',
-      uncategorized: 'Uncategorized',
+      categories: {
+        furniture: 'Furniture',
+        structure: 'Structures',
+        rock: 'Rocks',
+        terrain: 'Terrain',
+      },
       selectAll: 'Select all',
       deselectAll: 'Deselect all',
-      hint: 'Only select items in checked categories',
+      hint: 'Only select items in checked categories. Furniture includes all remaining items, including uncategorized ones.',
     },
     selectionList: 'Selection',
     groupSingle: 'Group #{id}',

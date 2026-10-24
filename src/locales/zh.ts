@@ -794,10 +794,15 @@ export const zhLocale = {
     autoSelectGroupHint: '关闭后，可直接选择组内家具，保留原分组。',
     selectionFilter: {
       title: '可选类别',
-      uncategorized: '未分类',
+      categories: {
+        furniture: '家具',
+        structure: '结构',
+        rock: '山石',
+        terrain: '地形',
+      },
       selectAll: '全选',
       deselectAll: '取消全选',
-      hint: '仅选择勾选类别的物品',
+      hint: '仅选择勾选类别的物品；家具包含其余类别及未分类物品。',
     },
     selectionList: '选中列表',
     groupSingle: '组 #{id}',

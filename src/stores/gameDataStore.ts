@@ -24,8 +24,10 @@ const FURNITURE_ROOT_URL = import.meta.env.BASE_URL + 'assets/furniture-v2/'
 // 本地图标路径
 const ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/furniture-icon/'
 const CATEGORY_ICON_BASE_URL = import.meta.env.BASE_URL + 'assets/category-icon/'
-// 预设是背包的组合/工具目录，不是场景家具的选择类别。
-const PRESET_CATEGORY_ID = 1000
+// 选择分类仅从背包目录中提取结构大类、山石和地形小类，其余统一归为家具。
+const STRUCTURE_CATEGORY_ID = 5000
+const ROCK_CATEGORY_ID = 6004
+const TERRAIN_CATEGORY_ID = 6005
 
 function normalizeCombinationColorPresets(
   memberCount: number,
@@ -96,7 +98,7 @@ export const useGameDataStore = defineStore('gameData', () => {
   const furnitureCategories = ref<Record<number, FurnitureCategory>>({})
   const isFurnitureInitialized = ref(false)
 
-  // 目录分类保留背包中的预设；选择过滤只提供场景家具大类。
+  // 背包目录保留游戏原始的大类、小类，与编辑器选择分类独立。
   const minorCategories = computed(() => {
     const populatedIds = new Set(Object.values(furnitureData.value).map((item) => item.categoryId))
     return Object.values(furnitureCategories.value)
@@ -109,9 +111,6 @@ export const useGameDataStore = defineStore('gameData', () => {
       .filter((category) => category.parentId === null && populatedIds.has(category.id))
       .sort((a, b) => a.id - b.id)
   })
-  const selectionCategories = computed(() =>
-    majorCategories.value.filter((category) => category.id !== PRESET_CATEGORY_ID)
-  )
 
   // ========== 状态 (Buildable Areas) ==========
   const buildableAreas = shallowRef<Record<string, number[][]> | null>(null)
@@ -275,13 +274,16 @@ export const useGameDataStore = defineStore('gameData', () => {
 
   function getFurnitureSelectionCategoryId(itemId: number): SelectionCategoryId {
     const furniture = getFurniture(itemId)
-    if (!furniture) return 'uncategorized'
+    if (!furniture) return 'furniture'
     const category = furnitureCategories.value[furniture.categoryId]
-    if (!category) return 'uncategorized'
+    if (!category) return 'furniture'
+    if (category.id === ROCK_CATEGORY_ID) return 'rock'
+    if (category.id === TERRAIN_CATEGORY_ID) return 'terrain'
     const major =
       category.parentId === null ? category : furnitureCategories.value[category.parentId]
-    // 场景若保留笔刷或其他预设目录 ID，仍可通过“未分类”控制选择。
-    return major?.parentId === null && major.id !== PRESET_CATEGORY_ID ? major.id : 'uncategorized'
+    return major?.parentId === null && major.id === STRUCTURE_CATEGORY_ID
+      ? 'structure'
+      : 'furniture'
   }
 
   function getFurnitureScaleRange(itemId: number): [number, number] | null {
@@ -363,7 +365,6 @@ export const useGameDataStore = defineStore('gameData', () => {
     furnitureCategories,
     minorCategories,
     majorCategories,
-    selectionCategories,
     isInitialized: isFurnitureInitialized,
 
     // 状态 (Buildable Areas)

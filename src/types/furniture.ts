@@ -71,8 +71,9 @@ export interface FurnitureCategory {
   parentId: number | null
 }
 
-/** 选择按场景大类过滤；缺少元数据或属于预设目录的物品归入未分类。 */
-export type SelectionCategoryId = number | 'uncategorized'
+/** 编辑器选择分类独立于背包目录；除结构、山石、地形外均归入家具。 */
+export const SELECTION_CATEGORY_IDS = ['furniture', 'structure', 'rock', 'terrain'] as const
+export type SelectionCategoryId = (typeof SELECTION_CATEGORY_IDS)[number]
 
 export interface FurnitureCombinationMember {
   itemId: number
