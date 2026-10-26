@@ -351,16 +351,19 @@ async function downloadTrace() {
               <span class="truncate">{{ currentSessionTitle }}</span>
             </SelectValue>
           </SelectTrigger>
-          <SelectContent class="max-h-72">
+          <SelectContent
+            class="max-h-72 w-[var(--reka-select-trigger-width)] max-w-[var(--reka-select-trigger-width)] min-w-[var(--reka-select-trigger-width)]"
+          >
             <SelectItem
               v-for="session in sessions"
               :key="session.id"
               :value="session.id"
               class="text-xs"
+              :title="session.title"
             >
-              <div class="flex w-full min-w-0 items-center justify-between gap-2 py-0.5">
-                <span class="truncate font-medium">{{ session.title }}</span>
-                <span class="shrink-0 text-[10px] text-muted-foreground">{{
+              <div class="flex w-full min-w-0 items-center justify-between gap-1.5 py-0.5">
+                <span class="min-w-0 flex-1 truncate font-medium">{{ session.title }}</span>
+                <span class="shrink-0 text-[10px] text-muted-foreground tabular-nums">{{
                   formatSessionDate(session.updatedAt)
                 }}</span>
               </div>
@@ -419,21 +422,20 @@ async function downloadTrace() {
         @touchmove.passive="onTouchMove"
         @keydown="onViewportKeydown"
       >
-        <div v-if="!entries.length" class="space-y-4 text-sm">
-          <p class="font-medium">{{ t('ai.welcome') }}</p>
-          <p class="leading-relaxed text-muted-foreground">{{ t('ai.intro') }}</p>
+        <div v-if="!entries.length" class="space-y-3 pt-2 text-sm">
+          <p class="font-medium text-foreground">{{ t('ai.welcome') }}</p>
+          <p class="text-xs leading-relaxed text-muted-foreground">{{ t('ai.intro') }}</p>
           <Button v-if="!isConfigured" variant="outline" size="sm" @click="settingsOpen = true">{{
             t('ai.configure')
           }}</Button>
           <button
             v-else
             type="button"
-            class="w-full rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent"
+            class="w-full rounded-md border border-border bg-muted/20 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             @click="useExample"
           >
             {{ t('ai.example') }}
           </button>
-          <p class="text-xs leading-relaxed text-muted-foreground">{{ t('ai.privacy') }}</p>
         </div>
         <div ref="timeline" class="min-w-0 space-y-4" role="log" :aria-label="t('ai.conversation')">
           <Button
@@ -737,12 +739,11 @@ async function downloadTrace() {
       </DialogContent>
     </Dialog>
     <Dialog v-model:open="referenceOpen">
-      <DialogContent
-        class="max-h-[85vh] overflow-y-auto sm:max-w-3xl"
-        :aria-describedby="undefined"
-      >
+      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogTitle>{{ referenceTitle }}</DialogTitle>
-        <p class="text-xs text-muted-foreground">{{ referenceKind }} · {{ referenceFreshness }}</p>
+        <DialogDescription class="text-xs text-muted-foreground">
+          {{ referenceKind }} · {{ referenceFreshness }}
+        </DialogDescription>
         <pre class="max-h-[45vh] overflow-auto text-xs break-all whitespace-pre-wrap">{{
           referenceText.slice(referenceOffset, referenceOffset + 10000)
         }}</pre>
@@ -820,8 +821,9 @@ async function downloadTrace() {
         }
       "
     >
-      <DialogContent class="max-h-[90vh] sm:max-w-5xl" :aria-describedby="undefined">
+      <DialogContent class="max-h-[90vh] sm:max-w-5xl">
         <DialogTitle>{{ preview?.label }}</DialogTitle>
+        <DialogDescription class="sr-only">{{ preview?.label }}</DialogDescription>
         <AiImage v-if="preview" :image="preview.image" :label="preview.label" eager />
       </DialogContent>
     </Dialog>

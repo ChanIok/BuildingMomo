@@ -19,10 +19,9 @@ import {
   type ModelSettings,
 } from '@/lib/ai/connection'
 import { hasReasoningOverride, clearReasoningOverride } from '@/lib/ai/reasoning'
-import { MODEL_DIRECTORIES } from '@/lib/ai/models'
 import { useAiModels } from '@/composables/ai/useAiModels'
 import AiModelInput from './AiModelInput.vue'
-import { LoaderCircle, RefreshCw } from 'lucide-vue-next'
+import { ChevronRight, LoaderCircle, RefreshCw } from 'lucide-vue-next'
 import { createAiPolicy } from '@/lib/ai/context'
 import {
   Dialog,
@@ -30,7 +29,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -57,6 +64,7 @@ const replayReasoning = ref(false),
 const reasoning = ref<AiReasoning>('provider-default')
 const modelPicker = ref<InstanceType<typeof AiModelInput>>()
 const customAddress = ref(false)
+const advancedOpen = ref(false)
 const providerAvailable = computed(() => isAiProvider(provider.value))
 const compatible = computed(() => provider.value === 'compatible')
 const target = () => ({
@@ -76,13 +84,21 @@ function loadOptions() {
 }
 watch([provider, apiUrl, model], loadOptions, { flush: 'sync' })
 function changeProvider() {
-  apiUrl.value = AI_PROVIDERS[provider.value].baseURL
+  apiUrl.value = AI_PROVIDERS[provider.value]?.baseURL || ''
   // Never carry one vendor's credentials or model ID into another connection type.
   apiKey.value = ''
   headers.value = '{}'
   model.value = ''
   customAddress.value = false
   error.value = ''
+}
+function handleProviderChange(value: string) {
+  provider.value = value as AiProvider
+  changeProvider()
+}
+function useDefaultAddress() {
+  customAddress.value = false
+  apiUrl.value = AI_PROVIDERS[provider.value]?.baseURL || ''
 }
 const requestUrl = computed(() => {
   try {
@@ -125,9 +141,6 @@ watch(
     error.value = ''
   },
   { immediate: true }
-)
-const directory = computed(() =>
-  providerAvailable.value ? MODEL_DIRECTORIES[provider.value] : undefined
 )
 const discoveryConnection = computed(() => {
   if (!providerAvailable.value) return undefined
@@ -185,8 +198,8 @@ function restoreReasoning() {
     error.value = t('ai.errors.settings')
   }
 }
-function changeReasoning(event: Event) {
-  reasoning.value = (event.target as HTMLSelectElement).value as AiReasoning
+function handleReasoningChange(value: string) {
+  reasoning.value = value as AiReasoning
 }
 function readJson(value: string, field: string) {
   try {
@@ -234,46 +247,68 @@ function save() {
 
 <template>
   <Dialog :open="open" @update:open="emit('update:open', $event)">
-    <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+    <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>{{ t('ai.settings') }}</DialogTitle>
-        <DialogDescription>{{ t('ai.connectionHint') }}</DialogDescription>
+        <DialogDescription class="sr-only">{{ t('ai.connectionHint') }}</DialogDescription>
       </DialogHeader>
-      <form class="space-y-4" @submit.prevent="save">
-        <div class="space-y-2">
+      <form class="space-y-4 pt-1" @submit.prevent="save">
+        <div class="space-y-1.5">
           <Label for="ai-provider">{{ t('ai.provider') }}</Label>
-          <select
-            id="ai-provider"
-            v-model="provider"
+          <Select
+            :model-value="provider"
             :disabled="running"
-            class="w-full rounded border border-input bg-background p-2 text-sm"
-            @change="changeProvider"
+            @update:model-value="handleProviderChange"
           >
-            <option v-if="!providerAvailable" :value="provider" disabled>
-              {{ t('ai.removedProvider', { provider }) }}
-            </option>
-            <option v-for="(entry, id) in AI_PROVIDERS" :key="id" :value="id">
-              {{ id === 'compatible' ? t('ai.customCompatible') : entry.label }}
-            </option>
-          </select>
-          <p v-if="!providerAvailable" role="alert" class="text-sm text-destructive">
+            <SelectTrigger id="ai-provider" class="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-if="!providerAvailable" :value="provider" disabled>
+                {{ t('ai.removedProvider', { provider }) }}
+              </SelectItem>
+              <SelectItem v-for="(entry, id) in AI_PROVIDERS" :key="id" :value="id">
+                {{ id === 'compatible' ? t('ai.customCompatible') : entry.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p v-if="!providerAvailable" role="alert" class="text-xs text-destructive">
             {{ t('ai.removedProviderHint') }}
           </p>
         </div>
-        <div v-if="!compatible" class="space-y-1">
+
+        <div
+          v-if="!compatible && !customAddress"
+          class="flex items-center justify-between text-xs text-muted-foreground"
+        >
+          <span class="max-w-[280px] truncate">Endpoint: {{ apiUrl }}</span>
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            class="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
             :disabled="running"
-            :aria-expanded="customAddress"
-            @click="customAddress = !customAddress"
-            >{{ t('ai.customAddress') }}</Button
+            @click="customAddress = true"
           >
-          <p v-if="!customAddress" class="text-xs break-all text-muted-foreground">{{ apiUrl }}</p>
+            {{ t('ai.customAddress') }}
+          </Button>
         </div>
-        <div v-if="compatible || customAddress" class="space-y-2">
-          <Label for="ai-api-url">{{ t('ai.apiUrl') }}</Label>
+
+        <div v-if="compatible || customAddress" class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <Label for="ai-api-url">{{ t('ai.apiUrl') }}</Label>
+            <Button
+              v-if="!compatible"
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+              :disabled="running"
+              @click="useDefaultAddress"
+            >
+              {{ t('ai.defaultAddress') }}
+            </Button>
+          </div>
           <Input
             id="ai-api-url"
             v-model="apiUrl"
@@ -282,14 +317,12 @@ function save() {
             :disabled="running"
             placeholder="https://…/v1"
           />
-          <p class="text-xs text-muted-foreground">
-            {{ t(compatible ? 'ai.apiUrlHint' : 'ai.nativeUrlHint') }}
-          </p>
           <p v-if="requestUrl" class="text-xs break-all text-muted-foreground">
             {{ t('ai.requestUrl', { url: requestUrl }) }}
           </p>
         </div>
-        <div class="space-y-2">
+
+        <div class="space-y-1.5">
           <Label for="ai-api-key">API Key</Label>
           <Input
             id="ai-api-key"
@@ -297,10 +330,11 @@ function save() {
             type="password"
             autocomplete="off"
             :disabled="running"
+            placeholder="sk-..."
           />
-          <p class="text-xs text-muted-foreground">{{ t('ai.keyHint') }}</p>
         </div>
-        <div class="space-y-2">
+
+        <div class="space-y-1.5">
           <div class="flex items-center justify-between gap-2">
             <Label for="ai-model">{{ t('ai.model') }}</Label>
             <Button
@@ -308,6 +342,7 @@ function save() {
               type="button"
               variant="outline"
               size="sm"
+              class="h-7 px-2.5 text-xs"
               :disabled="running || modelsState === 'loading'"
               @click="fetchModels"
             >
@@ -339,189 +374,213 @@ function save() {
                 : t('ai.modelsEmpty')
             }}
           </p>
-          <p v-if="modelError" role="alert" class="text-sm text-destructive">{{ modelError }}</p>
-          <a
-            v-if="directory"
-            :href="directory.docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-xs underline"
-            >{{ t('ai.modelDocs') }}</a
-          >
-          <p class="text-xs text-muted-foreground">{{ t('ai.modelHint') }}</p>
+          <p v-if="modelError" role="alert" class="text-xs text-destructive">{{ modelError }}</p>
           <div
             v-if="selectedModel"
-            class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"
+            class="flex flex-wrap gap-x-2 gap-y-1 pt-0.5 text-xs text-muted-foreground"
           >
-            <span v-if="selectedModel.contextWindow">{{
-              t('ai.modelContext', { count: format(selectedModel.contextWindow) })
-            }}</span>
-            <span v-if="selectedModel.maxOutputTokens">{{
-              t('ai.modelOutput', { count: format(selectedModel.maxOutputTokens) })
-            }}</span>
-            <span v-if="selectedModel.vision !== undefined">{{
-              t(selectedModel.vision ? 'ai.modelVision' : 'ai.modelTextOnly')
-            }}</span>
-            <span v-if="selectedModel.tools === true">{{ t('ai.modelTools') }}</span>
+            <span v-if="selectedModel.contextWindow" class="rounded bg-muted px-1.5 py-0.5">
+              {{ t('ai.modelContext', { count: format(selectedModel.contextWindow) }) }}
+            </span>
+            <span v-if="selectedModel.maxOutputTokens" class="rounded bg-muted px-1.5 py-0.5">
+              {{ t('ai.modelOutput', { count: format(selectedModel.maxOutputTokens) }) }}
+            </span>
+            <span v-if="selectedModel.vision !== undefined" class="rounded bg-muted px-1.5 py-0.5">
+              {{ t(selectedModel.vision ? 'ai.modelVision' : 'ai.modelTextOnly') }}
+            </span>
+            <span v-if="selectedModel.tools === true" class="rounded bg-muted px-1.5 py-0.5">
+              {{ t('ai.modelTools') }}
+            </span>
           </div>
         </div>
-        <div class="space-y-2">
-          <Label for="ai-reasoning">{{ t('ai.reasoningLabel') }}</Label>
-          <select
-            id="ai-reasoning"
-            :value="reasoningOverridden ? 'custom' : reasoning"
-            :disabled="running || reasoningOverridden"
-            class="w-full rounded border border-input bg-background p-2 text-sm"
-            @change="changeReasoning"
-          >
-            <option v-if="reasoningOverridden" value="custom">{{ t('ai.reasoningCustom') }}</option>
-            <option v-for="level in REASONING_LEVELS" :key="level" :value="level">
-              {{ t(`ai.reasoningChoices.${level}`) }}
-            </option>
-          </select>
-          <div v-if="reasoningOverridden" class="space-y-1">
-            <p class="text-sm text-muted-foreground">{{ t('ai.reasoningOverrideHint') }}</p>
+
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <Label for="ai-reasoning">{{ t('ai.reasoningLabel') }}</Label>
             <Button
+              v-if="reasoningOverridden"
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
+              class="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
               :disabled="running"
               @click="restoreReasoning"
-              >{{ t('ai.restoreReasoning') }}</Button
             >
+              {{ t('ai.restoreReasoning') }}
+            </Button>
           </div>
-          <p v-else class="text-xs text-muted-foreground">{{ t('ai.reasoningHint') }}</p>
+          <Select
+            :model-value="reasoningOverridden ? 'custom' : reasoning"
+            :disabled="running || reasoningOverridden"
+            @update:model-value="handleReasoningChange"
+          >
+            <SelectTrigger id="ai-reasoning" class="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-if="reasoningOverridden" value="custom" disabled>
+                {{ t('ai.reasoningCustom') }}
+              </SelectItem>
+              <SelectItem v-for="level in REASONING_LEVELS" :key="level" :value="level">
+                {{ t(`ai.reasoningChoices.${level}`) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p v-if="reasoningOverridden" class="text-xs text-muted-foreground">
+            {{ t('ai.reasoningOverrideHint') }}
+          </p>
         </div>
-        <p v-if="error" role="alert" class="text-sm text-destructive">{{ error }}</p>
-        <details class="space-y-3 rounded border border-border p-3 text-sm">
-          <summary class="cursor-pointer">{{ t('ai.advancedSettings') }}</summary>
-          <div class="space-y-2">
-            <Label for="ai-context-window">{{ t('ai.contextWindow') }}</Label>
-            <Input
-              id="ai-context-window"
-              v-model="contextWindow"
-              type="number"
-              inputmode="numeric"
-              :min="5000"
-              step="1000"
-              :disabled="running"
+
+        <p v-if="error" role="alert" class="text-xs text-destructive">{{ error }}</p>
+
+        <div class="rounded-lg border border-border/80 bg-muted/20">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between px-3.5 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            @click="advancedOpen = !advancedOpen"
+          >
+            <span>{{ t('ai.advancedSettings') }}</span>
+            <ChevronRight
+              class="size-4 transition-transform duration-200"
+              :class="{ 'rotate-90': advancedOpen }"
             />
-            <div class="flex flex-wrap gap-1">
-              <Button
-                v-for="preset in [32000, 128000, 256000, 1000000]"
-                :key="preset"
-                type="button"
-                variant="outline"
-                size="sm"
+          </button>
+          <div v-show="advancedOpen" class="space-y-4 border-t border-border/60 p-3.5 text-sm">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <Label for="ai-context-window">{{ t('ai.contextWindow') }}</Label>
+                <span v-if="policy" class="text-xs text-muted-foreground">
+                  {{ t('ai.contextBudget', { budget: format(policy.inputBudget) }) }}
+                </span>
+              </div>
+              <Input
+                id="ai-context-window"
+                v-model="contextWindow"
+                type="number"
+                inputmode="numeric"
+                :min="5000"
+                step="1000"
                 :disabled="running"
-                @click="contextWindow = String(preset)"
-              >
-                {{ format(preset) }}
-              </Button>
+              />
+              <div class="flex flex-wrap gap-1">
+                <Button
+                  v-for="preset in [32000, 128000, 256000, 1000000]"
+                  :key="preset"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-6 px-2 text-xs"
+                  :disabled="running"
+                  @click="contextWindow = String(preset)"
+                >
+                  {{ format(preset) }}
+                </Button>
+              </div>
             </div>
-            <p class="text-xs text-muted-foreground">{{ t('ai.contextWindowHint') }}</p>
-            <p v-if="policy" class="text-xs text-muted-foreground">
-              {{ t('ai.contextBudget', { budget: format(policy.inputBudget) }) }}
-            </p>
-          </div>
-          <div class="space-y-2">
-            <Label for="ai-max-tokens">{{ t('ai.maxTokens') }}</Label>
-            <Input
-              id="ai-max-tokens"
-              v-model="maxTokens"
-              type="number"
-              inputmode="numeric"
-              :min="1"
-              step="1"
-              :disabled="running"
-            />
-            <p class="text-xs text-muted-foreground">{{ t('ai.maxTokensHint') }}</p>
-          </div>
-          <div class="mt-3 space-y-2">
-            <Label for="ai-provider-options">SDK providerOptions · JSON</Label>
-            <textarea
-              id="ai-provider-options"
-              v-model="providerOptions"
-              :disabled="running"
-              rows="4"
-              spellcheck="false"
-              class="w-full rounded border border-input bg-background p-2 font-mono text-sm"
-            />
-            <p class="text-xs text-muted-foreground">{{ t('ai.providerOptionsHint') }}</p>
-            <a
-              href="https://ai-sdk.dev/providers/ai-sdk-providers"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-xs underline"
-              >{{ t('ai.providerDocs') }}</a
-            >
-          </div>
-          <div class="space-y-2">
-            <Label for="ai-headers">{{ t('ai.customHeaders') }} · JSON</Label>
-            <textarea
-              id="ai-headers"
-              v-model="headers"
-              :disabled="running"
-              rows="3"
-              spellcheck="false"
-              autocomplete="off"
-              class="w-full rounded border border-input bg-background p-2 font-mono text-sm"
-            />
-            <p class="text-xs text-muted-foreground">{{ t('ai.headersHint') }}</p>
-          </div>
-          <template v-if="compatible">
-            <div class="space-y-2">
-              <Label for="ai-request-body">{{ t('ai.requestBody') }} · JSON</Label>
+
+            <div class="space-y-1.5">
+              <Label for="ai-max-tokens">{{ t('ai.maxTokens') }}</Label>
+              <Input
+                id="ai-max-tokens"
+                v-model="maxTokens"
+                type="number"
+                inputmode="numeric"
+                :min="1"
+                step="1"
+                :disabled="running"
+              />
+            </div>
+
+            <div class="space-y-1.5">
+              <Label for="ai-provider-options">SDK providerOptions (JSON)</Label>
               <textarea
-                id="ai-request-body"
-                v-model="requestBody"
+                id="ai-provider-options"
+                v-model="providerOptions"
                 :disabled="running"
                 rows="3"
                 spellcheck="false"
-                class="w-full rounded border border-input bg-background p-2 font-mono text-sm"
+                class="w-full rounded-md border border-input bg-background p-2 font-mono text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
               />
-              <p class="text-xs text-muted-foreground">{{ t('ai.requestBodyHint') }}</p>
             </div>
-            <label class="flex items-start gap-2"
-              ><Checkbox v-model="replayReasoning" :disabled="running" /><span>{{
-                t('ai.replayReasoning')
-              }}</span></label
-            >
-            <label class="flex items-start gap-2"
-              ><Checkbox v-model="streamUsage" :disabled="running" /><span>{{
-                t('ai.streamUsage')
-              }}</span></label
-            >
-            <label class="block space-y-1"
-              ><span>{{ t('ai.outputParameter') }}</span
-              ><select
-                v-model="outputParameter"
+
+            <div class="space-y-1.5">
+              <Label for="ai-headers">{{ t('ai.customHeaders') }} (JSON)</Label>
+              <textarea
+                id="ai-headers"
+                v-model="headers"
                 :disabled="running"
-                class="w-full rounded border border-input bg-background p-2"
-              >
-                <option value="max_tokens">max_tokens</option>
-                <option value="max_completion_tokens">max_completion_tokens</option>
-              </select></label
-            >
-          </template>
-          <div class="space-y-1">
-            <Label for="ai-image-budget">{{ t('ai.imageBudget') }}</Label>
-            <Input
-              id="ai-image-budget"
-              v-model="imageBudgetMiB"
-              type="number"
-              :min="1"
-              step="1"
-              :disabled="running"
-            />
-            <p class="text-xs text-muted-foreground">{{ t('ai.imageBudgetHint') }}</p>
+                rows="3"
+                spellcheck="false"
+                autocomplete="off"
+                class="w-full rounded-md border border-input bg-background p-2 font-mono text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+              />
+            </div>
+
+            <template v-if="compatible">
+              <div class="space-y-1.5">
+                <Label for="ai-request-body">{{ t('ai.requestBody') }} (JSON)</Label>
+                <textarea
+                  id="ai-request-body"
+                  v-model="requestBody"
+                  :disabled="running"
+                  rows="3"
+                  spellcheck="false"
+                  class="w-full rounded-md border border-input bg-background p-2 font-mono text-xs focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+                />
+              </div>
+
+              <div class="flex flex-wrap gap-4 pt-1">
+                <label class="flex cursor-pointer items-center gap-2 text-xs">
+                  <Checkbox v-model="replayReasoning" :disabled="running" />
+                  <span>{{ t('ai.replayReasoning') }}</span>
+                </label>
+                <label class="flex cursor-pointer items-center gap-2 text-xs">
+                  <Checkbox v-model="streamUsage" :disabled="running" />
+                  <span>{{ t('ai.streamUsage') }}</span>
+                </label>
+              </div>
+
+              <div class="space-y-1.5">
+                <Label>{{ t('ai.outputParameter') }}</Label>
+                <Select v-model="outputParameter" :disabled="running">
+                  <SelectTrigger class="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="max_tokens">max_tokens</SelectItem>
+                    <SelectItem value="max_completion_tokens">max_completion_tokens</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </template>
+
+            <div class="space-y-1.5">
+              <Label for="ai-image-budget">{{ t('ai.imageBudget') }}</Label>
+              <Input
+                id="ai-image-budget"
+                v-model="imageBudgetMiB"
+                type="number"
+                :min="1"
+                step="1"
+                :disabled="running"
+              />
+            </div>
           </div>
-        </details>
-        <div class="flex justify-end">
-          <Button type="submit" :disabled="running || !providerAvailable">{{
-            t('ai.save')
-          }}</Button>
         </div>
+
+        <DialogFooter class="mt-5 flex items-center justify-end gap-2 border-t pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="running"
+            @click="emit('update:open', false)"
+          >
+            {{ t('ai.cancel') }}
+          </Button>
+          <Button type="submit" :disabled="running || !providerAvailable">
+            {{ t('ai.save') }}
+          </Button>
+        </DialogFooter>
       </form>
     </DialogContent>
   </Dialog>

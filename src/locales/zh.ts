@@ -49,6 +49,7 @@ export const zhLocale = {
     modelNoMatch: '没有匹配项，保留输入即可使用自定义模型 ID。',
     modelDocs: '查看官方模型目录',
     customAddress: '自定义 API 地址',
+    defaultAddress: '恢复默认',
     modelContext: '总窗口 {count} token',
     modelOutput: '输出上限 {count} token',
     modelVision: '支持图片输入',
@@ -128,12 +129,11 @@ export const zhLocale = {
     save: '保存',
     newChat: '新建对话',
     referenceUnavailable: '这些成员目前不可读取，可能已删除、隐藏或锁定。',
-    welcome: '从当前选区开始，也可以随时换个问题',
-    intro:
-      '框选家具后，告诉 AI 要分析当前选区；也可以继续讨论已有资料。数据和视图由 AI 按需读取，不会自动发送全部实例。模型视图需加载模型模式。',
+    welcome: '有什么我可以帮你的？',
+    intro: '在场景中框选家具后，我可以帮你分析空间结构、智能整理组合，或回答搭建相关的问题。',
     privacy:
       '问题、工具代码、按需查询的结果和图片会发送到配置的 API。计算在本机 Worker 中执行；整理直接生效，可撤销。',
-    example: '请读取当前选中的家具，分析空间结构，先告诉我适合怎样整理。',
+    example: '分析选中的家具，按建筑结构整理成方便编辑的集合和家具组。',
     placeholder: '分析当前选区，或继续讨论已有资料…',
     inputHint: 'Enter 发送 · Shift+Enter 换行',
     conversation: 'AI 对话记录',

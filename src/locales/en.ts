@@ -54,6 +54,7 @@ export const enLocale = {
     modelNoMatch: 'No match. Keep your input to use a custom model ID.',
     modelDocs: 'Official model catalog',
     customAddress: 'Custom API URL',
+    defaultAddress: 'Reset Default',
     modelContext: '{count} token context',
     modelOutput: '{count} output tokens',
     modelVision: 'Image input',
@@ -139,13 +140,13 @@ export const enLocale = {
     newChat: 'New conversation',
     referenceUnavailable:
       'These members cannot currently be read; they may be deleted, hidden or locked.',
-    welcome: 'Start with a selection, then follow the question',
+    welcome: 'How can I help you?',
     intro:
-      'Select furniture and ask AI to inspect the current selection, or continue discussing existing evidence. Data and views are read on demand; full instance data is not sent automatically. Model views require loaded model mode.',
+      'Select furniture in the scene to analyze spatial structure, organize into sets and groups, or ask questions.',
     privacy:
       'Questions, tool code, requested results and images are sent to your configured API. Computation runs in a local Worker. Organization edits take effect directly and support Undo.',
     example:
-      'Read the currently selected furniture. Explain its spatial structure and suggest how to organize it first.',
+      'Analyze the selected furniture and organize them into editable sets and groups by architectural structure.',
     placeholder: 'Analyze this selection, or discuss existing evidence…',
     inputHint: 'Enter to send · Shift+Enter for a new line',
     conversation: 'AI conversation',
