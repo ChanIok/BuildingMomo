@@ -8,7 +8,8 @@ import {
   createAnalysisCaptureBridge,
   analysisCaptureBridgeKey,
 } from '@/lib/sceneAnalysis/captureBridge'
-import { useAiChat, aiChatKey } from '@/composables/ai/useAiChat'
+import { useAiChat } from '@/composables/ai/useAiChat'
+import { aiChatKey } from '@/composables/ai/chatContext'
 
 const props = defineProps<{ editing: boolean }>()
 const settingsStore = useSettingsStore()

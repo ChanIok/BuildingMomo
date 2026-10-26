@@ -449,3 +449,49 @@ it('does not partially select an artifact after protection changes', async () =>
   expect(await s.chat.selectReference('R1')).toBe(false)
   expect(s.scheme.selectedItemIds.value).toEqual(new Set(['outside']))
 })
+
+it('displays persisted provider warnings including deprecated settings', async () => {
+  const { chat, scheme, repository } = await setup()
+  const conversation = await repository.create(scheme.id, 'Warnings')
+  await repository.save({
+    ...conversation,
+    lastRun: {
+      id: 'warning-run',
+      state: 'completed',
+      warnings: [
+        { type: 'deprecated', setting: 'old_option', message: 'Use new_option instead.' },
+        { type: 'other', message: 'Provider notice' },
+        { type: 'unsupported', feature: 'temperature', details: 'Not supported' },
+        { type: 'compatibility', feature: 'reasoning' },
+      ],
+    },
+  })
+  await chat.openSession(conversation.id)
+  expect(chat.requestWarnings.value).toEqual([
+    'old_option: Use new_option instead.',
+    'Provider notice',
+    'ai.warningUnsupported\nNot supported',
+    'ai.warningCompatibility',
+  ])
+})
+
+it('returns only images belonging to the active conversation and tolerates missing assets', async () => {
+  const { chat, scheme, repository } = await setup()
+  await expect(chat.loadImage('missing')).resolves.toBeUndefined()
+  const conversation = await repository.create(scheme.id, 'Images')
+  await repository.save(conversation, [
+    {
+      id: 'asset:test',
+      conversationId: conversation.id,
+      width: 1,
+      height: 1,
+      bytes: 5,
+      blob: new Blob(['image']),
+    },
+  ])
+  await chat.openSession(conversation.id)
+  expect(await (await chat.loadImage('asset:test'))!.text()).toBe('image')
+  await expect(chat.loadImage('missing')).resolves.toBeUndefined()
+  await chat.reset()
+  await expect(chat.loadImage('asset:test')).resolves.toBeUndefined()
+})

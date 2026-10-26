@@ -10,7 +10,5 @@ export function isAiMarkdownLink(url: string) {
   }
 }
 
-export const configureAiMarkdown: NonNullable<NodeRendererProps['customMarkdownIt']> = (md) => {
-  md.validateLink = isAiMarkdownLink
-  return md
-}
+export const configureAiMarkdown: NonNullable<NodeRendererProps['customMarkdownIt']> = (md) =>
+  Object.assign(md, { validateLink: isAiMarkdownLink })

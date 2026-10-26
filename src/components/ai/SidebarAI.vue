@@ -15,7 +15,7 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-vue-next'
-import { aiChatKey, type ChatEntry } from '@/composables/ai/useAiChat'
+import { aiChatKey, type ChatEntry } from '@/composables/ai/chatContext'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { resolveAiConfig } from '@/lib/ai/context'
 import { useI18n } from '@/composables/useI18n'
@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { downloadBlob } from '@/composables/useFileOperations'
+import { downloadBlob } from '@/composables/fileOps/download'
 import AiSettingsDialog from './AiSettingsDialog.vue'
 import AiImage from './AiImage.vue'
 import AiMarkdown from './AiMarkdown.vue'
@@ -258,6 +258,18 @@ function reset() {
   draft.value = ''
   following.value = true
 }
+function useExample() {
+  draft.value = t('ai.example')
+  input.value?.focus()
+}
+function confirmDelete() {
+  deleteOpen.value = false
+  void chat!.deleteSession()
+}
+function confirmAcknowledge() {
+  acknowledgeOpen.value = false
+  void chat!.acknowledgeUncertain()
+}
 const currentSession = computed(() => sessions.value.find((s) => s.id === sessionId.value))
 const currentSessionTitle = computed(() => currentSession.value?.title || t('ai.newChat'))
 
@@ -417,10 +429,7 @@ async function downloadTrace() {
             v-else
             type="button"
             class="w-full rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-accent"
-            @click="
-              draft = t('ai.example')
-              input?.focus()
-            "
+            @click="useExample"
           >
             {{ t('ai.example') }}
           </button>
@@ -709,14 +718,9 @@ async function downloadTrace() {
         >
         <DialogFooter
           ><Button variant="outline" @click="deleteOpen = false">{{ t('ai.cancel') }}</Button
-          ><Button
-            variant="destructive"
-            @click="
-              deleteOpen = false
-              chat.deleteSession()
-            "
-            >{{ t('ai.deleteChat') }}</Button
-          ></DialogFooter
+          ><Button variant="destructive" @click="confirmDelete">{{
+            t('ai.deleteChat')
+          }}</Button></DialogFooter
         >
       </DialogContent>
     </Dialog>
@@ -728,13 +732,7 @@ async function downloadTrace() {
         >
         <DialogFooter
           ><Button variant="outline" @click="acknowledgeOpen = false">{{ t('ai.cancel') }}</Button
-          ><Button
-            @click="
-              acknowledgeOpen = false
-              chat.acknowledgeUncertain()
-            "
-            >{{ t('ai.acknowledge') }}</Button
-          ></DialogFooter
+          ><Button @click="confirmAcknowledge">{{ t('ai.acknowledge') }}</Button></DialogFooter
         >
       </DialogContent>
     </Dialog>

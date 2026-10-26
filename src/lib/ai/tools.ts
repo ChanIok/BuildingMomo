@@ -1,4 +1,4 @@
-import { tool, type ToolSet } from 'ai'
+import type { ToolSet } from 'ai'
 import { createArtifacts, describeArtifact } from './artifacts'
 import { runComputation, type ComputeExecutor } from './computeClient'
 import { readInput } from './toolSchema'
@@ -25,13 +25,13 @@ import type { AnalysisCamera, ImageLayout } from '../sceneAnalysis/images'
 import { readObject, readString } from '../sceneAnalysis/validation'
 
 export const workbenchTools = {
-  inspect: tool({
+  inspect: {
     description:
       '读取选区、已保存资料、计算文档或内置场景指南。涉及当前或新选区时先用 ref="selection" 捕获调用时的成员；空选区请用户选择，不扩展到整个方案。继续已有分析沿用原引用。集合默认只返回概况，引用固定成员，不冻结坐标；读取集合返回当前成员状态及更新后的引用。图片引用会重新附上原图，不重新渲染。计算文档入口：inspect({"ref":"api"})；场景指南入口见主提示词目录。',
     inputSchema: inspectInput,
     metadata: { effect: 'read' },
-  }),
-  compute: tool({
+  },
+  compute: {
     description: [
       '在一次性 Worker 中执行只读同步 JavaScript 函数体，默认 5 秒超时。执行环境提供 input、api、publish，每次运行独立，无持久全局变量，不提供编辑入口；不要使用导入、异步任务、网络或浏览器 API。',
       'inputs 配置引用映射；代码从 input.<键名> 读取，不会注入同名独立变量，也没有 inputs 全局对象。集合解析为完整精度物品数组；表格、报告、计划解析为保存的 JSON。',
@@ -42,8 +42,8 @@ export const workbenchTools = {
     ].join('\n'),
     inputSchema: computeInput,
     metadata: { effect: 'read' },
-  }),
-  render: tool({
+  },
+  render: {
     description: [
       '生成透视场景图或原素材图册，按 panels 顺序合成带标题的拼图；单幅也传 panels 数组。',
       'ref 决定显示成员，focus 只改变取景；隔离遮挡使用局部 ref。标签未检测遮挡，可能重叠。atlas 只展示原素材图标，不证明实际用途。图片未附上时用 inspect 取回。',
@@ -51,13 +51,13 @@ export const workbenchTools = {
     ].join('\n'),
     inputSchema: renderInput,
     metadata: { effect: 'read' },
-  }),
-  apply: tool({
+  },
+  apply: {
     description:
       '在用户授权范围内，用精确集合引用执行一笔可撤销的集合/家具组整理。直接传 collections/groups，或仅传 plan。不能移动、旋转、缩放或删除物品。同一批工具顺序执行，最多一个 apply 且必须放最后。宿主核验当前场景版本、成员和保护状态；过期集合先 inspect 获取更新后的引用，受场景变化影响的判断需重算。revision=null 的历史派生计划不能用于编辑，摘要本身不使证据过期。以操作核验为准，不重放中断或结果不明的编辑；用 inspect({"ref":"操作 recordId"}) 先回查，不额外增加确认流程。',
     inputSchema: applyInput,
     metadata: { effect: 'edit' },
-  }),
+  },
 } satisfies ToolSet
 
 export const computationHelp = `输入与执行

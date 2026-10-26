@@ -1,26 +1,10 @@
-import { afterAll, afterEach, expect, it, vi } from 'vitest'
-import { createServer } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { fileURLToPath } from 'node:url'
+import { expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import AiMarkdown from '@/components/ai/AiMarkdown.vue'
 
-const server = await createServer({
-  configFile: false,
-  plugins: [vue()],
-  resolve: {
-    alias: { '@': fileURLToPath(new URL('../../../src', import.meta.url)) },
-    dedupe: ['vue'],
-  },
-  server: { middlewareMode: true, watch: null, hmr: false },
-  appType: 'custom',
-})
-afterAll(() => server.close())
-afterEach(() => vi.unstubAllGlobals())
-
-async function render(content: string, final = true) {
-  const { default: component } = await server.ssrLoadModule('/src/components/ai/AiMarkdown.vue')
-  return renderToString(createSSRApp({ render: () => h(component, { content, final }) }))
+function render(content: string, final = true) {
+  return renderToString(createSSRApp({ render: () => h(AiMarkdown, { content, final }) }))
 }
 
 it.each([false, true])(

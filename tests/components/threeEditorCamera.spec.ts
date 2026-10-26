@@ -6,8 +6,8 @@ import { effectScope, nextTick, ref, watch, type EffectScope } from 'vue'
 import { PerspectiveCamera } from 'three'
 import { invalidateScene, setSceneInvalidate } from '@/composables/useSceneInvalidate'
 
-// The node-only test config does not compile SFCs. Execute the component's actual
-// watcher with real Vue scheduling, rather than duplicating the fix in the test.
+// Execute the actual look-at watcher with real Vue scheduling without loading
+// the viewport's unrelated rendering dependencies.
 const source = readFileSync(
   new URL('../../src/components/ThreeEditor.vue', import.meta.url),
   'utf8'

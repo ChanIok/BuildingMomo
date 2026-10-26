@@ -1,12 +1,4 @@
-import {
-  computed,
-  onScopeDispose,
-  shallowRef,
-  triggerRef,
-  watch,
-  type InjectionKey,
-  type Ref,
-} from 'vue'
+import { computed, onScopeDispose, shallowRef, triggerRef, watch, type Ref } from 'vue'
 import { useLocalStorage, useTimestamp } from '@vueuse/core'
 import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -27,21 +19,9 @@ import {
   type AssetRecord,
   type Conversation,
   type ConversationRecords,
-  type ImageReference,
 } from '@/lib/ai/types'
 import type { AnalysisCaptureProvider } from '@/lib/sceneAnalysis/images'
-
-/** Display projection only. No UI entries are persisted. */
-export interface ChatEntry {
-  id: string
-  role: 'user' | 'assistant' | 'tool'
-  text: string
-  reasoning?: string
-  toolName?: string
-  state: 'running' | 'success' | 'error' | 'cancelled'
-  images?: ImageReference[]
-  references?: ArtifactRecord[]
-}
+import type { ChatEntry } from './chatContext'
 
 export function useAiChat(options: {
   enabled: Readonly<Ref<boolean>>
@@ -159,18 +139,19 @@ export function useAiChat(options: {
   )
   const requestWarnings = computed(() => {
     const activeWarnings = progress.value?.diagnostics?.warnings
-    return (records.value?.conversation.lastRun?.warnings ?? activeWarnings ?? []).map((warning) =>
-      warning.type === 'other'
-        ? warning.message
-        : [
-            t(
-              warning.type === 'unsupported' ? 'ai.warningUnsupported' : 'ai.warningCompatibility',
-              { feature: warning.feature }
-            ),
-            warning.details,
-          ]
-            .filter(Boolean)
-            .join('\n')
+    return (records.value?.conversation.lastRun?.warnings ?? activeWarnings ?? []).map(
+      (warning) => {
+        if (warning.type === 'other') return warning.message
+        if (warning.type === 'deprecated') return `${warning.setting}: ${warning.message}`
+        return [
+          t(warning.type === 'unsupported' ? 'ai.warningUnsupported' : 'ai.warningCompatibility', {
+            feature: warning.feature,
+          }),
+          warning.details,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      }
     )
   })
   const requestStatus = computed(() => {
@@ -472,8 +453,9 @@ export function useAiChat(options: {
     },
     loadImage: async (id: string) => {
       const asset = await repository.read<AssetRecord>(id)
-      return asset?.conversationId === records.value?.conversation.id ? asset.blob : undefined
+      return asset && asset.conversationId === records.value?.conversation.id
+        ? asset.blob
+        : undefined
     },
   }
 }
-export const aiChatKey: InjectionKey<ReturnType<typeof useAiChat>> = Symbol('aiChat')
