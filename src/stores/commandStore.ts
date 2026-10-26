@@ -45,6 +45,7 @@ export const useCommandStore = defineStore('command', () => {
   const { deleteSelected } = useEditorManipulation()
 
   const uiStore = useUIStore()
+  const settingsStore = useSettingsStore()
   const desktopStore = useDesktopStore()
   const { t } = useI18n()
   const notification = useNotification()
@@ -182,10 +183,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'file.joinCloudScheme',
       label: t('command.file.joinCloudScheme'),
       category: 'file',
-      enabled: () => {
-        const settingsStore = useSettingsStore()
-        return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
-      },
+      enabled: () => settingsStore.canUseExperimentalFeatures,
       execute: () => {
         console.log('[Command] 加入云方案')
       },
@@ -194,11 +192,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'file.importFromCode',
       label: t('command.file.importFromCode'),
       category: 'file',
-      enabled: () => {
-        // 需要导入 settingsStore
-        const settingsStore = useSettingsStore()
-        return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
-      },
+      enabled: () => settingsStore.canUseExperimentalFeatures,
       execute: () => {
         console.log('[Command] 从方案码导入')
         // 由 Toolbar 组件处理，打开对话框

@@ -18,6 +18,8 @@ import { serializeBuildData } from '@/lib/gameDataFormat'
 import { getSafeScaleRange } from '@/lib/scaleLimits'
 import { cleanFurnitureColors } from '@/lib/furnitureColorValidation'
 import { workerApi } from '@/workers/client'
+import { downloadBlob } from './fileOps/download'
+export { downloadBlob } from './fileOps/download'
 
 // 检查浏览器是否支持 File System Access API
 const isFileSystemAccessSupported = 'showDirectoryPicker' in window
@@ -308,18 +310,11 @@ export function useFileOperations(editorStore: ReturnType<typeof useEditorStore>
 
     const jsonString = serializeBuildData(gameItems)
     const blob = new Blob([jsonString], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-
-    const link = document.createElement('a')
-    link.href = url
     const downloadName =
       filename ?? (await watchOps.resolveManualExportFileName(scheme.filePath.value))
-    link.download = downloadName
-    link.click()
+    downloadBlob(blob, downloadName)
 
-    URL.revokeObjectURL(url)
-
-    console.log(`[FileOps] Exported ${gameItems.length} items to ${link.download}`)
+    console.log(`[FileOps] Exported ${gameItems.length} items to ${downloadName}`)
   }
 
   async function startWatchMode() {

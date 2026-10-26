@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from '../stores/editorStore'
 import { useUIStore } from '../stores/uiStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import { useI18n } from '../composables/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
@@ -12,6 +13,7 @@ import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
 import SidebarDesktopSettings from './SidebarDesktopSettings.vue'
+import SidebarAI from './ai/SidebarAI.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
 import { useDesktopStore } from '../stores/desktopStore'
 import {
@@ -22,10 +24,12 @@ import {
   PictureInPicture2,
   Settings2,
   SlidersHorizontal,
+  Sparkles,
 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()
+const settingsStore = useSettingsStore()
 const desktopStore = useDesktopStore()
 const { t } = useI18n()
 
@@ -61,7 +65,7 @@ watch(
       <div class="flex h-full w-full flex-col">
         <div class="shrink-0 border-b p-2 pl-4">
           <div class="flex items-center justify-between gap-2 bg-transparent p-0">
-            <div class="flex gap-1">
+            <div class="flex flex-wrap gap-1">
               <SidebarToggleItem
                 :model-value="uiStore.sidebarView === 'structure'"
                 @update:model-value="
@@ -126,6 +130,18 @@ watch(
               >
                 <Laptop class="h-4 w-4" />
               </SidebarToggleItem>
+              <SidebarToggleItem
+                v-if="settingsStore.canUseExperimentalFeatures"
+                :model-value="uiStore.sidebarView === 'ai'"
+                @update:model-value="
+                  (v: boolean) => {
+                    if (v) uiStore.setSidebarView('ai')
+                  }
+                "
+                :tooltip="t('ai.title')"
+              >
+                <Sparkles class="h-4 w-4" />
+              </SidebarToggleItem>
             </div>
 
             <SidebarToggleItem
@@ -179,6 +195,10 @@ watch(
         <div v-else-if="uiStore.sidebarView === 'desktopSettings'" class="mt-0 min-h-0 flex-1">
           <SidebarDesktopSettings class="h-full" />
         </div>
+        <SidebarAI
+          v-else-if="settingsStore.canUseExperimentalFeatures && uiStore.sidebarView === 'ai'"
+          class="min-h-0 flex-1"
+        />
       </div>
     </div>
   </div>

@@ -17,14 +17,17 @@ vi.mock('@/composables/useThreeModelManager', () => ({
 
 let scope: EffectScope
 beforeEach(() => {
+  vi.stubEnv('VITE_ENABLE_SECURE_MODE', 'true')
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   setActivePinia(createPinia())
+  useSettingsStore().isAuthenticated = true
   scope = effectScope()
 })
 
 afterEach(() => {
   scope.stop()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 function setup() {

@@ -28,31 +28,9 @@ const { t } = useI18n()
 
 // 显示模式切换
 const displayMode = computed({
-  get: () => {
-    const currentMode = settingsStore.settings.threeDisplayMode
-    // 如果当前是 model 模式但未验证，自动降级到 simple-box
-    if (
-      currentMode === 'model' &&
-      import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' &&
-      !settingsStore.isAuthenticated
-    ) {
-      return 'simple-box'
-    }
-    return currentMode
-  },
-  set: (val) => {
-    if (val) {
-      // 如果尝试切换到 model 但未验证，自动降级
-      if (
-        val === 'model' &&
-        import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' &&
-        !settingsStore.isAuthenticated
-      ) {
-        settingsStore.settings.threeDisplayMode = 'simple-box'
-      } else {
-        settingsStore.settings.threeDisplayMode = val as 'box' | 'icon' | 'simple-box' | 'model'
-      }
-    }
+  get: () => settingsStore.settings.threeDisplayMode,
+  set: (value) => {
+    settingsStore.settings.threeDisplayMode = value
   },
 })
 // 视图预设切换
@@ -85,7 +63,7 @@ const displayModes = computed(() => {
     { id: 'simple-box', label: t('sidebar.displayMode.simpleBox'), icon: Box },
     { id: 'icon', label: t('sidebar.displayMode.icon'), icon: ImageIcon },
   ]
-  if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated) {
+  if (settingsStore.canUseExperimentalFeatures) {
     modes.push({ id: 'model', label: t('sidebar.displayMode.model'), icon: Boxes })
   }
 

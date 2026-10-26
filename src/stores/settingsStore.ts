@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
-import { ref } from 'vue'
+import { computed, reactive, ref, watchEffect } from 'vue'
+import { DEFAULT_AI_PREFERENCES, type AiSettings } from '@/lib/ai/connection'
 import type { ModelAssetProfile } from '@nuan5-pro/render/furniture'
 import type { RenderQuality } from '@/lib/renderQuality'
 
@@ -28,6 +29,7 @@ export interface AppSettings {
   showFurnitureTooltip: boolean
   showBackground: boolean
   sidebarWidth: string
+  groupPanelWidth: number
 
   // 数据设置
   autoUpdateFurniture: boolean
@@ -93,6 +95,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   showFurnitureTooltip: true,
   showBackground: true,
   sidebarWidth: '256px',
+  groupPanelWidth: 280,
   autoUpdateFurniture: true,
   enableDuplicateDetection: true,
   enableLimitDetection: true,
@@ -158,21 +161,56 @@ export const useSettingsStore = defineStore('settings', () => {
     ? Math.min(100, Math.max(50, Math.round(settings.value.renderResolution)))
     : DEFAULT_SETTINGS.renderResolution
 
-  // 认证状态：已有本地口令即视为已验证，启动时不再请求服务器。
+  // AI 配置由统一 Store 持有，沿用原存储键；连接解析与预算计算留在 AI 模块。
+  const ai = reactive({
+    connection: useLocalStorage<AiSettings['connection']>('buildingmomo_ai_connection', {
+      provider: 'compatible',
+      apiUrl: 'https://api.openai.com/v1',
+      model: '',
+    }),
+    apiKey: useLocalStorage('buildingmomo_ai_key', ''),
+    contextWindow: useLocalStorage(
+      'buildingmomo_ai_context_window_v1',
+      DEFAULT_AI_PREFERENCES.contextWindow
+    ),
+    maxTokens: useLocalStorage(
+      'buildingmomo_ai_output_tokens_v1',
+      DEFAULT_AI_PREFERENCES.maxTokens
+    ),
+    imageBudgetMiB: useLocalStorage(
+      'buildingmomo_ai_image_budget_mib',
+      DEFAULT_AI_PREFERENCES.imageBudgetMiB
+    ),
+    modelSettings: useLocalStorage<AiSettings['modelSettings']>(
+      'buildingmomo_ai_model_options_v3',
+      {}
+    ),
+  })
+
+  // 先沿用本地口令，启动时静默验证。
   const isAuthenticated = ref<boolean>(localStorage.getItem(PASSWORD_STORAGE_KEY) !== null)
   const isVerifying = ref<boolean>(false)
+  const canUseExperimentalFeatures = computed(
+    () => import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && isAuthenticated.value
+  )
 
-  // 场景与光照里只有仿真光照和真实地形依赖私有资产，未鉴权时与
-  // threeDisplayMode 的降级同理，在渲染前把它们关掉；家园背景是随包发布的
-  // 俯瞰图，仍按默认显示，否则未鉴权用户连默认视图都看不到。
-  if (import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && !isAuthenticated.value) {
-    settings.value.lightingMode = 'studio'
-    settings.value.homeTerrainEnabled = false
-  }
+  // 无权限时直接关闭受限能力，不影响公共背景和普通显示模式。
+  watchEffect(
+    () => {
+      if (canUseExperimentalFeatures.value) return
+      const s = settings.value
+      if (s.threeDisplayMode === 'model') s.threeDisplayMode = 'simple-box'
+      if (s.lightingMode === 'home') s.lightingMode = 'studio'
+      if (s.homeTerrainEnabled) s.homeTerrainEnabled = false
+    },
+    { flush: 'sync' }
+  )
 
   // 重置为默认设置
   function resetSettings(): void {
     settings.value = structuredClone(DEFAULT_SETTINGS)
+    // 恢复偏好，不清除连接、凭据和已保存的模型参数。
+    Object.assign(ai, DEFAULT_AI_PREFERENCES)
     console.log('[SettingsStore] Settings reset to default')
   }
 
@@ -349,27 +387,17 @@ export const useSettingsStore = defineStore('settings', () => {
     if (savedPassword) {
       await verifyPassword(savedPassword, false)
     }
-
-    // 安全模式下，只要当前未鉴权，就不允许停留在 model 模式
-    if (
-      import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' &&
-      !isAuthenticated.value &&
-      settings.value.threeDisplayMode === 'model'
-    ) {
-      settings.value.threeDisplayMode = 'simple-box'
-      console.log(
-        '[SettingsStore] Unauthenticated in secure mode, downgrade threeDisplayMode from model to simple-box'
-      )
-    }
   }
 
   return {
     settings,
+    ai,
     resetSettings,
     resolveSelectionBindingConflicts,
     resolveAltCameraConflicts,
     // 认证相关
     isAuthenticated,
+    canUseExperimentalFeatures,
     isVerifying,
     verifyPassword,
     initializeAuth,

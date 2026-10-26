@@ -85,14 +85,8 @@ const fileCommands = computed(() => {
     if (cmd.id === 'file.restoreWatchMode') {
       return commandStore.fileOps.canRestoreWatchMode
     }
-    if (cmd.id === 'file.importFromCode') {
-      // 只在 secure 模式且已认证时显示
-      return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
-    }
-
-    if (cmd.id === 'file.joinCloudScheme') {
-      // 与“从方案码导入”保持一致：secure 模式未认证时不显示
-      return import.meta.env.VITE_ENABLE_SECURE_MODE === 'true' && settingsStore.isAuthenticated
+    if (cmd.id === 'file.importFromCode' || cmd.id === 'file.joinCloudScheme') {
+      return settingsStore.canUseExperimentalFeatures
     }
     return true
   })

@@ -54,8 +54,9 @@ vec3 CustomToneMapping( vec3 color ) {
   vec3 straight = slope * (logColor + straightMatch);
   vec3 low = 2. * toeScale / (1. + exp(-2. * slope / toeScale * (logColor - toeMatch))) - black;
   vec3 high = 1.04 - 2. * shoulderScale / (1. + exp(2. * slope / shoulderScale * (logColor - shoulderMatch)));
-  low = mix(straight, low, lessThan(logColor, vec3(toeMatch)));
-  high = mix(straight, high, greaterThan(logColor, vec3(shoulderMatch)));
+  // OutputPass is GLSL ES 1.00: convert boolean selectors to numeric 0/1 masks.
+  low = mix(straight, low, vec3(lessThan(logColor, vec3(toeMatch))));
+  high = mix(straight, high, vec3(greaterThan(logColor, vec3(shoulderMatch))));
   vec3 blend = clamp((logColor - toeMatch) / (shoulderMatch - toeMatch), 0., 1.);
   if (shoulderMatch < toeMatch) blend = 1. - blend;
   color = mix(low, high, blend * blend * (3. - 2. * blend));

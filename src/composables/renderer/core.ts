@@ -1098,6 +1098,14 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // 返回统一接口
   return {
+    isModelCaptureReady: () =>
+      !isDisposed &&
+      !rebuildPending &&
+      !rebuildRunner &&
+      !isTransformDragging?.value &&
+      interactionReady.value &&
+      settingsStore.settings.threeDisplayMode === 'model' &&
+      modelMode.isProjectionCurrent(),
     isInteractionReady: computed(() => interactionReady.value),
     instancedMesh: boxMode.mesh,
     iconInstancedMesh: iconMode.mesh,

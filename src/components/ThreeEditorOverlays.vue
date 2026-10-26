@@ -28,6 +28,7 @@ import FurnitureLibrary from './FurnitureLibrary.vue'
 import DyePanel from './DyePanel.vue'
 import GroupPanel from './GroupPanel.vue'
 import { useCanvasPanels } from '@/composables/editor/useCanvasPanels'
+import { useGroupPanelResize } from '@/composables/editor/useGroupPanelResize'
 import DebugPanel from './DebugPanel.vue'
 import FpsMonitor from './FpsMonitor.vue'
 
@@ -87,6 +88,19 @@ interface Props {
 
 const props = defineProps<Props>()
 const { dyePanelStyle } = useCanvasPanels(props.commandStore)
+const {
+  width: groupPanelWidth,
+  minWidth: groupPanelMinWidth,
+  maxWidth: groupPanelMaxWidth,
+  panelStyle: groupPanelStyle,
+  isResizing: isGroupPanelResizing,
+  startResize,
+  resize,
+  finishResize,
+  cancelPointerResize,
+  resetWidth,
+  resizeWithKeyboard,
+} = useGroupPanelResize()
 
 const emit = defineEmits<{
   'update:contextMenu': [value: ContextMenuState]
@@ -299,13 +313,42 @@ function handleViewInfoClick() {
   <div
     v-show="uiStore.groupPanelOpen"
     id="canvas-group-panel"
-    class="absolute top-4 bottom-18 left-4 z-40 w-70 max-w-[calc(100%-2rem)] overflow-hidden rounded-md border border-border shadow-2xl backdrop-blur-sm"
+    class="absolute top-4 bottom-18 left-4 z-40 max-w-[calc(100%-2rem)] rounded-md border border-border shadow-2xl backdrop-blur-sm"
+    :style="groupPanelStyle"
     @pointerdown.stop
     @pointerup.stop
     @dblclick.stop
     @contextmenu.stop
   >
-    <GroupPanel />
+    <div class="h-full overflow-hidden rounded-[inherit]">
+      <GroupPanel />
+    </div>
+    <div
+      role="separator"
+      tabindex="0"
+      aria-orientation="vertical"
+      aria-controls="canvas-group-panel"
+      :aria-label="t('groups.resize')"
+      :aria-valuemin="groupPanelMinWidth"
+      :aria-valuemax="groupPanelMaxWidth"
+      :aria-valuenow="groupPanelWidth"
+      :title="t('groups.resizeHint')"
+      class="group absolute inset-y-1 -right-2 z-10 w-2 cursor-ew-resize touch-none outline-none select-none focus-visible:ring-1 focus-visible:ring-ring"
+      @pointerdown.stop="startResize"
+      @pointermove.stop="resize"
+      @pointerup.stop="finishResize"
+      @pointercancel.stop="cancelPointerResize"
+      @lostpointercapture="cancelPointerResize"
+      @dblclick.stop.prevent="resetWidth"
+      @keydown="resizeWithKeyboard"
+      @click.stop
+      @contextmenu.stop.prevent
+    >
+      <span
+        class="pointer-events-none absolute inset-y-0 left-0 w-px rounded-full transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary/50"
+        :class="isGroupPanelResizing ? 'bg-primary/70' : 'bg-transparent'"
+      />
+    </div>
   </div>
   <DyePanel v-model:open="commandStore.showDyePanel" :style="dyePanelStyle" />
 

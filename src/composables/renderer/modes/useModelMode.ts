@@ -584,6 +584,16 @@ export function useModelMode() {
   }
 
   return {
+    isProjectionCurrent() {
+      return (
+        scheme === editorStore.activeScheme &&
+        renderVersion === editorStore.sceneVersion &&
+        profile ===
+          `${settingsStore.settings.modelAssetProfile}:${settingsStore.settings.materialAssetProfile}:${gameDataStore.furnitureDBRevision}` &&
+        renderScope === (editorStore.renderItemIds ?? null) &&
+        !projectionDirty
+      )
+    },
     meshMap,
     indexToIdMap,
     idToIndexMap,

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { GroupEditTarget, PasteResult, WorkingCoordinateSystem } from '../types/editor'
 import type { ViewPreset } from '../composables/useThreeCamera'
 import {
@@ -37,8 +37,15 @@ export const useUIStore = defineStore('ui', () => {
 
   // 侧边栏视图状态
   const sidebarView = ref<
-    'structure' | 'transform' | 'editorSettings' | 'displaySettings' | 'desktopSettings'
+    'structure' | 'transform' | 'editorSettings' | 'displaySettings' | 'desktopSettings' | 'ai'
   >('structure')
+  watch(
+    () => settingsStore.canUseExperimentalFeatures,
+    (allowed) => {
+      if (!allowed && sidebarView.value === 'ai') sidebarView.value = 'structure'
+    },
+    { flush: 'sync' }
+  )
   // 结构面板 hover 的物品类型（gameId），用于联动画布高亮
   const sidebarHoveredGameId = ref<number | null>(null)
   const groupPanelOpen = ref(false)
@@ -274,8 +281,10 @@ export const useUIStore = defineStore('ui', () => {
   // ========== 侧边栏管理 ==========
 
   function setSidebarView(
-    view: 'structure' | 'transform' | 'editorSettings' | 'displaySettings' | 'desktopSettings'
+    view:
+      'structure' | 'transform' | 'editorSettings' | 'displaySettings' | 'desktopSettings' | 'ai'
   ) {
+    if (view === 'ai' && !settingsStore.canUseExperimentalFeatures) return
     sidebarView.value = view
     console.log('[UIStore] Sidebar view set to:', view)
   }

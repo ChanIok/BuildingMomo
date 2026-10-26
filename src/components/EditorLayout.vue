@@ -1,13 +1,27 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, provide, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { Split } from '@/components/ui/split'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
+import {
+  createAnalysisCaptureBridge,
+  analysisCaptureBridgeKey,
+} from '@/lib/sceneAnalysis/captureBridge'
+import { useAiChat, aiChatKey } from '@/composables/ai/useAiChat'
 
 const props = defineProps<{ editing: boolean }>()
 const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
+const captureBridge = createAnalysisCaptureBridge()
+provide(analysisCaptureBridgeKey, captureBridge)
+provide(
+  aiChatKey,
+  useAiChat({
+    enabled: computed(() => props.editing && settingsStore.canUseExperimentalFeatures),
+    getCaptureProvider: () => captureBridge.provider.value,
+  })
+)
 const container = ref<HTMLElement | null>(null)
 const { width } = useElementSize(container)
 const rightVisible = computed(() => props.editing && !uiStore.sidebarCollapsed)

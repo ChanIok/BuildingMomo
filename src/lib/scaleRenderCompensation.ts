@@ -223,7 +223,11 @@ export function buildDisplayWorldMatrixFromItem(
   // 这里故意构建的是“显示用矩阵”：
   // raw 数据语义仍由 matrixTransform 负责，这个函数只在显示/交互层叠加补偿。
   const geometry = resolveDisplayGeometryInfo(item, context)
-  const worldMatrix = matrixTransform.buildWorldMatrixFromItem(item, geometry.useModelScale)
+  const worldMatrix = matrixTransform.buildWorldMatrixFromItem(
+    item,
+    geometry.useModelScale,
+    geometry.furnitureSize
+  )
 
   applyScaleRenderCompensationToWorldMatrixInPlace(worldMatrix, item, {
     sizeX: geometry.sizeX,

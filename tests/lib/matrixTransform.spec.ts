@@ -87,6 +87,14 @@ describe('buildWorldMatrixFromItem', () => {
     expect(scale.toArray()).toEqual([100, 100, 150])
   })
 
+  it('Box 模式：调用方已解析的尺寸优先于 store，仍保持视觉缩放轴映射', () => {
+    const item = makeAppItem({ gameId: 9001, extra: { Scale: { X: 2, Y: 3, Z: 4 }, AttachID: 0 } })
+    const { scale } = decomposeLocal(
+      matrixTransform.buildWorldMatrixFromItem(item, false, [10, 20, 30])
+    )
+    expect(scale.toArray()).toEqual([30, 40, 120])
+  })
+
   it('Model 模式：只使用用户 Scale，不再乘家具尺寸', () => {
     const item = makeAppItem({
       gameId: 9001,

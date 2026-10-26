@@ -26,9 +26,14 @@ export const matrixTransform = {
    *
    * @param item 游戏物品数据
    * @param hasModelConfig 是否有 3D 模型配置（影响 Scale 计算）
+   * @param furnitureSize 已解析的 Box 尺寸；省略时沿用游戏数据 store 的查询规则
    * @returns 世界空间矩阵
    */
-  buildWorldMatrixFromItem(item: AppItem, hasModelConfig: boolean): Matrix4 {
+  buildWorldMatrixFromItem(
+    item: AppItem,
+    hasModelConfig: boolean,
+    furnitureSize?: readonly [number, number, number]
+  ): Matrix4 {
     // 1. Position
     // 游戏坐标直接对应 Three.js Local Space（无需转换，因为已统一 Z-up）
     const pos = new Vector3(item.x, item.y, item.z)
@@ -56,9 +61,8 @@ export const matrixTransform = {
       scale = new Vector3(scaleData?.Y ?? 1, scaleData?.X ?? 1, scaleData?.Z ?? 1)
     } else {
       // Box 模式：Scale * furnitureSize
-      const gameDataStore = useGameDataStore()
-      const furnitureSize = gameDataStore.getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
-      const [sizeX, sizeY, sizeZ] = furnitureSize
+      const [sizeX, sizeY, sizeZ] =
+        furnitureSize ?? useGameDataStore().getFurnitureSize(item.gameId) ?? DEFAULT_FURNITURE_SIZE
       scale = new Vector3(
         (scaleData?.Y ?? 1) * sizeX, // Local X 使用 Scale.Y
         (scaleData?.X ?? 1) * sizeY, // Local Y 使用 Scale.X

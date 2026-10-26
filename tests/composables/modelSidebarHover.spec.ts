@@ -41,11 +41,13 @@ let scope: EffectScope
 let mesh: InstancedMesh
 
 beforeEach(() => {
+  vi.stubEnv('VITE_ENABLE_SECURE_MODE', 'true')
   vi.clearAllMocks()
   state.disposers = []
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   vi.stubGlobal('window', globalThis)
   setActivePinia(createPinia())
+  useSettingsStore().isAuthenticated = true
   scope = effectScope()
   mesh = new InstancedMesh(new BoxGeometry(), new MeshBasicMaterial(), 3)
   mesh.count = 3
@@ -79,6 +81,7 @@ afterEach(() => {
   ;(mesh.material as MeshBasicMaterial).dispose()
   mesh.dispose()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 it('updates model sidebar type hover outlines without rebuilding or changing scene data', async () => {

@@ -31,6 +31,8 @@ BuildingMomo 是基于 Vue 3、TypeScript、Pinia、Three.js/TresJS 的无限暖
 - 使用 Node.js 24 和 pnpm；安装须应用 `pnpm-workspace.yaml` 中的 TresJS patch，不直接修改 `node_modules`。
 - 测试位于 `tests/`，使用独立 Vitest 配置，不加载 PWA 插件。
 - 格式化由 Husky 的 pre-commit `lint-staged` 统一执行。不要主动运行 Prettier 或制造与任务无关的格式化 diff。
+- 不主动执行构建和全量测试：`pnpm run build`、`build:secure`、`build:cpp`、`pnpm exec vue-tsc -b`、无参数 `pnpm test` 只有在用户明确要求时才运行。
+- 针对当前修改的定向测试不受此限制：`pnpm test tests/<相关文件或目录>` 可直接运行。
 
 ## 不可破坏的核心约束
 
@@ -100,10 +102,10 @@ UI、编辑操作 API 和高级粘贴统一使用视觉 `x/y/z`：
 - 桌面桥接：`src/stores/desktopStore.ts`、`src/types/desktop.ts`、`desktop/src/desktop_bridge.cpp`；协议变更须检查两端
 - 类型与文案：`src/types/`、`src/locales/zh.ts`、`src/locales/en.ts`
 
-## 修改后的最低验证
+## 修改后的定向验证
 
 - 仅文档修改：检查 `git diff --check`。
-- TypeScript/Vue 修改：运行 `pnpm exec vue-tsc -b`。
-- 修改事务、格式、坐标/缩放、吸附/Gizmo、显隐与锁定、渲染生命周期或 Worker 验证等核心契约时，运行 `pnpm test` 或覆盖受影响契约的相关测试；失败先判断契约还是实现问题，不直接改断言。
-- 构建、资源、PWA、部署或产物变更：再运行对应完整 build。后端或 C++ 变更检查对应运行路径或构建，前端检查不能替代。
-- 未被自动测试覆盖的部分，按风险检查关键交互、撤销/重做、坐标转换和多选；渲染/UI 变更检查实际显示，交付时说明验证范围与缺口。
+- TypeScript/Vue 修改：运行覆盖本次改动的定向测试，例如 `pnpm test tests/lib/editorTransactions.spec.ts`；同一契约的文件可一起跑（如 `pnpm test tests/lib/`）。没有对应测试时用 `git diff --check` 加人工核对代替，不为此跑全量测试或类型检查。
+- 修改事务、格式、坐标/缩放、吸附/Gizmo、显隐与锁定、渲染生命周期或 Worker 验证等核心契约时，必须运行覆盖该契约的定向测试；失败先判断契约还是实现问题，不直接改断言。
+- 不主动运行全量测试（无参数 `pnpm test`）、`pnpm exec vue-tsc -b` 或完整 build；这些留待用户明确要求。
+- 未被自动测试覆盖的部分，按风险检查关键交互、撤销/重做、坐标转换和多选；渲染/UI 变更检查实际显示，交付时说明验证范围、未执行的验证项和缺口。

@@ -63,9 +63,6 @@ const resourceDetailRows = computed(() => [
   { labelKey: 'settings.resources.shaders', value: resourceStats.value.shaders },
 ])
 
-const privateAssetsUnlocked = computed(
-  () => import.meta.env.VITE_ENABLE_SECURE_MODE !== 'true' || settingsStore.isAuthenticated
-)
 const qualityOptions = ['lite', 'full'] as const
 const renderQualityOptions = ['economy', 'performance', 'original'] as const
 const renderResolutionLabel = computed(() => {
@@ -81,7 +78,7 @@ function updateRenderResolution(value: number[] | undefined) {
 }
 const fpsOptions = [30, 60, 120, 240, 0] as const
 const backgroundOptions = computed<readonly string[]>(() =>
-  privateAssetsUnlocked.value ? ['off', 'simple', 'real'] : ['off', 'simple']
+  settingsStore.canUseExperimentalFeatures ? ['off', 'simple', 'real'] : ['off', 'simple']
 )
 const backgroundMode = computed({
   get: () => {
@@ -166,7 +163,7 @@ function updateThreeSymbolScale(value: number[] | undefined) {
   <div class="flex h-full flex-col overflow-hidden p-4 pr-0">
     <ScrollArea class="h-full">
       <div class="flex flex-col gap-4 pr-4">
-        <section v-if="privateAssetsUnlocked" class="flex flex-col gap-4">
+        <section v-if="settingsStore.canUseExperimentalFeatures" class="flex flex-col gap-4">
           <h3 class="text-xs font-semibold">{{ t('sidebar.display.graphics') }}</h3>
 
           <div class="flex items-center justify-between gap-2">
@@ -302,12 +299,19 @@ function updateThreeSymbolScale(value: number[] | undefined) {
           </div>
         </section>
 
-        <div v-if="privateAssetsUnlocked" class="border-t border-sidebar-border"></div>
+        <div
+          v-if="settingsStore.canUseExperimentalFeatures"
+          class="border-t border-sidebar-border"
+        ></div>
 
         <section class="flex flex-col gap-4">
           <h3 class="text-xs font-semibold">
             {{
-              t(privateAssetsUnlocked ? 'sidebar.environment.label' : 'sidebar.environment.scene')
+              t(
+                settingsStore.canUseExperimentalFeatures
+                  ? 'sidebar.environment.label'
+                  : 'sidebar.environment.scene'
+              )
             }}
           </h3>
           <div class="flex items-center justify-between gap-2">
@@ -334,7 +338,10 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             <Switch id="scene-grid" v-model="settingsStore.settings.showGrid" />
           </div>
 
-          <div v-if="privateAssetsUnlocked" class="flex items-center justify-between">
+          <div
+            v-if="settingsStore.canUseExperimentalFeatures"
+            class="flex items-center justify-between"
+          >
             <div class="mr-2 space-y-0.5">
               <Label for="home-lighting" class="text-xs">{{ t('sidebar.environment.home') }}</Label>
               <p class="text-[11px] text-muted-foreground">
@@ -343,7 +350,10 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             </div>
             <Switch id="home-lighting" v-model="useHomeLighting" :disabled="preparingRender" />
           </div>
-          <div v-if="privateAssetsUnlocked" class="flex items-center justify-between gap-2">
+          <div
+            v-if="settingsStore.canUseExperimentalFeatures"
+            class="flex items-center justify-between gap-2"
+          >
             <Label for="home-tod-time" class="text-xs">{{ t('sidebar.environment.time') }}</Label>
             <Popover v-model:open="timePickerOpen">
               <div class="relative flex items-center">
@@ -436,7 +446,10 @@ function updateThreeSymbolScale(value: number[] | undefined) {
             </div>
             <Switch id="furniture-tooltip" v-model="settingsStore.settings.showFurnitureTooltip" />
           </div>
-          <div v-if="privateAssetsUnlocked" class="flex items-center justify-between">
+          <div
+            v-if="settingsStore.canUseExperimentalFeatures"
+            class="flex items-center justify-between"
+          >
             <div class="mr-2 space-y-0.5">
               <Label for="model-group-color" class="text-xs">{{
                 t('settings.modelGroupColor.label')

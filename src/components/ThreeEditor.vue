@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { installFurnitureRender } from '@/composables/useFurnitureRender'
+import { furnitureRender, installFurnitureRender } from '@/composables/useFurnitureRender'
+import { createSceneCapture } from '@/composables/renderer/sceneCapture'
+import { analysisCaptureBridgeKey } from '@/lib/sceneAnalysis/captureBridge'
 import { homeOutputUniforms } from '@/composables/renderer/homeOutput'
 import {
   ref,
@@ -13,6 +15,7 @@ import {
   onUnmounted,
   toRef,
   watch,
+  inject,
 } from 'vue'
 import { TresCanvas } from '@tresjs/core'
 import { OrbitControls, TransformControls } from '@tresjs/cientos'
@@ -88,6 +91,26 @@ let sceneEnvironment: ReturnType<typeof createSceneEnvironment> | null = null
 
 // 开发环境标志
 const isDev = import.meta.env.DEV
+const captureBridge = inject(analysisCaptureBridgeKey, null)
+let releaseCapture: (() => void) | null = null
+let captureActive = true
+const captureRevision = ref(0)
+let captureOwner: ReturnType<typeof createSceneCapture> | null = null
+let captureCamera: Camera | null = null
+
+function publishCapture() {
+  releaseCapture?.()
+  releaseCapture = null
+  if (captureActive && captureOwner)
+    releaseCapture = captureBridge?.publish(markRaw(captureOwner)) ?? null
+}
+
+function disposeCapture() {
+  releaseCapture?.()
+  releaseCapture = null
+  captureOwner?.dispose()
+  captureOwner = null
+}
 
 // 3D 选择 & gizmo 相关引用
 const threeContainerRef = ref<HTMLElement | null>(null)
@@ -365,12 +388,33 @@ const {
   updateSelectedInstancesMatrix,
   interactionAdapter: standardInteractionAdapter,
   isInteractionReady,
+  isModelCaptureReady,
   setHoveredItemId: setStandardHoveredItemId,
   setupIconFacing,
   renderSelectionOutlineMaskPass,
   renderSelectionOutlineOverlay,
   syncOutlineSceneTransform,
 } = useThreeInstancedRenderer(isTransformDragging)
+
+// Progressive model loading changes capture evidence. Compare borrowed resources,
+// not mesh-map identity: ordinary group edits may republish the same projection.
+let captureResources: unknown[] = []
+watch(
+  modelMeshMap,
+  (meshes) => {
+    const next = [...meshes]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([id, mesh]) => [id, mesh.geometry, mesh.material])
+    if (
+      next.length !== captureResources.length ||
+      next.some((value, index) => value !== captureResources[index])
+    ) {
+      captureResources = next
+      captureRevision.value++
+    }
+  },
+  { flush: 'sync' }
+)
 
 const {
   segmentMesh: slidePathSegmentMesh,
@@ -484,6 +528,7 @@ let furnitureContext: ReturnType<typeof installFurnitureRender> | null = null
 let environmentTransition: ReturnType<typeof createEnvironmentTransition> | null = null
 let gpuFrameTimer: ReturnType<typeof createGpuFrameTimer> | null = null
 onUnmounted(() => {
+  disposeCapture()
   gpuFrameTimer?.dispose()
   gpuFrameTimer = null
   setSceneInvalidate(null)
@@ -498,6 +543,7 @@ onUnmounted(() => {
 })
 
 function handleTresReady(context: any) {
+  disposeCapture()
   gpuFrameTimer?.dispose()
   gpuFrameTimer = null
   environmentTransition?.dispose()
@@ -540,9 +586,10 @@ function handleTresReady(context: any) {
       {
         renderer,
         scene,
-        getCamera: () => toRaw(context.camera.activeCamera.value),
+        getCamera: () => captureCamera ?? toRaw(context.camera.activeCamera.value),
         invalidate: () => context.renderer.invalidate(),
         onContextRestored: () => {
+          captureRevision.value++
           sceneEnvironment?.reset()
           return environmentTransition?.request()
         },
@@ -556,6 +603,25 @@ function handleTresReady(context: any) {
     )
     const environment = sceneEnvironment
     const furniture = furnitureContext
+    captureOwner = createSceneCapture({
+      renderer,
+      scene,
+      getLayer: () => furnitureRender.value,
+      isReady: () => !environmentTransition?.pending && isModelCaptureReady(),
+      beforeRender: () => furniture.beforeRender(),
+      invalidate: () => context.renderer.invalidate(),
+      getRevision: () => captureRevision.value,
+      withCamera(camera, draw) {
+        const previous = captureCamera
+        captureCamera = camera
+        try {
+          return draw()
+        } finally {
+          captureCamera = previous
+        }
+      },
+    })
+    publishCapture()
     const loading = useLoadingStore()
     let session: number | undefined
     environmentTransition = createEnvironmentTransition({
@@ -572,6 +638,7 @@ function handleTresReady(context: any) {
         return furniture.prepareScene(stale, progress)
       },
       start() {
+        captureRevision.value++
         session = loading.startLoading('environment', 1, 'staged', { showDelayMs: 150 })
       },
       progress(completed, total, phase = 'shaders') {
@@ -580,12 +647,15 @@ function handleTresReady(context: any) {
         loading.updateProgress(completed, 0, session)
       },
       finish() {
+        captureRevision.value++
         loading.finishLoading(session)
       },
       cancel() {
+        captureRevision.value++
         loading.cancelLoading(session)
       },
       fail(error) {
+        captureRevision.value++
         loading.failLoading(error, session)
       },
       invalidate: () => context.renderer.invalidate(),
@@ -1002,6 +1072,8 @@ function getAddPosition(): [number, number, number] | null {
 
 // 当 3D 视图激活时，注册视图函数和位置获取函数
 onActivated(() => {
+  captureActive = true
+  publishCapture()
   commandStore.setZoomFunctions(fitCameraToScene, focusOnSelection)
   commandStore.setViewPresetFunction(switchToView)
   commandStore.setToggleCameraModeFunction(handleToggleCameraMode)
@@ -1010,6 +1082,8 @@ onActivated(() => {
 
 // 当 3D 视图停用时，清除函数
 onDeactivated(() => {
+  captureActive = false
+  publishCapture()
   commandStore.setZoomFunctions(null, null)
   commandStore.setViewPresetFunction(null)
   commandStore.setToggleCameraModeFunction(null)

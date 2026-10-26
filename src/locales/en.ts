@@ -1,4 +1,252 @@
 export const enLocale = {
+  ai: {
+    copyCode: 'Copy code',
+    codeCopied: 'Copied',
+    codeCopyFailed: 'Copy failed. Select the code and copy it manually.',
+    markdownImageBlocked: 'External image not loaded',
+    referenceCurrent: 'Current revision',
+    referenceHistorical: 'Historical evidence; sets retain exact members',
+    sourceCode: 'JS that produced this result',
+    selectReference: 'Select these members in the scene',
+    referenceSelectionBlocked:
+      'Members are deleted, hidden, locked or excluded by the selection filter. Selection is unchanged.',
+    referenceKinds: {
+      set: 'Exact furniture set · InstanceIDs',
+      report: 'Computation report',
+      table: 'Result table',
+      plan: 'Organization plan',
+      image: 'Image evidence',
+    },
+    loadOlder: 'Load earlier messages',
+    deleteChat: 'Delete conversation',
+    deleteHint:
+      'Delete this conversation and its local images. Completed scene edits are not undone.',
+    cancel: 'Cancel',
+    uncertainHint:
+      'An edit was interrupted before its outcome was saved. Inspect the scene first; only queries are allowed until you acknowledge it.',
+    acknowledge: 'Scene checked — allow further edits',
+    acknowledgeHint:
+      'Confirm you checked the scene and undo history. This only unlocks further edits; it does not replay or undo the interrupted edit.',
+    acknowledgeMessage:
+      'I checked the current scene and undo history. Continue from the current scene; do not replay old edits with uncertain outcomes.',
+    imageUnavailable: 'Local image unavailable',
+    imageLoading: 'Loading image…',
+    contextWindow: 'Total model context window (tokens)',
+    contextWindowHint:
+      'Enter the actual total window, including input and output, not just the input limit.',
+    contextBudget: 'Input budget after reserving output: {budget} tokens.',
+    imageBudget: 'Request image budget (MiB)',
+    imageBudgetHint:
+      'Set the encoded image payload budget for your endpoint. Older images become retrievable references only when this budget is exceeded, not after a fixed image count. Default: 25 MiB, reduced to about 60% after triggering.',
+    replayReasoning:
+      'Replay reasoning_content for the same connection and model (only when required by the compatible service)',
+    streamUsage: 'Request streaming usage (stream_options.include_usage)',
+    outputParameter: 'Output limit parameter',
+    model: 'Model',
+    modelList: 'Model list',
+    fetchModels: 'Get models',
+    refreshModels: 'Refresh',
+    modelsLoading: 'Loading…',
+    modelsConnectionHint:
+      'Check the API URL, key and custom headers. Compatible services may be keyless. No model selection or save is needed before querying.',
+    modelsLoaded: '{count} models loaded. Search by name or ID, or enter a custom ID.',
+    modelsEmpty: 'The endpoint returned an empty list. You can still enter a model ID.',
+    modelNoMatch: 'No match. Keep your input to use a custom model ID.',
+    modelDocs: 'Official model catalog',
+    customAddress: 'Custom API URL',
+    modelContext: '{count} token context',
+    modelOutput: '{count} output tokens',
+    modelVision: 'Image input',
+    modelTextOnly: 'Text input only',
+    modelTools: 'Tool calling',
+    reasoningLabel: 'Reasoning effort',
+    reasoningCustom: 'Controlled by advanced settings',
+    restoreReasoning: 'Use standard settings',
+    reasoningOverrideHint:
+      'Advanced parameters set a thinking mode, effort or budget. Restoring standard settings removes only these overrides and keeps other advanced options.',
+    reasoningHint:
+      'Default keeps the service’s settings. Adapters translate other levels; unsupported or adjusted settings appear in request notices. Higher effort usually takes more time and tokens.',
+    reasoningChoices: {
+      'provider-default': 'Provider default',
+      none: 'Off',
+      minimal: 'Minimal',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      xhigh: 'Extra high',
+      max: 'Maximum',
+    },
+    requestWarnings: 'Model parameter notices ({count})',
+    warningUnsupported: 'Unsupported setting: {feature}',
+    warningCompatibility: 'Adapted setting: {feature}',
+    provider: 'Connection type',
+    customCompatible: 'Custom OpenAI-compatible',
+    removedProvider: 'Removed connection type: {provider}',
+    removedProviderHint:
+      'Choose a new connection type and follow the service’s documentation. Use OpenAI-compatible for other compatible services. The original settings stay until you save; protocols and advanced parameters are not converted automatically.',
+    invalidJson: '{field} must be a valid JSON object.',
+    advancedSettings: 'Advanced request settings',
+    customHeaders: 'Custom headers',
+    headersHint:
+      'A string key/value object, e.g. {"X-Custom-Header":"value"}. Saved locally, excluded from debug logs.',
+    providerOptionsHint:
+      'For provider-specific settings. Use the selector above for ordinary reasoning effort; explicit thinking parameters take control of it. Saved per connection type, endpoint and model.',
+    providerDocs: 'SDK provider documentation',
+    requestBody: 'Compatible API extensions',
+    requestBodyHint:
+      'For example {"reasoning_effort":"high","thinking":{"type":"enabled"}}. Add only supported parameters; messages, model, tools and output limits cannot be overridden.',
+    nativeUrlHint:
+      'Enter this provider’s API base URL, including any regional or same-protocol proxy address. The SDK constructs request paths.',
+    modelHint:
+      'Enter any model ID or gateway alias. Editor operations need tool calling; image analysis also needs vision.',
+
+    history: 'Conversations for this scheme',
+    restoring: 'Restoring local conversation…',
+    resume: 'Continue / retry unfinished request',
+    recovered:
+      'Progress retained. Continuing requests the unfinished round again and may incur charges. Edits are never replayed automatically.',
+    contextUsage: 'About {tokens} tokens this request · limit {budget} · {images} images attached',
+    contextActual: '{tokens} input tokens this request · limit {budget} · {images} images attached',
+    compacted:
+      'Earlier analysis has a task summary. Original user instructions remain in context; full records are retrievable.',
+    maxTokens: 'Output limit (tokens)',
+    maxTokensHint:
+      "Total output budget per request, usually including both reasoning and visible text for reasoning models. Do not exceed the model's output limit or the endpoint will reject the request.",
+    storage: {
+      saving: 'Saving locally…',
+      saved: 'Saved locally; reload can restore this chat',
+      error:
+        'Local save failed, possibly due to storage quota. Export the log first. Scene edits require a successful checkpoint.',
+    },
+    contextWindowTitle: 'Context Window',
+    contextWindowUsed: '{percent}% used',
+    contextWindowTokens: '{used} / {total} tokens',
+    contextWindowImages: '{images} images attached',
+    contextWindowCompacted: 'Earlier messages are summarized',
+    title: 'Super Momo',
+    settings: 'AI connection',
+    configure: 'Configure API',
+    apiUrl: 'API URL',
+    modelPlaceholder: 'Search models or enter a model ID',
+    apiUrlHint:
+      'Enter a base URL (such as https://example.com/v1) or a full /chat/completions endpoint. The chat path is added automatically.',
+    requestUrl: 'Request endpoint: {url}',
+    connectionHint:
+      'Choose a native provider or custom compatible service. Direct browser access requires CORS; otherwise use a CORS-enabled proxy URL. Changing connections keeps the conversation.',
+    keyHint:
+      'The key is saved in this browser and restored after reloading, not in schemes or debug logs. Leave it empty for keyless compatible services.',
+    save: 'Save',
+    newChat: 'New conversation',
+    referenceUnavailable:
+      'These members cannot currently be read; they may be deleted, hidden or locked.',
+    welcome: 'Start with a selection, then follow the question',
+    intro:
+      'Select furniture and ask AI to inspect the current selection, or continue discussing existing evidence. Data and views are read on demand; full instance data is not sent automatically. Model views require loaded model mode.',
+    privacy:
+      'Questions, tool code, requested results and images are sent to your configured API. Computation runs in a local Worker. Organization edits take effect directly and support Undo.',
+    example:
+      'Read the currently selected furniture. Explain its spatial structure and suggest how to organize it first.',
+    placeholder: 'Analyze this selection, or discuss existing evidence…',
+    inputHint: 'Enter to send · Shift+Enter for a new line',
+    conversation: 'AI conversation',
+    you: 'You',
+    assistant: 'AI',
+    send: 'Send',
+    stop: 'Stop',
+    thinking: 'Thinking…',
+    thought: 'Thought process',
+    cancelled: 'Stopped',
+    stopped: 'Stopped. Completed edits remain; use Undo to restore them.',
+    requestProgress: '{phase} · {seconds}s',
+    phases: {
+      summarizing: 'Summarizing task',
+      tools: 'Running tools',
+      connecting: 'Connecting',
+      waiting: 'Waiting for model output',
+      reasoning: 'Model is analyzing',
+      text: 'Receiving response',
+      tool_arguments: 'Receiving tool arguments',
+    },
+    latest: 'Latest',
+    openImage: 'Open full image',
+    organized:
+      'Organized {count} items into {groups} new groups and {collections} new collections. Use Undo to restore.',
+    trace: {
+      title: 'Export AI debug log',
+      download: 'Download JSON',
+      includeImages: 'Include images',
+      description:
+        'Contains selected furniture data, actual prompts, conversation, tool arguments/results, timing and interruption events. Review before sharing. Keys and headers are excluded; endpoint credentials, query and fragment are removed.',
+      retention:
+        'Downloads locally without uploading. Conversations and logs are saved on this device and restored after reload. Use the history list to switch conversations.',
+      imageHint:
+        'Each image is stored once. Uncheck to export references only; images stay in local conversation storage.',
+      failed: 'Log download failed. Try again or exclude images.',
+    },
+    tools: {
+      inspect: 'Inspect reference',
+      compute: 'Compute with local JS',
+      render: 'Render comparison',
+      apply: 'Organize collections and groups',
+    },
+    errors: {
+      models_auth:
+        'Cannot list models: the key is invalid or lacks catalog permission. You can still enter a model ID.',
+      models_unavailable:
+        'No model-list endpoint is available at this URL. Use the official catalog or enter a model ID.',
+      models_rate_limit: 'Too many model-list requests. Refresh later or enter a model ID.',
+      models_http: 'Model discovery failed (HTTP {status}). Refresh later or enter a model ID.',
+      models_network:
+        'Cannot read the model list. Check network, URL and browser CORS permission. You can still enter a model ID.',
+      models_timeout: 'Model discovery timed out. Retry or enter a model ID.',
+      models_format:
+        'Invalid model-list format or pagination. The incomplete list was not used. You can still enter a model ID.',
+      reasoning_settings:
+        'The endpoint rejected reasoning parameters. Check model support and the advanced providerOptions or compatible API extensions.',
+      compute: 'Computation failed.',
+      compute_timeout: 'Computation exceeded its time limit.',
+      stale_reference: 'Refresh this reference before editing.',
+      output_limit:
+        'The provider rejected the output limit. Adjust the output limit or advanced request settings.',
+      busy: 'Stop the current task first.',
+      invalid_input: 'Invalid input parameters.',
+      loading: 'Restoring the previous conversation. Please wait a moment before sending.',
+      context_budget:
+        'Instructions or tool output exceed the context budget. No request was sent. Full records are retained; narrow the task or start a new conversation.',
+      context_overflow:
+        'The request exceeds the endpoint context window even after summarizing. Check the total window and output reservation, narrow the scope, or start a new conversation.',
+      storage:
+        'Local checkpoint failed. Further operations were stopped to preserve recoverability. Export the log and check browser storage.',
+      uncertain_edit:
+        'This edit already has an execution record and cannot be retried automatically. Check current groups and undo history before continuing.',
+      settings:
+        'Check connection type, API URL, model ID and JSON settings. Native providers require a key; compatible services may be keyless.',
+      scope: 'Target members cannot be read. Check for deleted, hidden or locked items.',
+      stale:
+        'Scene or rendering conditions changed; this run stopped. References retain exact members. Continue to read current data and update the analysis on demand.',
+      network:
+        'The browser could not read the API response, or the connection was interrupted. Check the resolved endpoint, network, HTTPS and provider CORS permission. CORS can hide the actual HTTP status; check the console.',
+      not_found: 'HTTP 404. Check the API URL, selected protocol and model ID.',
+      auth: 'Access denied: 401 usually means an invalid key; 403 means the service refused access. Re-enter this provider’s key in settings and save.',
+      http: 'API request failed.',
+      protocol:
+        'The endpoint did not return a complete, valid response stream. Check endpoint and tool-calling support.',
+      truncated:
+        'The response ended early. Tools in this response were not executed. You can send another message.',
+      timeout:
+        'Request timed out after 120 seconds without data or 10 minutes overall. Tools in this incomplete response were not executed; earlier edits remain. Narrow the scope to continue.',
+      length:
+        'The model reached its output limit. Tools in this response were not executed. Narrow the task or change models.',
+      content_filter: 'The provider stopped this output. Tools in this response were not executed.',
+      provider:
+        'The provider returned a stream error. Check model capabilities, quota and service status.',
+      empty: 'The model returned an empty response. Check your model and endpoint.',
+      image: 'The image could not be sent as model input. Regenerate it or narrow the scope.',
+      unexpected:
+        'Execution failed and further operations stopped. Completed edits remain; inspect the scene before continuing.',
+    },
+  },
+
   groups: {
     importInfo: 'Import group info',
     importDialog: {
@@ -40,6 +288,8 @@ export const enLocale = {
     search: 'Search collections or groups',
     create: 'Group selected furniture',
     close: 'Close groups panel',
+    resize: 'Resize groups panel',
+    resizeHint: 'Drag to resize, double-click to reset; arrow keys to adjust, Enter to reset',
     toggle: 'Toggle groups panel',
     rename: 'Group name',
     empty: 'No groups yet',

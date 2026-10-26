@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { makeAppItem, groupNamesOf, setGroupNames } from '../fixtures/item'
 import type { WorkspaceSnapshot } from '@/types/persistence'
 import type { WorkspaceWorkerApi } from '@/workers/workspace.worker'
+import { useEditorOrganization } from '@/composables/editor/useEditorOrganization'
 
 const state = vi.hoisted(() => ({
   disposers: [] as Array<() => void>,
@@ -96,6 +97,41 @@ it('saves names and personal group flags in workspace snapshots and restores pro
   expect(store.activeScheme!.lockedCollectionIds.value).toEqual(new Set(['house', UNCLASSIFIED]))
   expect(store.activeScheme!.collapsedCollectionIds.value).toEqual(new Set(['house', UNCLASSIFIED]))
   expect(store.activeScheme!.selectedItemIds.value.size).toBe(0)
+})
+
+it('persists and restores a direct organization with collection IDs, member assignments and unaffected origins', async () => {
+  const store = useEditorStore()
+  store.createScheme('organized')
+  const scheme = store.activeScheme!
+  scheme.items.value = [
+    makeAppItem({ internalId: 'a' }),
+    makeAppItem({ internalId: 'b', instanceId: 1001, groupId: 7 }),
+  ]
+  scheme.groupOrigins.value = new Map([[7, 'b']])
+  const organization = scope.run(() => useEditorOrganization())!
+  const result = organization.organize(
+    {
+      collections: [{ id: 'house', name: 'House', parentId: null }],
+      groups: [{ id: 'single', name: 'Single', collectionId: 'house', itemIds: ['a'] }],
+    },
+    { schemeId: scheme.id, sceneVersion: store.sceneVersion }
+  )
+  expect(result.regroupedItemCount).toBe(1)
+  const expected = structuredClone({
+    items: scheme.items.value,
+    tree: scheme.collectionTree.value,
+    origins: scheme.groupOrigins.value,
+  })
+  const workspace = scope.run(() => useWorkspaceWorker())!
+  await workspace.startMonitoring()
+  const saved = structuredClone(state.api.initWorkspace.mock.calls[0]![0])
+  expect(saved.editor.schemes[0]!.collectionTree).toEqual(expected.tree)
+  state.load.mockResolvedValue({ snapshot: saved, source: 'primary' })
+  await workspace.restore()
+  expect(store.activeScheme!.items.value).toEqual(expected.items)
+  expect(store.activeScheme!.collectionTree.value).toEqual(expected.tree)
+  expect(store.activeScheme!.groupOrigins.value).toEqual(expected.origins)
+  expect(store.activeScheme!.maxGroupId.value).toBe(8)
 })
 
 it('coalesces folds into lightweight state without resending furniture or clearing validation', async () => {
