@@ -1,3 +1,6 @@
+import { toast } from 'vue-sonner'
+import { useI18n } from '../useI18n'
+import { reconcileCollectionOrigins } from '@/lib/selectionReference'
 import { storeToRefs } from 'pinia'
 import { markRaw } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
@@ -12,6 +15,7 @@ import {
   transactionAffectsScene,
 } from '../../lib/editorTransactions'
 import type {
+  CollectionEntry,
   EditorTransaction,
   HomeScheme,
   HistoryStack,
@@ -21,6 +25,7 @@ import type {
 
 export function useEditorHistory() {
   const store = useEditorStore()
+  const { t } = useI18n()
   const { activeScheme } = storeToRefs(store)
 
   // ========== 基础数据结构与栈管理 ==========
@@ -93,11 +98,13 @@ export function useEditorHistory() {
    */
   function createSelectionEntry(
     selectedItemIds: Set<string>,
-    history: HistoryStack
+    history: HistoryStack,
+    entries: readonly CollectionEntry[] | null = activeScheme.value?.selectedEntries.value ?? null
   ): SelectionHistoryEntry {
     return {
       kind: 'selection',
       selectedItemIds: cloneSelection(selectedItemIds),
+      selectedEntries: entries?.map((entry) => ({ ...entry })) ?? null,
       sequence: getNextSequence(history), // 分配时序
       timestamp: Date.now(),
     }
@@ -116,6 +123,8 @@ export function useEditorHistory() {
       transaction: entry.transaction,
       selectionBefore: cloneSelection(entry.selectionBefore),
       selectionAfter: cloneSelection(entry.selectionAfter),
+      entriesBefore: entry.entriesBefore?.map((node) => ({ ...node })) ?? null,
+      entriesAfter: entry.entriesAfter?.map((node) => ({ ...node })) ?? null,
       committed: entry.committed, // 云协同模式下的提交状态
       stale: entry.stale, // 是否成为废弃或过期状态（例如产生了网络冲突）
       sequence: getNextSequence(history), // 分配时序
@@ -174,9 +183,15 @@ export function useEditorHistory() {
     const before = captureSchemeSnapshot(scheme)
     const renderVersion = store.sceneVersion
     const selectionBefore = cloneSelection(scheme.selectedItemIds.value)
+    const entriesBefore = scheme.selectedEntries.value
 
     // [第②步]：执行副作用操作，修改目标方案里的内容或指针
     const result = execute()
+    const reconciled = reconcileCollectionOrigins(scheme.collectionTree.value, scheme.items.value)
+    if (reconciled !== scheme.collectionTree.value) {
+      scheme.collectionTree.value = reconciled
+      toast.info(t('groups.originCleared'))
+    }
 
     // [第③步]：零开销缓存这之后的引用状态
     const after = captureSchemeSnapshot(scheme)
@@ -203,6 +218,8 @@ export function useEditorHistory() {
               transaction,
               selectionBefore,
               selectionAfter,
+              entriesBefore,
+              entriesAfter: scheme.selectedEntries.value,
               // 如果不在云协同房间，或者本方案就是本地方案，那么被视为立即生效（即被 commit）
               committed: scheme.source.value !== 'cloud',
               stale: false,
@@ -295,6 +312,7 @@ export function useEditorHistory() {
     if (!activeScheme.value) return
 
     activeScheme.value.selectedItemIds.value = cloneSelection(entry.selectedItemIds)
+    activeScheme.value.selectedEntries.value = entry.selectedEntries ?? null
     store.triggerSelectionUpdate()
   }
 
@@ -322,6 +340,7 @@ export function useEditorHistory() {
 
     // [收尾工作] 最后必须重置回当时操作发生前的选区，以便使用者能清晰明确他们回退了什么物体
     scheme.selectedItemIds.value = cloneSelection(entry.selectionBefore)
+    scheme.selectedEntries.value = entry.entriesBefore ?? null
     if (transactionAffectsScene(entry.transaction)) store.triggerSceneUpdate()
     store.recordRenderTransaction(invertEditorTransaction(entry.transaction), renderVersion)
     store.triggerSelectionUpdate()
@@ -349,6 +368,8 @@ export function useEditorHistory() {
               transaction: replayed,
               selectionBefore: entry.selectionBefore,
               selectionAfter: entry.selectionAfter,
+              entriesBefore: entry.entriesBefore,
+              entriesAfter: entry.entriesAfter,
               committed: false,
               stale: false,
             },
@@ -370,6 +391,7 @@ export function useEditorHistory() {
 
     // 由于是快进，所以把选区设置为当时的改变结束后（selectionAfter）的样子
     scheme.selectedItemIds.value = cloneSelection(entry.selectionAfter)
+    scheme.selectedEntries.value = entry.entriesAfter ?? null
     if (transactionAffectsScene(entry.transaction)) store.triggerSceneUpdate()
     store.recordRenderTransaction(entry.transaction, renderVersion)
     store.triggerSelectionUpdate()

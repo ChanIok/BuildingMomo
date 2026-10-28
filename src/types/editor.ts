@@ -106,6 +106,8 @@ export interface HomeScheme {
 
   // 选择集 (使用 ShallowRef)
   selectedItemIds: ShallowRef<Set<string>>
+  /** 明确选择的目录节点；null 表示画布选区。不保存到共享文档。 */
+  selectedEntries: ShallowRef<readonly CollectionEntry[] | null>
 
   // ID 分配器（Ref，记录历史最大值，永不回退）
   maxInstanceId: Ref<number>
@@ -222,6 +224,7 @@ export interface EditorTransaction {
 export interface SelectionHistoryEntry {
   kind: 'selection'
   selectedItemIds: Set<string>
+  selectedEntries?: readonly CollectionEntry[] | null
   sequence: number
   timestamp: number
 }
@@ -231,6 +234,8 @@ export interface TransactionHistoryEntry {
   transaction: EditorTransaction
   selectionBefore: Set<string>
   selectionAfter: Set<string>
+  entriesBefore?: readonly CollectionEntry[] | null
+  entriesAfter?: readonly CollectionEntry[] | null
   committed: boolean
   stale: boolean
   sequence: number
@@ -249,6 +254,7 @@ export interface HistoryStack {
 
 // Recently closed scheme snapshot
 export interface ClosedSchemeHistory {
+  collectionOriginItems?: Array<Pick<AppItem, 'internalId' | 'instanceId' | 'gameId' | 'groupId'>>
   id: string // Original scheme ID
   name: string // Scheme name
   fileName?: string // Original file name if available
@@ -280,6 +286,7 @@ export interface ClipboardStructure {
 }
 
 export interface ClipboardData {
+  referenceItemId?: string // 复制时确定的整体变换参考家具
   sourceSchemeId?: string | null // 剪贴板来源方案 ID，用于判断高级粘贴模式可用性
   items: AppItem[] // 复制的物品列表
   groupOrigins: Map<number, string> // 组原点映射 (groupId -> originItemId)

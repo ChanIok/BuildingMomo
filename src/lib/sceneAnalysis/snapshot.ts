@@ -124,6 +124,9 @@ export function createAnalysisSnapshot(input: AnalysisSnapshotInput): AnalysisSn
     groups,
     collections: input.collectionTree.nodes
       .filter((node) => ancestors.has(node.id))
-      .map((node) => ({ ...node })),
+      .map((node) => {
+        const { originItemId, ...rest } = node
+        return originItemId && ids.has(originItemId) ? { ...rest, originItemId } : rest
+      }),
   } satisfies AnalysisSnapshot)
 }

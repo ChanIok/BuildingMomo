@@ -1,3 +1,4 @@
+import { resolveSelectionReference } from '@/lib/selectionReference'
 import { storeToRefs } from 'pinia'
 import { setSchemeItems } from '@/lib/groupState'
 import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
@@ -54,7 +55,7 @@ export function useEditorManipulation() {
   }
 
   /**
-   * 获取旋转中心：优先级：定点旋转 > 组合原点 > 几何中心
+   * 获取旋转中心：自定义 Pivot > 集合/组合原点 > 轴点范围中心
    */
   function getRotationCenter(): { x: number; y: number; z: number } | null {
     // 优先级 1: 定点旋转
@@ -62,21 +63,9 @@ export function useEditorManipulation() {
       return uiStore.customPivotPosition
     }
 
-    // 优先级 2: 组合原点
     const scheme = activeScheme.value
-    if (scheme) {
-      const selectedIds = scheme.selectedItemIds.value
-      const groupId = store.getGroupIdIfEntireGroupSelected(selectedIds)
-      if (groupId !== null) {
-        const originItemId = scheme.groupOrigins.value.get(groupId)
-        if (originItemId) {
-          const originItem = store.itemsMap.get(originItemId)
-          if (originItem) {
-            return { x: originItem.x, y: originItem.y, z: originItem.z }
-          }
-        }
-      }
-    }
+    const origin = scheme ? resolveSelectionReference(scheme)?.item : null
+    if (origin) return { x: origin.x, y: origin.y, z: origin.z }
 
     // 优先级 3: 几何中心
     return getSelectedItemsCenter()
@@ -114,20 +103,15 @@ export function useEditorManipulation() {
   }
 
   /**
-   * 获取绝对位置输入所使用的参考点：完整组合优先使用组合原点，否则使用选择中心。
+   * 获取绝对位置输入的参考点：完整集合/组合的原点，否则使用轴点范围中心。
    */
   function getSelectedPositionReferencePoint(
     selectedIds: Set<string>
   ): { x: number; y: number; z: number } | null {
-    // 第一步：完整选中组合时，绝对位置代表组合原点的位置。
-    const groupId = store.getGroupIdIfEntireGroupSelected(selectedIds)
-    if (groupId !== null && activeScheme.value) {
-      const originItemId = activeScheme.value.groupOrigins.value.get(groupId)
-      const originItem = originItemId ? store.itemsMap.get(originItemId) : null
-      if (originItem) {
-        return { x: originItem.x, y: originItem.y, z: originItem.z }
-      }
-    }
+    const origin = activeScheme.value
+      ? resolveSelectionReference(activeScheme.value, selectedIds)?.item
+      : null
+    if (origin) return { x: origin.x, y: origin.y, z: origin.z }
     // 第二步：普通选择使用几何中心，与侧栏当前显示值保持一致。
     return getSelectedItemsCenter()
   }

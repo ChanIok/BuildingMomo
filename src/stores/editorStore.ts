@@ -1,3 +1,4 @@
+import { reconcileCollectionOrigins, remapCollectionOrigins } from '@/lib/selectionReference'
 import {
   collectionAncestors,
   restrictedCollectionGroups,
@@ -740,6 +741,7 @@ export const useEditorStore = defineStore('editor', () => {
       cloudRoomCode: scheme.cloudRoomCode,
       items: scheme.items,
       selectedItemIds: scheme.selectedItemIds,
+      selectedEntries: scheme.selectedEntries,
       maxInstanceId: scheme.maxInstanceId,
       maxGroupId: scheme.maxGroupId,
       currentViewConfig: scheme.currentViewConfig,
@@ -851,7 +853,8 @@ export const useEditorStore = defineStore('editor', () => {
     scheme.lastModified.value = snapshot.lastModified
     setSchemeItems(scheme, cloneItems(snapshot.items))
     scheme.selectedItemIds.value = new Set()
-    scheme.collectionTree.value = collectionTree
+    scheme.selectedEntries.value = null
+    scheme.collectionTree.value = reconcileCollectionOrigins(collectionTree, scheme.items.value)
     scheme.groupOrigins.value = new Map(snapshot.groupOrigins)
 
     if (!options?.preserveViewState) {
@@ -907,6 +910,16 @@ export const useEditorStore = defineStore('editor', () => {
         fileName: scheme.filePath.value,
         gameData: gameData,
         collectionTree: structuredClone(scheme.collectionTree.value),
+        collectionOriginItems: scheme.items.value
+          .filter((item) =>
+            scheme.collectionTree.value.nodes.some((node) => node.originItemId === item.internalId)
+          )
+          .map(({ internalId, instanceId, gameId, groupId }) => ({
+            internalId,
+            instanceId,
+            gameId,
+            groupId,
+          })),
         collapsedCollectionIds: [...scheme.collapsedCollectionIds.value],
         hiddenCollectionIds: [...scheme.hiddenCollectionIds.value],
         lockedCollectionIds: [...scheme.lockedCollectionIds.value],
@@ -994,7 +1007,24 @@ export const useEditorStore = defineStore('editor', () => {
 
       if (result.success && result.schemeId) {
         const restored = getSchemeById(result.schemeId)!
-        Object.assign(restored, createGroupState(history, history))
+        const itemIds = new Map<string, string>()
+        for (const origin of history.collectionOriginItems ?? []) {
+          const candidates = restored.items.value.filter(
+            (item) =>
+              item.instanceId === origin.instanceId &&
+              item.gameId === origin.gameId &&
+              item.groupId === origin.groupId
+          )
+          if (candidates.length === 1) itemIds.set(origin.internalId, candidates[0]!.internalId)
+        }
+        const tree = remapCollectionOrigins(readCollectionTree(history.collectionTree), itemIds)
+        Object.assign(
+          restored,
+          createGroupState(
+            { collectionTree: reconcileCollectionOrigins(tree, restored.items.value) },
+            history
+          )
+        )
         // 从历史记录中移除（避免重复恢复）
         closedSchemesHistory.value.splice(historyIndex, 1)
       }

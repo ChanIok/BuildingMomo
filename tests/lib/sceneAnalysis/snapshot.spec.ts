@@ -11,6 +11,8 @@ import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
 describe('analysis snapshot', () => {
   it('captures a detached explicit scope, deduplicated catalog and only relevant metadata', () => {
     const input = analysisInput()
+    input.collectionTree.nodes[0]!.originItemId = 'outside'
+    input.collectionTree.nodes[1]!.originItemId = 'a'
     const snapshot = createAnalysisSnapshot(input)
     expect(snapshot.items.map((item) => item.id)).toEqual(['a', 'b', 'c'])
     expect(snapshot.items[0]?.position).toEqual({ x: 0, y: -20, z: 102 })
@@ -27,6 +29,7 @@ describe('analysis snapshot', () => {
       originItemId: null,
     })
     expect(JSON.stringify(snapshot)).not.toContain('outside')
+    expect(snapshot.collections[1]?.originItemId).toBe('a')
     input.items[0]!.rotation.x = 99
     input.collectionTree.nodes[0]!.name = 'Changed source'
     expect(snapshot.items[0]?.rotation.x).toBe(0)

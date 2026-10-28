@@ -42,7 +42,7 @@ export function useThreeTooltip(
   const { isItemSelectable } = useSelectionFilter()
   const isReferencePicking = computed(
     () =>
-      uiStore.isSelectingGroupOrigin ||
+      uiStore.isSelectingOrigin ||
       uiStore.isSelectingPivotItem ||
       uiStore.isSelectingAlignReference ||
       uiStore.isSelectingQuickAlignTarget ||

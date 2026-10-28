@@ -1,9 +1,11 @@
+import type { CollectionEntry } from '@/types/editor'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import { useSelectionFilter } from './useSelectionFilter'
 
 type SelectionOptions = {
+  entries?: readonly CollectionEntry[] | null
   // 本次操作按单件处理（例如按住单件选择修饰键），不扩展到同组家具。
   skipGroupExpansion?: boolean
   // 列表中的明确移除操作可忽略类别过滤，但仍遵守隐藏和锁定限制。
@@ -19,6 +21,10 @@ export function useEditorSelection() {
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
 
   const { recordSelectionChange } = useEditorHistory()
+  function beginSelectionChange(entries: readonly CollectionEntry[] | null = null) {
+    recordSelectionChange()
+    if (activeScheme.value) activeScheme.value.selectedEntries.value = entries
+  }
   const { isItemSelectable } = useSelectionFilter()
 
   function shouldExpandGroups(options?: SelectionOptions): boolean {
@@ -58,7 +64,7 @@ export function useEditorSelection() {
     const scheme = activeScheme.value
     if (!scheme || !isSelectionTarget(itemId, options)) return
     const targets = resolveSelectionTargets([itemId], options)
-    recordSelectionChange()
+    beginSelectionChange()
     const selected = scheme.selectedItemIds.value
     const remove = additive && selected.has(itemId)
     if (!additive) selected.clear()
@@ -74,7 +80,7 @@ export function useEditorSelection() {
     const scheme = activeScheme.value
     if (!scheme) return
     const targets = resolveSelectionTargets(itemIds, options)
-    recordSelectionChange()
+    beginSelectionChange(options?.entries ?? null)
     if (!additive) scheme.selectedItemIds.value.clear()
     for (const id of targets) scheme.selectedItemIds.value.add(id)
     store.triggerSelectionUpdate()
@@ -85,7 +91,7 @@ export function useEditorSelection() {
     const scheme = activeScheme.value
     if (!scheme) return
     const targets = resolveSelectionTargets(itemIds, options)
-    recordSelectionChange()
+    beginSelectionChange()
     for (const id of targets) scheme.selectedItemIds.value.delete(id)
     store.triggerSelectionUpdate()
   }
@@ -115,7 +121,7 @@ export function useEditorSelection() {
       unit.add(id)
     }
     // 整次操作只记录一次选择历史，而不是为每个单元分别记录。
-    recordSelectionChange()
+    beginSelectionChange()
     const selected = scheme.selectedItemIds.value
     for (const unit of units.values()) {
       // 只用实际命中项判断方向，不用扩展成员判断：
@@ -134,7 +140,7 @@ export function useEditorSelection() {
     if (!activeScheme.value) return
 
     // 在修改前保存选择快照，供选择撤销恢复。
-    recordSelectionChange()
+    beginSelectionChange()
 
     activeScheme.value.selectedItemIds.value.clear()
 
@@ -146,7 +152,7 @@ export function useEditorSelection() {
     if (!activeScheme.value) return
 
     // 在修改前保存选择快照，供选择撤销恢复。
-    recordSelectionChange()
+    beginSelectionChange()
 
     activeScheme.value.selectedItemIds.value.clear()
     activeScheme.value.items.value.forEach((item) => {
@@ -163,7 +169,7 @@ export function useEditorSelection() {
     if (!activeScheme.value) return
 
     // 在修改前保存选择快照，供选择撤销恢复。
-    recordSelectionChange()
+    beginSelectionChange()
 
     const newSelection = new Set<string>()
     activeScheme.value.items.value.forEach((item) => {
@@ -184,7 +190,7 @@ export function useEditorSelection() {
     const scheme = activeScheme.value
     if (!scheme) return
     const targets = resolveSelectionTargets(itemIds, options)
-    recordSelectionChange()
+    beginSelectionChange()
     scheme.selectedItemIds.value = new Set(
       [...scheme.selectedItemIds.value].filter((id) => targets.has(id))
     )
@@ -199,7 +205,7 @@ export function useEditorSelection() {
     if (currentSelection.size === 0) return
 
     // 在修改前保存选择快照，供选择撤销恢复。
-    recordSelectionChange()
+    beginSelectionChange()
 
     // 收集当前选中物品的所有 gameId
     const gameIds = new Set<number>()

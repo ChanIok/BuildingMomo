@@ -204,6 +204,12 @@ function updateBounds(axis: 'x' | 'y' | 'z', type: 'min' | 'max', value: number)
 <template>
   <div v-if="selectionInfo" class="p-4">
     <div class="flex flex-col items-stretch gap-3">
+      <p v-if="selectionInfo.originCollectionName" class="text-xs text-primary">
+        {{ t('groups.collectionOriginReference', { name: selectionInfo.originCollectionName }) }}
+      </p>
+      <p v-else-if="selectionInfo.partialCollection" class="text-xs text-muted-foreground">
+        {{ t('groups.partialTransform') }}
+      </p>
       <!-- 位置 -->
       <div class="flex flex-col items-stretch gap-2">
         <div class="flex flex-wrap items-center justify-between gap-y-2">

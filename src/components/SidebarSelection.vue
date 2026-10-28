@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useEditorCollectionOrigins } from '@/composables/editor/useEditorCollectionOrigins'
+import { getSelectedCollection } from '@/lib/selectionReference'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Ruler, X } from 'lucide-vue-next'
 import { useEditorStore } from '../stores/editorStore'
@@ -289,13 +291,23 @@ const currentGroupId = computed(() => {
 // 成组入口同时负责“合并到已有组”，可用性统一由组编辑入口判定。
 const canGroup = computed(() => canGroupSelection())
 
+const { canEditCollectionOrigin, clearCollectionOrigin } = useEditorCollectionOrigins()
+const collectionSelection = computed(() =>
+  editorStore.activeScheme ? getSelectedCollection(editorStore.activeScheme) : null
+)
+const currentCollection = computed(() => collectionSelection.value?.node ?? null)
+const collectionFullySelected = computed(() => collectionSelection.value?.complete ?? false)
+
 // 当前原点物品
 const currentOriginItem = computed(() => {
   const scheme = editorStore.activeScheme
   const groupId = currentGroupId.value
-  if (!scheme || typeof groupId !== 'number') return null
-
-  const originItemId = scheme.groupOrigins.value.get(groupId)
+  if (!scheme) return null
+  const originItemId = currentCollection.value
+    ? currentCollection.value.originItemId
+    : typeof groupId === 'number'
+      ? scheme.groupOrigins.value.get(groupId)
+      : undefined
   if (!originItemId) return null
 
   return editorStore.itemsMap.get(originItemId) || null
@@ -312,14 +324,26 @@ const currentOriginItemName = computed(() => {
 
 // 开始选择原点
 function startSelectingOrigin() {
+  if (currentCollection.value) {
+    uiStore.setSelectingOrigin({
+      schemeId: editorStore.activeScheme!.id,
+      kind: 'collection',
+      id: currentCollection.value.id,
+    })
+    return
+  }
   const groupId = currentGroupId.value
   if (groupId === null) return
 
-  uiStore.setSelectingGroupOrigin(true, groupId)
+  uiStore.setSelectingOrigin({ schemeId: editorStore.activeScheme!.id, kind: 'group', id: groupId })
 }
 
 // 清除原点
 function clearOrigin() {
+  if (currentCollection.value) {
+    clearCollectionOrigin(currentCollection.value.id)
+    return
+  }
   const groupId = currentGroupId.value
   if (typeof groupId !== 'number') return
 
@@ -331,8 +355,8 @@ watch(
   () => editorStore.activeSchemeId,
   () => {
     clearHoveredType()
-    if (uiStore.isSelectingGroupOrigin) {
-      uiStore.setSelectingGroupOrigin(false)
+    if (uiStore.isSelectingOrigin) {
+      uiStore.setSelectingOrigin(null)
     }
   }
 )
@@ -498,18 +522,18 @@ function handleIconError(e: Event) {
       />
     </div>
 
-    <!-- 组合原点设置（仅当完整选中一个组时显示） -->
-    <div v-if="isEntireGroupSelected" class="flex flex-col gap-2 pt-3 pr-2">
+    <!-- 显式集合或完整单组的原点设置 -->
+    <div v-if="currentCollection || isEntireGroupSelected" class="flex flex-col gap-2 pt-3 pr-2">
       <div class="flex items-center justify-between gap-2">
         <TooltipProvider>
           <Tooltip :delay-duration="300">
             <TooltipTrigger as-child>
               <label class="cursor-help text-xs text-sidebar-foreground hover:text-foreground">
-                {{ t('sidebar.groupOrigin') }}
+                {{ t(currentCollection ? 'groups.collectionOrigin' : 'sidebar.groupOrigin') }}
               </label>
             </TooltipTrigger>
             <TooltipContent class="text-xs" variant="light">
-              {{ t('sidebar.groupOriginHint') }}
+              {{ t(currentCollection ? 'groups.collectionOriginHint' : 'sidebar.groupOriginHint') }}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -517,15 +541,16 @@ function handleIconError(e: Event) {
         <div class="flex items-center gap-1.5">
           <!-- 选择物品按钮 -->
           <button
-            v-if="!uiStore.isSelectingGroupOrigin"
+            v-if="!uiStore.isSelectingOrigin"
             @click="startSelectingOrigin"
+            :disabled="!!currentCollection && !canEditCollectionOrigin(currentCollection.id)"
             class="h-6 rounded-md bg-sidebar-accent px-2 text-[10px] font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             {{ t('sidebar.selectItem') }}
           </button>
           <button
             v-else
-            @click="uiStore.setSelectingGroupOrigin(false)"
+            @click="uiStore.setSelectingOrigin(null)"
             class="h-6 rounded-md bg-primary px-2 text-[10px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             {{ t('sidebar.cancelSelecting') }}
@@ -535,6 +560,7 @@ function handleIconError(e: Event) {
           <button
             v-if="currentOriginItem"
             @click="clearOrigin"
+            :disabled="!!currentCollection && !canEditCollectionOrigin(currentCollection.id)"
             class="flex h-6 w-6 items-center justify-center rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             :title="t('sidebar.clearOrigin')"
           >
@@ -543,6 +569,9 @@ function handleIconError(e: Event) {
         </div>
       </div>
 
+      <p v-if="currentCollection && !collectionFullySelected" class="text-xs text-muted-foreground">
+        {{ t('groups.partialTransform') }}
+      </p>
       <!-- 当前原点显示 -->
       <div
         v-if="currentOriginItem"

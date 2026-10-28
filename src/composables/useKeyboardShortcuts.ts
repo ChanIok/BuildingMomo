@@ -70,14 +70,14 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
       if (event.key === 'Escape') {
         if (event.repeat || event.defaultPrevented) return
         if (
-          uiStore.isSelectingGroupOrigin ||
+          uiStore.isSelectingOrigin ||
           uiStore.isSelectingPivotItem ||
           uiStore.isSelectingAlignReference ||
           uiStore.isSelectingQuickAlignTarget ||
           uiStore.isSelectingReplaceTarget
         ) {
           event.preventDefault()
-          uiStore.setSelectingGroupOrigin(false)
+          uiStore.setSelectingOrigin(null)
           uiStore.setSelectingPivotItem(false)
           uiStore.setSelectingAlignReference(false)
           uiStore.setSelectingQuickAlignTarget(false)

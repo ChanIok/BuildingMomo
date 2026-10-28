@@ -1,3 +1,7 @@
+import { toast } from 'vue-sonner'
+import { useI18n } from './useI18n'
+import { resolveSelectionReference } from '@/lib/selectionReference'
+import { useEditorCollectionOrigins } from './editor/useEditorCollectionOrigins'
 import { ref, markRaw, watch, type Ref } from 'vue'
 import { Raycaster, Vector2, type Camera } from 'three'
 import {
@@ -31,6 +35,7 @@ export function useThreeSelection(
   const uiStore = useUIStore()
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
+  const { t } = useI18n()
   const { recordTransaction } = useEditorHistory()
   const { isItemSelectable } = useSelectionFilter()
 
@@ -45,7 +50,7 @@ export function useThreeSelection(
       interactionAdapter.value.cancelPick()
       uiStore.setActiveSlidePathPoint(null)
       uiStore.setSidebarHoveredGameId(null)
-      uiStore.setSelectingGroupOrigin(false)
+      uiStore.setSelectingOrigin(null)
       uiStore.setSelectingPivotItem(false)
       uiStore.setSelectingAlignReference(false)
       uiStore.setSelectingQuickAlignTarget(false)
@@ -58,6 +63,29 @@ export function useThreeSelection(
     useEditorSelection()
 
   const { setGroupOrigin } = useEditorGroups()
+  const { setCollectionOrigin } = useEditorCollectionOrigins()
+
+  watch(
+    [
+      () => editorStore.activeSchemeId,
+      () => editorStore.activeScheme?.collectionTree.value,
+      () => editorStore.activeScheme?.items.value,
+    ],
+    () => {
+      const target = uiStore.selectingOriginTarget
+      const scheme = editorStore.activeScheme
+      if (
+        target &&
+        (!scheme ||
+          target.schemeId !== scheme.id ||
+          (target.kind === 'collection'
+            ? !scheme.collectionTree.value.nodes.some((node) => node.id === target.id)
+            : !editorStore.groupsMap.has(target.id)))
+      )
+        uiStore.setSelectingOrigin(null)
+    },
+    { flush: 'sync' }
+  )
 
   const { activeAction: effectiveAction, forceIndividualSelection } = useEditorSelectionAction()
 
@@ -164,7 +192,7 @@ export function useThreeSelection(
     cancelSelectionSession()
   }
 
-  function handleGroupOriginClick(evt: any) {
+  function handleOriginClick(evt: any) {
     const camera = cameraRef.value
     if (!camera) return
 
@@ -179,14 +207,24 @@ export function useThreeSelection(
     const hit = interactionAdapter.value.pick(raycaster)
 
     if (!hit) {
-      uiStore.setSelectingGroupOrigin(false)
+      uiStore.setSelectingOrigin(null)
       return
     }
 
-    const groupId = uiStore.selectingForGroupId
-    if (groupId !== null) {
-      setGroupOrigin(groupId, hit.internalId)
-      uiStore.setSelectingGroupOrigin(false)
+    const target = uiStore.selectingOriginTarget
+    if (!target || target.schemeId !== editorStore.activeSchemeId) {
+      uiStore.setSelectingOrigin(null)
+      return
+    }
+    if (target.kind === 'collection') {
+      if (setCollectionOrigin(target.id, hit.internalId)) uiStore.setSelectingOrigin(null)
+      else toast.info(t('groups.invalidOrigin'))
+    } else {
+      const item = editorStore.itemsMap.get(hit.internalId)
+      if (item?.groupId === target.id && editorStore.isItemEditable(hit.internalId)) {
+        setGroupOrigin(target.id, hit.internalId)
+        uiStore.setSelectingOrigin(null)
+      } else toast.info(t('groups.invalidOrigin'))
     }
   }
 
@@ -242,16 +280,8 @@ export function useThreeSelection(
     const scheme = editorStore.activeScheme
     if (!scheme || selectedIds.size === 0) return null
 
-    const singleGroupId = editorStore.getGroupIdIfEntireGroupSelected(selectedIds)
-    if (singleGroupId !== null) {
-      const originId = scheme.groupOrigins.value.get(singleGroupId)
-      if (originId) {
-        const originItem = editorStore.itemsMap.get(originId)
-        if (originItem) {
-          return { x: originItem.x, y: originItem.y, z: originItem.z }
-        }
-      }
-    }
+    const origin = resolveSelectionReference(scheme, selectedIds)?.item
+    if (origin) return { x: origin.x, y: origin.y, z: origin.z }
 
     let sumX = 0
     let sumY = 0
@@ -425,8 +455,8 @@ export function useThreeSelection(
       return
     }
 
-    if (uiStore.isSelectingGroupOrigin) {
-      handleGroupOriginClick(evt)
+    if (uiStore.isSelectingOrigin) {
+      handleOriginClick(evt)
       return
     }
 

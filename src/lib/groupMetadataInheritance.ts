@@ -1,3 +1,4 @@
+import { getCollectionItems, reconcileCollectionOrigins } from './selectionReference'
 import { collectionTreesEqual, type CollectionTree, type GroupMetadata } from './collectionTree'
 import type { AppItem, HomeScheme } from '@/types/editor'
 
@@ -63,7 +64,8 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
     // 不覆盖已有节点（它可能也包含未匹配组）。复用相同分支使重复导入保持幂等。
     let destination = byId && same(byId) ? byId : nodes.find(same)
     if (!destination) {
-      destination = { ...node, id: targetNodes.has(id) ? crypto.randomUUID() : id, parentId }
+      const { originItemId: _sourceOrigin, ...data } = node
+      destination = { ...data, id: targetNodes.has(id) ? crypto.randomUUID() : id, parentId }
       nodes.push(destination)
       targetNodes.set(destination.id, destination)
     }
@@ -109,7 +111,34 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
       changedGroupCount++
     }
   }
-  const nextTree = { nodes, groups }
+  const originalNodes = new Map(target.collectionTree.nodes.map((node) => [node.id, node]))
+  const sourceForNode = new Map([...nodeMap].map(([sourceId, targetId]) => [targetId, sourceId]))
+  let changedCollectionOriginCount = 0
+  const nextNodes = nodes.map((node) => {
+    const sourceId = sourceForNode.get(node.id)
+    if (!sourceId) return node
+    // 混有未匹配组的既有分支不改原点；完整匹配的分支可以继承更新。
+    if (
+      originalNodes.has(node.id) &&
+      getCollectionItems({ nodes, groups }, target.items, node.id).some(
+        (item) => !matched.has(item.groupId)
+      )
+    )
+      return node
+    const originId = sourceNodes.get(sourceId)?.originItemId
+    const origin = source.items.find((item) => item.internalId === originId)
+    const candidates =
+      origin && matched.has(origin.groupId)
+        ? targetGroups.get(origin.groupId)?.get(`${origin.instanceId}:${origin.gameId}`)
+        : undefined
+    const originItemId = candidates?.length === 1 ? candidates[0]!.internalId : undefined
+    if (originId && !originItemId) skippedOriginCount++
+    if (originalNodes.get(node.id)?.originItemId !== originItemId) changedCollectionOriginCount++
+    if (node.originItemId === originItemId) return node
+    const { originItemId: _previous, ...rest } = node
+    return originItemId ? { ...rest, originItemId } : rest
+  })
+  const nextTree = reconcileCollectionOrigins({ nodes: nextNodes, groups }, target.items)
   const originsChanged = [...matched].some((id) => target.groupOrigins.get(id) !== origins.get(id))
   return {
     collectionTree: collectionTreesEqual(target.collectionTree, nextTree)
@@ -119,6 +148,7 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
     matchedGroupCount: matched.size,
     targetGroupCount: targetGroups.size,
     changedGroupCount,
+    changedCollectionOriginCount,
     skippedOriginCount,
   }
 }

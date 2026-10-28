@@ -87,6 +87,7 @@ export const useValidationStore = defineStore('validation', () => {
     if (!activeScheme.value || duplicateGroups.value.length === 0) return
 
     recordSelectionChange()
+    activeScheme.value.selectedEntries.value = null
     activeScheme.value.selectedItemIds.value.clear()
 
     duplicateGroups.value.forEach((group) => {
@@ -107,6 +108,7 @@ export const useValidationStore = defineStore('validation', () => {
     if (!activeScheme.value || limitIssues.value.outOfBoundsItemIds.length === 0) return
 
     recordSelectionChange()
+    activeScheme.value.selectedEntries.value = null
     activeScheme.value.selectedItemIds.value.clear()
 
     limitIssues.value.outOfBoundsItemIds.forEach((id) => {
@@ -120,6 +122,7 @@ export const useValidationStore = defineStore('validation', () => {
     if (!activeScheme.value || limitIssues.value.oversizedGroups.length === 0) return
 
     recordSelectionChange()
+    activeScheme.value.selectedEntries.value = null
     activeScheme.value.selectedItemIds.value.clear()
 
     const targetGroups = new Set(limitIssues.value.oversizedGroups)
@@ -137,6 +140,7 @@ export const useValidationStore = defineStore('validation', () => {
     if (!activeScheme.value || limitIssues.value.invalidScaleItemIds.length === 0) return
 
     recordSelectionChange()
+    activeScheme.value.selectedEntries.value = null
     activeScheme.value.selectedItemIds.value.clear()
 
     limitIssues.value.invalidScaleItemIds.forEach((id) => {
@@ -150,6 +154,7 @@ export const useValidationStore = defineStore('validation', () => {
     if (!activeScheme.value || limitIssues.value.invalidRotationItemIds.length === 0) return
 
     recordSelectionChange()
+    activeScheme.value.selectedEntries.value = null
     activeScheme.value.selectedItemIds.value.clear()
 
     limitIssues.value.invalidRotationItemIds.forEach((id) => {
@@ -162,6 +167,7 @@ export const useValidationStore = defineStore('validation', () => {
     if (!activeScheme.value || limitIssues.value[key].length === 0) return
 
     recordSelectionChange()
+    activeScheme.value.selectedEntries.value = null
     activeScheme.value.selectedItemIds.value = new Set(limitIssues.value[key])
     editorStore.triggerSelectionUpdate()
   }

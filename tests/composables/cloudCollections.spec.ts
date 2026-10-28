@@ -43,7 +43,7 @@ it('preserves queued tree edits across acknowledgments, syncs undo, and resets c
   vi.stubGlobal('window', { location: { protocol: 'http:', host: 'local' } })
   const document = {
     roomCode: 'room',
-    collectionTreeVersion: 2,
+    collectionTreeVersion: 3,
     revision: 1,
     updatedAt: 0,
     scheme: {
@@ -63,8 +63,8 @@ it('preserves queued tree edits across acknowledgments, syncs undo, and resets c
   try {
     expect(await sync.joinRoom({ roomCode: 'room', displayName: 'Tester' })).toBe('room')
     const socket = sockets[0]!
-    expect(socket.url).toContain('collectionTreeVersion=2')
-    socket.receive({ type: 'hello', roomCode: 'room', revision: 1, collectionTreeVersion: 2 })
+    expect(socket.url).toContain('collectionTreeVersion=3')
+    socket.receive({ type: 'hello', roomCode: 'room', revision: 1, collectionTreeVersion: 3 })
     socket.receive({ type: 'snapshot', document })
     const store = useEditorStore(),
       cloud = useCloudSchemeStore()
@@ -139,7 +139,7 @@ it('preserves queued tree edits across acknowledgments, syncs undo, and resets c
     expect(scheme.hiddenCollectionIds.value.has(id)).toBe(true)
     expect(cloud.status).toBe('conflict')
     // 较早的服务端确认也应保留之后排队的名称字段修改。
-    socket.receive({ type: 'hello', roomCode: 'room', revision: 5, collectionTreeVersion: 2 })
+    socket.receive({ type: 'hello', roomCode: 'room', revision: 5, collectionTreeVersion: 3 })
     const sent = socket.sent.length
     const version = store.sceneVersion
     useEditorGroups().renameGroup(7, 'First name')
@@ -193,7 +193,7 @@ it('preserves queued tree edits across acknowledgments, syncs undo, and resets c
   }
 })
 
-it('rejects an old cloud schema before replacing or opening a scheme', async () => {
+it.each([1, 2])('rejects cloud schema %s before replacing or opening a scheme', async (version) => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   setActivePinia(createPinia())
   const store = useEditorStore()
@@ -208,7 +208,7 @@ it('rejects an old cloud schema before replacing or opening a scheme', async () 
         new Response(
           JSON.stringify({
             document: {
-              collectionTreeVersion: 1,
+              collectionTreeVersion: version,
               revision: 1,
               scheme: { name: 'Old server', items: [], groupOrigins: [] },
             },

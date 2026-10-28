@@ -182,6 +182,24 @@ function handleViewInfoClick() {
 
 <template>
   <div
+    v-if="uiStore.isSelectingOrigin"
+    class="absolute top-14 left-1/2 z-50 flex max-w-[80%] -translate-x-1/2 items-center gap-3 rounded-lg border bg-background/95 px-3 py-2 text-sm shadow-md"
+    role="status"
+    @pointerdown.stop
+    @pointerup.stop
+  >
+    <span>{{
+      t(
+        uiStore.selectingOriginTarget?.kind === 'collection'
+          ? 'groups.pickCollectionOrigin'
+          : 'groups.pickGroupOrigin'
+      )
+    }}</span>
+    <Button size="sm" variant="ghost" @click="uiStore.setSelectingOrigin(null)">{{
+      t('sidebar.cancelSelecting')
+    }}</Button>
+  </div>
+  <div
     v-if="editorStore.hiddenItemCount && !uiStore.groupPanelOpen"
     role="status"
     class="absolute bottom-18 left-4 z-30 flex h-8 max-w-[calc(100%-2rem)] items-center gap-2 rounded-md border bg-background/90 px-2.5 text-xs shadow-xs backdrop-blur-sm"

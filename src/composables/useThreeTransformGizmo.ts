@@ -101,7 +101,7 @@ export function useThreeTransformGizmo(
   const uiStore = useUIStore()
   const gameDataStore = useGameDataStore()
   const settingsStore = useSettingsStore()
-  const { commitBatchedTransform, getSelectedItemsCenter } = useEditorManipulation()
+  const { commitBatchedTransform, getRotationCenter } = useEditorManipulation()
   const { recordTransaction } = useEditorHistory()
   const { pasteItems, buildClipboardDataFromSelection } = useClipboard()
 
@@ -317,28 +317,7 @@ export function useThreeTransformGizmo(
       return
     }
 
-    let center: { x: number; y: number; z: number } | null = null
-    const scheme = editorStore.activeScheme
-
-    if (uiStore.customPivotEnabled && uiStore.customPivotPosition) {
-      center = uiStore.customPivotPosition
-    } else if (scheme) {
-      const selectedIds = scheme.selectedItemIds.value
-      const groupId = editorStore.getGroupIdIfEntireGroupSelected(selectedIds)
-      if (groupId !== null) {
-        const originItemId = scheme.groupOrigins.value.get(groupId)
-        if (originItemId) {
-          const originItem = editorStore.itemsMap.get(originItemId)
-          if (originItem) {
-            center = { x: originItem.x, y: originItem.y, z: originItem.z }
-          }
-        }
-      }
-    }
-
-    if (!center) {
-      center = getSelectedItemsCenter()
-    }
+    const center = getRotationCenter()
 
     if (!center || !pivot) {
       return

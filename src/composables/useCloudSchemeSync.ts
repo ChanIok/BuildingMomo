@@ -1,3 +1,4 @@
+import { reconcileCollectionOrigins } from '@/lib/selectionReference'
 import { computed, ref, triggerRef, watch } from 'vue'
 import {
   applyEditorTransactionToScheme,
@@ -264,7 +265,7 @@ export function useCloudSchemeSync() {
     if (session && !isActiveSession(session)) {
       return
     }
-    if (document.collectionTreeVersion !== 2) {
+    if (document.collectionTreeVersion !== 3) {
       if (session) abortSessionAttempt(session)
       notification.error(t('groups.syncUnavailable'))
       return
@@ -287,7 +288,7 @@ export function useCloudSchemeSync() {
 
       const restoredScheme = editorStore.getSchemeById(schemeId)
       if (restoredScheme)
-        restoredScheme.collectionsSupported.value = document.collectionTreeVersion === 2
+        restoredScheme.collectionsSupported.value = document.collectionTreeVersion === 3
       editorStore.clearPendingTransactions(schemeId)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',
@@ -342,6 +343,10 @@ export function useCloudSchemeSync() {
           )
         }
       }
+      scheme.collectionTree.value = reconcileCollectionOrigins(
+        scheme.collectionTree.value,
+        scheme.items.value
+      )
       triggerRef(scheme.groupOrigins)
       if (transactionAffectsScene(transaction)) editorStore.triggerSceneUpdate()
       else if (editorStore.constrainSelectionToEditable()) editorStore.triggerSelectionUpdate()
@@ -397,9 +402,9 @@ export function useCloudSchemeSync() {
       case 'hello':
         if (session.schemeId) {
           const scheme = editorStore.getSchemeById(session.schemeId)
-          if (scheme) scheme.collectionsSupported.value = message.collectionTreeVersion === 2
+          if (scheme) scheme.collectionsSupported.value = message.collectionTreeVersion === 3
         }
-        if (message.collectionTreeVersion !== 2) {
+        if (message.collectionTreeVersion !== 3) {
           abortSessionAttempt(session)
           notification.error(t('groups.syncUnavailable'))
           return
@@ -498,7 +503,7 @@ export function useCloudSchemeSync() {
     closeSessionSocket(session)
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/cloud-schemes/ws?code=${encodeURIComponent(session.roomCode)}&clientId=${encodeURIComponent(session.clientId)}&displayName=${encodeURIComponent(session.displayName)}&collectionTreeVersion=2`
+    const wsUrl = `${protocol}//${window.location.host}/api/cloud-schemes/ws?code=${encodeURIComponent(session.roomCode)}&clientId=${encodeURIComponent(session.clientId)}&displayName=${encodeURIComponent(session.displayName)}&collectionTreeVersion=3`
 
     return new Promise<boolean>((resolve, reject) => {
       const nextSocket = new WebSocket(wsUrl)
@@ -651,7 +656,7 @@ export function useCloudSchemeSync() {
         return null
       }
 
-      if (data.document.collectionTreeVersion !== 2) {
+      if (data.document.collectionTreeVersion !== 3) {
         throw new Error(t('groups.syncUnavailable'))
       }
       const schemeId = editorStore.normalizeSchemeAsCloudRoom(sourceSchemeId, data.roomCode, {
@@ -661,7 +666,7 @@ export function useCloudSchemeSync() {
         throw new Error('Failed to normalize cloud scheme identity')
       }
       editorStore.getSchemeById(schemeId)!.collectionsSupported.value =
-        data.document.collectionTreeVersion === 2
+        data.document.collectionTreeVersion === 3
 
       const started = await startSession(session, {
         roomCode: data.roomCode,
@@ -718,7 +723,7 @@ export function useCloudSchemeSync() {
         return null
       }
 
-      if (data.document.collectionTreeVersion !== 2) throw new Error(t('groups.syncUnavailable'))
+      if (data.document.collectionTreeVersion !== 3) throw new Error(t('groups.syncUnavailable'))
       const schemeId = editorStore.openCloudSchemeSnapshot(data.document.scheme, roomCode)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',
@@ -783,7 +788,7 @@ export function useCloudSchemeSync() {
         return false
       }
 
-      if (data.document.collectionTreeVersion !== 2) throw new Error(t('groups.syncUnavailable'))
+      if (data.document.collectionTreeVersion !== 3) throw new Error(t('groups.syncUnavailable'))
       const schemeId = editorStore.openCloudSchemeSnapshot(data.document.scheme, roomCode)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',

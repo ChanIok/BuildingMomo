@@ -187,6 +187,7 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
       scheme.items.value = [...scheme.items.value, ...insertedItems]
       scheme.maxInstanceId.value = currentMaxInstanceId
       scheme.maxGroupId.value = currentMaxGroupId
+      scheme.selectedEntries.value = null
       scheme.selectedItemIds.value = new Set(newInternalIds)
 
       editorStore.triggerSceneUpdate()

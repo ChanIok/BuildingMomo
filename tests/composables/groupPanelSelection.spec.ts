@@ -159,7 +159,7 @@ it('clears empty and protected nodes even when the canvas selection is already e
   selection.clear()
   expect(selection.entries.value).toEqual([])
   expect(selection.anchor.value).toBeNull()
-  expect(scheme.history.value?.selectionUndoStack.length ?? 0).toBe(count)
+  expect(scheme.history.value?.selectionUndoStack.length ?? 0).toBe(count + 1)
 })
 
 it('replaces, adds, removes and completes a partial group as one unit, including Cmd', () => {
@@ -312,7 +312,7 @@ it('distinguishes explicit collection nodes from content coverage, including emp
   collection('a')
   expect(selection.isSelected(house)).toBe(true)
   expect(selection.isSelected({ kind: 'group', id: 1 })).toBe(false)
-  expect(scheme.history.value!.selectionUndoStack).toHaveLength(historyCount)
+  expect(scheme.history.value!.selectionUndoStack).toHaveLength(historyCount + 1)
   collection('empty')
   expect(ids()).toEqual([])
   expect(selection.entries.value).toEqual([{ kind: 'collection', id: 'empty' }])

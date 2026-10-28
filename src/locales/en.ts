@@ -251,8 +251,21 @@ export const enLocale = {
   },
 
   groups: {
+    originCleared:
+      'Collection origin cleared: its furniture was deleted or moved outside the collection.',
+    collectionOrigin: 'Collection Origin',
+    collectionOriginReference: 'Origin from collection “{name}”',
+    setCollectionOrigin: 'Set collection origin',
+    collectionOriginHint:
+      'Choose furniture in this collection as its position and orientation reference. Groups stay intact.',
+    partialTransform: 'Only some members are selected. The collection origin is not in use.',
+    pickCollectionOrigin:
+      'Click furniture in the collection to set its origin; press Esc to cancel.',
+    pickGroupOrigin: 'Click furniture in the group to set its origin; press Esc to cancel.',
+    invalidOrigin: 'Choose editable furniture within the target group or collection.',
     importInfo: 'Import group info',
     importDialog: {
+      collectionOrigins: 'Update {count} collection origins.',
       title: 'Import group info',
       description: 'Choose a source scheme. Group IDs and all members must match exactly.',
       empty: 'Open another scheme first.',
@@ -260,7 +273,7 @@ export const enLocale = {
       overwrite:
         'Update names, collections, order, and origins for {count} groups. Unmatched groups stay unchanged.',
       noChanges: 'No group information needs updating.',
-      skippedOrigins: '{count} group origins cannot be uniquely identified and will be cleared.',
+      skippedOrigins: '{count} origins cannot be uniquely identified and will be cleared.',
       confirm: 'Import',
       success: 'Imported information for {count} groups.',
     },
@@ -1102,8 +1115,7 @@ export const enLocale = {
     group: 'Group',
     ungroup: 'Ungroup',
     groupOrigin: 'Group Origin',
-    groupOriginHint:
-      'Set the group rotation and movement center; select any item in the scene as the origin.',
+    groupOriginHint: 'Choose furniture in the group as its position and orientation reference.',
     selectItem: 'Select Item',
     cancelSelecting: 'Cancel',
     clearOrigin: 'Clear Origin',

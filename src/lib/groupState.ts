@@ -1,3 +1,4 @@
+import { reconcileCollectionOrigins } from './selectionReference'
 import {
   getGroupChanges,
   readCollectionTree,
@@ -5,11 +6,11 @@ import {
   type CollectionTree,
 } from './collectionTree'
 import { ref, shallowRef } from 'vue'
-import type { AppItem, HomeScheme } from '@/types/editor'
+import type { AppItem, CollectionEntry, HomeScheme } from '@/types/editor'
 
 /** 共享组元数据与个人工作状态分别管理生命周期。 */
 export function createGroupState(
-  source: { collectionTree?: CollectionTree } = {},
+  source: { collectionTree?: CollectionTree; items?: readonly AppItem[] } = {},
   personal: {
     hiddenGroupIds?: Iterable<number>
     lockedGroupIds?: Iterable<number>
@@ -18,8 +19,12 @@ export function createGroupState(
     lockedCollectionIds?: Iterable<string>
   } = {}
 ) {
+  const tree = readCollectionTree(source.collectionTree)
   return {
-    collectionTree: shallowRef(readCollectionTree(source.collectionTree)),
+    selectedEntries: shallowRef<readonly CollectionEntry[] | null>(null),
+    collectionTree: shallowRef(
+      source.items ? reconcileCollectionOrigins(tree, source.items) : tree
+    ),
     collapsedCollectionIds: shallowRef<ReadonlySet<string>>(
       new Set(personal.collapsedCollectionIds)
     ),

@@ -1,3 +1,4 @@
+import { resolveSelectionReference } from '@/lib/selectionReference'
 import {
   captureClipboardStructure,
   createEmptyClipboardData,
@@ -7,7 +8,7 @@ import { resolveCollectionEntries } from '@/lib/collectionTargets'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useI18n } from './useI18n'
 import { setSchemeItems } from '../lib/groupState'
-import { computed, triggerRef } from 'vue'
+import { computed, shallowRef, triggerRef } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
 import { useUIStore } from '../stores/uiStore'
@@ -155,12 +156,15 @@ function getClipboardPivot(clipboardData: ClipboardData): { x: number; y: number
     return { x: 0, y: 0, z: 0 }
   }
 
+  const reference = items.find((item) => item.internalId === clipboardData.referenceItemId)
+  if (reference) return { x: reference.x, y: reference.y, z: reference.z }
+
   if (groupOrigins.size === 1) {
     for (const [groupId, originItemId] of groupOrigins) {
       const originItem = items.find(
         (item) => item.internalId === originItemId && item.groupId === groupId
       )
-      if (originItem) {
+      if (originItem && items.every((item) => item.groupId === groupId)) {
         return { x: originItem.x, y: originItem.y, z: originItem.z }
       }
     }
@@ -256,6 +260,7 @@ export function useClipboard() {
       return createEmptyClipboardData()
     }
 
+    entries ??= scheme.selectedEntries.value ?? undefined
     const resolved = entries ? resolveCollectionEntries(scheme, entries) : null
     const sourceItems =
       resolved?.items ??
@@ -289,6 +294,11 @@ export function useClipboard() {
 
     return {
       sourceSchemeId: scheme.id,
+      referenceItemId: resolveSelectionReference({
+        ...scheme,
+        selectedEntries: shallowRef(entries ?? null),
+        selectedItemIds: shallowRef(new Set(copiedItems.map((item) => item.internalId))),
+      })?.item.internalId,
       items: copiedItems,
       groupOrigins: copiedGroupOrigins,
       structure: captureClipboardStructure(scheme, involvedGroupIds, resolved?.collectionIds),
@@ -327,6 +337,7 @@ export function useClipboard() {
     const scheme = activeScheme.value
     if (!scheme) return
 
+    scheme.selectedEntries.value = null
     scheme.selectedItemIds.value.clear()
     ids.forEach((id) => scheme.selectedItemIds.value.add(id))
   }
@@ -510,7 +521,8 @@ export function useClipboard() {
         targetGroupIdMap,
         clipboardData.sourceSchemeId === scheme.id,
         parentId,
-        (name) => t('groups.copyName', { name }).slice(0, 200)
+        (name) => t('groups.copyName', { name }).slice(0, 200),
+        itemIdMap
       )
       scheme.collectionTree.value = restored.tree
       const newGroupIds = new Set(targetGroupIdMap.values())
@@ -543,6 +555,7 @@ export function useClipboard() {
 
       if (updateSelection) {
         selectInsertedItems(newIds)
+        scheme.selectedEntries.value = restored.roots
       }
 
       if (triggerUpdates) {
@@ -686,6 +699,7 @@ export function useClipboard() {
 
       if (createdIds.length > 0 || roots.length > 0) {
         selectInsertedItems(createdIds)
+        activeScheme.value!.selectedEntries.value = roots
         if (createdIds.length > 0) {
           triggerRef(activeScheme.value!.groupOrigins)
           store.triggerSceneUpdate()

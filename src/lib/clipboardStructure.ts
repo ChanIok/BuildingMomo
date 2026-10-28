@@ -53,7 +53,8 @@ export function restoreClipboardStructure(
   groupIds: ReadonlyMap<number, number>,
   sameScheme: boolean,
   parentId: string | null | undefined,
-  copyName: (name: string) => string
+  copyName: (name: string) => string,
+  itemIds: ReadonlyMap<string, string> = new Map()
 ) {
   const sourceNodes = new Map(structure.tree.nodes.map((node) => [node.id, node]))
   const existing = new Set(current.nodes.map((node) => node.id))
@@ -90,8 +91,11 @@ export function restoreClipboardStructure(
         sameScheme && source.parentId && existing.has(source.parentId) ? source.parentId : null
     const nextId = crypto.randomUUID()
     collectionMap.set(id, nextId)
+    const { originItemId: sourceOrigin, ...nodeData } = source
+    const originItemId = sourceOrigin ? itemIds.get(sourceOrigin) : undefined
     nodes.push({
-      ...source,
+      ...nodeData,
+      ...(originItemId ? { originItemId } : {}),
       id: nextId,
       parentId: parent,
       name: isRoot && sameScheme ? copyName(source.name) : source.name,

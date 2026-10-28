@@ -375,9 +375,17 @@ describe('selection filter boundaries and history', () => {
     click()
     expect(ui.alignReferenceItemId).toBe('lamp')
     expect(ui.isSelectingAlignReference).toBe(false)
-    ui.setSelectingGroupOrigin(true, 7)
+    ui.setSelectingOrigin({ schemeId: scheme.id, kind: 'group', id: 7 })
     click()
     expect(scheme.groupOrigins.value.get(7)).toBe('lamp')
+    scheme.collectionTree.value = {
+      nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
+      groups: [{ groupId: 7, collectionId: 'house', order: 0 }],
+    }
+    ui.setSelectingOrigin({ schemeId: scheme.id, kind: 'collection', id: 'house' })
+    click()
+    expect(scheme.collectionTree.value.nodes[0]?.originItemId).toBe('lamp')
+    expect(ui.isSelectingOrigin).toBe(false)
     ui.setSelectingPivotItem(true)
     click()
     expect(ui.selectedPivotPosition).toEqual({ x: 0, y: 0, z: 0 })

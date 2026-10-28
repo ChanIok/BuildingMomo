@@ -1,3 +1,4 @@
+import { resolveSelectionReference } from '@/lib/selectionReference'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -21,13 +22,13 @@ import type { AppItem } from '../../types/editor'
  * 可以是单个物品，也可以是整个组
  */
 interface AlignUnit {
-  type: 'single' | 'group'
+  type: 'single' | 'group' | 'collection'
   groupId: number | null
   items: AppItem[] // 单个物品或组内所有成员
 }
 
-interface GroupOriginContext {
-  groupId: number
+interface SelectionOriginContext {
+  groupId: number | null
   originItem: AppItem
 }
 
@@ -50,49 +51,42 @@ export function useEditorAlignment() {
   const { recordTransaction } = useEditorHistory()
 
   /**
-   * 获取当前选区可用的组合原点上下文
+   * 获取当前选区可用的集合或组合原点上下文
    *
-   * 仅在“完整选中单一组合”时返回，行为与移动逻辑保持一致。
+   * 完整集合需明确选择节点；完整单组沿用已有语义。
    */
-  function getGroupOriginContext(selectedIds: Set<string>): GroupOriginContext | null {
+  function getSelectionOriginContext(selectedIds: Set<string>): SelectionOriginContext | null {
     const scheme = activeScheme.value
     if (!scheme) return null
 
-    const entireGroupId = store.getGroupIdIfEntireGroupSelected(selectedIds)
-    if (entireGroupId === null) return null
-
-    const originItemId = scheme.groupOrigins.value.get(entireGroupId)
-    if (!originItemId) return null
-
-    const originItem = store.itemsMap.get(originItemId)
-    if (!originItem) return null
-
-    return {
-      groupId: entireGroupId,
-      originItem,
-    }
+    const reference = resolveSelectionReference(scheme, selectedIds)
+    return reference
+      ? {
+          groupId: reference.kind === 'group' ? reference.id : null,
+          originItem: reference.item,
+        }
+      : null
   }
 
   /**
    * 计算对齐单元中心（数据空间）
    *
-   * 当完整选中一个有组合原点的组时，使用组合原点作为中心；
+   * 完整集合或组合有原点时，使用原点作为中心；
    * 其他情况回退到“所有成员平均位置”。
    */
   function getUnitCenterDataPosition(
     unit: AlignUnit,
-    groupOriginContext: GroupOriginContext | null
+    originContext: SelectionOriginContext | null
   ): { x: number; y: number; z: number } {
     if (
-      groupOriginContext &&
-      unit.type === 'group' &&
-      unit.groupId !== null &&
-      unit.groupId === groupOriginContext.groupId
+      originContext &&
+      (unit.type === 'collection' ||
+        (unit.type === 'group' && unit.groupId !== null && unit.groupId === originContext.groupId))
     ) {
       return {
-        x: groupOriginContext.originItem.x,
-        y: groupOriginContext.originItem.y,
-        z: groupOriginContext.originItem.z,
+        x: originContext.originItem.x,
+        y: originContext.originItem.y,
+        z: originContext.originItem.z,
       }
     }
 
@@ -135,6 +129,16 @@ export function useEditorAlignment() {
    * @returns 对齐单元数组
    */
   function buildAlignUnits(selectedIds: Set<string>): AlignUnit[] {
+    const scheme = activeScheme.value
+    if (scheme && resolveSelectionReference(scheme, selectedIds)?.kind === 'collection') {
+      return [
+        {
+          type: 'collection',
+          groupId: null,
+          items: scheme.items.value.filter((item) => selectedIds.has(item.internalId)),
+        },
+      ]
+    }
     const selectedGroups = new Map<number, AlignUnit>()
     const units: AlignUnit[] = []
 
@@ -235,11 +239,11 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
-    const groupOriginContext = getGroupOriginContext(selectedIds)
+    const originContext = getSelectionOriginContext(selectedIds)
 
     // 为每个对齐单元计算中心点（工作坐标系）
     const unitCenters = alignUnits.map((unit) => {
-      const dataCenter = getUnitCenterDataPosition(unit, groupOriginContext)
+      const dataCenter = getUnitCenterDataPosition(unit, originContext)
 
       // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
       const workingCenter = uiStore.dataToWorking(dataCenter)
@@ -315,7 +319,7 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
-    const groupOriginContext = getGroupOriginContext(selectedIds)
+    const originContext = getSelectionOriginContext(selectedIds)
 
     // 使用辅助函数计算对齐轴在世界空间中的方向向量
     const workingRotation = uiStore.workingCoordinateSystem.enabled
@@ -351,18 +355,19 @@ export function useEditorAlignment() {
 
       let projCenter = (projMin + projMax) / 2
 
-      // 特殊中心：仅在完整选中单一组合时，center 使用组合原点
+      // 完整集合或组合使用共享原点作为 center
       if (
-        groupOriginContext &&
-        unit.type === 'group' &&
-        unit.groupId !== null &&
-        unit.groupId === groupOriginContext.groupId
+        originContext &&
+        (unit.type === 'collection' ||
+          (unit.type === 'group' &&
+            unit.groupId !== null &&
+            unit.groupId === originContext.groupId))
       ) {
         projCenter = projectDataPositionToAxis(
           {
-            x: groupOriginContext.originItem.x,
-            y: groupOriginContext.originItem.y,
-            z: groupOriginContext.originItem.z,
+            x: originContext.originItem.x,
+            y: originContext.originItem.y,
+            z: originContext.originItem.z,
           },
           alignAxisVector
         )
@@ -446,7 +451,7 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
-    const groupOriginContext = getGroupOriginContext(selectedIds)
+    const originContext = getSelectionOriginContext(selectedIds)
 
     // 为每个对齐单元计算位移增量
     const unitDeltas = new Map<AlignUnit, { x: number; y: number; z: number }>()
@@ -458,7 +463,7 @@ export function useEditorAlignment() {
         return
       }
 
-      const globalCenter = getUnitCenterDataPosition(unit, groupOriginContext)
+      const globalCenter = getUnitCenterDataPosition(unit, originContext)
 
       // 使用 uiStore 统一 API 转换：数据空间 -> 工作坐标系
       const workingCenter = uiStore.dataToWorking(globalCenter)
@@ -550,7 +555,7 @@ export function useEditorAlignment() {
 
     // 按组聚合选中物品
     const alignUnits = buildAlignUnits(selectedIds)
-    const groupOriginContext = getGroupOriginContext(selectedIds)
+    const originContext = getSelectionOriginContext(selectedIds)
 
     // 为每个对齐单元计算包围盒投影
     const unitProjections: (UnitProjection & { unit: AlignUnit })[] = []
@@ -585,18 +590,19 @@ export function useEditorAlignment() {
 
       let projCenter = (projMin + projMax) / 2
 
-      // 特殊中心：仅在完整选中单一组合时，center 使用组合原点
+      // 完整集合或组合使用共享原点作为 center
       if (
-        groupOriginContext &&
-        unit.type === 'group' &&
-        unit.groupId !== null &&
-        unit.groupId === groupOriginContext.groupId
+        originContext &&
+        (unit.type === 'collection' ||
+          (unit.type === 'group' &&
+            unit.groupId !== null &&
+            unit.groupId === originContext.groupId))
       ) {
         projCenter = projectDataPositionToAxis(
           {
-            x: groupOriginContext.originItem.x,
-            y: groupOriginContext.originItem.y,
-            z: groupOriginContext.originItem.z,
+            x: originContext.originItem.x,
+            y: originContext.originItem.y,
+            z: originContext.originItem.z,
           },
           alignAxisVector
         )

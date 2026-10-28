@@ -6,6 +6,7 @@ export interface SchemeCollection {
   name: string
   parentId: string | null
   order: number
+  originItemId?: string
 }
 
 export interface GroupMetadata {
@@ -41,6 +42,10 @@ export function isCollectionTree(value: unknown): value is CollectionTree {
       node.name.length > 200 ||
       (node.parentId !== null && typeof node.parentId !== 'string') ||
       !Number.isFinite(node.order) ||
+      (node.originItemId !== undefined &&
+        (typeof node.originItemId !== 'string' ||
+          !node.originItemId ||
+          node.originItemId.length > 100)) ||
       parents.has(node.id)
     )
       return false
@@ -80,7 +85,13 @@ export function readCollectionTree(value?: unknown): CollectionTree {
   if (!isCollectionTree(value)) throw new Error('Invalid collection tree')
   // 快照可能来自 Vue 响应式的最近关闭列表。
   return {
-    nodes: value.nodes.map(({ id, name, parentId, order }) => ({ id, name, parentId, order })),
+    nodes: value.nodes.map(({ id, name, parentId, order, originItemId }) => ({
+      id,
+      name,
+      parentId,
+      order,
+      ...(originItemId === undefined ? {} : { originItemId }),
+    })),
     groups: value.groups.map(({ groupId, name, collectionId, order }) => ({
       groupId,
       collectionId,
@@ -101,6 +112,7 @@ export function collectionTreesEqual(a: CollectionTree, b: CollectionTree): bool
         other &&
         node.name === other.name &&
         node.parentId === other.parentId &&
+        node.originItemId === other.originItemId &&
         node.order === other.order
       )
     }) &&

@@ -37,7 +37,11 @@ const sources = computed(() =>
   })
 )
 const result = computed(() => (props.open && sourceId.value ? preview(sourceId.value) : null))
-const canSubmit = computed(() => canImport.value && !!result.value?.changedGroupCount)
+const canSubmit = computed(
+  () =>
+    canImport.value &&
+    !!(result.value?.changedGroupCount || result.value?.changedCollectionOriginCount)
+)
 watch(
   () => props.open,
   (open) => {
@@ -57,7 +61,20 @@ function submit() {
   if (!canSubmit.value || !targetId) return
   const applied = importFrom(sourceId.value, targetId)
   if (!applied) return
-  notification.success(t('groups.importDialog.success', { count: applied.changedGroupCount }))
+  notification.success(
+    [
+      applied.changedGroupCount
+        ? t('groups.importDialog.success', { count: applied.changedGroupCount })
+        : '',
+      applied.changedCollectionOriginCount
+        ? t('groups.importDialog.collectionOrigins', {
+            count: applied.changedCollectionOriginCount,
+          })
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+  )
   close()
 }
 </script>
@@ -101,11 +118,21 @@ function submit() {
             })
           }}
         </p>
-        <p class="text-xs text-muted-foreground">
+        <p
+          v-if="result.changedGroupCount || !result.changedCollectionOriginCount"
+          class="text-xs text-muted-foreground"
+        >
           {{
             result.changedGroupCount
               ? t('groups.importDialog.overwrite', { count: result.changedGroupCount })
               : t('groups.importDialog.noChanges')
+          }}
+        </p>
+        <p v-if="result.changedCollectionOriginCount" class="text-xs text-muted-foreground">
+          {{
+            t('groups.importDialog.collectionOrigins', {
+              count: result.changedCollectionOriginCount,
+            })
           }}
         </p>
         <p v-if="result.skippedOriginCount" class="text-xs text-amber-600 dark:text-amber-400">

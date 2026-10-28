@@ -1,3 +1,4 @@
+import { reconcileCollectionOrigins } from './selectionReference'
 import {
   collectionTreesEqual,
   collectionStructure,
@@ -67,7 +68,7 @@ function cloneGroupOriginsToEntries(
 // 保留对外导出（cloudScheme 等仍使用）
 export { cloneGroupOriginsToEntries as cloneGroupOriginsEntries }
 
-/** 名称和目录结构不影响场景实例或变换控件。 */
+/** 目录和原点元数据不改变场景实例；变换控件通过响应式参考更新。 */
 export function transactionAffectsScene(transaction: EditorTransaction): boolean {
   return transaction.ops.some(
     (op) => op.type !== 'set_collection_tree' && op.type !== 'set_group_names'
@@ -496,6 +497,10 @@ export function applyEditorTransactionToScheme(scheme: HomeScheme, transaction: 
       operation.before,
       operation.after
     )
+  scheme.collectionTree.value = reconcileCollectionOrigins(
+    scheme.collectionTree.value,
+    scheme.items.value
+  )
   scheme.groupOrigins.value = nextGroupOrigins
   if (needsAllocatorRecompute) {
     recomputeSchemeAllocators(scheme)

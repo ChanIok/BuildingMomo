@@ -145,3 +145,33 @@ it('keeps separate same-named source collections and ignores ungrouped furniture
   target.items.value = [makeAppItem()]
   expect(run().matchedGroupCount).toBe(0)
 })
+
+it('remaps collection origins and updates them only on fully matched branches', () => {
+  const { source, target, run } = pair()
+  source.collectionTree.value.nodes[0]!.originItemId = 'old-b'
+  const first = run()
+  expect(first.collectionTree.nodes.find((node) => node.id === 'house')?.originItemId).toBe(
+    'new-old-b'
+  )
+  expect(first.changedCollectionOriginCount).toBe(1)
+  target.collectionTree.value = first.collectionTree
+  target.groupOrigins.value = new Map(first.groupOrigins)
+  source.collectionTree.value.nodes[0]!.originItemId = 'old-a'
+  const second = run()
+  expect(second.changedGroupCount).toBe(0)
+  expect(second.changedCollectionOriginCount).toBe(1)
+  expect(second.collectionTree.nodes.find((node) => node.id === 'house')?.originItemId).toBe(
+    'new-old-a'
+  )
+  target.items.value = [
+    ...target.items.value,
+    makeAppItem({ internalId: 'unmatched', groupId: 99 }),
+  ]
+  target.collectionTree.value = {
+    ...first.collectionTree,
+    groups: [...first.collectionTree.groups, { groupId: 99, collectionId: 'house', order: 100 }],
+  }
+  expect(run().collectionTree.nodes.find((node) => node.id === 'house')?.originItemId).toBe(
+    'new-old-b'
+  )
+})

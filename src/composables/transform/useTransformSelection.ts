@@ -1,3 +1,4 @@
+import { getSelectedCollection, resolveSelectionReference } from '@/lib/selectionReference'
 import { computed } from 'vue'
 import { Vector3 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
@@ -29,8 +30,10 @@ export interface SelectionInfo {
     min: { x: number; y: number; z: number }
     max: { x: number; y: number; z: number }
   } | null
-  /** 原点物品 ID（仅当完整选中一个有原点设置的组时有值） */
+  /** 原点家具 ID（完整集合需显式选择节点，或完整选中单组） */
   originItemId: string | null
+  originCollectionName?: string
+  partialCollection?: boolean
 }
 
 /**
@@ -68,28 +71,15 @@ export function useTransformSelection() {
     if (ids.size === 0) return null
     const selected = scheme.items.value.filter((item) => ids.has(item.internalId))
 
-    // 检测原点物品
-    let originItemId: string | null = null
-    let originItem: (typeof selected)[0] | null = null
-
-    if (selected.length > 1) {
-      const groupId = editorStore.getGroupIdIfEntireGroupSelected(ids)
-      if (groupId !== null) {
-        const originId = scheme.groupOrigins.value.get(groupId)
-        if (originId) {
-          originItem = editorStore.itemsMap.get(originId) || null
-          if (originItem) {
-            originItemId = originId
-          }
-        }
-      }
-    }
+    const reference = resolveSelectionReference(scheme)
+    const originItem = reference?.item ?? null
+    const originItemId = originItem?.internalId ?? null
 
     // 位置中心点（用于绝对模式显示）
-    // 优先级：组合原点 > 选区几何中心（与 Gizmo 保持一致，但不受定点旋转影响）
+    // 优先级：集合/组合原点 > 选区轴点范围中心（与 Gizmo 保持一致，但不受定点旋转影响）
     let dataCenter: { x: number; y: number; z: number } | null = null
 
-    // 优先级 1: 组合原点
+    // 优先级 1: 集合/组合原点
     if (originItem) {
       dataCenter = { x: originItem.x, y: originItem.y, z: originItem.z }
     }
@@ -277,6 +267,11 @@ export function useTransformSelection() {
       bounds,
       bboxBounds,
       originItemId,
+      partialCollection: getSelectedCollection(scheme)?.complete === false,
+      originCollectionName:
+        reference?.kind === 'collection'
+          ? scheme.collectionTree.value.nodes.find((node) => node.id === reference.id)?.name
+          : undefined,
     }
   })
 

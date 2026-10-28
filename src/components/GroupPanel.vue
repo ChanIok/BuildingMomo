@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch, watchPostEffect } from 'vue'
 import { FolderInput, FolderPlus, Layers, ListChevronsDownUp, Search, X } from 'lucide-vue-next'
+import { useEditorCollectionOrigins } from '@/composables/editor/useEditorCollectionOrigins'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
@@ -47,6 +48,13 @@ const {
   buildClipboardDataFromSelection,
   pasteItems,
 } = useClipboard()
+const { canEditCollectionOrigin, clearCollectionOrigin } = useEditorCollectionOrigins()
+const menuHasOrigin = computed(
+  () =>
+    menuRow.value?.kind === 'collection' &&
+    !!store.activeScheme?.collectionTree.value.nodes.find((node) => node.id === menuRow.value!.id)
+      ?.originItemId
+)
 const query = ref('')
 const importDialogOpen = ref(false)
 const {
@@ -916,6 +924,25 @@ watch(
               <ContextMenuItem :disabled="!canEdit" @select="startRename(menuRow)">{{
                 t('groups.renameCollection')
               }}</ContextMenuItem>
+              <ContextMenuItem
+                :disabled="!canEditCollectionOrigin(menuRow.id)"
+                @select="
+                  uiStore.setSelectingOrigin({
+                    schemeId: store.activeScheme!.id,
+                    kind: 'collection',
+                    id: menuRow.id,
+                  })
+                "
+              >
+                {{ t('groups.setCollectionOrigin') }}
+              </ContextMenuItem>
+              <ContextMenuItem
+                v-if="menuHasOrigin"
+                :disabled="!canEditCollectionOrigin(menuRow.id)"
+                @select="clearCollectionOrigin(menuRow.id)"
+              >
+                {{ t('sidebar.clearOrigin') }}
+              </ContextMenuItem>
             </template>
             <ContextMenuItem
               v-else-if="singleMenuEntry && menuRow.kind === 'group'"

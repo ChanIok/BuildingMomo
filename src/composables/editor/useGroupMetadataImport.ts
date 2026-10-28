@@ -29,7 +29,7 @@ export function useGroupMetadataImport() {
     const target = store.activeScheme!
     // 提交时重新读取，不能应用弹窗打开时缓存的方案数据。
     const result = preview(sourceId)
-    if (!result?.changedGroupCount) return null
+    if (!result || (!result.changedGroupCount && !result.changedCollectionOriginCount)) return null
     recordTransaction('group.importMetadata', () => {
       target.collectionTree.value = result.collectionTree
       if (result.groupOrigins !== target.groupOrigins.value) {

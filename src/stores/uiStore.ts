@@ -94,9 +94,12 @@ export const useUIStore = defineStore('ui', () => {
   const customPivotEnabled = ref(false)
   const customPivotPosition = ref<{ x: number; y: number; z: number } | null>(null)
 
-  // 组合原点选择模式（临时状态，不持久化）
-  const isSelectingGroupOrigin = ref(false)
-  const selectingForGroupId = ref<number | null>(null)
+  // 集合/组合原点选择模式（临时状态，不持久化）
+  const selectingOriginTarget = ref<
+    | ({ schemeId: string } & ({ kind: 'group'; id: number } | { kind: 'collection'; id: string }))
+    | null
+  >(null)
+  const isSelectingOrigin = computed(() => selectingOriginTarget.value !== null)
 
   // 定点旋转物品选择模式（临时状态，不持久化）
   const isSelectingPivotItem = ref(false)
@@ -306,24 +309,23 @@ export const useUIStore = defineStore('ui', () => {
     customPivotPosition.value = position
   }
 
-  // ========== 组合原点选择管理 ==========
+  // ========== 集合/组合原点选择管理 ==========
 
-  function setSelectingGroupOrigin(selecting: boolean, groupId?: number) {
-    if (selecting) {
+  function setSelectingOrigin(target: typeof selectingOriginTarget.value) {
+    if (target) {
       isSelectingPivotItem.value = false
       isSelectingAlignReference.value = false
       isSelectingQuickAlignTarget.value = false
       isSelectingReplaceTarget.value = false
     }
-    isSelectingGroupOrigin.value = selecting
-    selectingForGroupId.value = selecting && groupId !== undefined ? groupId : null
+    selectingOriginTarget.value = target
   }
 
   // ========== 定点旋转物品选择管理 ==========
 
   function setSelectingPivotItem(selecting: boolean) {
     if (selecting) {
-      isSelectingGroupOrigin.value = false
+      selectingOriginTarget.value = null
       isSelectingAlignReference.value = false
       isSelectingQuickAlignTarget.value = false
       isSelectingReplaceTarget.value = false
@@ -342,7 +344,7 @@ export const useUIStore = defineStore('ui', () => {
 
   function setSelectingAlignReference(selecting: boolean) {
     if (selecting) {
-      isSelectingGroupOrigin.value = false
+      selectingOriginTarget.value = null
       isSelectingPivotItem.value = false
       isSelectingQuickAlignTarget.value = false
       isSelectingReplaceTarget.value = false
@@ -355,7 +357,7 @@ export const useUIStore = defineStore('ui', () => {
 
   function setSelectingQuickAlignTarget(selecting: boolean) {
     if (selecting) {
-      isSelectingGroupOrigin.value = false
+      selectingOriginTarget.value = null
       isSelectingPivotItem.value = false
       isSelectingAlignReference.value = false
       isSelectingReplaceTarget.value = false
@@ -365,7 +367,7 @@ export const useUIStore = defineStore('ui', () => {
 
   function setSelectingReplaceTarget(selecting: boolean) {
     if (selecting) {
-      isSelectingGroupOrigin.value = false
+      selectingOriginTarget.value = null
       isSelectingPivotItem.value = false
       isSelectingAlignReference.value = false
       isSelectingQuickAlignTarget.value = false
@@ -449,8 +451,8 @@ export const useUIStore = defineStore('ui', () => {
     groupPanelPasteTarget,
     customPivotEnabled,
     customPivotPosition,
-    isSelectingGroupOrigin,
-    selectingForGroupId,
+    isSelectingOrigin,
+    selectingOriginTarget,
     isSelectingPivotItem,
     selectedPivotPosition,
     isSelectingAlignReference,
@@ -497,8 +499,8 @@ export const useUIStore = defineStore('ui', () => {
     setCustomPivotEnabled,
     setCustomPivotPosition,
 
-    // 组合原点选择
-    setSelectingGroupOrigin,
+    // 集合/组合原点选择
+    setSelectingOrigin,
 
     // 定点旋转物品选择
     setSelectingPivotItem,

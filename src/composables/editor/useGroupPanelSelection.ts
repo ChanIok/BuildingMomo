@@ -1,3 +1,4 @@
+import { sameSelectionEntries } from '@/lib/selectionReference'
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useEditorSelection } from './useEditorSelection'
@@ -22,8 +23,16 @@ export function useGroupPanelSelection(
   const indices = computed(() => new Map(rows.value.map((row, index) => [groupRowKey(row), index])))
   // 目录选择只记录节点，不另存一份家具选择。
   // null 表示跟随画布选择；显式选择的节点可包含空集合。
-  const explicit = shallowRef<Map<string, CollectionEntry> | null>(null)
-  let carried = new Set<string>()
+  const explicit = computed({
+    get: () => {
+      const entries = store.activeScheme?.selectedEntries.value
+      return entries == null ? null : new Map(entries.map((entry) => [groupRowKey(entry), entry]))
+    },
+    set: (value: Map<string, CollectionEntry> | null) => {
+      if (store.activeScheme)
+        store.activeScheme.selectedEntries.value = value === null ? null : [...value.values()]
+    },
+  })
   let range: { additive: boolean; nodes: Map<string, CollectionEntry>; items: Set<string> } | null =
     null
   let applying = false
@@ -59,21 +68,16 @@ export function useGroupPanelSelection(
   }
   function followCanvas() {
     explicit.value = null
-    carried = new Set()
     reset()
   }
   function clear() {
-    // 空集合、受保护组和画布额外选区都要清除；已为空时不新增选择历史。
-    followCanvas()
-    if (store.activeScheme?.selectedItemIds.value.size) clearSelection()
+    // 显式节点也是可撤销的选择；已经跟随空画布时不新增历史。
+    if (store.activeScheme?.selectedItemIds.value.size || explicit.value !== null) clearSelection()
+    reset()
   }
   /** 粘贴已在事务中更新家具选区；这里只接管节点，不另记一次选择历史。 */
   function adopt(entries: readonly CollectionEntry[]) {
     followCanvas()
-    const represented = targetsFor(entries)
-    carried = new Set(
-      [...(store.activeScheme?.selectedItemIds.value ?? [])].filter((id) => !represented.has(id))
-    )
     explicit.value = new Map(entries.map((entry) => [groupRowKey(entry), entry]))
   }
   function targetsFor(nodes: Iterable<CollectionEntry>) {
@@ -147,10 +151,8 @@ export function useGroupPanelSelection(
       : [entry]
     const current = scheme.selectedItemIds.value
     const baseline = new Map(entries.value.map((node) => [groupRowKey(node), node]))
-    const represented = explicit.value === null ? targetsFor(entries.value) : null
-    const remaining = represented
-      ? new Set([...current].filter((id) => !represented.has(id)))
-      : carried
+    const represented = targetsFor(entries.value)
+    const remaining = new Set([...current].filter((id) => !represented.has(id)))
     let nextNodes: Map<string, CollectionEntry>, nextCarried: Set<string>
     if (extending) {
       if (!range || range.additive !== additive)
@@ -176,37 +178,31 @@ export function useGroupPanelSelection(
     // 补全组选中状态时，同时将仅在画布中选中的成员纳入节点选择，
     // 以便之后取消节点选择时能完整移除该组。
     for (const id of targets) nextCarried.delete(id)
-    explicit.value = nextNodes
-    carried = nextCarried
     const next = new Set([...nextCarried, ...targets])
-    if (next.size === current.size && [...next].every((id) => current.has(id))) return
+    const nextEntries = [...nextNodes.values()]
+    if (
+      next.size === current.size &&
+      [...next].every((id) => current.has(id)) &&
+      sameSelectionEntries(scheme.selectedEntries.value, nextEntries)
+    )
+      return
     applying = true
     try {
-      // 一次操作只记录一条选择历史，不受组或集合的重叠数量影响，
-      // 并由统一入口再次校验范围。
-      updateSelection([...next], false, selectionOptions)
+      updateSelection([...next], false, { ...selectionOptions, entries: nextEntries })
     } finally {
       applying = false
     }
   }
 
-  // 选择通知也用于刷新保护状态和高亮；仅在实际家具选择变化时
-  // 替换显式选择的节点，避免丢失空集合等选择。
-  const canvasSelection = computed<ReadonlySet<string>>((previous) => {
-    store.selectionVersion
-    const current = store.activeScheme?.selectedItemIds.value ?? new Set<string>()
-    return previous?.size === current.size && [...current].every((id) => previous.has(id))
-      ? previous
-      : new Set(current)
-  })
   watch(
-    canvasSelection,
+    () => store.activeScheme?.selectedEntries.value,
     () => {
-      if (!applying) followCanvas()
+      if (!applying) reset()
     },
     { flush: 'sync' }
   )
-  watch(() => store.activeSchemeId, followCanvas, { flush: 'sync' })
+  watch(() => store.activeSchemeId, reset, { flush: 'sync' })
+
   watch(query, reset, { flush: 'sync' })
   watch(
     () => rows.value.map(groupRowKey),
