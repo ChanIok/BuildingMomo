@@ -49,6 +49,30 @@ async function generate(input: ModelRequest) {
   }
 }
 
+it('sends the basic API and batch-render example in the first tool declaration, without a help exchange', async () => {
+  let body: any
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url, init) => {
+      body = JSON.parse(init.body)
+      return response()
+    })
+  )
+  await generate(request())
+  expect(body.messages).toHaveLength(1)
+  expect(body.tools).toHaveLength(1)
+  const description = body.tools[0].function.description
+  for (const signature of [
+    'api.items(schemeId?)',
+    'api.render(panels,layout?)',
+    'api.organize(groups,collections=[])',
+    'vars.batches',
+    'flatMap',
+    'await api.render(panels)',
+  ])
+    expect(description).toContain(signature)
+})
+
 it.each(['https://gateway.test/v1?route=a', 'https://gateway.test/v1/chat/completions?route=a'])(
   'preserves the endpoint and query: %s',
   async (apiUrl) => {
@@ -132,35 +156,40 @@ it('replays SDK reasoning for DeepSeek, including the empty continuation field',
   expect(result.reasoningText).toBe('Checked')
 })
 
-it('resolves local images and records references instead of base64 copies', async () => {
-  const blob = new Blob(['first-image'], { type: 'image/png' })
-  const sources = Array.from({ length: 2 }, (_, i) => `momo-asset:asset:conversation:${i}`)
-  let body: any
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (_url, init) => {
-      body = JSON.parse(init.body)
-      return response()
+it.each(['image/png', 'image/webp', 'image/jpeg'])(
+  'resolves local %s images and records references instead of base64 copies',
+  async (mediaType) => {
+    const blob = new Blob(['first-image'], { type: mediaType })
+    const sources = Array.from({ length: 2 }, (_, i) => `momo-asset:asset:conversation:${i}`)
+    let body: any
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => {
+        body = JSON.parse(init.body)
+        return response()
+      })
+    )
+    const input = request({
+      messages: [
+        {
+          role: 'user',
+          content: sources.map((data) => ({ type: 'file', mediaType, data })),
+        },
+      ],
+      resolveAsset: vi.fn(async (id) =>
+        id.endsWith(':0') ? blob : new Blob(['png'], { type: 'image/png' })
+      ),
     })
-  )
-  const input = request({
-    messages: [
-      {
-        role: 'user',
-        content: sources.map((data) => ({ type: 'file', mediaType: 'image/png', data })),
-      },
-    ],
-    resolveAsset: vi.fn(async (id) =>
-      id.endsWith(':0') ? blob : new Blob(['png'], { type: 'image/png' })
-    ),
-  })
-  await generate(input)
-  expect(body.messages[0].content).toHaveLength(2)
-  expect(body.messages[0].content[0].image_url.url).toMatch(/^data:image\/png;base64,/)
-  const trace = vi.mocked(input.onRequest).mock.calls[0]![0] as any
-  expect(trace.messages[0].content.map((part: any) => part.image_url.url)).toEqual(sources)
-  expect(JSON.stringify(trace)).not.toContain('base64')
-})
+    await generate(input)
+    expect(body.messages[0].content).toHaveLength(2)
+    expect(body.messages[0].content[0].image_url.url.startsWith(`data:${mediaType};base64,`)).toBe(
+      true
+    )
+    const trace = vi.mocked(input.onRequest).mock.calls[0]![0] as any
+    expect(trace.messages[0].content.map((part: any) => part.image_url.url)).toEqual(sources)
+    expect(JSON.stringify(trace)).not.toContain('base64')
+  }
+)
 
 it('never downloads an external file URL or sends a request when an image is missing', async () => {
   const fetcher = vi.fn()
@@ -190,6 +219,13 @@ it.each([
     { param: 'max_tokens', message: 'Invalid output limit with thinking enabled' },
     'output_limit',
   ],
+  [400, { message: 'Input + max_tokens exceeds context window' }, 'context_overflow'],
+  [
+    400,
+    { param: 'max_completion_tokens', message: 'Input plus output exceeds maximum context length' },
+    'context_overflow',
+  ],
+  [400, { message: 'max_output_tokens is above the supported output limit' }, 'output_limit'],
   [400, { param: 'reasoning_effort', message: 'Unsupported value' }, 'reasoning_settings'],
   [400, { message: 'thinking is not supported' }, 'reasoning_settings'],
   [400, { message: 'Input and thinking tokens exceed maximum context length' }, 'context_overflow'],
@@ -300,7 +336,10 @@ it.each(['length', 'content_filter', null])(
                   index: 0,
                   id: 'read',
                   type: 'function',
-                  function: { name: 'inspect', arguments: '{"ref":"selection"}' },
+                  function: {
+                    name: 'execute_js',
+                    arguments: '{"code":"vars.selected=await api.selection()"}',
+                  },
                 },
               ],
             },
@@ -333,9 +372,9 @@ it.each(['length', 'content_filter', null])(
 
 it.each([
   ['unknown-tool', '{}'],
-  ['inspect', '{"ref":'],
-  ['compute', JSON.stringify({ inputs: { ['__proto__']: 'R1' }, code: 'return 1' })],
-  ['render', JSON.stringify({ panels: [{ ref: 'R1', label: 'View', camera: { view: 'top' } }] })],
+  ['execute_js', '{"code":'],
+  ['execute_js', JSON.stringify({ code: 42 })],
+  ['execute_js', JSON.stringify({ code: 'return 1', unknown: true })],
 ])('returns invalid %s calls to the model without executing them', async (name, argumentsText) => {
   const { repository, records, scene } = await workbenchFixture()
   const sent: any[] = []
@@ -383,5 +422,51 @@ it.each([
   expect(sent[1].messages.find((m: any) => m.role === 'tool').content).toContain('invalid_input')
   expect(scene.snapshot).not.toHaveBeenCalled()
   expect(scene.render).not.toHaveBeenCalled()
+  expect(scene.apply).not.toHaveBeenCalled()
+})
+
+it('preserves the serialized chat prefix, tools and choice when requesting a summary', async () => {
+  const { repository, records, scene } = await workbenchFixture()
+  const sent: any[] = []
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url, init) => {
+      sent.push(JSON.parse(init.body))
+      return sent.length === 1
+        ? response(
+            event({ content: 'Initial observation.' }, 'stop') +
+              'data: ' +
+              JSON.stringify({
+                choices: [],
+                usage: { prompt_tokens: 230400, completion_tokens: 1, total_tokens: 230401 },
+              }) +
+              '\n\n'
+          )
+        : response(
+            event({ content: sent.length === 2 ? 'Preserved observations.' : 'Continued.' }, 'stop')
+          )
+    })
+  )
+  const runner = createAgentRunner(repository)
+  const options = {
+    records,
+    scene,
+    connection: request().connection,
+    policy: createPolicy(),
+    system: 'Same system instructions',
+    text: 'Inspect',
+    onChange() {},
+    onProgress() {},
+  }
+  await runner.run(options)
+  await runner.run({ ...options, text: 'Continue' })
+  expect(sent).toHaveLength(3)
+  expect(sent[1].messages.slice(0, sent[0].messages.length)).toEqual(sent[0].messages)
+  expect(sent[1].tools).toEqual(sent[0].tools)
+  expect(sent[1].tool_choice).toBe(sent[0].tool_choice)
+  expect(sent[1].messages.at(-1).content).toContain('本次回复仅输出')
+  expect(
+    (await repository.requests(records.conversation.id)).filter((r) => r.kind === 'summary')
+  ).toHaveLength(1)
   expect(scene.apply).not.toHaveBeenCalled()
 })

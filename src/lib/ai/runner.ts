@@ -2,11 +2,10 @@ import type { ModelMessage, CallWarning } from 'ai'
 import { endpointIdentity, type AiConnection } from './connection'
 import {
   assembleContext,
-  anchorKey,
   estimateToolTokens,
   planSummary,
   requireUserBudget,
-  tokens,
+  requestOutputLimit,
   type ContextPolicy,
   type ContextView,
   type UsageAnchor,
@@ -14,9 +13,9 @@ import {
 import { effectiveReasoning } from './reasoning'
 import { streamModel, modelFailure } from './model'
 import type { ConversationRepository } from './repository'
-import { createWorkbenchTools, workbenchTools } from './tools'
+import { createWorkbenchTools, workbenchTools, describeVariables } from './tools'
 import { formatInputError } from './toolSchema'
-import type { ComputeExecutor } from './computeClient'
+import type { ScriptExecutor } from './scriptClient'
 import {
   AiError,
   assertNotAborted,
@@ -28,7 +27,6 @@ import {
   type MessageRecord,
   type RequestRecord,
   type EditorHost,
-  type ArtifactRecord,
   type ToolOutput,
   type ToolRecord,
 } from './types'
@@ -40,8 +38,13 @@ export interface RunProgress {
   diagnostics?: RequestDiagnostics
   context?: {
     estimated: number
+    /** Last successful chat request input; estimated also includes subsequently added content. */
     actual?: number
-    budget: number
+    contextWindow: number
+    usableContextWindow: number
+    autoCompactTokenLimit: number
+    configuredMaxOutputTokens: number
+    requestMaxOutputTokens?: number
     images: number
     compacted: boolean
   }
@@ -52,8 +55,9 @@ export interface RunOptions {
   policy: ContextPolicy
   system: string
   scene: EditorHost
+  context?: ReturnType<EditorHost['context']>
   language?: string
-  compute?: ComputeExecutor
+  script?: ScriptExecutor
   text?: string
   onChange: (records: ConversationRecords) => void
   onProgress: (progress: RunProgress | null) => void
@@ -73,7 +77,9 @@ function inputError(error: unknown, name: string): string {
 
 export function unresolvedEdits(records: ConversationRecords) {
   const acknowledged = new Set(records.messages.flatMap((message) => message.acknowledges ?? []))
-  return records.tools.filter((tool) => tool.state === 'uncertain' && !acknowledged.has(tool.id))
+  return records.tools.flatMap((tool) =>
+    tool.edits.filter((edit) => edit.state === 'uncertain' && !acknowledged.has(edit.id))
+  )
 }
 
 export function createAgentRunner(
@@ -85,12 +91,14 @@ export function createAgentRunner(
   async function execute(options: RunOptions, signal: AbortSignal) {
     const { records, scene, connection, policy, onChange, onProgress } = options
     const runId = crypto.randomUUID()
+    const runContext = options.context ?? scene.context()
     const workbench = createWorkbenchTools(
       records,
       repository,
       scene,
       options.language ?? 'zh',
-      options.compute
+      options.script,
+      runContext.schemeId
     )
     const definitions = workbench.definitions
     const toolTokens = await estimateToolTokens(definitions)
@@ -99,23 +107,34 @@ export function createAgentRunner(
     let timer: ReturnType<typeof setTimeout> | undefined
     let streamingSave = Promise.resolve()
     let storageFailure: unknown
-    let anchor: UsageAnchor | undefined
+    // Reuse the last successful measured request across turns and page reloads.
+    // Projection keys reject it if model, prompts, compaction or image cuts changed.
+    const measured = (await repository.requests(records.conversation.id))
+      .filter(
+        (r) =>
+          r.kind === 'chat' &&
+          r.endedAt &&
+          !r.error &&
+          r.usageBaseline &&
+          Number.isFinite(r.diagnostics.usage?.inputTokens) &&
+          r.diagnostics.usage!.inputTokens! > 0
+      )
+      .sort(
+        (a, b) => b.usageBaseline!.sequence - a.usageBaseline!.sequence || b.startedAt - a.startedAt
+      )
+      .at(0)
+    let anchor: UsageAnchor | undefined = measured
+      ? { ...measured.usageBaseline!, actual: measured.diagnostics.usage!.inputTokens! }
+      : undefined
     const warnings = new Map<string, CallWarning>()
     const publish = () => onChange(records)
     const report = (patch: Partial<RunProgress>) => {
       progress = { ...progress, ...patch }
       onProgress(progress)
     }
-    const assertCurrent = (version?: string) => {
+    const assertCurrent = () => {
       assertNotAborted(signal)
       if (storageFailure) throw storageFailure
-      try {
-        scene.assertCurrent(version ?? scene.current().version)
-      } catch (error) {
-        if (error instanceof Error && error.name === 'SceneAnalysisError')
-          throw new AiError('stale')
-        throw error
-      }
     }
     const save = async (changed: Parameters<ConversationRepository['save']>[1] = []) => {
       records.conversation = await repository.save(records.conversation, changed)
@@ -180,8 +199,8 @@ export function createAgentRunner(
       view?: ContextView,
       compactionReason?: RequestRecord['compactionReason']
     ) {
+      const maxOutputTokens = requestOutputLimit(policy, estimatedTokens)
       const requestId = `request:${records.conversation.id}:${Date.now()}:${crypto.randomUUID()}`
-      const requestVersion = scene.current().version
       const record: RequestRecord = {
         id: requestId,
         conversationId: records.conversation.id,
@@ -192,29 +211,47 @@ export function createAgentRunner(
         model: connection.model,
         provider: connection.provider,
         reasoning: effectiveReasoning(connection),
-        maxOutputTokens: policy.maxTokens,
+        maxOutputTokens,
         diagnostics: {},
         estimatedTokens,
+        ...(view
+          ? {
+              usageBaseline: {
+                key: view.usageKey,
+                local: view.localTokens,
+                sequence: draft!.sequence,
+              },
+            }
+          : {}),
         policy: { ...policy },
         compactionReason,
       }
       await save([record])
-      assertCurrent(requestVersion)
+      assertCurrent()
       report({
         phase: kind === 'summary' ? 'summarizing' : 'requesting',
         startedAt: record.startedAt,
         diagnostics: { phase: 'connecting' },
         toolId: undefined,
-        ...(view
-          ? {
-              context: {
-                estimated: view.estimatedTokens,
-                budget: policy.inputBudget,
-                images: view.images,
-                compacted: view.compacted,
-              },
-            }
-          : {}),
+        context: {
+          estimated: estimatedTokens,
+          contextWindow: policy.contextWindow,
+          usableContextWindow: policy.usableContextWindow,
+          autoCompactTokenLimit: policy.autoCompactTokenLimit,
+          configuredMaxOutputTokens: policy.maxTokens,
+          requestMaxOutputTokens: maxOutputTokens,
+          images:
+            view?.images ??
+            messages.reduce(
+              (sum, message) =>
+                sum +
+                (message.role === 'user' && Array.isArray(message.content)
+                  ? message.content.filter((part) => part.type === 'file').length
+                  : 0),
+              0
+            ),
+          compacted: view?.compacted ?? Boolean(records.checkpoint),
+        },
       })
       const diagnostics = (patch: RequestDiagnostics) => {
         for (const warning of patch.warnings ?? []) warnings.set(JSON.stringify(warning), warning)
@@ -227,24 +264,24 @@ export function createAgentRunner(
         const generation = generate({
           connection,
           messages,
-          tools: kind === 'summary' ? {} : definitions,
-          toolChoice: kind === 'summary' ? 'none' : 'auto',
-          maxOutputTokens: policy.maxTokens,
+          tools: definitions,
+          toolChoice: 'auto',
+          maxOutputTokens,
           abortSignal: signal,
           resolveAsset: async (id) => {
             const asset = await repository.read<AssetRecord>(id)
             return asset?.conversationId === records.conversation.id ? asset.blob : undefined
           },
           onRequest: async (body) => {
-            assertCurrent(requestVersion)
+            assertCurrent()
             record.body = body
             await save([record])
-            assertCurrent(requestVersion)
+            assertCurrent()
           },
           onResponse: (httpStatus) => diagnostics({ httpStatus, phase: 'waiting' }),
         })
         for await (const part of generation.stream) {
-          assertCurrent(requestVersion)
+          assertCurrent()
           if (part.type === 'start-step') diagnostics({ warnings: part.warnings })
           if (
             part.type === 'tool-input-start' ||
@@ -282,7 +319,7 @@ export function createAgentRunner(
           )
             diagnostics({ phase: 'tool_arguments' })
         }
-        assertCurrent(requestVersion)
+        assertCurrent()
         const response = await generation.finalStep
         diagnostics({
           finishReason: response.finishReason,
@@ -312,11 +349,15 @@ export function createAgentRunner(
         record.endedAt = Date.now()
         await flushDraft()
         await save([record])
-        if (view && response.usage.inputTokens) {
+        if (
+          view &&
+          Number.isFinite(response.usage.inputTokens) &&
+          response.usage.inputTokens! > 0
+        ) {
           anchor = {
-            key: anchorKey(records, connection, view),
+            key: view.usageKey,
             local: view.localTokens,
-            actual: response.usage.inputTokens,
+            actual: response.usage.inputTokens!,
           }
           report({ context: { ...progress.context!, actual: response.usage.inputTokens } })
         }
@@ -340,14 +381,15 @@ export function createAgentRunner(
       reason: NonNullable<RequestRecord['compactionReason']>,
       force = false
     ) {
-      let plan = planSummary(records, policy, force, true, connection)
+      const view = context()
+      let plan = planSummary({ view, records, policy, toolTokens, force })
       let result: Awaited<ReturnType<typeof request>>
       try {
-        result = await request('summary', plan.messages, tokens(plan.messages), undefined, reason)
+        result = await request('summary', plan.messages, plan.estimatedTokens, undefined, reason)
       } catch (error) {
         if (!(error instanceof AiError) || error.code !== 'context_overflow') throw error
-        plan = planSummary(records, policy, true, false, connection)
-        result = await request('summary', plan.messages, tokens(plan.messages), undefined, reason)
+        plan = planSummary({ view, records, policy, toolTokens, force: true, includeImages: false })
+        result = await request('summary', plan.messages, plan.estimatedTokens, undefined, reason)
       }
       const { response, requestId } = result
       const checkpoint: ContextCheckpoint = {
@@ -364,143 +406,97 @@ export function createAgentRunner(
     }
 
     function context() {
-      const current = scene.current()
       return assembleContext({
         records,
         connection,
         policy,
         toolTokens,
         system: options.system,
-        scene: { ...current.summary, revision: current.version },
+        scene: { ...runContext, variables: describeVariables(records) },
         anchor,
         outcomes: records.tools
-          .filter((tool) => tool.effect === 'edit')
+          .flatMap((tool) => tool.edits)
           .slice(-12)
-          .map((tool) => ({
-            recordId: tool.id,
-            state: tool.state,
+          .map((edit) => ({
+            recordId: edit.id,
+            state: edit.state,
             verification:
-              tool.state === 'succeeded' && tool.edit
-                ? scene.verify(tool.edit)
+              edit.state === 'succeeded' && edit.outcome
+                ? scene.verify(edit.outcome)
                   ? 'present'
                   : 'changed_or_undone'
-                : tool.state === 'uncertain'
+                : edit.state === 'uncertain'
                   ? 'uncertain_do_not_replay'
-                  : tool.state,
+                  : edit.state,
           })),
       })
     }
 
-    async function executeTool(tool: ToolRecord, version: string) {
-      assertCurrent(version)
+    async function executeTool(tool: ToolRecord) {
+      assertCurrent()
       report({ phase: 'tools', toolId: tool.id, diagnostics: undefined })
-      const definition = Object.hasOwn(workbenchTools, tool.name)
-        ? workbenchTools[tool.name as keyof typeof workbenchTools]
-        : undefined
-      if (!definition) {
+      if (tool.name !== 'execute_js' || tool.inputError) {
         tool.state = 'failed'
-        tool.result = { ok: false, error: { code: 'invalid_input', message: 'Unknown tool' } }
+        tool.result = {
+          ok: false,
+          error: { code: 'invalid_input', message: tool.inputError ?? 'Use execute_js({code})' },
+        }
         await save([tool])
         return
-      }
-      if (tool.inputError) {
-        tool.state = 'failed'
-        tool.result = { ok: false, error: { code: 'invalid_input', message: tool.inputError } }
-        await save([tool])
-        return
-      }
-      if (tool.effect === 'edit') {
-        if (unresolvedEdits(records).length) {
-          tool.state = 'failed'
-          tool.result = {
-            ok: false,
-            error: {
-              code: 'uncertain_edit',
-              message:
-                'The user must inspect and acknowledge the unresolved edit before further editing. Read-only inspection is allowed.',
-            },
-          }
-          await save([tool])
-          return
-        }
-        tool.state = 'prepared'
-        try {
-          await save([tool])
-          assertCurrent(version)
-        } catch (error) {
-          // This process knows the side effect has not started. A crash still leaves
-          // the durable prepared record uncertain, but an ordinary Stop does not.
-          tool.state = 'interrupted'
-          tool.result = {
-            ok: false,
-            error: { code: 'not_executed', message: 'Stopped before the edit started.' },
-          }
-          await save([tool])
-          throw error
-        }
       }
       let output: ToolOutput
       try {
-        output = await workbench.execute(
-          tool.name,
-          tool.input as Record<string, unknown>,
-          version,
-          signal,
-          tool.id
-        )
+        output = await workbench.execute(tool, signal)
       } catch (error) {
-        // These errors occur during pre-commit reads/checks; apply itself is synchronous.
-        const notExecuted =
-          (error instanceof Error && error.name === 'AbortError') ||
-          (error instanceof AiError && ['stale', 'cancelled', 'storage'].includes(error.code))
-        const uncertain = tool.effect === 'edit' && !notExecuted
-        tool.state = uncertain ? 'uncertain' : 'interrupted'
+        tool.state = tool.edits.some((e) => e.state === 'uncertain' || e.state === 'prepared')
+          ? 'uncertain'
+          : 'interrupted'
         tool.result = {
           ok: false,
           error: {
-            code: uncertain ? 'uncertain_edit' : 'interrupted',
-            message: uncertain
-              ? 'No confirmed outcome. Do not replay this call.'
-              : tool.effect === 'edit'
-                ? 'Stopped before completion; this edit was not executed.'
-                : 'Read interrupted before completion.',
+            code: failure(error).code,
+            message: error instanceof Error ? error.message : String(error),
           },
         }
         await save([tool])
         throw error
       }
-
       const assets: AssetRecord[] = []
+      const nextTool = { ...tool, assets: [...tool.assets] }
       for (const image of output.attachments ?? []) {
-        const id = image.imageId
-        if (!id.startsWith(`asset:${records.conversation.id}:`)) throw new AiError('storage')
         const asset: AssetRecord = {
-          id,
+          id: image.imageId,
           conversationId: records.conversation.id,
           width: image.width,
           height: image.height,
           bytes: image.blob.size,
           blob: image.blob,
+          mediaType: image.blob.type,
+          ...(image.details ? { details: image.details } : {}),
         }
-        tool.assets.push({ id, width: asset.width, height: asset.height, bytes: asset.bytes })
-        if (!(await repository.read(id))) assets.push(asset)
+        nextTool.assets.push({
+          id: asset.id,
+          width: asset.width,
+          height: asset.height,
+          bytes: asset.bytes,
+          mediaType: asset.mediaType,
+          ...(asset.details ? { details: asset.details } : {}),
+        })
+        assets.push(asset)
       }
-      const { attachments: _attachments, artifacts = [], edit, ...result } = output
-      tool.artifactIds = artifacts.filter((a): a is ArtifactRecord => 'ref' in a).map((a) => a.ref)
-      tool.result = result
-      tool.edit = edit
-      tool.state = result.ok ? 'succeeded' : 'failed'
-      // No abort check here: a completed outcome must become durable even after Stop.
-      await save([tool, ...assets, ...artifacts])
-      records.artifacts.push(
-        ...artifacts.filter(
-          (a): a is ArtifactRecord =>
-            'ref' in a && !records.artifacts.some((old) => old.id === a.id)
-        )
-      )
+      const { attachments: _attachments, variables, ...result } = output
+      nextTool.result = result
+      nextTool.state = tool.edits.some((e) => e.state === 'uncertain')
+        ? 'uncertain'
+        : result.ok
+          ? 'succeeded'
+          : signal.aborted
+            ? 'interrupted'
+            : 'failed'
+      await save([nextTool, ...assets, ...(variables ? [variables] : [])])
+      Object.assign(tool, nextTool)
+      if (variables) records.variables = variables
       publish()
-      if (!result.ok && ['stale_snapshot', 'cancelled'].includes(result.error?.code ?? ''))
-        throw new AiError('stale')
     }
 
     records.conversation.lastRun = { id: runId, state: 'running' }
@@ -518,11 +514,11 @@ export function createAgentRunner(
             m.state === 'complete' &&
             m.sequence > (records.checkpoint?.throughSequence ?? -1)
         ).length
-        if (exchanges && view.estimatedTokens > policy.threshold) {
+        if (exchanges && view.estimatedTokens >= policy.autoCompactTokenLimit) {
           await summarize('capacity', exchanges === 1)
           view = context()
         }
-        if (view.estimatedTokens > policy.inputBudget) throw new AiError('context_budget')
+        if (view.estimatedTokens >= policy.usableContextWindow) throw new AiError('context_budget')
         let generated: Awaited<ReturnType<typeof request>> | undefined
         for (let attempt = 0; attempt < 2; attempt++) {
           try {
@@ -539,7 +535,8 @@ export function createAgentRunner(
             }
             await summarize('context_overflow', true)
             view = context()
-            if (view.estimatedTokens > policy.inputBudget) throw new AiError('context_overflow')
+            if (view.estimatedTokens >= policy.usableContextWindow)
+              throw new AiError('context_overflow')
           }
         }
         assertCurrent()
@@ -561,40 +558,27 @@ export function createAgentRunner(
           input: call.input,
           inputError: call.invalid ? inputError(call.error, call.toolName) : undefined,
           providerOptions: call.providerMetadata,
-          effect:
-            Object.hasOwn(workbenchTools, call.toolName) &&
-            workbenchTools[call.toolName as keyof typeof workbenchTools].metadata?.effect === 'edit'
-              ? 'edit'
-              : 'read',
           state: 'requested',
           assets: [],
+          edits: [],
         }))
         completedDraft.toolIds = calls.map((tool) => tool.id)
         records.tools.push(...calls)
         await save([completedDraft, ...calls])
         draft = undefined
-        if (!calls.length) break
-        const editIndex = calls.findIndex((tool) => tool.effect === 'edit')
-        const invalidBatch =
-          editIndex !== -1 &&
-          (editIndex !== calls.length - 1 ||
-            calls.filter((tool) => tool.effect === 'edit').length > 1)
-        if (invalidBatch) {
-          for (const tool of calls) {
-            tool.state = 'failed'
-            tool.result = {
-              ok: false,
-              error: {
-                code: 'not_executed',
-                message: 'No calls in this batch executed. Use at most one edit and place it LAST.',
-              },
-            }
-          }
-          await save(calls)
-          continue
+        if (!calls.length) {
+          const current = context()
+          report({
+            context: {
+              ...progress.context!,
+              estimated: current.estimatedTokens,
+              images: current.images,
+              compacted: current.compacted,
+            },
+          })
+          break
         }
-        const version = scene.current().version
-        for (const tool of calls) await executeTool(tool, version)
+        for (const tool of calls) await executeTool(tool)
       }
       assertCurrent()
       records.conversation.lastRun = {
@@ -619,7 +603,10 @@ export function createAgentRunner(
       }
       for (const tool of records.tools) {
         if (tool.state !== 'requested' && tool.state !== 'prepared') continue
-        tool.state = tool.state === 'prepared' ? 'uncertain' : 'interrupted'
+        tool.edits = tool.edits.map((e) =>
+          e.state === 'prepared' ? { ...e, state: 'uncertain' as const } : e
+        )
+        tool.state = tool.edits.some((e) => e.state === 'uncertain') ? 'uncertain' : 'interrupted'
         tool.result = {
           ok: false,
           error: {

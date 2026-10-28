@@ -14,6 +14,9 @@ export interface ImageReference {
   width: number
   height: number
   bytes: number
+  mediaType?: string
+  /** Compact render receipt, retained independently of script return/log output. */
+  details?: Record<string, unknown>
 }
 export interface RequestDiagnostics {
   phase?: 'connecting' | 'waiting' | 'reasoning' | 'text' | 'tool_arguments'
@@ -31,7 +34,6 @@ export interface Failure {
 export type RunState = 'running' | 'completed' | 'interrupted' | 'failed'
 export interface Conversation {
   id: string
-  schemeId: string
   title: string
   createdAt: number
   updatedAt: number
@@ -49,7 +51,6 @@ export interface MessageRecord {
   content: AssistantModelMessage['content']
   state: 'streaming' | 'complete' | 'interrupted'
   toolIds: string[]
-  references?: string[]
   acknowledges?: string[]
   source?: { provider: AiProvider; endpoint: string; model: string }
   /** Frozen host facts sent immediately before this assistant attempt, not player input. */
@@ -81,6 +82,7 @@ export interface ToolResult {
   error?: { code: string; message: string }
 }
 export interface EditOutcome {
+  schemeId: string
   transactionId?: string
   postcondition: string
 }
@@ -93,22 +95,21 @@ export interface ToolRecord {
   input: ToolCallPart['input']
   inputError?: string
   providerOptions?: ToolCallPart['providerOptions']
-  effect: 'read' | 'edit'
   state: 'requested' | 'prepared' | 'succeeded' | 'failed' | 'interrupted' | 'uncertain'
   result?: ToolResult
   assets: ImageReference[]
-  artifactIds?: string[]
-  edit?: EditOutcome
+  edits: EditRecord[]
 }
 export interface ImageAttachment {
   imageId: string
   blob: Blob
   width: number
   height: number
+  details?: Record<string, unknown>
 }
 export interface ToolOutput extends ToolResult {
   attachments?: ImageAttachment[]
-  artifacts?: (ArtifactRecord | PayloadRecord)[]
+  variables?: VariablesRecord
   edit?: EditOutcome
 }
 export interface AssetRecord extends ImageReference {
@@ -143,6 +144,8 @@ export interface RequestRecord {
   >[]
   diagnostics: RequestDiagnostics
   estimatedTokens: number
+  /** Local estimate at the measured request boundary; actual usage stays in diagnostics. */
+  usageBaseline?: { key: string; local: number; sequence: number }
   policy: import('./context').ContextPolicy
   compactionReason?: 'capacity' | 'context_overflow'
   error?: Failure
@@ -151,32 +154,40 @@ export interface ConversationRecords {
   conversation: Conversation
   messages: MessageRecord[]
   tools: ToolRecord[]
-  artifacts: ArtifactRecord[]
+  variables: VariablesRecord
   checkpoint?: ContextCheckpoint
 }
-export interface ArtifactRecord {
-  id: string
-  ref: string
-  conversationId: string
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
+export interface ItemReference {
   schemeId: string
-  kind: 'set' | 'report' | 'table' | 'plan' | 'image'
-  label: string
-  /** null means a computation used historical derived data, not current scene evidence. */
-  revision: string | null
-  count?: number
-  payloadId?: string
-  asset?: ImageReference
-  source?: { toolId?: string; inputs: string[] }
-}
-export interface PayloadRecord {
-  id: string
-  conversationId: string
-  data: unknown
-}
-export interface SelectionCapture {
-  schemeId: string
+  internalId: string
   revision: string
-  members: string[]
+}
+export interface VariablesRecord {
+  id: string
+  conversationId: string
+  values: Record<string, JsonValue>
+  references: ItemReference[]
+}
+export interface EditRecord {
+  id: string
+  state: 'prepared' | 'succeeded' | 'failed' | 'uncertain'
+  schemeId: string
+  input: unknown
+  result?: unknown
+  outcome?: EditOutcome
+}
+export interface ScriptItem {
+  ref: number
+  instanceId: number
+  gameId: number
+  name: string | null
+  groupId: number
+  position: import('../sceneAnalysis/types').AnalysisVector3
+  rotation: import('../sceneAnalysis/types').AnalysisVector3
+  scale: import('../sceneAnalysis/types').AnalysisVector3
+  bounds: import('../sceneAnalysis/types').AnalysisBounds | null
 }
 export interface RenderPanel {
   label: string
@@ -191,16 +202,22 @@ export interface RenderPanel {
   labels?: boolean | string[]
 }
 export interface EditorHost {
-  current(): { version: string; summary: { schemeId: string; title: string } }
-  selection(): SelectionCapture
-  assertCurrent(version: string): void
-  snapshot(members: string[]): import('../sceneAnalysis/types').AnalysisSnapshot
+  context(): { schemeId: string | null; title?: string }
+  schemes(): { id: string; name: string }[]
+  revision(schemeId: string): string
+  selection(schemeId: string): string[]
+  structure(schemeId: string): {
+    groups: import('../collectionTree').GroupMetadata[]
+    collections: import('../collectionTree').SchemeCollection[]
+  }
+  snapshot(schemeId: string, members?: string[]): import('../sceneAnalysis/types').AnalysisSnapshot
   render(
+    schemeId: string,
     panels: RenderPanel[],
     signal: AbortSignal,
     layout?: import('../sceneAnalysis/images').ImageLayout
   ): Promise<import('../sceneAnalysis/images').AnalysisImageOutput>
-  apply(parameters: unknown, version: string): ToolOutput
+  apply(schemeId: string, parameters: unknown, version: string): ToolOutput
   verify(edit: EditOutcome): boolean
 }
 

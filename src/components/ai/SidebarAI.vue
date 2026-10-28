@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import {
   ArrowDown,
@@ -42,10 +42,11 @@ import { downloadBlob } from '@/composables/fileOps/download'
 import AiSettingsDialog from './AiSettingsDialog.vue'
 import AiImage from './AiImage.vue'
 import AiMarkdown from './AiMarkdown.vue'
+import AiImagePreviewModal from './AiImagePreviewModal.vue'
 import type { ImageReference } from '@/lib/ai/types'
 
 const chat = inject(aiChatKey)
-if (!chat) throw new Error('AI sidebar requires EditorLayout')
+if (!chat) throw new Error('AI sidebar requires the application chat provider')
 const {
   entries,
   isRunning,
@@ -76,63 +77,11 @@ const settingsOpen = ref(false),
 const exportOpen = ref(false),
   includeImages = ref(false),
   exportError = ref('')
-const preview = ref<{ image: ImageReference; label: string } | null>(null)
+const preview = ref<ImageReference | null>(null)
 const deleteOpen = ref(false),
   acknowledgeOpen = ref(false)
-const referenceOpen = ref(false),
-  referenceTitle = ref(''),
-  referenceText = ref(''),
-  referenceOffset = ref(0)
-const referenceCode = ref(''),
-  referenceRef = ref(''),
-  referenceKind = ref(''),
-  referenceError = ref('')
-const canSelectReference = ref(false),
-  referenceFreshness = ref('')
-let referenceRequest = 0
-async function openReference(ref: string) {
-  const mine = ++referenceRequest
-  referenceOpen.value = true
-  referenceTitle.value = ref
-  referenceText.value = ''
-  referenceOffset.value = 0
-  referenceCode.value = ''
-  referenceKind.value = ''
-  referenceFreshness.value = ''
-  referenceError.value = ''
-  canSelectReference.value = false
-  referenceRef.value = ref
-  try {
-    const detail = await chat!.readReference(ref)
-    if (detail && mine === referenceRequest) {
-      referenceTitle.value = `${ref} · ${detail.reference.label}`
-      referenceKind.value = t(`ai.referenceKinds.${detail.reference.kind}`)
-      referenceFreshness.value = t(
-        detail.current ? 'ai.referenceCurrent' : 'ai.referenceHistorical'
-      )
-      referenceText.value = JSON.stringify(detail.value, null, 2) ?? ''
-      referenceCode.value = detail.code ?? ''
-      canSelectReference.value = detail.reference.kind === 'set' && Boolean(detail.reference.count)
-    }
-  } catch {
-    if (mine === referenceRequest) referenceText.value = t('ai.referenceUnavailable')
-  }
-}
-async function selectReference() {
-  const mine = referenceRequest
-  try {
-    const selected = await chat!.selectReference(referenceRef.value)
-    if (mine !== referenceRequest) return
-    if (selected) referenceOpen.value = false
-    else referenceError.value = t('ai.referenceSelectionBlocked')
-  } catch {
-    if (mine === referenceRequest) referenceError.value = t('ai.referenceUnavailable')
-  }
-}
 watch(sessionId, () => {
-  referenceRequest++
   preview.value = null
-  referenceOpen.value = false
   deleteOpen.value = false
   acknowledgeOpen.value = false
   void bottom()
@@ -143,6 +92,7 @@ const timeline = ref<HTMLElement | null>(null)
 const following = ref(true)
 let lastScrollTop = 0,
   touchY: number | undefined
+let scrollFrame: number | undefined
 const canSend = computed(() => Boolean(draft.value.trim()) && !isRunning.value && !isLoading.value)
 const visibleEntries = computed(() =>
   entries.value.filter(
@@ -157,6 +107,20 @@ function reasoningOpen(entry: ChatEntry) {
 }
 function toggleReasoning(entry: ChatEntry) {
   reasoningOverride.value = { ...reasoningOverride.value, [entry.id]: !reasoningOpen(entry) }
+}
+const toolDetailsOverride = ref<Record<string, boolean>>({})
+function isToolOpen(entry: ChatEntry) {
+  return toolDetailsOverride.value[entry.id] ?? entry.state === 'error'
+}
+function toggleTool(entry: ChatEntry) {
+  toolDetailsOverride.value = { ...toolDetailsOverride.value, [entry.id]: !isToolOpen(entry) }
+}
+function toolStatusLabel(entry: ChatEntry) {
+  if (entry.state === 'running') return t('ai.toolExecuting')
+  if (entry.state === 'cancelled') return t('ai.toolCancelled')
+  if (entry.state === 'error') return t('ai.toolFailed')
+  if (entry.state === 'success') return t('ai.toolExecuted')
+  return toolLabel(entry.toolName)
 }
 function onScroll() {
   const el = viewport.value
@@ -188,22 +152,29 @@ function onViewportKeydown(event: KeyboardEvent) {
   if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || (event.key === ' ' && event.shiftKey))
     following.value = false
 }
-async function scrollBottom() {
-  await nextTick()
-  // Recheck after the render: an upward gesture may have cancelled this queued follow.
-  if (viewport.value && following.value) {
-    viewport.value.scrollTop = viewport.value.scrollHeight
-    lastScrollTop = viewport.value.scrollTop
-  }
+function scrollBottom() {
+  if (!following.value || scrollFrame !== undefined) return
+  // Coalesce content and resize updates after Vue's pending DOM updates.
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = undefined
+    // An upward gesture may have cancelled this queued follow.
+    if (viewport.value && following.value) {
+      viewport.value.scrollTop = viewport.value.scrollHeight
+      lastScrollTop = viewport.value.scrollTop
+    }
+  })
 }
+onBeforeUnmount(() => {
+  if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
+})
 function onTimelineResize() {
-  if (following.value) void scrollBottom()
+  scrollBottom()
 }
 // Markdown batches, folded reasoning and local images can resize after the text update.
 useResizeObserver(timeline, onTimelineResize)
 function bottom() {
   following.value = true
-  void scrollBottom()
+  scrollBottom()
 }
 async function loadOlder() {
   const el = viewport.value
@@ -221,13 +192,7 @@ const progress = computed(() => {
     last = list.length ? list[list.length - 1] : undefined
   return `${list.length}:${last?.id ?? ''}:${last?.text.length ?? 0}:${last?.reasoning?.length ?? 0}:${last?.state ?? ''}:${last?.images?.length ?? 0}`
 })
-watch(
-  progress,
-  async () => {
-    if (following.value) await scrollBottom()
-  },
-  { flush: 'post' }
-)
+watch(progress, scrollBottom, { flush: 'post' })
 watch(draft, async () => {
   await nextTick()
   if (input.value) {
@@ -290,22 +255,28 @@ function formatSessionDate(timestamp: number) {
 
 function formatTokens(n: number) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`
-  if (n >= 1000) return `${Math.round(n / 1000)}k`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
   return String(n)
 }
 
 const contextStats = computed(() => {
   const info = contextInfo?.value
-  if (!info || !info.budget) return null
-  const used = info.actual ?? info.estimated
-  const total = info.budget
-  const percent = Math.min(100, Math.max(0, Math.round((used / total) * 100)))
-  return {
+  if (!info || !info.contextWindow) return null
+  const used = info.estimated
+  const total = info.contextWindow
+  const percentNum = Math.min(100, Math.max(0, (used / total) * 100))
+  const percent = percentNum.toFixed(1)
+  const usedText = formatTokens(used)
+  const totalText = formatTokens(total)
+  const summary = t(info.images ? 'ai.contextUsedSummaryWithImages' : 'ai.contextUsedSummary', {
     percent,
-    used,
-    total,
-    tokensText: `${formatTokens(used)} / ${formatTokens(total)} tokens`,
+    used: usedText,
+    total: totalText,
     images: info.images,
+  })
+  return {
+    percent: percentNum,
+    summary,
   }
 })
 
@@ -447,51 +418,75 @@ async function downloadTrace() {
             >{{ t('ai.loadOlder') }}</Button
           >
           <article v-for="entry in visibleEntries" :key="entry.id" class="min-w-0">
-            <div
-              v-if="entry.role === 'tool'"
-              class="space-y-2 rounded-md border border-border bg-muted/30 p-2.5"
-            >
-              <div class="flex items-center gap-2 text-xs">
-                <LoaderCircle
-                  v-if="entry.state === 'running'"
-                  class="size-3.5 shrink-0 animate-spin"
-                />
-                <Check
-                  v-else-if="entry.state === 'success'"
-                  class="size-3.5 shrink-0 text-primary"
-                />
-                <CircleAlert v-else class="size-3.5 shrink-0 text-muted-foreground" />
-                <Wrench class="size-3 shrink-0 text-muted-foreground" />
-                <span class="min-w-0 break-words">{{ toolLabel(entry.toolName) }}</span>
-                <span v-if="entry.state === 'cancelled'" class="ml-auto text-muted-foreground">{{
-                  t('ai.cancelled')
-                }}</span>
-              </div>
-              <p
-                v-if="entry.text"
-                class="text-xs break-words"
-                :class="entry.state === 'error' ? 'text-destructive' : 'text-muted-foreground'"
-              >
-                {{ entry.text }}
-              </p>
-              <div v-if="entry.references?.length" class="flex flex-wrap gap-1.5">
+            <div v-if="entry.role === 'tool'" class="space-y-2">
+              <div class="rounded-md border border-border bg-muted/20">
                 <button
-                  v-for="a in entry.references"
-                  :key="a.ref"
                   type="button"
-                  class="rounded border border-border px-2 py-1 text-left text-xs hover:bg-accent"
-                  @click="openReference(a.ref)"
+                  class="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+                  :aria-expanded="isToolOpen(entry)"
+                  @click="toggleTool(entry)"
                 >
-                  {{ a.ref }} · {{ a.label
-                  }}<span v-if="a.count !== undefined"> · {{ a.count }}</span>
+                  <LoaderCircle
+                    v-if="entry.state === 'running'"
+                    class="size-3.5 shrink-0 animate-spin text-primary"
+                  />
+                  <Check
+                    v-else-if="entry.state === 'success'"
+                    class="size-3.5 shrink-0 text-primary"
+                  />
+                  <CircleAlert
+                    v-else-if="entry.state === 'error'"
+                    class="size-3.5 shrink-0 text-destructive"
+                  />
+                  <CircleAlert v-else class="size-3.5 shrink-0 text-muted-foreground" />
+                  <span
+                    class="min-w-0 flex-1 truncate font-medium"
+                    :class="entry.state === 'error' ? 'text-destructive' : ''"
+                  >
+                    {{ toolStatusLabel(entry) }}
+                  </span>
+                  <span
+                    v-if="entry.code || entry.output"
+                    class="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground"
+                  >
+                    <span>{{ isToolOpen(entry) ? t('ai.hideDetails') : t('ai.viewDetails') }}</span>
+                    <ChevronRight
+                      class="size-3 transition-transform"
+                      :class="isToolOpen(entry) ? 'rotate-90' : ''"
+                    />
+                  </span>
                 </button>
+                <div
+                  v-if="isToolOpen(entry) && (entry.code || entry.output)"
+                  class="space-y-2 border-t border-border/50 p-2.5 text-xs"
+                >
+                  <div v-if="entry.code" class="space-y-1">
+                    <span class="font-mono text-[10px] text-muted-foreground uppercase">{{
+                      t('ai.sourceCode')
+                    }}</span>
+                    <pre
+                      class="max-h-48 overflow-auto rounded bg-background/50 p-2 font-mono text-[11px] break-all whitespace-pre-wrap"
+                      >{{ entry.code }}</pre>
+                  </div>
+                  <div v-if="entry.output" class="space-y-1">
+                    <span class="font-mono text-[10px] text-muted-foreground uppercase">{{
+                      t('ai.toolOutput')
+                    }}</span>
+                    <pre
+                      class="max-h-60 overflow-auto rounded bg-background/50 p-2 font-mono text-[11px] break-words whitespace-pre-wrap"
+                      :class="
+                        entry.state === 'error' ? 'text-destructive' : 'text-muted-foreground'
+                      "
+                      >{{ entry.output() }}</pre>
+                  </div>
+                </div>
               </div>
               <AiImage
                 v-for="image in entry.images"
                 :key="image.id"
                 :image="image"
-                :label="toolLabel(entry.toolName)"
-                @open="preview = { image, label: toolLabel(entry.toolName) }"
+                :label="toolStatusLabel(entry)"
+                @open="preview = image"
               />
             </div>
             <div
@@ -517,17 +512,6 @@ async function downloadTrace() {
                   :content="entry.reasoning"
                   :final="entry.state !== 'running'"
                 />
-              </div>
-              <div v-if="entry.references?.length" class="mb-2 flex flex-wrap gap-1.5">
-                <button
-                  v-for="a in entry.references"
-                  :key="a.ref"
-                  type="button"
-                  class="rounded border border-border px-2 py-1 text-left text-xs hover:bg-accent"
-                  @click="openReference(a.ref)"
-                >
-                  {{ a.ref }} · {{ a.label }} · {{ a.count }}
-                </button>
               </div>
               <AiMarkdown
                 v-if="entry.role === 'assistant'"
@@ -670,21 +654,13 @@ async function downloadTrace() {
                   </svg>
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="top" align="start" class="space-y-1 p-2 text-xs">
-                <div class="font-medium text-foreground">{{ t('ai.contextWindowTitle') }}</div>
-                <div class="text-muted-foreground">
-                  {{ t('ai.contextWindowUsed', { percent: contextStats.percent }) }}
-                </div>
-                <div class="text-[11px] text-muted-foreground">{{ contextStats.tokensText }}</div>
-                <div v-if="contextStats.images" class="text-[11px] text-muted-foreground">
-                  {{ t('ai.contextWindowImages', { images: contextStats.images }) }}
-                </div>
-                <div
-                  v-if="compacted"
-                  class="border-t border-border/50 pt-1 text-[10px] text-muted-foreground"
-                >
-                  {{ t('ai.contextWindowCompacted') }}
-                </div>
+              <TooltipContent
+                side="top"
+                align="start"
+                class="text-xs whitespace-nowrap"
+                :side-offset="4"
+              >
+                <span>{{ contextStats.summary }}</span>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -738,56 +714,6 @@ async function downloadTrace() {
         >
       </DialogContent>
     </Dialog>
-    <Dialog v-model:open="referenceOpen">
-      <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-        <DialogTitle>{{ referenceTitle }}</DialogTitle>
-        <DialogDescription class="text-xs text-muted-foreground">
-          {{ referenceKind }} · {{ referenceFreshness }}
-        </DialogDescription>
-        <pre class="max-h-[45vh] overflow-auto text-xs break-all whitespace-pre-wrap">{{
-          referenceText.slice(referenceOffset, referenceOffset + 10000)
-        }}</pre>
-        <div class="flex items-center justify-between gap-2 text-xs">
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="referenceOffset === 0"
-            @click="referenceOffset -= 10000"
-            >←</Button
-          >
-          <span
-            >{{ referenceText.length ? referenceOffset + 1 : 0 }}–{{
-              Math.min(referenceOffset + 10000, referenceText.length)
-            }}
-            / {{ referenceText.length }}</span
-          >
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="referenceOffset + 10000 >= referenceText.length"
-            @click="referenceOffset += 10000"
-            >→</Button
-          >
-        </div>
-        <details v-if="referenceCode" class="text-xs">
-          <summary class="cursor-pointer text-muted-foreground">{{ t('ai.sourceCode') }}</summary>
-          <pre class="mt-2 max-h-48 overflow-auto break-all whitespace-pre-wrap">{{
-            referenceCode
-          }}</pre>
-        </details>
-        <p v-if="referenceError" role="alert" class="text-xs text-destructive">
-          {{ referenceError }}
-        </p>
-        <Button
-          v-if="canSelectReference"
-          variant="outline"
-          size="sm"
-          :disabled="isLoading"
-          @click="selectReference"
-          >{{ t('ai.selectReference') }}</Button
-        >
-      </DialogContent>
-    </Dialog>
     <AiSettingsDialog v-model:open="settingsOpen" :running="isRunning" />
     <Dialog v-model:open="exportOpen">
       <DialogContent class="sm:max-w-md">
@@ -813,19 +739,14 @@ async function downloadTrace() {
         >
       </DialogContent>
     </Dialog>
-    <Dialog
+    <AiImagePreviewModal
       :open="!!preview"
+      :image="preview"
       @update:open="
         (open) => {
           if (!open) preview = null
         }
       "
-    >
-      <DialogContent class="max-h-[90vh] sm:max-w-5xl">
-        <DialogTitle>{{ preview?.label }}</DialogTitle>
-        <DialogDescription class="sr-only">{{ preview?.label }}</DialogDescription>
-        <AiImage v-if="preview" :image="preview.image" :label="preview.label" eager />
-      </DialogContent>
-    </Dialog>
+    />
   </section>
 </template>

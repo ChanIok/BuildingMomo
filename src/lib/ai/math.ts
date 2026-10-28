@@ -4,7 +4,7 @@ import {
 } from '../coordinateTransform'
 import type { AnalysisItem, AnalysisVector3 } from '../sceneAnalysis/types'
 
-export const computeApi = {
+export const scriptMath = {
   groupBy<T>(values: T[], key: (value: T) => string | number) {
     const result: Record<string, T[]> = Object.create(null)
     for (const value of values) (result[String(key(value))] ??= []).push(value)
@@ -71,40 +71,4 @@ export const computeApi = {
       )
     )
   },
-}
-export interface Publication {
-  kind: 'set' | 'report' | 'table' | 'plan'
-  label: string
-  value: unknown
-}
-
-/** A computation API, NOT a security sandbox. Executed only inside a disposable Worker. */
-export function evaluateComputation(code: string, input: Record<string, unknown>): Publication[] {
-  if (typeof code !== 'string') throw new Error('Code must be a string')
-  const outputs: Publication[] = []
-  const publish = Object.fromEntries(
-    ['set', 'report', 'table', 'plan'].map((kind) => [
-      kind,
-      (label: string, value: unknown) => {
-        if (typeof label !== 'string' || !label.trim())
-          throw new Error(
-            `publish.${kind}(label, value): label 必须是非空字符串，请传名称和数据两个参数。`
-          )
-        if (value === undefined)
-          throw new Error(
-            `publish.${kind}(label, value): 缺少可序列化的数据 value，请传名称和数据两个参数。`
-          )
-        if (kind === 'set') {
-          if (!Array.isArray(value))
-            throw new Error('A set must contain instanceIds or input items')
-          value = value.map((item) => (typeof item === 'number' ? item : item?.instanceId))
-        }
-        const serialized = JSON.stringify(value)
-        if (serialized === undefined) throw new Error('Publication must be JSON')
-        outputs.push({ kind, label, value: JSON.parse(serialized) } as Publication)
-      },
-    ])
-  )
-  new Function('input', 'api', 'publish', `"use strict";\n${code}`)(input, computeApi, publish)
-  return outputs
 }

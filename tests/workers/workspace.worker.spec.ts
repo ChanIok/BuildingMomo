@@ -114,19 +114,88 @@ it('persists directory folds without furniture validation, replacement or modifi
     ).toEqual(new Set(['house']))
     const fullUpdate = await api.updateState({
       meta,
-      activeSchemeData: {
-        id: 'scheme',
-        items,
-        selectedItemIds: new Set(),
-        currentViewConfig: undefined,
-        viewState: undefined,
-        groupOrigins: new Map(),
-      },
+      schemeData: [
+        {
+          id: 'scheme',
+          items,
+          selectedItemIds: new Set(),
+          currentViewConfig: undefined,
+          viewState: undefined,
+          groupOrigins: new Map(),
+        },
+      ],
       collectionViewStates: [],
     })
     expect(fullUpdate.validation?.duplicateGroups).toEqual([['one', 'two']])
     // 原有仅更新结构的调用方仍按既定契约执行校验。
     expect((await api.updateState({ meta })).validation).toBeDefined()
+  } finally {
+    api.updateSettings({ enableAutoSave: false })
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  }
+})
+
+it('saves every changed scheme but validates the focused one, not the last background update', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('postMessage', vi.fn())
+  const snapshot: WorkspaceSnapshot = {
+    version: 2,
+    updatedAt: 0,
+    editor: {
+      schemes: ['a', 'b'].map((id) => ({
+        id,
+        name: id,
+        items: [makeAppItem({ internalId: id })],
+        selectedItemIds: new Set(),
+        groupOrigins: new Map(),
+      })),
+    },
+    tab: {
+      tabs: [{ id: 'tab-b', type: 'scheme', schemeId: 'b', title: 'B' }],
+      activeTabId: 'tab-b',
+    },
+  }
+  try {
+    await api.initWorkspace(snapshot)
+    api.updateSettings({
+      enableAutoSave: true,
+      enableDuplicateDetection: true,
+      enableLimitDetection: false,
+    })
+    vi.mocked(saveWorkspaceSnapshot).mockClear()
+    const result = await api.updateState({
+      meta: {
+        tabs: snapshot.tab.tabs,
+        activeTabId: 'tab-b',
+        schemes: snapshot.editor.schemes.map(({ id, name }) => ({ id, name })),
+      },
+      schemeData: [
+        {
+          id: 'a',
+          items: [
+            makeAppItem({ internalId: 'a', groupId: 1 }),
+            makeAppItem({ internalId: 'a2', groupId: 1 }),
+          ],
+          collectionTree: {
+            nodes: [],
+            groups: [{ groupId: 1, name: 'Background', collectionId: null, order: 0 }],
+          },
+          selectedItemIds: new Set(),
+          groupOrigins: new Map(),
+        },
+      ],
+    })
+    expect(result.validation?.duplicateGroups).toEqual([])
+    await vi.advanceTimersByTimeAsync(2000)
+    const saved = vi.mocked(saveWorkspaceSnapshot).mock.calls.at(-1)![0]
+    expect(saved.editor.schemes.find((s) => s.id === 'a')!.items).toHaveLength(2)
+    expect(saved.editor.schemes.find((s) => s.id === 'a')!.collectionTree?.groups[0]?.name).toBe(
+      'Background'
+    )
+    expect(saved.editor.schemes.find((s) => s.id === 'b')!.items[0]?.groupId).toBe(0)
+    expect(saved.tab.activeTabId).toBe('tab-b')
   } finally {
     api.updateSettings({ enableAutoSave: false })
     vi.clearAllTimers()

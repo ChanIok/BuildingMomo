@@ -1,17 +1,25 @@
-/**
- * 一次性清理：方案历史改为写入 BuildingMomo/history 目录后，
- * 旧的「监控导入历史」IndexedDB（building-momo-db，只装过 watch-history）不再使用，直接删库。
- */
-const LEGACY_WATCH_HISTORY_DB = 'building-momo-db'
+// 已废弃的监控导入历史库，以及未发版的 AI 开发期数据库；直接清理，不迁移。
+const LEGACY_DATABASES = [
+  'building-momo-db',
+  'buildingmomo-ai-sessions',
+  'buildingmomo-ai-v1',
+  'buildingmomo-ai-workbench-v2',
+  'buildingmomo-ai-workbench-v3',
+]
 
-export async function removeLegacyWatchHistoryDatabase(): Promise<void> {
+export async function removeLegacyDatabases(): Promise<void> {
   if (typeof indexedDB === 'undefined') return
 
-  await new Promise<void>((resolve) => {
-    const request = indexedDB.deleteDatabase(LEGACY_WATCH_HISTORY_DB)
-    request.onsuccess = () => resolve()
-    request.onerror = () => resolve()
-    // 其它标签页仍开着旧库时会被阻塞，放弃本次清理即可，不影响主流程
-    request.onblocked = () => resolve()
-  })
+  await Promise.all(
+    LEGACY_DATABASES.map(
+      (name) =>
+        new Promise<void>((resolve) => {
+          const request = indexedDB.deleteDatabase(name)
+          request.onsuccess = () => resolve()
+          request.onerror = () => resolve()
+          // 其它标签页仍开着旧库时会被阻塞，不等待清理，不影响主流程。
+          request.onblocked = () => resolve()
+        })
+    )
+  )
 }

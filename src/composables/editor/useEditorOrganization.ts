@@ -21,11 +21,11 @@ export function useEditorOrganization() {
     parameters: unknown,
     expected: { schemeId: string; sceneVersion: number }
   ): OrganizationChanges {
-    const scheme = editor.activeScheme
+    const scheme = editor.getSchemeById(expected.schemeId)
     function assertCurrent() {
       if (
         !scheme ||
-        editor.activeScheme !== scheme ||
+        editor.getSchemeById(expected.schemeId) !== scheme ||
         scheme.id !== expected.schemeId ||
         editor.sceneVersion !== expected.sceneVersion
       ) {
@@ -51,7 +51,8 @@ export function useEditorOrganization() {
       parameters
     )
     const members = command.groups.flatMap((group) => group.itemIds)
-    if (members.some((id) => !editor.isItemEditable(id))) {
+    const editable = editor.getEditableItemIds(scheme)
+    if (members.some((id) => !editable.has(id))) {
       throw new SceneAnalysisError('out_of_scope', 'Scope contains missing, hidden or locked items')
     }
     const currentTree = scheme.collectionTree.value
@@ -132,13 +133,17 @@ export function useEditorOrganization() {
     })
     // All fallible input/structure calculations precede the synchronous commit.
     assertCurrent()
-    recordTransaction('items.organize', () => {
-      setSchemeItems(scheme, items)
-      scheme.collectionTree.value = nextTree
-      scheme.groupOrigins.value = origins
-      scheme.maxGroupId.value = maxGroupId
-      editor.triggerSceneUpdate()
-    })
+    recordTransaction(
+      'items.organize',
+      () => {
+        setSchemeItems(scheme, items)
+        scheme.collectionTree.value = nextTree
+        scheme.groupOrigins.value = origins
+        scheme.maxGroupId.value = maxGroupId
+        editor.triggerSceneUpdate(scheme)
+      },
+      scheme
+    )
     const entries = scheme.history.value?.transactionUndoStack
     const transactionId = entries?.[entries.length - 1]?.transaction.id
     return { ...result, transactionId }

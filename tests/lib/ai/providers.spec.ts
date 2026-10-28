@@ -7,6 +7,10 @@ import { createPolicy, projectSource } from '@/lib/ai/context'
 import { workbenchTools } from '@/lib/ai/tools'
 import { workbenchFixture } from '../../fixtures/ai'
 
+vi.mock('@/lib/ai/scriptClient', async () => {
+  const { evaluateScript } = await import('@/lib/ai/scriptRuntime')
+  return { runScript: (code: string, values: any, call: any) => evaluateScript(code, values, call) }
+})
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -29,7 +33,7 @@ function request(provider: AiProvider) {
     maxOutputTokens: 8000,
     toolChoice: 'auto' as const,
     abortSignal: new AbortController().signal,
-    resolveAsset: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+    resolveAsset: vi.fn(async () => new Blob(['webp'], { type: 'image/webp' })),
     onRequest: vi.fn(async (_body: unknown) => {}),
     onResponse: vi.fn(),
   }
@@ -78,7 +82,7 @@ it.each(Object.keys(AI_PROVIDERS) as AiProvider[])(
 
 function anthropicReply(call = false) {
   const block = call
-    ? { type: 'tool_use', id: 'inspect-1', name: 'inspect', input: {} }
+    ? { type: 'tool_use', id: 'inspect-1', name: 'execute_js', input: {} }
     : { type: 'text', text: '' }
   return sse(
     {
@@ -102,7 +106,10 @@ function anthropicReply(call = false) {
       type: 'content_block_delta',
       index: 1,
       delta: call
-        ? { type: 'input_json_delta', partial_json: '{"ref":"selection"}' }
+        ? {
+            type: 'input_json_delta',
+            partial_json: '{"code":"return (await api.selection()).length"}',
+          }
         : { type: 'text_delta', text: 'Done' },
     },
     { type: 'content_block_stop', index: 1 },
@@ -139,7 +146,7 @@ it('runs native Anthropic tools and replays signed thinking after a reload, neve
     onProgress() {},
   }
   await createAgentRunner(repository).run(options)
-  expect(records.tools[0]).toMatchObject({ state: 'succeeded', name: 'inspect' })
+  expect(records.tools[0]).toMatchObject({ state: 'succeeded', name: 'execute_js' })
   expect(sent[0]).toMatchObject({ thinking: { type: 'enabled', budget_tokens: 2048 } })
   expect(sent[1].messages.find((m: any) => m.role === 'assistant').content).toContainEqual({
     type: 'thinking',
@@ -151,7 +158,7 @@ it('runs native Anthropic tools and replays signed thinking after a reload, neve
       (m: any) => m.role === 'user' && m.content.some?.((part: any) => part.type === 'tool_result')
     )
   ).toBeDefined()
-  const restored = (await repository.load(records.conversation.schemeId, records.conversation.id))!
+  const restored = (await repository.load(records.conversation.id))!
   await createAgentRunner(repository).run({ ...options, records: restored, text: 'Continue' })
   expect(JSON.stringify(sent[2])).toContain('signed-thought')
   const assistant = restored.messages.find((m) => m.role === 'assistant')!
@@ -214,16 +221,17 @@ it.each(['anthropic', 'google', 'openai'] as const)(
           role: 'user',
           content: [
             { type: 'text', text: 'View' },
-            { type: 'file', mediaType: 'image/png', data: source },
+            { type: 'file', mediaType: 'image/webp', data: source },
           ],
         },
       ],
     })
     expect(result.text).toBe('Done')
-    expect(JSON.stringify(wire)).toContain('cG5n')
+    expect(JSON.stringify(wire)).toContain('image/webp')
+    expect(JSON.stringify(wire)).toContain('d2VicA==')
     const trace = vi.mocked(input.onRequest).mock.calls[0]![0]
     expect(JSON.stringify(trace)).toContain(source)
-    expect(JSON.stringify(trace)).not.toContain('cG5n')
+    expect(JSON.stringify(trace)).not.toContain('d2VicA==')
     if (provider === 'google')
       expect(wire.generationConfig.thinkingConfig.includeThoughts).toBe(true)
     if (provider === 'openai')
@@ -273,8 +281,8 @@ it.each(['google', 'openai'] as const)(
                     ? [
                         {
                           functionCall: {
-                            name: 'inspect',
-                            args: { ref: 'selection' },
+                            name: 'execute_js',
+                            args: { code: 'return (await api.selection()).length' },
                             id: 'inspect-1',
                           },
                           thoughtSignature: 'gemini-signature',
@@ -299,7 +307,7 @@ it.each(['google', 'openai'] as const)(
                 type: 'function_call',
                 id: 'fc-1',
                 call_id: 'inspect-1',
-                name: 'inspect',
+                name: 'execute_js',
                 arguments: '',
               },
             },
@@ -307,7 +315,7 @@ it.each(['google', 'openai'] as const)(
               type: 'response.function_call_arguments.delta',
               item_id: 'fc-1',
               output_index: 0,
-              delta: '{"ref":"selection"}',
+              delta: '{"code":"return (await api.selection()).length"}',
             },
             {
               type: 'response.output_item.done',
@@ -316,8 +324,8 @@ it.each(['google', 'openai'] as const)(
                 type: 'function_call',
                 id: 'fc-1',
                 call_id: 'inspect-1',
-                name: 'inspect',
-                arguments: '{"ref":"selection"}',
+                name: 'execute_js',
+                arguments: '{"code":"return (await api.selection()).length"}',
                 status: 'completed',
               },
             },
@@ -349,7 +357,7 @@ it.each(['google', 'openai'] as const)(
       onProgress() {},
     }
     await createAgentRunner(repository).run(options)
-    expect(records.tools[0]).toMatchObject({ name: 'inspect', state: 'succeeded' })
+    expect(records.tools[0]).toMatchObject({ name: 'execute_js', state: 'succeeded' })
     if (provider === 'google') {
       expect(records.tools[0]?.providerOptions).toMatchObject({
         google: { thoughtSignature: 'gemini-signature' },
@@ -362,8 +370,8 @@ it.each(['google', 'openai'] as const)(
         expect.objectContaining({
           type: 'function_call',
           call_id: 'inspect-1',
-          name: 'inspect',
-          arguments: '{"ref":"selection"}',
+          name: 'execute_js',
+          arguments: '{"code":"return (await api.selection()).length"}',
         })
       )
       expect(sent[1].input).toContainEqual(
@@ -371,10 +379,7 @@ it.each(['google', 'openai'] as const)(
       )
       expect(sent[1].input.some((part: any) => part.type === 'item_reference')).toBe(false)
     }
-    const restored = (await repository.load(
-      records.conversation.schemeId,
-      records.conversation.id
-    ))!
+    const restored = (await repository.load(records.conversation.id))!
     await createAgentRunner(repository).run({ ...options, records: restored, text: 'Continue' })
     if (provider === 'google') expect(JSON.stringify(sent[2])).toContain('gemini-signature')
     else
@@ -410,5 +415,5 @@ it('sends complete, simple function schemas through the real Gemini adapter', as
     expect(declaration).not.toHaveProperty('metadata')
     expect(definition).not.toHaveProperty('execute')
   }
-  expect(declarations[3].parametersJsonSchema).not.toHaveProperty('anyOf')
+  expect(declarations[0].parametersJsonSchema).not.toHaveProperty('anyOf')
 })

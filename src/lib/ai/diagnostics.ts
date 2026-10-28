@@ -19,14 +19,6 @@ export async function exportConversation(
   const references = new Map(
     records.tools.flatMap((tool) => tool.assets.map((asset) => [asset.id, asset] as const))
   )
-  const payloads = await Promise.all(
-    records.artifacts
-      .filter((a) => a.payloadId)
-      .map(async (a) => ({
-        ref: a.ref,
-        data: (await repository.read<import('./types').PayloadRecord>(a.payloadId!))?.data,
-      }))
-  )
   const images = await Promise.all(
     [...references.values()].map(async (metadata) => {
       if (!includeImages) return metadata
@@ -37,12 +29,12 @@ export async function exportConversation(
   )
   return JSON.stringify(
     {
-      format: 'buildingmomo-ai-workbench-v4',
+      format: 'buildingmomo-ai',
+      version: 2,
       exportedAt: new Date().toISOString(),
       ...records,
       requests,
       images,
-      payloads,
     },
     (key, value) => {
       if (/^(api_?key|authorization|headers|requestHeaders|responseHeaders)$/i.test(key))

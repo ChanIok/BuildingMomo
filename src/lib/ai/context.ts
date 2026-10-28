@@ -18,19 +18,18 @@ import {
   type HostContextRecord,
 } from './types'
 import { estimateText, toolModelResult, TOOL_OUTPUT_BYTES } from './tools'
-import { describeArtifact } from './artifacts'
 import { SUMMARY_PROMPT } from './prompts'
 
 export interface ContextPolicy {
   contextWindow: number
   maxTokens: number
-  inputBudget: number
-  threshold: number
+  usableContextWindow: number
+  autoCompactTokenLimit: number
   toolOutputBytes: number
   imageTriggerBytes: number
   imageTargetBytes: number
 }
-/** Capacity-driven compaction; byte budgets follow OpenCode, not a picture-count window. */
+/** Token capacity and encoded image bytes have independent limits. */
 export function createPolicy(
   contextWindow = DEFAULT_AI_PREFERENCES.contextWindow,
   maxTokens = DEFAULT_AI_PREFERENCES.maxTokens,
@@ -41,16 +40,16 @@ export function createPolicy(
   if (
     !Number.isSafeInteger(contextWindow) ||
     !Number.isSafeInteger(maxTokens) ||
-    maxTokens < 1 ||
-    contextWindow - maxTokens < 4000
+    contextWindow < 5000 ||
+    maxTokens < 1
   )
     throw new AiError('settings')
-  const inputBudget = contextWindow - maxTokens
-  const imageTriggerBytes = DEFAULT_AI_PREFERENCES.imageBudgetMiB * 1024 * 1024
+  const imageTriggerBytes =
+    resources.imageTriggerBytes ?? DEFAULT_AI_PREFERENCES.imageBudgetMiB * 1024 * 1024
   const budgets = {
     toolOutputBytes: TOOL_OUTPUT_BYTES,
     imageTriggerBytes,
-    imageTargetBytes: Math.floor(imageTriggerBytes * 0.6),
+    imageTargetBytes: Math.min(15 * 1024 * 1024, Math.floor((imageTriggerBytes * 15) / 32)),
     ...resources,
   }
   if (
@@ -61,20 +60,22 @@ export function createPolicy(
   return {
     contextWindow,
     maxTokens,
-    inputBudget,
-    threshold: Math.min(
-      inputBudget,
-      contextWindow - Math.max(Math.floor(contextWindow * 0.15), contextWindow >= 32000 ? 16000 : 0)
-    ),
+    usableContextWindow: Math.floor(contextWindow * 0.95),
+    autoCompactTokenLimit: Math.floor(contextWindow * 0.9),
     ...budgets,
   }
 }
 
+/** Output is a ceiling, not a fixed reservation deducted from every input window. */
+export function requestOutputLimit(policy: ContextPolicy, estimatedInputTokens: number) {
+  const remaining = policy.usableContextWindow - Math.ceil(estimatedInputTokens)
+  if (!Number.isFinite(remaining) || remaining < 1) throw new AiError('context_budget')
+  return Math.min(policy.maxTokens, remaining)
+}
+
 export function createAiPolicy(settings: AiPreferences) {
-  const imageTriggerBytes = settings.imageBudgetMiB * 1024 * 1024
   return createPolicy(settings.contextWindow, settings.maxTokens, {
-    imageTriggerBytes,
-    imageTargetBytes: Math.floor(imageTriggerBytes * 0.6),
+    imageTriggerBytes: settings.imageBudgetMiB * 1024 * 1024,
   })
 }
 
@@ -95,7 +96,16 @@ export async function estimateToolTokens(tools: ToolSet) {
   return declarations.length ? estimateText(JSON.stringify(declarations)) : 0
 }
 
-export function tokens(messages: readonly ModelMessage[], toolTokens = 0) {
+/** Dimension-aware fallback, not a provider billing formula. Actual input usage calibrates it. */
+export function estimateImageTokens(width: number, height: number) {
+  return Math.ceil(width / 32) * Math.ceil(height / 32)
+}
+
+export function tokens(
+  messages: readonly ModelMessage[],
+  toolTokens = 0,
+  records?: ConversationRecords
+) {
   return (
     toolTokens +
     messages.reduce((sum, message) => {
@@ -106,10 +116,11 @@ export function tokens(messages: readonly ModelMessage[], toolTokens = 0) {
         return (
           sum +
           12 +
-          message.content.reduce(
-            (cost, part) => cost + (part.type === 'text' ? estimateText(part.text) : 2048),
-            0
-          )
+          message.content.reduce((cost, part) => {
+            if (part.type === 'text') return cost + estimateText(part.text)
+            const asset = part.type === 'file' && records ? imageAsset(part, records) : undefined
+            return cost + (asset ? estimateImageTokens(asset.width, asset.height) : 2048)
+          }, 0)
         )
       }
       return sum + 12 + estimateText(JSON.stringify(message))
@@ -128,17 +139,7 @@ export function projectSource(
     if (message.role === 'user')
       return {
         role: 'user',
-        content:
-          messageText(message) +
-          (message.references?.length
-            ? `\n[引用资料] ${JSON.stringify(
-                message.references.map((ref) => {
-                  const a = records.artifacts.find((a) => a.ref === ref)
-                  if (!a) throw new AiError('storage')
-                  return describeArtifact(a)
-                })
-              )}`
-            : ''),
+        content: messageText(message),
       }
     const calls = message.toolIds.map((toolId) => records.tools.find((tool) => tool.id === toolId)!)
     if (calls.some((call) => !call)) throw new AiError('storage')
@@ -194,11 +195,15 @@ export function projectSource(
 
 export interface ContextView {
   messages: ModelMessage[]
+  /** Complete assistant/tool/image boundaries in the shared projection. */
+  exchanges: { sequence: number; start: number; end: number }[]
   estimatedTokens: number
   localTokens: number
   images: number
   compacted: boolean
   hostContext?: HostContextRecord
+  /** Identifies the stable request projection; appended images do not change it. */
+  usageKey: string
 }
 export interface UsageAnchor {
   key: string
@@ -206,22 +211,20 @@ export interface UsageAnchor {
   actual: number
 }
 
-function imageContent(asset: ImageReference, records: ConversationRecords) {
-  const a = records.artifacts.find((a) => a.asset?.id === asset.id)
-  if (!a) throw new AiError('storage', 'Image has no artifact reference')
+function imageContent(asset: ImageReference) {
   return [
+    { type: 'text' as const, text: `图片 ${asset.id}；可用 api.showImage(imageId) 取回原图。` },
     {
-      type: 'text' as const,
-      text: `图片 ${a.ref} · 场景版本 ${a.revision}；可用 inspect 取回原图。`,
+      type: 'file' as const,
+      mediaType: asset.mediaType ?? 'image/png',
+      data: `momo-asset:${asset.id}`,
     },
-    { type: 'file' as const, mediaType: 'image/png', data: `momo-asset:${asset.id}` },
   ]
 }
-
 function imageAsset(part: FilePart, records: ConversationRecords) {
   const id = String(part.data).replace(/^momo-asset:/, '')
-  const asset = records.artifacts.find((a) => a.asset?.id === id)?.asset
-  if (!asset) throw new AiError('storage', 'Image has no artifact reference')
+  const asset = records.tools.flatMap((t) => t.assets).find((asset) => asset.id === id)
+  if (!asset) throw new AiError('storage', 'Image metadata is missing')
   return asset
 }
 
@@ -251,15 +254,19 @@ function boundImages(
       ...message,
       content: message.content.map((part) => {
         if (part.type !== 'file' || index++ >= cut) return part
-        const ref = records.artifacts.find((a) => a.asset?.id === imageAsset(part, records).id)!.ref
+        const ref = imageAsset(part, records).id
         return {
           type: 'text' as const,
-          text: `[图片 ${ref} 未在此处附上，可用 inspect ${ref} 取回。因请求图片字节预算省略。]`,
+          text: `[图片 ${ref} 因体积预算省略；api.showImage("${ref}") 可重新查看。]`,
         }
       }),
     }
   })
-  return { messages: selected, images: images.length - cut }
+  return {
+    messages: selected,
+    images: images.length - cut,
+    omitted: images.slice(0, cut).map((asset) => asset.id),
+  }
 }
 
 export function assembleContext(input: {
@@ -275,12 +282,14 @@ export function assembleContext(input: {
   const { records, connection, policy } = input
   const through = records.checkpoint?.throughSequence ?? -1
   const projected: ModelMessage[] = [{ role: 'system', content: input.system }]
+  const exchanges: ContextView['exchanges'] = []
   const source = (id: string) => projectSource(id, records, connection, policy.toolOutputBytes)
   for (const message of records.messages)
     if (message.role === 'user' && message.sequence <= through) projected.push(source(message.id))
   if (records.checkpoint) projected.push(source(records.checkpoint.id))
   for (const message of records.messages) {
     if (message.sequence <= through) continue
+    const start = projected.length
     // Even an interrupted reply may have consumed these facts. Replay them in their original position.
     if (message.hostContext) projected.push({ role: 'user', content: message.hostContext.text })
     if (message.state !== 'complete') continue
@@ -296,9 +305,10 @@ export function assembleContext(input: {
     if (attachments.length) {
       projected.push({
         role: 'user',
-        content: attachments.flatMap((asset) => imageContent(asset, records)),
+        content: attachments.flatMap((asset) => imageContent(asset)),
       })
     }
+    exchanges.push({ sequence: message.sequence, start, end: projected.length })
   }
   const bounded = boundImages(projected, records, policy)
   const messages = bounded.messages
@@ -323,119 +333,87 @@ export function assembleContext(input: {
       })
     : undefined
   if (hostContext) messages.push({ role: 'user', content: hostContext.text })
-  const localTokens = tokens(messages, input.toolTokens)
+  const localTokens = tokens(messages, input.toolTokens, records)
   const view = {
     messages,
+    exchanges,
     localTokens,
     estimatedTokens: localTokens,
     images: bounded.images,
     compacted: Boolean(records.checkpoint),
     hostContext,
+    // Only prefix rewrites invalidate measured usage. New turns/images are deltas.
+    usageKey: JSON.stringify([
+      modelSettingsKey(connection),
+      shouldReplayReasoning(connection),
+      connection.reasoning,
+      connection.providerOptions,
+      connection.requestBody,
+      records.checkpoint?.id,
+      input.system,
+      input.toolTokens,
+      policy.toolOutputBytes,
+      bounded.omitted,
+      '32px-patches',
+    ]),
   }
-  const key = anchorKey(records, connection, view)
-  if (input.anchor?.key === key)
-    view.estimatedTokens = Math.max(
-      localTokens,
-      input.anchor.actual + localTokens - input.anchor.local
-    )
+  if (input.anchor?.key === view.usageKey)
+    view.estimatedTokens = Math.max(0, input.anchor.actual + localTokens - input.anchor.local)
   return view
 }
 
-export function anchorKey(
-  records: ConversationRecords,
-  connection: AiConnection,
+export function planSummary(input: {
   view: ContextView
-) {
-  const ids = view.messages.flatMap((message) =>
-    message.role === 'user' && Array.isArray(message.content)
-      ? message.content.flatMap((part) => (part.type === 'file' ? [String(part.data)] : []))
-      : []
-  )
-  return `${modelSettingsKey(connection)}:${shouldReplayReasoning(connection)}:${records.checkpoint?.id}:${ids.join(',')}`
-}
-
-export function planSummary(
-  records: ConversationRecords,
-  policy: ContextPolicy,
-  force = false,
-  includeImages = true,
-  connection: AiConnection | null = null
-): { messages: ModelMessage[]; throughSequence: number } {
-  const previous = records.checkpoint?.throughSequence ?? -1
-  const completed = records.messages.filter(
-    (m) => m.sequence > previous && m.role === 'assistant' && m.state === 'complete'
-  )
-  if (!completed.length) throw new AiError('context_budget')
-  const exchange = (m: (typeof completed)[number], outputBytes: number): ModelMessage[] => {
-    const tools = m.toolIds.map((id) => records.tools.find((t) => t.id === id)!)
-    if (tools.some((t) => !t)) throw new AiError('storage')
-    const assets = tools.flatMap((t) => t.assets)
-    return [
-      ...(m.hostContext ? [{ role: 'user' as const, content: m.hostContext.text }] : []),
-      projectSource(m.id, records, connection, outputBytes),
-      ...tools.map((t) => projectSource(t.id, records, connection, outputBytes)),
-      ...(assets.length
-        ? [
-            {
-              role: 'user' as const,
-              content: assets.flatMap((a) =>
-                includeImages
-                  ? imageContent(a, records)
-                  : [
-                      {
-                        type: 'text' as const,
-                        text: `已保存图片 ${records.artifacts.find((r) => r.asset?.id === a.id)?.ref}；因容量限制未附入本次摘要请求。`,
-                      },
-                    ]
-              ),
-            },
-          ]
-        : []),
-    ]
-  }
-  // Keep recent complete exchanges by token budget, not by a fixed number of tool calls.
-  const retain = Math.floor(policy.inputBudget * (force ? 0.08 : 0.16))
-  let split = completed.length,
+  records: ConversationRecords
+  policy: ContextPolicy
+  toolTokens: number
+  force?: boolean
+  includeImages?: boolean
+}): { messages: ModelMessage[]; throughSequence: number; estimatedTokens: number } {
+  const { view, records, policy, toolTokens, force = false, includeImages = true } = input
+  const { exchanges } = view
+  if (!exchanges.length) throw new AiError('context_budget')
+  const retain = Math.floor(policy.autoCompactTokenLimit * (force ? 0.08 : 0.16))
+  let split = exchanges.length,
     kept = 0
-  for (let i = completed.length - 1; i >= 1; i--) {
-    const cost = tokens(exchange(completed[i]!, policy.toolOutputBytes))
-    if (kept && kept + cost > retain) break
+  for (let i = exchanges.length - 1; i >= 1; i--) {
+    const exchange = exchanges[i]!
+    const cost = tokens(view.messages.slice(exchange.start, exchange.end), 0, records)
+    if (kept + cost > retain) break
     kept += cost
     split = i
   }
-  const candidates = completed.slice(0, split)
-  const requirements = records.messages
-    .filter((m) => m.role === 'user')
-    .map((m) => ({
-      recordId: m.id,
-      text: messageText(m),
-      references: m.references?.map((ref) =>
-        describeArtifact(records.artifacts.find((a) => a.ref === ref)!)
-      ),
-    }))
-  const prefix: ModelMessage[] = [
-    { role: 'system', content: SUMMARY_PROMPT },
-    {
-      role: 'user',
-      content: JSON.stringify({
-        originalUserRequirements: requirements,
-        previousCheckpoint: records.checkpoint?.text,
-      }),
-    },
-  ]
-  let outputBytes = policy.toolOutputBytes
-  let messages = [...prefix, ...candidates.flatMap((m) => exchange(m, outputBytes))]
-  // Only a real capacity shortfall permits a smaller summary transcript; originals stay retrievable.
-  while (tokens(messages) > policy.inputBudget && outputBytes > 1024) {
-    outputBytes = Math.max(1024, Math.floor(outputBytes / 2))
-    messages = [...prefix, ...candidates.flatMap((m) => exchange(m, outputBytes))]
+  // Derive from the exact chat prefix. Never reconstruct a parallel summary transcript.
+  while (split > 0) {
+    const boundary = exchanges[split - 1]!
+    let prefix = view.messages.slice(0, boundary.end)
+    if (!includeImages)
+      prefix = prefix.map((message): ModelMessage => {
+        if (message.role !== 'user' || !Array.isArray(message.content)) return message
+        return {
+          ...message,
+          content: message.content.map((part) =>
+            part.type === 'file'
+              ? {
+                  type: 'text',
+                  text: `图片 ${imageAsset(part, records).id} 已保存；本次容量恢复摘要未附原图。`,
+                }
+              : part
+          ),
+        }
+      })
+    const messages: ModelMessage[] = [...prefix, { role: 'user', content: SUMMARY_PROMPT }]
+    const local = tokens(messages, toolTokens, records)
+    // Keep the measured correction for an unchanged prefix; a no-image recovery uses local estimates.
+    const estimatedTokens = includeImages
+      ? Math.max(0, view.estimatedTokens + local - view.localTokens)
+      : local
+    if (estimatedTokens < policy.usableContextWindow)
+      return { messages, throughSequence: boundary.sequence, estimatedTokens }
+    split--
   }
-  messages = boundImages(messages, records, policy).messages
-  if (tokens(messages) > policy.inputBudget) {
-    if (includeImages) return planSummary(records, policy, force, false, connection)
-    throw new AiError('context_budget')
-  }
-  return { messages, throughSequence: candidates[candidates.length - 1]!.sequence }
+  if (includeImages) return planSummary({ ...input, includeImages: false })
+  throw new AiError('context_budget')
 }
 
 export function requireUserBudget(
@@ -449,7 +427,7 @@ export function requireUserBudget(
       ...records.messages
         .filter((m) => m.role === 'user')
         .map((m): ModelMessage => ({ role: 'user', content: messageText(m) })),
-    ]) > policy.inputBudget
+    ]) >= policy.usableContextWindow
   )
     throw new AiError('context_budget')
 }

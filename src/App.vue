@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { useEditorStore } from './stores/editorStore'
 import { useGameDataStore } from './stores/gameDataStore'
@@ -24,9 +24,16 @@ import { useCloudSchemeSync } from './composables/useCloudSchemeSync'
 import { useUIStore } from './stores/uiStore'
 import { useDesktopStore } from './stores/desktopStore'
 import { useCommandStore } from './stores/commandStore'
-import { removeLegacyWatchHistoryDatabase } from './lib/legacyIdbCleanup'
+import { removeLegacyDatabases } from './lib/legacyIdbCleanup'
 import { useNotification } from './composables/useNotification'
 import { useI18n } from './composables/useI18n'
+
+import {
+  createAnalysisCaptureBridge,
+  analysisCaptureBridgeKey,
+} from './lib/sceneAnalysis/captureBridge'
+import { useAiChat } from './composables/ai/useAiChat'
+import { aiChatKey } from './composables/ai/chatContext'
 
 const notification = useNotification()
 const { t } = useI18n()
@@ -51,6 +58,15 @@ const DocsViewer = defineAsyncView(
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
+const captureBridge = createAnalysisCaptureBridge()
+provide(analysisCaptureBridgeKey, captureBridge)
+provide(
+  aiChatKey,
+  useAiChat({
+    enabled: computed(() => settingsStore.canUseExperimentalFeatures),
+    getCaptureProvider: () => captureBridge.provider.value,
+  })
+)
 const renderQualityReady = ref(true)
 let renderQualityChange = 0
 watch(
@@ -190,8 +206,8 @@ async function importStartupSchemeCode(schemeCode: string | null) {
 // 初始化
 onMounted(async () => {
   desktopStore.init()
-  // 旧版「监控导入历史」的 IndexedDB 已废弃，历史改为写入 BuildingMomo/history 目录
-  void removeLegacyWatchHistoryDatabase()
+  // 清理废弃的监控导入历史库和 AI 开发期数据库。
+  void removeLegacyDatabases()
 
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   handleFullscreenChange()

@@ -4,19 +4,14 @@ export const enLocale = {
     codeCopied: 'Copied',
     codeCopyFailed: 'Copy failed. Select the code and copy it manually.',
     markdownImageBlocked: 'External image not loaded',
-    referenceCurrent: 'Current revision',
-    referenceHistorical: 'Historical evidence; sets retain exact members',
-    sourceCode: 'JS that produced this result',
-    selectReference: 'Select these members in the scene',
-    referenceSelectionBlocked:
-      'Members are deleted, hidden, locked or excluded by the selection filter. Selection is unchanged.',
-    referenceKinds: {
-      set: 'Exact furniture set · InstanceIDs',
-      report: 'Computation report',
-      table: 'Result table',
-      plan: 'Organization plan',
-      image: 'Image evidence',
-    },
+    sourceCode: 'Script Code',
+    viewDetails: 'View details',
+    hideDetails: 'Hide details',
+    toolOutput: 'Output',
+    toolExecuting: 'Executing action…',
+    toolExecuted: 'Action completed',
+    toolFailed: 'Action failed',
+    toolCancelled: 'Action cancelled',
     loadOlder: 'Load earlier messages',
     deleteChat: 'Delete conversation',
     deleteHint:
@@ -34,10 +29,14 @@ export const enLocale = {
     contextWindow: 'Total model context window (tokens)',
     contextWindowHint:
       'Enter the actual total window, including input and output, not just the input limit.',
-    contextBudget: 'Input budget after reserving output: {budget} tokens.',
+    contextUsable: 'Usable window: {tokens} tokens (95%)',
+    contextCompactAt: 'Auto-compact at: {tokens} tokens (90%)',
+    contextConfiguredOutput: 'Configured output limit: {tokens} tokens',
+    contextRequestOutput: 'Latest request output limit: {tokens} tokens',
+    contextActualInput: 'Latest chat request input: {tokens} tokens',
     imageBudget: 'Request image budget (MiB)',
     imageBudgetHint:
-      'Set the encoded image payload budget for your endpoint. Older images become retrievable references only when this budget is exceeded, not after a fixed image count. Default: 25 MiB, reduced to about 60% after triggering.',
+      'Set the encoded image payload budget for your endpoint. Older images become retrievable references only when this budget is exceeded, not after a fixed image count. Default: trigger at 32 MiB and reduce to 15 MiB in one batch. Lower custom budgets use a proportional target.',
     replayReasoning:
       'Replay reasoning_content for the same connection and model (only when required by the compatible service)',
     streamUsage: 'Request streaming usage (stream_options.include_usage)',
@@ -106,13 +105,13 @@ export const enLocale = {
     resume: 'Continue / retry unfinished request',
     recovered:
       'Progress retained. Continuing requests the unfinished round again and may incur charges. Edits are never replayed automatically.',
-    contextUsage: 'About {tokens} tokens this request · limit {budget} · {images} images attached',
-    contextActual: '{tokens} input tokens this request · limit {budget} · {images} images attached',
+    contextUsage:
+      'About {tokens} tokens in context · total window {budget} · {images} images attached',
     compacted:
       'Earlier analysis has a task summary. Original user instructions remain in context; full records are retrievable.',
     maxTokens: 'Output limit (tokens)',
     maxTokensHint:
-      "Total output budget per request, usually including both reasoning and visible text for reasoning models. Do not exceed the model's output limit or the endpoint will reject the request.",
+      "Per-request output ceiling, usually including reasoning and visible text. Each request uses the smaller of this setting and the remaining usable context. Set it within the model's supported output limit.",
     storage: {
       saving: 'Saving locally…',
       saved: 'Saved locally; reload can restore this chat',
@@ -120,6 +119,8 @@ export const enLocale = {
         'Local save failed, possibly due to storage quota. Export the log first. Scene edits require a successful checkpoint.',
     },
     contextWindowTitle: 'Context Window',
+    contextUsedSummary: '{percent}% · {used} / {total} context used',
+    contextUsedSummaryWithImages: '{percent}% · {used} / {total} context used · {images} imgs',
     contextWindowUsed: '{percent}% used',
     contextWindowTokens: '{used} / {total} tokens',
     contextWindowImages: '{images} images attached',
@@ -138,8 +139,6 @@ export const enLocale = {
       'The key is saved in this browser and restored after reloading, not in schemes or debug logs. Leave it empty for keyless compatible services.',
     save: 'Save',
     newChat: 'New conversation',
-    referenceUnavailable:
-      'These members cannot currently be read; they may be deleted, hidden or locked.',
     welcome: 'How can I help you?',
     intro:
       'Select furniture in the scene to analyze spatial structure, organize into sets and groups, or ask questions.',
@@ -147,7 +146,7 @@ export const enLocale = {
       'Questions, tool code, requested results and images are sent to your configured API. Computation runs in a local Worker. Organization edits take effect directly and support Undo.',
     example:
       'Analyze the selected furniture and organize them into editable sets and groups by architectural structure.',
-    placeholder: 'Analyze this selection, or discuss existing evidence…',
+    placeholder: 'Describe a task, or continue your conversation…',
     inputHint: 'Enter to send · Shift+Enter for a new line',
     conversation: 'AI conversation',
     you: 'You',
@@ -170,6 +169,13 @@ export const enLocale = {
     },
     latest: 'Latest',
     openImage: 'Open full image',
+    previewTitle: 'Image Preview',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    resetZoom: 'Fit to window',
+    fit: 'Fit',
+    actualSize: 'Actual size (1:1)',
+    downloadImage: 'Download image',
     organized:
       'Organized {count} items into {groups} new groups and {collections} new collections. Use Undo to restore.',
     trace: {
@@ -185,10 +191,7 @@ export const enLocale = {
       failed: 'Log download failed. Try again or exclude images.',
     },
     tools: {
-      inspect: 'Inspect reference',
-      compute: 'Compute with local JS',
-      render: 'Render comparison',
-      apply: 'Organize collections and groups',
+      execute_js: 'Execute action',
     },
     errors: {
       models_auth:
@@ -206,7 +209,6 @@ export const enLocale = {
         'The endpoint rejected reasoning parameters. Check model support and the advanced providerOptions or compatible API extensions.',
       compute: 'Computation failed.',
       compute_timeout: 'Computation exceeded its time limit.',
-      stale_reference: 'Refresh this reference before editing.',
       output_limit:
         'The provider rejected the output limit. Adjust the output limit or advanced request settings.',
       busy: 'Stop the current task first.',
@@ -215,7 +217,7 @@ export const enLocale = {
       context_budget:
         'Instructions or tool output exceed the context budget. No request was sent. Full records are retained; narrow the task or start a new conversation.',
       context_overflow:
-        'The request exceeds the endpoint context window even after summarizing. Check the total window and output reservation, narrow the scope, or start a new conversation.',
+        'The request exceeds the endpoint context window even after summarizing. Check the model’s actual total window, narrow the scope, or start a new conversation.',
       storage:
         'Local checkpoint failed. Further operations were stopped to preserve recoverability. Export the log and check browser storage.',
       uncertain_edit:
@@ -224,7 +226,7 @@ export const enLocale = {
         'Check connection type, API URL, model ID and JSON settings. Native providers require a key; compatible services may be keyless.',
       scope: 'Target members cannot be read. Check for deleted, hidden or locked items.',
       stale:
-        'Scene or rendering conditions changed; this run stopped. References retain exact members. Continue to read current data and update the analysis on demand.',
+        'The furniture snapshot changed. Refresh the saved members and review the analysis before editing.',
       network:
         'The browser could not read the API response, or the connection was interrupted. Check the resolved endpoint, network, HTTPS and provider CORS permission. CORS can hide the actual HTTP status; check the console.',
       not_found: 'HTTP 404. Check the API URL, selected protocol and model ID.',

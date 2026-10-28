@@ -56,7 +56,7 @@ export interface AiSettings extends AiPreferences {
 export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   contextWindow: 256_000,
   maxTokens: 128_000,
-  imageBudgetMiB: 25,
+  imageBudgetMiB: 32,
 }
 
 export function getModelSettings(

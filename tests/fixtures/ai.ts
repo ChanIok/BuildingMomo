@@ -13,17 +13,28 @@ export async function workbenchFixture() {
   const repository = createConversationRepository(
     createStore(`workbench-${crypto.randomUUID()}`, 'records')
   )
-  const conversation = await repository.create('scheme-1', 'House')
-  const records: ConversationRecords = { conversation, messages: [], tools: [], artifacts: [] }
+  const conversation = await repository.create('House')
+  const records: ConversationRecords = {
+    conversation,
+    messages: [],
+    tools: [],
+    variables: {
+      id: `vars:${conversation.id}`,
+      conversationId: conversation.id,
+      values: {},
+      references: [],
+    },
+  }
   let version = 'v1'
   const scene: EditorHost = {
-    current: () => ({ version, summary: { schemeId: 'scheme-1', title: 'House' } }),
-    selection: () => ({ schemeId: 'scheme-1', revision: version, members: ['a', 'b'] }),
-    assertCurrent(expected) {
-      if (expected !== version) throw new AiError('stale')
-    },
-    snapshot: vi.fn((members) => {
+    context: () => ({ schemeId: 'scheme-1', title: 'House' }),
+    schemes: () => [{ id: 'scheme-1', name: 'House' }],
+    revision: () => version,
+    selection: vi.fn(() => ['a', 'b']),
+    structure: () => ({ groups: [], collections: [] }),
+    snapshot: vi.fn((_id, members) => {
       const s = analysisSnapshot()
+      members ??= s.items.map((i) => i.id)
       if (members.some((id) => !s.items.some((i) => i.id === id))) throw new AiError('scope')
       return { ...s, id: version, items: s.items.filter((i) => members.includes(i.id)) }
     }),
@@ -38,7 +49,7 @@ export async function workbenchFixture() {
       return {
         ok: true,
         data: { regroupedItemCount: 2, groups: [{ groupId: 1 }], collections: [] },
-        edit: { transactionId: 'tx', postcondition: 'groups' },
+        edit: { schemeId: 'scheme-1', transactionId: 'tx', postcondition: 'groups' },
       }
     }),
     verify: () => true,
@@ -52,11 +63,6 @@ export async function workbenchFixture() {
     },
   }
 }
-export const applyCommand = {
-  collections: [],
-  groups: [{ id: 'roof', name: 'Roof', collectionId: null, ref: 'R1' }],
-}
-
 export interface ScriptedReply {
   text: string
   toolCalls: ToolCallPart[]

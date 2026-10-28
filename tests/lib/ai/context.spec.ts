@@ -4,9 +4,12 @@ import {
   assembleContext,
   createPolicy,
   estimateToolTokens,
+  estimateImageTokens,
+  createAiPolicy,
   planSummary,
   projectSource,
   requireUserBudget,
+  requestOutputLimit,
   tokens,
 } from '@/lib/ai/context'
 import { estimateText, toolModelResult, workbenchTools } from '@/lib/ai/tools'
@@ -55,18 +58,17 @@ function records(): ConversationRecords {
       conversationId: 'c',
       messageId: `a${i}`,
       providerCallId: `call${i}`,
-      name: 'inspect',
+      name: 'execute_js',
       input: {},
-      effect: 'read',
       state: 'succeeded',
       assets: [],
+      edits: [],
       result: { ok: true, data: '家'.repeat(2048) },
     })
   }
   return {
     conversation: {
       id: 'c',
-      schemeId: 's',
       title: 'House',
       createdAt: 0,
       updatedAt: 0,
@@ -74,7 +76,7 @@ function records(): ConversationRecords {
     },
     messages,
     tools,
-    artifacts: [],
+    variables: { id: 'vars:c', conversationId: 'c', values: {}, references: [] },
   }
 }
 const assemble = (data: ConversationRecords) =>
@@ -207,7 +209,20 @@ it('includes DeepSeek reasoning in chat and summary but never replays it to anot
     messageText(projectSource('a1', data, deepseek, policy.toolOutputBytes), 'reasoning')
   ).toBe('Saved reasoning')
   expect(
-    planSummary(data, policy, false, true, deepseek).messages.some(
+    planSummary({
+      view: assembleContext({
+        records: data,
+        connection: deepseek,
+        policy,
+        system: 'stable',
+        toolTokens: 0,
+        scene: {},
+        outcomes: [],
+      }),
+      records: data,
+      policy,
+      toolTokens: 0,
+    }).messages.some(
       (m) => m.role === 'assistant' && messageText(m, 'reasoning') === 'Saved reasoning'
     )
   ).toBe(true)
@@ -253,7 +268,7 @@ it('preserves SDK continuation metadata only for its original endpoint and model
 
 it('retains original user exclusions through a semantic checkpoint, preserving complete exchanges', () => {
   const data = records(),
-    plan = planSummary(data, policy)
+    plan = planSummary({ view: assemble(data), records: data, policy, toolTokens: 0 })
   expect(JSON.stringify(plan.messages)).toContain('never change the garden')
   expect(plan.throughSequence).toBe(6)
   data.checkpoint = {
@@ -282,23 +297,14 @@ it('bounds oversized tool projections to recoverable references, without changin
   const original = JSON.stringify(tool.result)
   const projected = JSON.parse(toolModelResult(tool, 200))
   expect(projected.recordId).toBe(tool.id)
-  expect(projected.instruction).toContain('inspect')
+  expect(projected.instruction).toContain('api.history')
   expect(JSON.stringify(tool.result)).toBe(original)
 })
 
 it('keeps earlier images in place when explicitly reading the same image again', () => {
   const data = records()
   const asset = { id: 'same-image', width: 100, height: 100, bytes: 100 }
-  data.artifacts.push({
-    id: 'artifact:c:R1',
-    ref: 'R1',
-    conversationId: 'c',
-    schemeId: 's',
-    kind: 'image',
-    label: 'Same image',
-    revision: 'v1',
-    asset,
-  })
+
   data.tools.forEach((tool) => {
     tool.result = { ok: true }
     tool.assets = []
@@ -307,8 +313,13 @@ it('keeps earlier images in place when explicitly reading the same image again',
   const first = assemble(data)
   data.tools[6]!.assets = [asset]
   const view = assemble(data)
-  // Only the explicit reread adds an attachment; the entire preceding transcript stays byte-for-byte stable.
-  expect(view.messages.slice(0, first.messages.length - 1)).toEqual(first.messages.slice(0, -1))
+  // The reread's own tool result now gains its receipt; earlier history is unchanged.
+  const beforeReread = first.messages.findIndex(
+    (m) =>
+      m.role === 'tool' &&
+      m.content.some((p) => p.type === 'tool-result' && p.toolCallId === 'call7')
+  )
+  expect(view.messages.slice(0, beforeReread)).toEqual(first.messages.slice(0, beforeReread))
   const images = view.messages.flatMap((m) =>
     m.role === 'user' && Array.isArray(m.content) ? m.content.filter((p) => p.type === 'file') : []
   )
@@ -327,13 +338,44 @@ it('bounds even oversized errors, while leaving the full diagnostic record intac
   expect(tool.result.error?.message.length).toBeGreaterThan(20000)
 })
 
-it('uses model capacity instead of a hardcoded 24k threshold', () => {
-  const policy = createPolicy()
-  expect(policy.threshold).toBeLessThanOrEqual(policy.inputBudget)
-  expect(createPolicy(policy.contextWindow * 2, policy.maxTokens).threshold).toBeGreaterThan(
-    policy.threshold
-  )
+it('uses independent Codex-style usable and compaction limits, regardless of output ceiling', () => {
+  for (const maxTokens of [1, 8000, 128000, 256000]) {
+    expect(createPolicy(256000, maxTokens)).toMatchObject({
+      contextWindow: 256000,
+      maxTokens,
+      usableContextWindow: 243200,
+      autoCompactTokenLimit: 230400,
+    })
+  }
+  expect(createPolicy(272000, 128000)).toMatchObject({
+    usableContextWindow: 258400,
+    autoCompactTokenLimit: 244800,
+  })
+  expect(createPolicy(512000, 128000).autoCompactTokenLimit).toBe(460800)
 })
+it.each([
+  [80000, 128000],
+  [180000, 63200],
+  [220000, 23200],
+  [243199, 1],
+])(
+  'fits the output ceiling into the remaining usable window at %s input tokens',
+  (input, expected) => {
+    expect(requestOutputLimit(createPolicy(), input)).toBe(expected)
+  }
+)
+it('rejects exhausted input space and invalid independent capacity settings', () => {
+  for (const input of [243200, 243201, NaN, Infinity])
+    expect(() => requestOutputLimit(createPolicy(), input)).toThrowError(/context_budget/)
+  for (const [window, output] of [
+    [0, 1],
+    [4999, 100],
+    [256000, 0],
+    [256000, NaN],
+  ])
+    expect(() => createPolicy(window, output)).toThrowError(/settings/)
+})
+
 function addImages(data: ConversationRecords, count: number, bytes: number) {
   data.tools.forEach((t) => {
     t.result = { ok: true }
@@ -342,19 +384,9 @@ function addImages(data: ConversationRecords, count: number, bytes: number) {
   for (let i = 0; i < count; i++) {
     const asset = { id: 'image' + i, width: 1440, height: 1392, bytes }
     data.tools[i]!.assets = [asset]
-    data.artifacts.push({
-      id: 'artifact' + i,
-      ref: 'R' + (i + 1),
-      conversationId: 'c',
-      schemeId: 's',
-      kind: 'image',
-      label: 'Image',
-      revision: 'unchanged',
-      asset,
-    })
   }
 }
-it('offloads oldest pictures only when the encoded-byte trigger is crossed, retaining inspect references', () => {
+it('offloads oldest pictures only when the encoded-byte trigger is crossed, retaining image IDs', () => {
   const data = records()
   addImages(data, 4, 3 * 1024 * 1024)
   const p = createPolicy(128000, 8000, {
@@ -371,7 +403,7 @@ it('offloads oldest pictures only when the encoded-byte trigger is crossed, reta
     outcomes: [],
   })
   expect(view.images).toBe(2)
-  expect(JSON.stringify(view.messages)).toContain('因请求图片字节预算省略')
+  expect(JSON.stringify(view.messages)).toContain('因体积预算省略')
   expect(data.tools[0]!.assets).toHaveLength(1)
 })
 it('holds the removed image prefix between budget cuts and counts rereads as real payloads', () => {
@@ -393,12 +425,11 @@ it('holds the removed image prefix between budget cuts and counts rereads as rea
   data.tools[4]!.assets = [data.tools[0]!.assets[0]!]
   const reread = assembleContext(input)
   expect(reread.images).toBe(3)
-  const beforeReread =
-    first.messages.findIndex(
-      (message) =>
-        message.role === 'tool' &&
-        message.content.some((part) => part.type === 'tool-result' && part.toolCallId === 'call5')
-    ) + 1
+  const beforeReread = first.messages.findIndex(
+    (message) =>
+      message.role === 'tool' &&
+      message.content.some((part) => part.type === 'tool-result' && part.toolCallId === 'call5')
+  )
   expect(reread.messages.slice(0, beforeReread)).toEqual(first.messages.slice(0, beforeReread))
   data.tools[5]!.assets = [data.tools[1]!.assets[0]!]
   const nextCut = assembleContext(input)
@@ -416,15 +447,284 @@ it('gives the summarizer visual evidence, producer code and established findings
   const data = records()
   addImages(data, 3, 1000)
   data.messages[1]!.content = 'The wall and its skirt form one editing unit.'
-  data.tools[0]!.name = 'compute'
-  data.tools[0]!.input = { code: "publish.set('Wall',input.items)" }
-  const plan = planSummary(data, createPolicy(), true)
+  data.tools[0]!.name = 'execute_js'
+  data.tools[0]!.input = { code: 'vars.selected=await api.selection()' }
+  const plan = planSummary({
+    view: assemble(data),
+    records: data,
+    policy: createPolicy(),
+    toolTokens: 0,
+    force: true,
+  })
   expect(JSON.stringify(plan.messages)).toContain('The wall and its skirt')
-  expect(JSON.stringify(plan.messages)).toContain('publish.set')
+  expect(JSON.stringify(plan.messages)).toContain('vars.selected')
   expect(
     plan.messages.some(
       (m) =>
         m.role === 'user' && Array.isArray(m.content) && m.content.some((p) => p.type === 'file')
     )
   ).toBe(true)
+})
+
+it('calibrates from actual input usage while estimating only new text and images', () => {
+  const data = records()
+  const input = {
+    records: data,
+    connection,
+    policy: createPolicy(),
+    system: 'stable',
+    toolTokens: 123,
+    scene: {},
+    outcomes: [],
+  }
+  const first = assembleContext(input)
+  const anchor = { key: first.usageKey, local: first.localTokens, actual: 1000 }
+  expect(assembleContext({ ...input, anchor }).estimatedTokens).toBe(1000)
+  // Append a new exchange, rather than changing the old request prefix.
+  data.messages.push({
+    ...data.messages[7]!,
+    id: 'new',
+    sequence: 8,
+    toolIds: ['new-tool'],
+    hostContext: first.hostContext,
+  })
+  data.tools.push({
+    ...data.tools[0]!,
+    id: 'new-tool',
+    messageId: 'new',
+    providerCallId: 'new-call',
+    result: { ok: true },
+    assets: [{ id: 'new-image', width: 2700, height: 1864, bytes: 1000 }],
+  })
+  const next = assembleContext({ ...input, anchor })
+  expect(next.usageKey).toBe(first.usageKey)
+  expect(next.images).toBe(1)
+  expect(next.estimatedTokens).toBe(1000 + next.localTokens - first.localTokens)
+  expect(next.estimatedTokens).toBeLessThan(next.localTokens)
+  data.messages.push({
+    ...data.messages[0]!,
+    id: 'next-user',
+    sequence: 9,
+    content: 'Look from the other side',
+  })
+  const turn = assembleContext({ ...input, anchor })
+  expect(turn.estimatedTokens).toBe(1000 + turn.localTokens - first.localTokens)
+})
+
+it('resets measured usage when images are replaced or the request definition changes', () => {
+  const data = records()
+  addImages(data, 3, 300)
+  const input = {
+    records: data,
+    connection,
+    policy: createPolicy(128000, 8000, {
+      imageTriggerBytes: 1200,
+      imageTargetBytes: 800,
+    }),
+    system: 'stable',
+    toolTokens: 0,
+    scene: {},
+    outcomes: [],
+  }
+  const first = assembleContext(input)
+  const anchor = { key: first.usageKey, local: first.localTokens, actual: 100 }
+  data.tools[3]!.assets = [{ id: 'cross-trigger', width: 100, height: 100, bytes: 300 }]
+  const cut = assembleContext({ ...input, anchor })
+  expect(cut.usageKey).not.toBe(first.usageKey)
+  expect(cut.estimatedTokens).toBe(cut.localTokens)
+  const cutAnchor = { key: cut.usageKey, local: cut.localTokens, actual: 200 }
+  data.tools[4]!.assets = [{ id: 'after-cut', width: 100, height: 100, bytes: 300 }]
+  expect(assembleContext({ ...input, anchor: cutAnchor }).usageKey).toBe(cut.usageKey)
+  for (const change of [
+    { system: 'new rules' },
+    { toolTokens: 1 },
+    { connection: { ...connection, model: 'other' } },
+    { connection: { ...connection, replayReasoning: true } },
+    { connection: { ...connection, reasoning: 'high' as const } },
+  ]) {
+    const changed = assembleContext({ ...input, ...change, anchor: cutAnchor })
+    expect(changed.estimatedTokens).toBe(changed.localTokens)
+  }
+  data.checkpoint = {
+    id: 'new-checkpoint',
+    conversationId: 'c',
+    throughSequence: 3,
+    requestId: 'summary',
+    text: 'Prior findings',
+  }
+  const compacted = assembleContext({ ...input, anchor: cutAnchor })
+  expect(compacted.estimatedTokens).toBe(compacted.localTokens)
+})
+
+it('keeps full image receipts in tool output and uses only a short omitted-image reference', () => {
+  const data = records()
+  const tool = data.tools[0]!
+  tool.result = { ok: true, data: 'x'.repeat(5000) }
+  tool.assets = [
+    {
+      id: 'oversized-image',
+      width: 2700,
+      height: 1864,
+      bytes: 3000,
+      details: {
+        panels: [{ panel: 1, label: '入口', requested: 200, rendered: 199, missingCount: 1 }],
+      },
+    },
+  ]
+  expect(JSON.parse(toolModelResult(tool, 100))).toMatchObject({
+    truncated: true,
+    images: tool.assets,
+  })
+  const view = assembleContext({
+    records: data,
+    connection,
+    policy: createPolicy(128000, 8000, {
+      imageTriggerBytes: 1200,
+      imageTargetBytes: 800,
+    }),
+    system: 'stable',
+    toolTokens: 0,
+    scene: {},
+    outcomes: [],
+  })
+  expect(view.images).toBe(0)
+  const placeholder = view.messages
+    .flatMap((m) => (m.role === 'user' && Array.isArray(m.content) ? m.content : []))
+    .find((p) => p.type === 'text' && p.text.includes('体积预算省略'))
+  expect(placeholder).toMatchObject({
+    type: 'text',
+    text: expect.stringContaining('api.showImage("oversized-image")'),
+  })
+  expect(JSON.stringify(placeholder)).not.toContain('入口')
+  expect(tool.assets).toHaveLength(1)
+})
+
+it('uses 32/15 MiB hysteresis and preserves the replacement prefix between batch cuts', () => {
+  const data = records()
+  data.messages = [data.messages[0]!]
+  data.tools = []
+  const p = createPolicy()
+  expect(p.imageTriggerBytes).toBe(32 * 1024 * 1024)
+  expect(p.imageTargetBytes).toBe(15 * 1024 * 1024)
+  const input = {
+    records: data,
+    connection,
+    policy: p,
+    system: 'stable',
+    toolTokens: 0,
+    scene: {},
+    outcomes: [],
+  }
+  let stableKey = ''
+  for (let i = 1; i <= 17; i++) {
+    const id = `batch-${i}`
+    data.messages.push({
+      id: `a${i}`,
+      conversationId: 'c',
+      sequence: i,
+      runId: 'r',
+      role: 'assistant',
+      content: 'Rendered',
+      state: 'complete',
+      toolIds: [id],
+    })
+    data.tools.push({
+      id,
+      conversationId: 'c',
+      messageId: `a${i}`,
+      providerCallId: id,
+      name: 'execute_js',
+      input: {},
+      state: 'succeeded',
+      result: { ok: true },
+      edits: [],
+      assets: [{ id: `image-${i}`, width: 1024, height: 1024, bytes: (9 * 1024 * 1024) / 4 }],
+    })
+    const view = assembleContext(input)
+    if (i <= 10) expect(view.images).toBe(i)
+    if (i === 11) {
+      expect(view.images).toBe(5)
+      stableKey = view.usageKey
+    }
+    if (i >= 12 && i <= 16) {
+      expect(view.images).toBe(i - 6)
+      expect(view.usageKey).toBe(stableKey)
+    }
+    if (i === 17) {
+      expect(view.images).toBe(5)
+      expect(view.usageKey).not.toBe(stableKey)
+    }
+  }
+})
+
+it('derives summaries from the exact shared prefix, including prior checkpoints, image cuts and complete calls', () => {
+  const data = records()
+  addImages(data, 7, 300)
+  data.checkpoint = {
+    id: 'cp',
+    conversationId: 'c',
+    text: 'Earlier findings',
+    throughSequence: 2,
+    requestId: 'old',
+  }
+  data.messages.push({
+    ...data.messages[0]!,
+    id: 'later-user',
+    sequence: 8,
+    content: 'Keep the entrance too.',
+  })
+  const p = createPolicy(16000, 4000, { imageTriggerBytes: 1200, imageTargetBytes: 800 })
+  const view = assembleContext({
+    records: data,
+    connection,
+    policy: p,
+    system: 'same-system',
+    toolTokens: 123,
+    scene: {},
+    outcomes: [],
+  })
+  const plan = planSummary({ view, records: data, policy: p, toolTokens: 123 })
+  const boundary = view.exchanges.find((e) => e.sequence === plan.throughSequence)!
+  expect(plan.messages.slice(0, -1)).toEqual(view.messages.slice(0, boundary.end))
+  expect(plan.messages[0]).toEqual({ role: 'system', content: 'same-system' })
+  expect(JSON.stringify(plan.messages)).toContain('Earlier findings')
+  expect(plan.messages.at(-1)?.role).toBe('user')
+  expect(JSON.stringify(plan.messages)).toContain('体积预算省略')
+  // Every summarized tool result has its complete assistant call in the same prefix.
+  const calls = plan.messages.flatMap((m) =>
+    m.role === 'assistant' && Array.isArray(m.content)
+      ? m.content.filter((p) => p.type === 'tool-call').map((p) => p.toolCallId)
+      : []
+  )
+  const results = plan.messages.flatMap((m) =>
+    m.role === 'tool' ? m.content.map((p) => p.toolCallId) : []
+  )
+  expect(results).toEqual(calls)
+})
+it('uses dimensional fallback tokens and real MIME without exposing encoded image bytes', () => {
+  expect(estimateImageTokens(2700, 3328)).toBe(8840)
+  const data = records()
+  addImages(data, 1, 1000)
+  data.tools[0]!.assets[0] = {
+    id: 'webp',
+    width: 2000,
+    height: 2000,
+    bytes: 1000,
+    mediaType: 'image/webp',
+  }
+  const view = assemble(data)
+  const file = view.messages
+    .flatMap((m) => (m.role === 'user' && Array.isArray(m.content) ? m.content : []))
+    .find((p) => p.type === 'file')!
+  expect(file).toMatchObject({ mediaType: 'image/webp', data: 'momo-asset:webp' })
+  const withImage = tokens([{ role: 'user', content: [file] }], 0, data)
+  expect(withImage).toBe(12 + 3969)
+})
+it('caps the default batch target at 15 MiB and honors smaller configured budgets', () => {
+  expect(
+    createAiPolicy({ contextWindow: 256000, maxTokens: 128000, imageBudgetMiB: 32 })
+      .imageTargetBytes
+  ).toBe(15 * 1024 * 1024)
+  const smaller = createAiPolicy({ contextWindow: 256000, maxTokens: 128000, imageBudgetMiB: 12 })
+  expect(smaller.imageTargetBytes).toBeLessThan(smaller.imageTriggerBytes)
 })

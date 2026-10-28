@@ -1,37 +1,26 @@
 <script setup lang="ts">
-import { computed, provide, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { Split } from '@/components/ui/split'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
-import {
-  createAnalysisCaptureBridge,
-  analysisCaptureBridgeKey,
-} from '@/lib/sceneAnalysis/captureBridge'
-import { useAiChat } from '@/composables/ai/useAiChat'
-import { aiChatKey } from '@/composables/ai/chatContext'
 
 const props = defineProps<{ editing: boolean }>()
 const settingsStore = useSettingsStore()
 const uiStore = useUIStore()
-const captureBridge = createAnalysisCaptureBridge()
-provide(analysisCaptureBridgeKey, captureBridge)
-provide(
-  aiChatKey,
-  useAiChat({
-    enabled: computed(() => props.editing && settingsStore.canUseExperimentalFeatures),
-    getCaptureProvider: () => captureBridge.provider.value,
-  })
-)
 const container = ref<HTMLElement | null>(null)
 const { width } = useElementSize(container)
-const rightVisible = computed(() => props.editing && !uiStore.sidebarCollapsed)
+const rightVisible = computed(
+  () =>
+    (props.editing || (uiStore.sidebarView === 'ai' && settingsStore.canUseExperimentalFeatures)) &&
+    !uiStore.sidebarCollapsed
+)
 function pixels(value: string, fallback: number) {
   const parsed = value.endsWith('px') ? parseFloat(value) : NaN
   return Number.isFinite(parsed) ? parsed : fallback
 }
 // 右栏宽度不仅受自身上限约束，还要给主编辑区保留基本可用空间。
-const rightMax = computed(() => Math.min(480, Math.max(240, width.value - 420)))
+const rightMax = computed(() => Math.min(width.value, Math.max(480, width.value * 0.5)))
 // 持久化宽度需要在每次容器尺寸变化时重新校正，
 // 避免用户上次保存的宽度在当前窗口下把编辑区挤得过小。
 const rightWidth = computed(() =>
@@ -50,7 +39,7 @@ const rightSize = computed({
     ref="container"
     class="h-full min-h-0 min-w-0 overflow-hidden rounded-md border border-border bg-background shadow"
   >
-    <!-- 可调宽布局：仅方案页且侧边栏展开时启用 -->
+    <!-- 方案编辑或全局 AI 对话展开时启用可调宽侧栏 -->
     <Split
       v-model:size="rightSize"
       reverse

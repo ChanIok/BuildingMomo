@@ -520,11 +520,24 @@ it.each([false, true])(
     expect(glRenderer.render).toHaveBeenCalledTimes(2)
     expect(encodingCamera).toBe(originalCamera)
     expect(context.fillText).toHaveBeenCalledWith('1000', expect.any(Number), expect.any(Number))
+    // Only requested item labels are baked in, never a diagnostic text/bar.
+    expect(context.fillText).toHaveBeenCalledTimes(1)
+    expect(context.fillRect).toHaveBeenCalledTimes(1)
+    expect(context.fillRect).not.toHaveBeenCalledWith(0, 0, width, 32)
     expect(pixels[0]?.data[0]).toBe(99)
     expect(pixels[0]?.data[(height - 1) * width * 4]).toBe(42)
     secondController.abort()
     encode(new Blob(['png'], { type: 'image/png' }))
-    expect(await first).toMatchObject({ width, height, details: { renderedItemIds: ['a'] } })
+    expect(await first).toMatchObject({
+      width,
+      height,
+      details: {
+        renderedItemIds: ['a'],
+        missingItemIds: [],
+        camera: { projection: 'perspective' },
+        shadows: false,
+      },
+    })
     await secondResult
     expect(glRenderer.render).toHaveBeenCalledTimes(2)
     provider.dispose()

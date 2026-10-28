@@ -3,7 +3,7 @@ import { queryAnalysisCatalog } from './catalog'
 import { invalidInput, readObject } from './validation'
 import {
   assertImageTask,
-  canvasPng,
+  canvasImage,
   createAnalysisCanvas,
   type AnalysisImageTask,
   type AnalysisImageOutput,
@@ -118,7 +118,7 @@ export async function renderAnalysisAtlas(
     ctx.restore()
   }
   assertImageTask(task)
-  const blob = await canvasPng(canvas)
+  const blob = await canvasImage(canvas)
   assertImageTask(task)
   return {
     blob,

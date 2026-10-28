@@ -1,12 +1,9 @@
 import { computed, onScopeDispose, shallowRef, triggerRef, watch, type Ref } from 'vue'
 import { useLocalStorage, useTimestamp } from '@vueuse/core'
-import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { resolveConnection } from '@/lib/ai/connection'
 import { resolveAiConfig } from '@/lib/ai/context'
 import { useAiEditorHost } from './useAiEditorHost'
-import { useEditorSelection } from '@/composables/editor/useEditorSelection'
-import { createArtifacts } from '@/lib/ai/artifacts'
 import { useI18n } from '@/composables/useI18n'
 import { createConversationRepository, type ConversationRepository } from '@/lib/ai/repository'
 import { createAgentRunner, unresolvedEdits, type RunProgress } from '@/lib/ai/runner'
@@ -15,10 +12,11 @@ import { exportConversation } from '@/lib/ai/diagnostics'
 import {
   failure,
   messageText,
-  type ArtifactRecord,
   type AssetRecord,
   type Conversation,
   type ConversationRecords,
+  type MessageRecord,
+  type ToolRecord,
 } from '@/lib/ai/types'
 import type { AnalysisCaptureProvider } from '@/lib/sceneAnalysis/images'
 import type { ChatEntry } from './chatContext'
@@ -28,13 +26,11 @@ export function useAiChat(options: {
   getCaptureProvider: () => AnalysisCaptureProvider | null
   repository?: ConversationRepository
 }) {
-  const editor = useEditorStore(),
-    settings = useSettingsStore()
+  const settings = useSettingsStore()
   const { t, locale } = useI18n()
   const repository = options.repository ?? createConversationRepository()
   const runner = createAgentRunner(repository)
   const editorHost = useAiEditorHost({ getCaptureProvider: options.getCaptureProvider })
-  const editorSelection = useEditorSelection()
   const records = shallowRef<ConversationRecords | null>(null)
   const sessions = shallowRef<Conversation[]>([])
   const phase = shallowRef<'idle' | 'loading' | 'running'>('idle')
@@ -43,7 +39,7 @@ export function useAiChat(options: {
   const progress = shallowRef<RunProgress | null>(null)
   const contextInfo = shallowRef<RunProgress['context']>()
   const visibleMessages = shallowRef(50)
-  const activeByScheme = useLocalStorage<Record<string, string>>('buildingmomo_ai_active_v3', {})
+  const activeConversation = useLocalStorage('buildingmomo_ai_active', '')
   const secrets = new Set<string>()
   const {
     timestamp: now,
@@ -53,7 +49,6 @@ export function useAiChat(options: {
   let navigation = 0,
     disposed = false
   let admission: AbortController | undefined
-  let sceneInterrupted = false
   async function stop() {
     admission?.abort()
     await runner.stop()
@@ -68,21 +63,21 @@ export function useAiChat(options: {
     )
   )
   const uncertain = computed(() => (records.value ? unresolvedEdits(records.value) : []))
+  const messageEntries = new WeakMap<MessageRecord, ChatEntry>()
+  const toolEntries = new WeakMap<
+    ToolRecord,
+    { state: ToolRecord['state']; result: ToolRecord['result']; entry: ChatEntry }
+  >()
   const entries = computed<ChatEntry[]>(() => {
     const data = records.value
     if (!data) return []
     const byId = new Map(data.tools.map((tool) => [tool.id, tool]))
-    const references = (refs?: string[]) =>
-      refs
-        ?.map((ref) => data.artifacts.find((a) => a.ref === ref))
-        .filter((a): a is ArtifactRecord => Boolean(a))
     return data.messages.slice(-visibleMessages.value).flatMap((message) => {
-      const row: ChatEntry = {
+      const row: ChatEntry = messageEntries.get(message) ?? {
         id: message.id,
         role: message.role,
         text: messageText(message),
         reasoning: messageText(message, 'reasoning'),
-        references: references(message.references),
         state:
           message.state === 'streaming'
             ? 'running'
@@ -90,29 +85,42 @@ export function useAiChat(options: {
               ? 'cancelled'
               : 'success',
       }
+      if (message.state !== 'streaming') messageEntries.set(message, row)
       return [
         row,
         ...message.toolIds.map((id): ChatEntry => {
           const tool = byId.get(id)!
-          const organized =
-            tool.name === 'apply' && tool.result?.ok
-              ? (tool.result.data as {
-                  regroupedItemCount: number
-                  groups: unknown[]
-                  collections: unknown[]
-                })
-              : null
-          return {
+          const cached = toolEntries.get(tool)
+          if (cached?.state === tool.state && cached.result === tool.result) return cached.entry
+          const terminal = !['requested', 'prepared'].includes(tool.state)
+          let formatted: string | undefined
+          const entry: ChatEntry = {
             id,
             role: 'tool',
             toolName: tool.name,
-            text: organized
-              ? t('ai.organized', {
-                  count: organized.regroupedItemCount,
-                  groups: organized.groups.length,
-                  collections: organized.collections.length,
-                })
-              : (tool.result?.error?.message ?? ''),
+            code: (tool.input as { code?: string })?.code,
+            text: '',
+            output: tool.result
+              ? () => {
+                  const text =
+                    formatted ??
+                    JSON.stringify(
+                      {
+                        ...tool.result,
+                        edits: tool.edits.map(({ id, schemeId, state, result }) => ({
+                          id,
+                          schemeId,
+                          state,
+                          result,
+                        })),
+                      },
+                      null,
+                      2
+                    )
+                  if (terminal) formatted = text
+                  return text
+                }
+              : undefined,
             state:
               progress.value?.toolId === id && ['requested', 'prepared'].includes(tool.state)
                 ? 'running'
@@ -122,17 +130,18 @@ export function useAiChat(options: {
                     ? 'cancelled'
                     : 'error',
             images: tool.assets,
-            references: references(tool.artifactIds),
           }
+          if (terminal) toolEntries.set(tool, { state: tool.state, result: tool.result, entry })
+          return entry
         }),
       ]
     })
   })
   const contextUsage = computed(() =>
     contextInfo.value
-      ? t(contextInfo.value.actual ? 'ai.contextActual' : 'ai.contextUsage', {
-          tokens: (contextInfo.value.actual ?? contextInfo.value.estimated).toLocaleString(),
-          budget: contextInfo.value.budget.toLocaleString(),
+      ? t('ai.contextUsage', {
+          tokens: contextInfo.value.estimated.toLocaleString(),
+          budget: contextInfo.value.contextWindow.toLocaleString(),
           images: contextInfo.value.images,
         })
       : ''
@@ -172,6 +181,48 @@ export function useAiChat(options: {
         ? t('ai.stopped')
         : t(`ai.errors.${code === 'stale_snapshot' ? 'stale' : code}`)
   }
+  async function restoreContextInfo(loaded: ConversationRecords | null) {
+    if (loaded) {
+      try {
+        const reqs = await repository.requests(loaded.conversation.id)
+        const lastReq = reqs.at(-1)
+        if (lastReq) {
+          const imageCount = loaded.tools.reduce((sum, t) => sum + (t.assets?.length ?? 0), 0)
+          contextInfo.value = {
+            estimated: lastReq.estimatedTokens,
+            contextWindow: lastReq.policy.contextWindow,
+            usableContextWindow: lastReq.policy.usableContextWindow,
+            autoCompactTokenLimit: lastReq.policy.autoCompactTokenLimit,
+            configuredMaxOutputTokens: lastReq.policy.maxTokens,
+            requestMaxOutputTokens: lastReq.maxOutputTokens,
+            images: imageCount,
+            compacted: Boolean(loaded.checkpoint),
+            actual:
+              lastReq.diagnostics.usage?.totalTokens ?? lastReq.diagnostics.usage?.promptTokens,
+          }
+          return
+        }
+      } catch {
+        // Ignore and fallback
+      }
+    }
+    try {
+      const { policy } = resolveAiConfig(settings.ai)
+      contextInfo.value = {
+        estimated: 0,
+        contextWindow: policy.contextWindow,
+        usableContextWindow: policy.usableContextWindow,
+        autoCompactTokenLimit: policy.autoCompactTokenLimit,
+        configuredMaxOutputTokens: policy.maxTokens,
+        requestMaxOutputTokens: policy.maxTokens,
+        images: 0,
+        compacted: false,
+      }
+    } catch {
+      contextInfo.value = undefined
+    }
+  }
+
   async function navigate(id?: string, fresh = false) {
     const mine = ++navigation
     phase.value = 'loading'
@@ -180,36 +231,25 @@ export function useAiChat(options: {
     if (mine !== navigation || disposed) return
     records.value = null
     visibleMessages.value = 50
-    contextInfo.value = undefined
     storageState.value = 'idle'
-    const schemeId = editor.activeScheme?.id
     try {
-      if (!schemeId) {
-        sessions.value = []
-        return
-      }
-      const listed = await repository.list(schemeId)
+      const listed = await repository.list()
       if (mine !== navigation || disposed) return
       sessions.value = listed
-      const target = fresh ? '' : (id ?? activeByScheme.value[schemeId] ?? sessions.value[0]?.id)
-      const loaded = target ? await repository.load(schemeId, target) : null
-      if (mine !== navigation || editor.activeScheme?.id !== schemeId || disposed) return
+      const target = fresh ? '' : (id ?? (activeConversation.value || sessions.value[0]?.id))
+      const loaded = target ? await repository.load(target) : null
+      if (mine !== navigation || disposed) return
       records.value = loaded
-      activeByScheme.value = { ...activeByScheme.value, [schemeId]: loaded?.conversation.id ?? '' }
+      activeConversation.value = loaded?.conversation.id ?? ''
       storageState.value = loaded ? 'saved' : 'idle'
+      await restoreContextInfo(loaded)
     } catch (cause) {
       if (mine === navigation) explain(cause)
     } finally {
       if (mine === navigation && !disposed) phase.value = 'idle'
     }
   }
-  watch(
-    () => editor.activeScheme?.id,
-    () => {
-      void navigate()
-    },
-    { immediate: true, flush: 'sync' }
-  )
+  void navigate()
   watch(
     () => options.enabled.value,
     (enabled) => {
@@ -226,16 +266,8 @@ export function useAiChat(options: {
       ]),
     () => {
       void stop()
-    },
-    { flush: 'sync' }
-  )
-  watch(
-    () => (editor.activeScheme ? editorHost.host.current().version : ''),
-    () => {
-      if (isRunning.value && !editorHost.writing) {
-        sceneInterrupted = true
-        error.value = t('ai.errors.stale')
-        void stop()
+      if (!records.value) {
+        void restoreContextInfo(null)
       }
     },
     { flush: 'sync' }
@@ -249,13 +281,7 @@ export function useAiChat(options: {
 
   async function send(text: string, continueOnly = false) {
     text = text.trim()
-    if (
-      phase.value !== 'idle' ||
-      !options.enabled.value ||
-      !editor.activeScheme ||
-      (!text && !continueOnly)
-    )
-      return false
+    if (phase.value !== 'idle' || !options.enabled.value || (!text && !continueOnly)) return false
     if (storageState.value === 'error') {
       error.value = t('ai.errors.storage')
       return false
@@ -267,20 +293,28 @@ export function useAiChat(options: {
       error.value = t('ai.errors.settings')
       return false
     }
-    const mine = navigation,
-      scheme = editor.activeScheme
+    const mine = navigation
+    const runContext = editorHost.host.context()
     const preparation = new AbortController()
     admission = preparation
     phase.value = 'running'
     error.value = ''
-    sceneInterrupted = false
-    contextInfo.value = undefined
     try {
       if (!records.value) {
-        const conversation = await repository.create(scheme.id, text.slice(0, 60) || t('ai.title'))
+        const conversation = await repository.create(text.slice(0, 60) || t('ai.title'))
         if (mine !== navigation || disposed) return false
-        records.value = { conversation, messages: [], tools: [], artifacts: [] }
-        activeByScheme.value = { ...activeByScheme.value, [scheme.id]: conversation.id }
+        records.value = {
+          conversation,
+          messages: [],
+          tools: [],
+          variables: {
+            id: `vars:${conversation.id}`,
+            conversationId: conversation.id,
+            values: {},
+            references: [],
+          },
+        }
+        activeConversation.value = conversation.id
         sessions.value = [conversation, ...sessions.value]
         storageState.value = 'saved'
       }
@@ -293,6 +327,7 @@ export function useAiChat(options: {
       await runner.run({
         records: current,
         scene: editorHost.host,
+        context: runContext,
         language: locale.value,
         connection,
         policy,
@@ -305,11 +340,10 @@ export function useAiChat(options: {
             triggerRef(records)
             storageState.value = 'saved'
           }
-          if (editor.activeScheme?.id === data.conversation.schemeId)
-            sessions.value = [
-              data.conversation,
-              ...sessions.value.filter((entry) => entry.id !== data.conversation.id),
-            ]
+          sessions.value = [
+            data.conversation,
+            ...sessions.value.filter((entry) => entry.id !== data.conversation.id),
+          ]
         },
         onProgress(next) {
           if (mine !== navigation || disposed) return
@@ -319,8 +353,7 @@ export function useAiChat(options: {
       })
     } catch (cause) {
       if (mine === navigation && !disposed) {
-        if (sceneInterrupted) error.value = t('ai.errors.stale')
-        else if (cause instanceof Error && cause.name === 'SceneAnalysisError')
+        if (cause instanceof Error && cause.name === 'SceneAnalysisError')
           error.value = t('ai.errors.scope')
         else explain(cause)
       }
@@ -409,48 +442,6 @@ export function useAiChat(options: {
       records.value
         ? exportConversation(repository, records.value, includeImages, [...secrets])
         : null,
-    readReference: async (ref: string) => {
-      const current = records.value
-      if (!current) return null
-      const store = createArtifacts(current, repository),
-        a = store.get(ref)
-      let value = await store.data(a)
-      if (records.value?.conversation.id !== current.conversation.id) return null
-      if (a.kind === 'set') {
-        try {
-          value =
-            a.count === 0
-              ? []
-              : editorHost.host.snapshot(await store.members(a.ref)).items.map((i) => i.instanceId)
-        } catch {
-          value = { count: a.count, status: t('ai.referenceUnavailable') }
-        }
-      }
-      const producer = current.tools.find((t) => t.id === a.source?.toolId)
-      if (records.value?.conversation.id !== current.conversation.id) return null
-      return {
-        reference: a,
-        value,
-        current: a.revision === editorHost.host.current().version,
-        code: producer?.name === 'compute' ? (producer.input as { code: string }).code : undefined,
-      }
-    },
-    selectReference: async (ref: string) => {
-      const current = records.value
-      if (!current || phase.value === 'loading') return false
-      const store = createArtifacts(current, repository),
-        a = store.get(ref)
-      const members = await store.members(ref)
-      if (
-        records.value?.conversation.id !== current.conversation.id ||
-        editor.activeScheme?.id !== a.schemeId
-      )
-        return false
-      const targets = editorSelection.resolveSelectionTargets(members, { skipGroupExpansion: true })
-      if (targets.size !== members.length) return false
-      editorSelection.updateSelection(members, false, { skipGroupExpansion: true })
-      return true
-    },
     loadImage: async (id: string) => {
       const asset = await repository.read<AssetRecord>(id)
       return asset && asset.conversationId === records.value?.conversation.id

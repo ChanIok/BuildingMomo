@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import type { JSONSchema7 } from 'ai'
-import { AiError } from './types'
 
 function fieldPath(path: PropertyKey[]) {
   return path.reduce<string>(
@@ -52,16 +51,4 @@ export function formatInputError(schema: z.ZodType, error: unknown, name: string
     ...(unique.length > 5 ? [`另有 ${unique.length - 5} 项错误。`] : []),
     ...(schema.description ? [schema.description] : []),
   ].join('\n')
-}
-
-/** Publications and saved plans reuse the same schema as direct tool input. */
-export function readInput<T extends z.ZodType>(
-  schema: T,
-  value: unknown,
-  name: string
-): z.output<T> {
-  const result = schema.safeParse(value, { jitless: true })
-  if (!result.success)
-    throw new AiError('invalid_input', formatInputError(schema, result.error, name))
-  return result.data
 }

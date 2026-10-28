@@ -75,12 +75,18 @@ export function createAnalysisCanvas(width: number, height: number) {
   return { canvas, context }
 }
 
-export function canvasPng(canvas: HTMLCanvasElement): Promise<Blob> {
+export function canvasImage(
+  canvas: HTMLCanvasElement,
+  type: 'image/png' | 'image/webp' = 'image/png'
+): Promise<Blob> {
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
-        blob ? resolve(blob) : reject(new SceneAnalysisError('unavailable', 'PNG encoding failed')),
-      'image/png'
+        blob
+          ? resolve(blob)
+          : reject(new SceneAnalysisError('unavailable', 'Image encoding failed')),
+      type,
+      type === 'image/webp' ? 0.9 : undefined
     )
   )
 }

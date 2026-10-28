@@ -1,45 +1,128 @@
 # AI 工作台维护导览
 
-AI 工作台帮助玩家理解搭建，并整理集合与家具组。模型负责判断用途、组织方式和成员归属；宿主负责提供场景数据、校验编辑条件，并通过正式事务提交。目前没有移动、旋转、缩放或删除家具的 AI 工具。
+AI 是工作区级的代码助手：会话独立于方案，模型通过 JavaScript 读取、分析、截图并整理已加载方案。用户用自然语言交流，模型负责判断和编写脚本，宿主复用编辑器正式事务。当前只支持分类和编组，不支持移动、旋转、缩放或删除家具。
 
-工作台与模型相关功能共用 [settingsStore.ts](../../stores/settingsStore.ts) 的 `canUseExperimentalFeatures`，仅在 secure 模式且已鉴权时开放。权限失效时退出 AI 面板并停止任务，保留会话和配置。
+功能沿用 [settingsStore.ts](../../stores/settingsStore.ts) 的 `canUseExperimentalFeatures`，仅 secure 模式且已鉴权时开放。侧边栏 AI 入口不要求打开方案；切换方案、文档或关闭侧栏不中断任务。鉴权失效或连接配置变化会停止任务，保留会话和配置。
 
-## 运行链路
+## 一条代码执行链路
 
-1. [useAiChat.ts](../../composables/ai/useAiChat.ts) 接收文字，管理会话、停止与恢复，并将记录投影到聊天界面。发送不读取选区，也允许无选区聊天。
-2. [runner.ts](runner.ts) 管理任务循环：保存请求 → 流式生成 → 顺序执行工具 → 原子保存工具结果及资料 → 继续请求。只有完整生成成功的回复才进入工具执行；同一批工具最多一个 `apply`，且必须放在最后。
-3. [context.ts](context.ts) 从保存的记录组装 SDK 消息，处理摘要、工具输出和图片预算。[model.ts](model.ts) 发起单次生成，由 AI SDK 处理协议序列化、流解析、参数校验、图片编码与 usage；工具执行和任务续接归 runner 管理。
-4. [tools.ts](tools.ts) 提供四个工具：`inspect` 读取选区、资料与文档；`compute` 本地计算并发布结果；`render` 生成场景图或资产图册；`apply` 提交组织编辑。
-5. [useAiEditorHost.ts](../../composables/ai/useAiEditorHost.ts) 连接编辑器，提供版本、快照、截图、组织事务和结果核验。场景分析基础能力位于 [sceneAnalysis](../sceneAnalysis/README.md)，不依赖 AI 会话。
+1. [App.vue](../../App.vue) 持有应用级聊天服务和截图桥接。[useAiChat.ts](../../composables/ai/useAiChat.ts) 管理全局会话、恢复、停止及界面投影。
+2. [runner.ts](runner.ts) 保存请求、流式回复和工具调用，完整生成成功后顺序执行 `execute_js`；每次执行的结果、图片和新变量在同一存储事务中保存，成功后才发布到内存。
+3. [scriptClient.ts](scriptClient.ts) 每次创建可终止 Worker，[aiScript.worker.ts](../../workers/aiScript.worker.ts) 通过 [scriptRuntime.ts](scriptRuntime.ts) 执行支持 `await` 的 JS 函数体。宿主 API 通过异步消息调用，局部变量不跨执行保留。
+4. [tools.ts](tools.ts) 提供宿主 API、会话变量的家具引用解析，以及逐次编辑日志。[useAiEditorHost.ts](../../composables/ai/useAiEditorHost.ts) 按明确方案连接快照、截图和组织编辑，不切换界面来执行操作。
+5. [context.ts](context.ts) 组装 SDK 消息和上下文压缩；[model.ts](model.ts) 负责单次生成，协议、流解析、参数校验、图片编码与 usage 交给 AI SDK。工具执行和任务续接由 runner 管理。
 
-## 资料引用与上下文
+Worker 不接收 API Key、Pinia Store 或渲染器对象，不降级到主线程。它仍有同源网络和存储能力，不是恶意代码安全沙箱。停止或超时会终止 Worker，并禁止宿主继续执行排队操作；已完成的事务不会回滚。
 
-- `inspect({"ref":"selection"})` 捕获工具执行时的即时选区。引用固定精确成员，不随之后的选择变化；空选区保持为空，不扩展到整个方案。集合引用读取成员当前状态，不冻结坐标。
-- [artifacts.ts](artifacts.ts) 管理会话内的 `R…` 引用，类型包括成员集合、报告、表格、计划和图片。[repository.ts](repository.ts) 将消息、工具记录、资料和大 payload 存入 IndexedDB，图片保存为 Blob，按需读取。配置与会话仅维护当前存储结构，不迁移开发期中间格式。
-- `compute` 使用完整精度数据，输入不自动发送给模型。代码通过 `publish` 发布结果：报告直接返回内容，集合、表格和计划返回引用；完整数据可按需读取。DTO 与计算 API 见 `tools.ts` 的 `computationHelp`，模型通过 `inspect({"ref":"api"})` 获取。
-- 持久化保留 SDK 原生消息内容、工具 input 和续传元数据，正文与思考是 UI 投影。推理及 provider 续传元数据只向原连接类型、地址和模型重放。编辑器状态与操作核验作为 `hostContext` 随对应回复保存，重放时保持原位置，不改写用户文字。
-- 上下文压缩按容量触发，保留用户要求、任务摘要和近期完整交换；原始记录仍可回查。工具输出过大时返回标记预览和 recordId，图片按编码后的字节预算省略较早附图并留下引用。这些只改变请求投影，不修改保存的资料。
-- [model.ts](model.ts) 在发送边界记录实际序列化请求体，将内嵌图片替换为本地资产引用，不记录请求头和接口查询参数。[diagnostics.ts](diagnostics.ts) 导出会话、请求、完整资料及可选图片，排查问题应使用当时的记录，而不是按当前配置重建请求。
+## 数据留在执行环境，按需输出
+
+模型只有一个工具 `execute_js({ code })`，不再使用 `inspect/compute/render/apply` 工具、`publish`、`R…` 资料或持久化编辑计划。
+
+```js
+vars.selected = await api.selection()
+console.log({ count: vars.selected.length })
+```
+
+完整家具数组留在执行环境；模型用 `console.log` 和 `return` 输出任务需要的结论、统计、关键字段和代表性样本。宿主另行自动提供图片回执和编辑结果。后续执行或重新打开会话后，可以直接：
+
+```js
+await api.render([{ items: vars.selected, label: '选区' }])
+```
+
+- `vars` 是每个对话独立的持久化普通对象，支持有限 JSON 数据：有限数字、字符串、布尔、null、数组和普通对象。函数、Promise、Map、undefined、循环引用等返回错误，不静默丢失。
+- 临时 `const/let` 用于本次计算；值得保留的数据由模型自行命名放进 `vars`，删除用 `delete vars.name`。不恢复整个 JS 内核，不重放脚本恢复变量。
+- 脚本失败、停止或最终保存失败时，保留上次成功保存的变量，包括嵌套数据。只有成功执行且存储成功才替换变量。
+- 家具对象包含短 `ref`，内部 UUID 和快照版本留在宿主引用表。`filter/slice` 得到的家具数组可直接传给渲染和编组，不展开为大量 ID 参数。
+- 保存的家具对象是当时的数据快照、成员名单固定。`api.refresh(items)` 重新读取原成员的当前数据，不替换成当前选区；成员缺失、隐藏或锁定时整次报错。刷新后需重新检查基于旧数据的判断。
+- 上下文携带变量名、类型和数组长度，不复制变量内容；压缩保留用户目标、授权、关键判断、已完成编辑和仍需使用的变量名。需要细节时用脚本检查变量或重新读取方案。
+
+## 小型宿主 API
+
+通用工作原则放在系统提示，接口契约与示例放在工具说明，整理方法放在按需指南，三者各述其职。基础 API 契约与可执行示例直接由 `tools.ts` 的 `execute_js.description` 随工具声明发送，计入工具上下文预算，不再先执行帮助调用，也不在系统提示词中重复整份说明。`api.help(topic)` 只读取较长的场景指南，例如 `console.log(await api.help("guide:organization"))`。
+
+| API                                  | 职责                                                   |
+| ------------------------------------ | ------------------------------------------------------ |
+| `api.schemes()`                      | 已加载方案的 `{id,name}` 目录                          |
+| `api.items(schemeId?)`               | 读取可见、未锁定家具的完整快照到执行环境               |
+| `api.selection(schemeId?)`           | 捕获调用时的精确选区；空选区就是空数组                 |
+| `api.structure(schemeId?)`           | 现有分组元信息和分类树，包含空分类                     |
+| `api.refresh(items)`                 | 保持成员及顺序，重新取得当前家具数据                   |
+| `api.render(panels, layout?)`        | 多批物品、多视角或图册合成一张图；单图也使用面板数组   |
+| `api.organize(groups, collections?)` | 用家具数组创建分类、重新编组，一次调用一笔正式事务     |
+| `api.history({id?,offset?,limit?})`  | 当前会话的执行记录目录或完整 JSON 分段读取（字符偏移） |
+| `api.showImage(imageId)`             | 重新展示本对话的历史原图                               |
+| `api.math.*`                         | 共享坐标、统计和保守几何计算；其他计算使用普通 JS      |
+
+省略方案 ID 时使用本轮用户消息开始时固定的默认方案；切换标签不改变默认目标。显式方案 ID 可读取和编辑后台方案。渲染和一次编组的成员必须来自同一方案。场景图借用目标方案已打开的模型视口，不能在后台任意加载模型；图册可直接读取后台方案，不自动切换用户视口。
+
+读取不强制分页、不自动输出全量家具。执行输出过大时，完整结果保存在执行记录中，请求投影提供标记预览和 recordId，模型可通过 `api.history` 回查；这不截断 Worker 内的数据。历史查询不是重新执行。图片使用 Blob 附件，脚本不用处理 Base64。
+
+## 多面板一次合图
+
+每个面板传入 `{items,label,kind?,camera?,focus?,width?,height?,color?,labels?,layout?}`。默认为场景图，`focus` 只控制取景，必须是 `items` 的子集。所有面板来自同一方案。
+
+分析外观、建筑结构、组合用途和空间关系时，通过图片建立认识，围绕待判断的问题组织互补的整体、局部、拆分或多视角观察。观察范围、视角和数量由任务决定，不限制面板数量；省略外层布局时由宿主自动排版。
+
+AI 场景单面板的宽、高各默认 768px，通常使用长边 512～1024px，通过局部取景和隔离成员辨认细节。工具边界将长边超过 1024px 的场景面板等比缩小，保留更小的显式尺寸；图册、合图布局和非 AI 截图入口不受该限制。`details.panels` 返回实际 `width/height`。
+
+例如，先按观察目的将家具范围与所需视角保存在 `vars.batches`：每批为 `{name, items, views: [{name, camera}, …]}`，各批可选择不同视角。一次生成所有面板：
+
+```js
+const panels = vars.batches.flatMap((batch) =>
+  batch.views.map((view) => ({
+    items: batch.items,
+    label: `${batch.name} · ${view.name}`,
+    camera: view.camera,
+  }))
+)
+await api.render(panels)
+```
+
+一次调用只保存并附上最终合图，不发送或持久化中间图片。返回的 `details.panels` 按输入顺序包含编号（从 1 开始）、标题和各面板渲染信息。图片元信息与回执同时保存在附件和工具记录中，自动随工具结果的 `images` 发送，即使脚本忽略 `render` 返回值也能看到方案、视角、渲染数量和缺失情况；大输出预览保留这部分回执。`api.history`、`showImage` 和诊断导出沿用同一元信息。依据观察结果补充有助于消除疑点的图片，用 JavaScript 完成精确筛选、统计和成员划分。
+
+- 省略外层布局（或传入 `{}`）时按图片比例自适应排版：按输入顺序分列，各列完整填充，选择更接近方形的组合。面板允许等比缩放，完整保留画面，不裁切；合图面积接近各原图与标题区的总面积，不固定缩为缩略图。三张方图可自然排成一张较大图加两张较小图，而不是留一个空格。回执 `frame: {x,y,width,height}` 给出各面板的位置和尺寸（含标题区），编号仍对应输入顺序。
+- 显式外层 `layout: {columns?,cellWidth?,cellHeight?}` 使用等大网格，`cellHeight` 包含 32px 标题区，必须大于 32。省略单元格尺寸时使用原图最大宽、高加标题区；指定尺寸时按比例放入单元格。显式布局可能留空格，不自动拆页。
+- `kind: "atlas"` 面板只接受 `items/label/kind/layout`，面板内的 `layout` 控制素材图册网格，与外层拼图布局独立；不能把它传给场景面板。
+- 截图与图册中间面板使用无损 PNG，最终输出统一编码为 WebP q90，不额外降低分辨率。单面板保留原尺寸，不加拼图标题；已经是 WebP 的单图直接复用，其余单图只编码一次。多面板只在最终合图处进行一次有损编码。浏览器不支持 WebP 时接受其 PNG 回退，并保存实际 MIME。历史重读沿用原始 Blob，不重新编码。
+- 全部面板参数与成员在首次截图前校验；同一成员范围的多个视角在本次调用内复用不可变数据和渲染快照，不建立跨任务缓存。任何面板失败、任务停止、资源代际或目标方案变化，整次合图不发布半成品。共享渲染器顺序绘制，不另建上下文。
 
 ## 编辑、版本与恢复
 
-- 读取场景和提交编辑均经过宿主检查，成员必须存在、可见且未锁定。场景数据、保护状态或渲染条件变化会使版本更新，过期或已停止的异步任务不得发布结果；选择变化不改变已有引用的成员。
-- `apply` 要求当前版本的成员引用或计划。过期成员集合可通过 `inspect` 更新引用，受场景变化影响的判断仍需重算；使用过期报告、表格或计划进行计算时，产物标为 `revision: null`，不能作为当前编辑计划。摘要本身不改变场景版本。
-- 写入统一经过 [useEditorOrganization.ts](../../composables/editor/useEditorOrganization.ts) 的单笔正式事务，复用撤销/重做、增量渲染、云同步和工作台保存。宿主核验结构与保护状态；是否符合用户用途和授权范围由模型结合用户要求与场景指南判断。
-- 编辑前先持久化 `prepared`；提交完成后，即使用户停止也必须保存结果。崩溃或结果未能保存而无法确认的编辑恢复为 `uncertain`，用户核对并确认前禁止后续写入，仍允许只读分析。刷新只恢复记录，不自动请求模型、执行代码或重放编辑。
+- 每个方案按数据与保护状态的引用维护独立版本；选区、界面焦点和相机不使数据版本失效。重新加载宿主后，保存的旧家具仍能恢复，但编辑前要 `refresh`。
+- `organize` 要求当前快照，校验成员、分类结构和目标限制，经过 [useEditorOrganization.ts](../../composables/editor/useEditorOrganization.ts) 与 [useEditorHistory.ts](../../composables/editor/useEditorHistory.ts) 的正式事务。后台方案拥有自己的历史，UI 原有调用仍默认当前方案。工作区 Worker 按方案身份接收受影响内容，不仅保存激活方案；普通编辑只补发变化的后台方案，分类折叠仍走轻量通道。不可变更新、撤销/重做、ID 分配器、持久化和云同步沿用现有链路；云方案仍需现有连接。
+- 每次实际编辑先持久化 `prepared`，再提交并立即保存结果。一次脚本可以有多笔编辑；即使后续 JS 报错或变量保存失败，已成功的编辑仍独立保留，模型和界面都能看到。
+- 未能保存提交结果或崩溃时留下的 `prepared` 恢复为 `uncertain`；核对并确认前禁止后续写入，允许只读操作。刷新只恢复数据，不请求模型、不执行代码、不重放编辑。
+- 场景截图绑定明确方案的不可变渲染快照，并检查数据版本、截图提供者生命周期和渲染策略；过期任务不发布图片。借用共享几何、材质，业务消费者不释放库资源。同步绘制读回后先恢复渲染状态，再异步编码。
+- 分析 DTO 的位置和边界为世界空间厘米、Z 向上；旋转与缩放为视觉轴，复用现有转换。几何和截图基础能力位于 [sceneAnalysis](../sceneAnalysis/README.md)，与 AI 会话解耦。
 
-## 计算与渲染边界
+## 存储、上下文和诊断
 
-- [computeClient.ts](computeClient.ts) 为每次计算创建可终止的 Worker，通过 [computation.ts](computation.ts) 执行同步 JS。Worker 不接收 Key、编辑器对象或写入口，不降级到主线程；它仍有同源网络和存储能力，不是恶意代码安全沙箱。
-- 分析 DTO 的位置与边界为世界空间厘米、Z 向上，旋转与缩放为视觉轴。转换复用共享函数；数据结构、几何与截图实现见 [sceneAnalysis](../sceneAnalysis/README.md)。
-- 截图借用共享渲染资源，不释放库拥有的几何或材质；同步绘制和读回后，先恢复场景、相机及渲染器，再异步编码。
+[repository.ts](repository.ts) 使用固定的 `buildingmomo-ai` IndexedDB、`records` 对象仓库和数字结构版本。版本 2 清空未发版的旧资料结构，不迁移开发期会话；不影响方案快照或 AI 连接配置。旧名称的开发库在启动时清理。
 
-## 修改入口
+记录包括会话、消息、工具执行（含逐次编辑结果）、`vars` 及其宿主引用表、图片附件、摘要和模型请求。删除会话同时删除这些记录。
 
-- **工具契约**：[tools.ts](tools.ts) 放用途、执行逻辑和计算帮助；[toolInputs.ts](toolInputs.ts) 是字段结构与说明的共享 Zod 定义；[toolSchema.ts](toolSchema.ts) 整理错误并复用计划校验；[types.ts](types.ts) 定义会话记录和宿主接口。修改参数时同步检查执行逻辑与示例。
-- **任务方法**：[prompts.ts](prompts.ts) 放通用授权、推进、沟通和摘要要求；[场景指南](guides/organization.md) 记录任务方法与完成标准，通过 [guides/index.ts](guides/index.ts) 登记并由 `inspect` 按需读取。新增指南应对应已开放能力，不把工具参数或指南全文复制进主提示词。
-- **连接与模型设置**：[connection.ts](connection.ts) 定义连接类型和身份，[providers.ts](providers.ts) 构造适配器，[reasoning.ts](reasoning.ts) 处理统一与高级思考配置，[settingsStore.ts](../../stores/settingsStore.ts) 的 `ai` 分组统一持有配置并沿用现有存储键，连接解析与预算计算留在 AI 模块。恢复默认设置只重置偏好和预算，保留连接、凭据及模型参数。所有连接复用同一生成与工具流程；[models.ts](models.ts) 和 [useAiModels.ts](../../composables/ai/useAiModels.ts) 只负责当前连接的模型目录查询，不发起生成。
-- **聊天界面**：[components/ai/](../../components/ai/) 下的 [SidebarAI.vue](../../components/ai/SidebarAI.vue)、[AiSettingsDialog.vue](../../components/ai/AiSettingsDialog.vue) 和 [AiMarkdown.vue](../../components/ai/AiMarkdown.vue)。Markdown 仅用于显示，不执行 HTML 或代码，也不加载模型给出的图片 URL；场景图片从本地 Blob 读取。
-- **验证**：[tests/lib/ai/](../../../tests/lib/ai/) 覆盖模型、工具、上下文和存储；[tests/components/ai/](../../../tests/components/ai/) 覆盖聊天界面；[tests/composables/ai/](../../../tests/composables/ai/) 覆盖会话、编辑器宿主和模型查询集成；[editorOrganization.spec.ts](../../../tests/composables/editorOrganization.spec.ts) 覆盖通用组织事务。运行覆盖改动契约的定向测试；截图改动另检查实际 WebGL 画面，整理方法改动另用真实模型检查是否便于玩家查找和操作，单元测试不替代这两类验收。
+SDK 原生消息、工具 input 和续传元数据持久化，正文与思考只是 UI 投影。推理及 provider 元数据只向原连接类型、地址和模型重放；宿主事实以 `hostContext` 保持在对应回复前，不改写用户文字。上下文压缩或图片预算只影响请求投影，不修改原始记录和变量。
 
-测试优先覆盖数据正确性、安全边界和关键链路。同一规则在负责它的模块集中测试，上层只保留必要的集成验证；不为提示词措辞、普通文案、小交互状态或 SDK 通用行为逐项增加测试。
+### 图片体积保护与输入 token 估算
+
+图片体积保护采用批量回落：默认 Base64 编码后总量超过 32 MiB 时，从最早图片开始替换为简短引用，直到降至 15 MiB；更低的自定义触发值采用 15/32 的回落比例，目标不超过 15 MiB。两次触发之间保留相同的替换前缀，避免每新增一张图就重写历史。仅改变请求投影，原始 Blob 与回执仍在；引用只保留图片标识、省略原因和 `showImage` 入口，完整回执仍在工具结果中。历史替换可能影响替换位置及其之后的前缀缓存。没有图片移除 API、固定张数窗口或自动降分辨率。
+
+字节保护处理请求体积，token 估算处理上下文容量，两者独立。估算优先使用上次成功请求的 SDK `inputTokens` 加本次新增内容的本地估算；历史图片的实际占用已在基线中，仅新增图片按 `ceil(width/32) × ceil(height/32)` 做尺寸相关兜底估算。这是粗估单位，不是所有模型的计费公式，也不改变上传图片的尺寸。估算定义加入投影标识，旧的固定估算基线不会混入新算法。SDK 输入总量已包含缓存输入，输出正文通过新增消息计入，均不重复加 usage 明细。配置的总窗口与 `maxTokens` 输出上限相互独立。
+
+请求记录保存本地估算、投影标识和消息边界，跨用户轮次或重新打开会话后继续使用有效基线。新增图片不使基线失效；图片替换前缀、摘要、模型或上下文定义变化时退回本地估算，再由下次真实 usage 校准。失败请求或缺少有效 usage 不覆盖最近有效基线。过长上下文仍沿用既有容量压缩及实际溢出后的重试路径。
+
+容量策略对齐本地 Codex `protocol/src/openai_models.rs` 的默认比例：可用窗口为总窗口的 95%，自动压缩阈值为总窗口的 90%（两者分别基于总量计算）。`maxTokens` 是输出上限，不预先从输入窗口中扣除。普通与摘要请求共用发送边界，实际 `maxOutputTokens = min(maxTokens, 可用窗口 - 向上取整的输入估算)`；没有剩余空间时不发送。摘要前缀加末尾摘要要求须低于可用窗口，生成额度同样按剩余空间计算。请求记录同时保留配置策略和实际发送额度。
+
+例如总窗口 256,000、输出上限 128,000 时，可用窗口为 243,200，压缩阈值为 230,400；输入估算 180,000 时实际输出上限为 63,200，而非提前在 128,000 输入处压缩。原生 Codex Responses 请求未设置输出上限；这里为多 provider SDK 请求显式计算，不照搬其协议字段。
+
+摘要请求从同一份普通请求投影截取完整前缀，再追加摘要要求；保留原系统提示、工具定义、调用配置与续传元数据。边界覆盖完整助手消息、工具结果与附件，不另行重建历史或重复复制用户要求。摘要通道仅接受文本，返回工具调用时记录协议错误并停止，不执行任何脚本。正常摘要沿用当前 usage 校准；只有真实容量不足时才缩短前缀，必要时使用不附图的恢复摘要。原始记录和图片始终保留。客户端前缀一致是缓存复用条件，不保证网关必然命中。
+
+[model.ts](model.ts) 在发送边界记录实际序列化请求体，内嵌图片替换为本地资产引用，不记录请求头和接口查询参数。[diagnostics.ts](diagnostics.ts) 导出当时的会话、执行、变量、请求和可选原图，排障不按当前配置重建请求。
+
+## 修改与验证入口
+
+- **工具与执行**：`toolInputs.ts` 定义唯一工具输入，`tools.ts` 定义宿主 API 与默认工具说明，`scriptRuntime.ts` 定义执行/序列化，`types.ts` 定义持久化与宿主接口。修改接口同步检查帮助、提示词和示例。
+- **模型设置**：`connection.ts`、`providers.ts`、`reasoning.ts`、`settingsStore.ts` 沿用统一配置。`models.ts` / `useAiModels.ts` 只查询模型目录，不生成对话。
+- **任务方法**：`prompts.ts` 放通用授权和摘要要求；[guides](guides/index.ts) 登记按需读取的任务指南，不把指南全文塞进主提示词。
+- **界面**：[SidebarAI.vue](../../components/ai/SidebarAI.vue) 展示输出、错误、逐次编辑和图片，代码折叠查看。工具输出在打开详情时才格式化，终态条目与格式化结果复用。Markdown 不执行 HTML/代码或加载模型提供的图片 URL，本地图片从 Blob 读取。
+- **定向验证**：[tests/lib/ai/](../../../tests/lib/ai/) 覆盖 Worker、变量、结果日志、上下文与存储；[tests/composables/ai/](../../../tests/composables/ai/) 覆盖会话生命周期和按方案宿主；[editorOrganization.spec.ts](../../../tests/composables/editorOrganization.spec.ts) 覆盖后台方案、撤销/重做、正式事务与云队列。截图还需实际 WebGL 画面验收，整理效果还需真实模型任务验收。

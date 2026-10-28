@@ -207,6 +207,29 @@ export const useEditorStore = defineStore('editor', () => {
     triggerSelectionUpdate()
   }
 
+  function getEditableItemIds(scheme: HomeScheme): Set<string> {
+    const allGroups = scheme.items.value.map((item) => Math.max(0, item.groupId))
+    const excluded = new Set([
+      ...scheme.hiddenGroupIds.value,
+      ...scheme.lockedGroupIds.value,
+      ...restrictedCollectionGroups(
+        scheme.collectionTree.value,
+        scheme.hiddenCollectionIds.value,
+        allGroups
+      ),
+      ...restrictedCollectionGroups(
+        scheme.collectionTree.value,
+        scheme.lockedCollectionIds.value,
+        allGroups
+      ),
+    ])
+    return new Set(
+      scheme.items.value
+        .filter((item) => !excluded.has(Math.max(0, item.groupId)))
+        .map((item) => item.internalId)
+    )
+  }
+
   function isItemVisible(itemId: string): boolean {
     const item = itemsMap.value.get(itemId)
     return !!item && !effectiveHiddenGroupIds.value.has(Math.max(0, item.groupId))
@@ -377,6 +400,8 @@ export const useEditorStore = defineStore('editor', () => {
   // 场景内容版本号：任何已提交的物品变更都统一触发 full rebuild。
   // 拖拽过程中的临时预览仍走实例矩阵直写，但提交后的持久状态只认 sceneVersion。
   const sceneVersion = ref(0)
+  // 所有方案内容的持久化通知；后台编辑不使当前视口重建或取消加载。
+  const workspaceVersion = ref(0)
   const renderChanges: Array<{
     from: number
     to: number
@@ -430,13 +455,14 @@ export const useEditorStore = defineStore('editor', () => {
   const pendingTransactions = shallowRef<EditorTransaction[]>([])
 
   // 手动触发更新的方法
-  function triggerSceneUpdate() {
-    if (activeScheme.value) {
-      triggerRef(activeScheme.value.items)
-      if (constrainSelectionToEditable()) {
+  function triggerSceneUpdate(scheme = activeScheme.value) {
+    if (scheme) {
+      triggerRef(scheme.items)
+      if (scheme === activeScheme.value && constrainSelectionToEditable()) {
         triggerSelectionUpdate()
       }
-      sceneVersion.value++
+      workspaceVersion.value++
+      if (scheme === activeScheme.value) sceneVersion.value++
     }
   }
 
@@ -843,7 +869,8 @@ export const useEditorStore = defineStore('editor', () => {
     triggerRef(scheme.items)
     triggerRef(scheme.selectedItemIds)
     triggerRef(scheme.groupOrigins)
-    sceneVersion.value++
+    workspaceVersion.value++
+    if (scheme === activeScheme.value) sceneVersion.value++
     selectionVersion.value++
     historyVersion.value++
     return true
@@ -1128,6 +1155,7 @@ export const useEditorStore = defineStore('editor', () => {
     groupsMap,
     ungroupedItemIds,
     isItemEditable,
+    getEditableItemIds,
     effectiveHiddenGroupIds,
     effectiveLockedGroupIds,
     setCollectionRestriction,
@@ -1173,6 +1201,7 @@ export const useEditorStore = defineStore('editor', () => {
 
     // 手动触发更新 (Crucial for ShallowRef pattern)
     sceneVersion,
+    workspaceVersion,
     recordRenderTransaction,
     getRenderChanges,
     selectionVersion,

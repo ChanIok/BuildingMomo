@@ -102,10 +102,11 @@ UI、编辑操作 API 和高级粘贴统一使用视觉 `x/y/z`：
 - 桌面桥接：`src/stores/desktopStore.ts`、`src/types/desktop.ts`、`desktop/src/desktop_bridge.cpp`；协议变更须检查两端
 - 类型与文案：`src/types/`、`src/locales/zh.ts`、`src/locales/en.ts`
 
-## 修改后的定向验证
+## 修改后的验证
 
-- 仅文档修改：检查 `git diff --check`。
-- TypeScript/Vue 修改：运行覆盖本次改动的定向测试，例如 `pnpm test tests/lib/editorTransactions.spec.ts`；同一契约的文件可一起跑（如 `pnpm test tests/lib/`）。没有对应测试时用 `git diff --check` 加人工核对代替，不为此跑全量测试或类型检查。
-- 修改事务、格式、坐标/缩放、吸附/Gizmo、显隐与锁定、渲染生命周期或 Worker 验证等核心契约时，必须运行覆盖该契约的定向测试；失败先判断契约还是实现问题，不直接改断言。
-- 不主动运行全量测试（无参数 `pnpm test`）、`pnpm exec vue-tsc -b` 或完整 build；这些留待用户明确要求。
-- 未被自动测试覆盖的部分，按风险检查关键交互、撤销/重做、坐标转换和多选；渲染/UI 变更检查实际显示，交付时说明验证范围、未执行的验证项和缺口。
+- 按风险验证，不以测试数量或覆盖率为目标。
+- 普通 UI、文案、样式和轻量交互默认不新增测试；人工检查关键行为，并运行 `git diff --check`。
+- 核心契约变更（事务、存档格式、坐标/缩放、渲染生命周期、Worker 验证等）必须运行相关定向测试；缺少关键覆盖时，只补最小必要用例。
+- 优先复用已有测试，避免为简单改动搭建模拟环境或测试基础设施。
+- 不主动运行全量测试、类型检查或完整构建。
+- 无法完成的关键验证，交付时简要说明。

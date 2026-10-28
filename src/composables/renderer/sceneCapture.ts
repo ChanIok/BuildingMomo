@@ -26,7 +26,7 @@ import { SceneAnalysisError } from '@/lib/sceneAnalysis/types'
 import { homeOutputUniforms } from './homeOutput'
 import {
   assertImageTask,
-  canvasPng,
+  canvasImage,
   createAnalysisCanvas,
   type AnalysisCaptureProvider,
   type AnalysisRenderSnapshot,
@@ -446,16 +446,7 @@ export function createSceneCapture(options: {
         context.fillText(label, x, y)
       }
     }
-    context.fillStyle = '#ffffffdd'
-    context.fillRect(0, 0, width, 32)
-    context.fillStyle = '#172333'
-    context.font = '14px sans-serif'
-    context.fillText(
-      `Perspective · World cm / Z up · ${capture.renderedItemIds.length}/${request.itemIds.length} rendered · ${capture.missingItemIds.length} missing · No shadows`,
-      12,
-      21
-    )
-    const blob = await canvasPng(canvas)
+    const blob = await canvasImage(canvas)
     assertImageTask(task)
     if (disposed) throw new SceneAnalysisError('cancelled', 'Viewport capture owner was disposed')
     return {

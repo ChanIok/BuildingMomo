@@ -60,7 +60,9 @@ function canvasMock() {
     width: 0,
     height: 0,
     getContext: () => context,
-    toBlob: (callback: (blob: Blob) => void) => callback(output().blob),
+    toBlob: vi.fn((callback: (blob: Blob) => void, type?: string, _quality?: number) =>
+      callback(new Blob(['image'], { type: type ?? 'image/png' }))
+    ),
   }
   vi.stubGlobal('document', { createElement: () => canvas })
   return { context, canvas }
@@ -150,7 +152,201 @@ it('closes a decoded board bitmap when its operation becomes stale', async () =>
     })
   )
   await expect(
-    composeBoard([{ label: 'x', output: output() }], {
+    composeBoard(
+      ['x', 'y'].map((label) => ({ label, output: output() })),
+      {
+        signal: controller.signal,
+        assertCurrent() {},
+      }
+    )
+  ).rejects.toMatchObject({ code: 'cancelled' })
+  expect(close).toHaveBeenCalledOnce()
+})
+
+it('reuses an already encoded single WebP without another lossy encode', async () => {
+  const createElement = vi.fn(),
+    decode = vi.fn()
+  vi.stubGlobal('document', { createElement })
+  vi.stubGlobal('createImageBitmap', decode)
+  const original = { ...output(), blob: new Blob(['webp'], { type: 'image/webp' }) }
+  const result = await composeBoard([{ label: 'Selection', output: original }], {
+    signal: new AbortController().signal,
+    assertCurrent() {},
+  })
+  expect(result.blob).toBe(original.blob)
+  expect(result).toMatchObject({
+    width: 10,
+    height: 20,
+    details: { panels: [{ panel: 1, label: 'Selection', labels: [] }] },
+  })
+  expect(createElement).not.toHaveBeenCalled()
+  expect(decode).not.toHaveBeenCalled()
+})
+
+it('honors explicit single-panel board sizing instead of silently ignoring layout', async () => {
+  const { canvas } = canvasMock(),
+    close = vi.fn()
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn(async () => ({ width: 10, height: 20, close }))
+  )
+  const result = await composeBoard(
+    [{ label: 'Single', output: output() }],
+    {
+      signal: new AbortController().signal,
+      assertCurrent() {},
+    },
+    { columns: 1, cellWidth: 100, cellHeight: 132 }
+  )
+  expect(result).toMatchObject({ width: 100, height: 132 })
+  expect(canvas).toMatchObject({ width: 100, height: 132 })
+  expect(close).toHaveBeenCalledOnce()
+})
+
+it('does not publish even a single original after cancellation', async () => {
+  const controller = new AbortController()
+  controller.abort()
+  await expect(
+    composeBoard([{ label: 'Single', output: output() }], {
+      signal: controller.signal,
+      assertCurrent() {},
+    })
+  ).rejects.toMatchObject({ code: 'cancelled' })
+})
+
+it.each([
+  [
+    [1024, 1024],
+    [1024, 1024],
+    [1024, 1024],
+  ],
+  [
+    [1024, 1024],
+    [1024, 1024],
+    [1024, 1024],
+    [1024, 1024],
+  ],
+  [
+    [1200, 800],
+    [800, 1200],
+    [960, 1392],
+    [640, 480],
+    [1024, 1024],
+  ],
+])(
+  'packs automatic boards without empty cells, cropping or distorted proportions: %j',
+  async (...dimensions: number[][]) => {
+    const { context } = canvasMock(),
+      close = vi.fn()
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async (blob: Blob) => ({ ...JSON.parse(await blob.text()), close }))
+    )
+    const panels = dimensions.map(([width, height], i) => ({
+      label: `View ${i + 1}`,
+      output: {
+        blob: new Blob([JSON.stringify({ width, height })]),
+        width: width!,
+        height: height!,
+        details: { source: i },
+      },
+    }))
+    const result = await composeBoard(panels, {
+      signal: new AbortController().signal,
+      assertCurrent() {},
+    })
+    type Frame = { x: number; y: number; width: number; height: number }
+    const metadata = result.details.panels as {
+      panel: number
+      label: string
+      source: number
+      frame: Frame
+    }[]
+    expect(result.details.layout).toMatchObject({ mode: 'adaptive' })
+    expect(metadata.map((p) => [p.panel, p.label, p.source])).toEqual(
+      panels.map((p, i) => [i + 1, p.label, i])
+    )
+    let covered = 0
+    for (const [i, { frame }] of metadata.entries()) {
+      expect(frame.x).toBeGreaterThanOrEqual(0)
+      expect(frame.y).toBeGreaterThanOrEqual(0)
+      expect(frame.x + frame.width).toBeLessThanOrEqual(result.width + 0.001)
+      expect(frame.y + frame.height).toBeLessThanOrEqual(result.height + 0.001)
+      covered += frame.width * frame.height
+      const [_, x, y, w, h] = context.drawImage.mock.calls[i]!
+      expect(w / h).toBeCloseTo(dimensions[i]![0]! / dimensions[i]![1]!, 8)
+      expect(x).toBeCloseTo(frame.x, 8)
+      expect(y).toBeCloseTo(frame.y + 32, 8)
+      expect(w).toBeCloseTo(frame.width, 8)
+      expect(h).toBeCloseTo(frame.height - 32, 8)
+      for (const other of metadata.slice(i + 1)) {
+        const overlapWidth =
+          Math.min(frame.x + frame.width, other.frame.x + other.frame.width) -
+          Math.max(frame.x, other.frame.x)
+        const overlapHeight =
+          Math.min(frame.y + frame.height, other.frame.y + other.frame.height) -
+          Math.max(frame.y, other.frame.y)
+        expect(Math.min(overlapWidth, overlapHeight)).toBeLessThan(0.001)
+      }
+    }
+    // Only subpixel rounding at the canvas edge is unused, not an entire grid cell.
+    expect(covered / (result.width * result.height)).toBeGreaterThan(0.999)
+    const originalArea = panels.reduce((sum, p) => sum + p.output.width * (p.output.height + 32), 0)
+    expect((result.width * result.height) / originalArea).toBeCloseTo(1, 2)
+    expect(close).toHaveBeenCalledTimes(panels.length)
+    if (panels.length === 3) {
+      expect(result.details.layout).toMatchObject({ columns: 2 })
+      expect(metadata[0]!.frame.height).toBe(result.height)
+      expect(metadata[1]!.frame.width).toBeLessThan(metadata[0]!.frame.width)
+    }
+  }
+)
+
+it('encodes a single PNG panel once as WebP q90 without resizing or adding a heading', async () => {
+  const { canvas, context } = canvasMock(),
+    close = vi.fn()
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn(async () => ({ width: 10, height: 20, close }))
+  )
+  const result = await composeBoard([{ label: 'Selection', output: output() }], {
+    signal: new AbortController().signal,
+    assertCurrent() {},
+  })
+  expect(result).toMatchObject({ width: 10, height: 20, blob: { type: 'image/webp' } })
+  expect(context.drawImage.mock.calls[0]?.slice(1)).toEqual([0, 0])
+  expect(context.fillText).not.toHaveBeenCalled()
+  expect(canvas.toBlob).toHaveBeenCalledExactlyOnceWith(expect.any(Function), 'image/webp', 0.9)
+  expect(close).toHaveBeenCalledOnce()
+})
+it('keeps browser PNG fallback bytes and the actual MIME when WebP encoding is unavailable', async () => {
+  const { canvas } = canvasMock()
+  canvas.toBlob.mockImplementation((callback) => callback(output().blob))
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn(async () => ({ width: 10, height: 20, close() {} }))
+  )
+  const result = await composeBoard([{ label: 'Selection', output: output() }], {
+    signal: new AbortController().signal,
+    assertCurrent() {},
+  })
+  expect(result.blob.type).toBe('image/png')
+})
+
+it('discards a single-panel WebP when the task is cancelled during encoding and closes its bitmap', async () => {
+  const { canvas } = canvasMock(),
+    controller = new AbortController(),
+    close = vi.fn()
+  canvas.toBlob.mockImplementation((callback, type) => {
+    controller.abort()
+    callback(new Blob(['webp'], { type }))
+  })
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn(async () => ({ width: 10, height: 20, close }))
+  )
+  await expect(
+    composeBoard([{ label: 'Selection', output: output() }], {
       signal: controller.signal,
       assertCurrent() {},
     })

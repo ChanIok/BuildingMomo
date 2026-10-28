@@ -450,18 +450,20 @@ function save() {
               <div class="flex items-center justify-between">
                 <Label for="ai-context-window">{{ t('ai.contextWindow') }}</Label>
                 <span v-if="policy" class="text-xs text-muted-foreground">
-                  {{ t('ai.contextBudget', { budget: format(policy.inputBudget) }) }}
+                  {{ t('ai.contextCompactAt', { tokens: format(policy.autoCompactTokenLimit) }) }}
                 </span>
               </div>
               <Input
                 id="ai-context-window"
                 v-model="contextWindow"
-                type="number"
+                type="text"
                 inputmode="numeric"
-                :min="5000"
-                step="1000"
+                pattern="[0-9]+"
                 :disabled="running"
               />
+              <p v-if="policy" class="text-xs text-muted-foreground">
+                {{ t('ai.contextUsable', { tokens: format(policy.usableContextWindow) }) }}
+              </p>
               <div class="flex flex-wrap gap-1">
                 <Button
                   v-for="preset in [32000, 128000, 256000, 1000000]"
@@ -483,12 +485,12 @@ function save() {
               <Input
                 id="ai-max-tokens"
                 v-model="maxTokens"
-                type="number"
+                type="text"
                 inputmode="numeric"
-                :min="1"
-                step="1"
+                pattern="[0-9]+"
                 :disabled="running"
               />
+              <p class="text-xs text-muted-foreground">{{ t('ai.maxTokensHint') }}</p>
             </div>
 
             <div class="space-y-1.5">
@@ -559,9 +561,9 @@ function save() {
               <Input
                 id="ai-image-budget"
                 v-model="imageBudgetMiB"
-                type="number"
-                :min="1"
-                step="1"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]+"
                 :disabled="running"
               />
             </div>

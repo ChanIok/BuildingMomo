@@ -1,8 +1,7 @@
-import { createStore, promisifyRequest, type UseStore } from 'idb-keyval'
+import { promisifyRequest, type UseStore } from 'idb-keyval'
 import {
   AiError,
-  type ArtifactRecord,
-  type PayloadRecord,
+  type VariablesRecord,
   type AssetRecord,
   type ContextCheckpoint,
   type Conversation,
@@ -12,11 +11,48 @@ import {
   type ToolRecord,
 } from './types'
 
-const database = 'buildingmomo-ai-workbench-v3'
-const conversationKey = (schemeId: string, id: string) => `conversation:${schemeId}:${id}`
+const database = 'buildingmomo-ai'
+const conversationKey = (id: string) => `conversation:${id}`
 const range = (prefix: string) => IDBKeyRange.bound(prefix, `${prefix}\uffff`)
 
-export function createConversationRepository(store: UseStore = createStore(database, 'records')) {
+// The unreleased artifact schema is discarded in-place; the database name stays stable.
+const defaultStore: UseStore = (() => {
+  let opened: Promise<IDBDatabase> | undefined
+  return async (mode, callback) => {
+    opened ??= new Promise((resolve, reject) => {
+      const request = indexedDB.open(database, 2)
+      let blocked = false
+      request.onupgradeneeded = () => {
+        const db = request.result
+        if (db.objectStoreNames.contains('records')) db.deleteObjectStore('records')
+        db.createObjectStore('records')
+      }
+      request.onsuccess = () => {
+        if (blocked) {
+          request.result.close()
+          return
+        }
+        request.result.onversionchange = () => {
+          request.result.close()
+          opened = undefined
+        }
+        resolve(request.result)
+      }
+      request.onerror = () => {
+        opened = undefined
+        reject(request.error)
+      }
+      request.onblocked = () => {
+        blocked = true
+        opened = undefined
+        reject(new AiError('storage'))
+      }
+    })
+    const db = await opened
+    return callback(db.transaction('records', mode).objectStore('records'))
+  }
+})()
+export function createConversationRepository(store: UseStore = defaultStore) {
   async function transaction<T>(
     mode: IDBTransactionMode,
     execute: (db: IDBObjectStore) => Promise<T>
@@ -58,29 +94,22 @@ export function createConversationRepository(store: UseStore = createStore(datab
   async function save(
     conversation: Conversation,
     records: (
-      | MessageRecord
-      | ToolRecord
-      | AssetRecord
-      | ArtifactRecord
-      | PayloadRecord
-      | ContextCheckpoint
-      | RequestRecord
+      MessageRecord | ToolRecord | AssetRecord | VariablesRecord | ContextCheckpoint | RequestRecord
     )[] = []
   ) {
     // Snapshot at admission: an older streaming save must not serialize a later mutable draft.
     const values = clone(records)
     const meta = clone({ ...conversation, updatedAt: Date.now() })
     await transaction('readwrite', async (db) => {
-      db.put(meta, conversationKey(meta.schemeId, meta.id))
+      db.put(meta, conversationKey(meta.id))
       for (const value of values) db.put(value, value.id)
     })
     return meta
   }
-  async function create(schemeId: string, title: string) {
+  async function create(title: string) {
     const time = Date.now()
     const conversation: Conversation = {
       id: crypto.randomUUID(),
-      schemeId,
       title,
       createdAt: time,
       updatedAt: time,
@@ -91,11 +120,10 @@ export function createConversationRepository(store: UseStore = createStore(datab
   }
   async function append(
     conversation: Conversation,
-    message: Omit<MessageRecord, 'id' | 'sequence' | 'conversationId'>,
-    attachments: (ArtifactRecord | PayloadRecord)[] = []
+    message: Omit<MessageRecord, 'id' | 'sequence' | 'conversationId'>
   ) {
     return transaction('readwrite', async (db) => {
-      const key = conversationKey(conversation.schemeId, conversation.id)
+      const key = conversationKey(conversation.id)
       const current = (await promisifyRequest(db.get(key))) as Conversation | undefined
       if (!current) throw new AiError('storage')
       const sequence = current.nextSequence
@@ -106,40 +134,52 @@ export function createConversationRepository(store: UseStore = createStore(datab
         id: `message:${current.id}:${String(sequence).padStart(12, '0')}`,
       }
       const next = { ...conversation, nextSequence: sequence + 1, updatedAt: Date.now() }
-      for (const value of attachments) db.put(clone(value), value.id)
       db.put(record, record.id)
       db.put(next, key)
       return { conversation: next, message: record }
     })
   }
-  async function load(schemeId: string, id: string): Promise<ConversationRecords | null> {
-    const conversation = await read<Conversation>(conversationKey(schemeId, id))
+  async function load(id: string): Promise<ConversationRecords | null> {
+    const conversation = await read<Conversation>(conversationKey(id))
     if (!conversation) return null
-    const [messages, tools, artifacts, checkpoint] = await Promise.all([
+    const [messages, tools, variables, checkpoint] = await Promise.all([
       list<MessageRecord>(`message:${id}:`),
       list<ToolRecord>(`tool:${id}:`),
-      list<ArtifactRecord>(`artifact:${id}:`),
+      read<VariablesRecord>(`vars:${id}`),
       conversation.checkpointId ? read<ContextCheckpoint>(conversation.checkpointId) : undefined,
     ])
-    artifacts.sort((a, b) => Number(a.ref.slice(1)) - Number(b.ref.slice(1)))
+    const vars = variables ?? { id: `vars:${id}`, conversationId: id, values: {}, references: [] }
     if (conversation.checkpointId && !checkpoint) throw new AiError('storage')
     if (
       conversation.lastRun?.state === 'running' ||
       messages.some((m) => m.state === 'streaming') ||
-      tools.some((t) => t.state === 'prepared' || t.state === 'requested')
+      tools.some(
+        (t) =>
+          t.state === 'prepared' ||
+          t.state === 'requested' ||
+          t.edits.some((e) => e.state === 'prepared')
+      )
     ) {
       const repairedMessages = messages.map((m) =>
         m.state === 'streaming' ? { ...m, state: 'interrupted' as const } : m
       )
       const repairedTools = tools.map((t): ToolRecord => {
-        if (t.state !== 'prepared' && t.state !== 'requested') return t
+        if (
+          t.state !== 'prepared' &&
+          t.state !== 'requested' &&
+          !t.edits.some((e) => e.state === 'prepared')
+        )
+          return t
         return {
           ...t,
-          state: t.state === 'prepared' ? 'uncertain' : 'interrupted',
+          state: t.edits.some((e) => e.state === 'prepared') ? 'uncertain' : 'interrupted',
+          edits: t.edits.map((e) =>
+            e.state === 'prepared' ? { ...e, state: 'uncertain' as const } : e
+          ),
           result: {
             ok: false,
             error: {
-              code: t.state === 'prepared' ? 'uncertain_edit' : 'interrupted',
+              code: t.edits.some((e) => e.state === 'prepared') ? 'uncertain_edit' : 'interrupted',
               message:
                 'Previous process stopped before recording an outcome. Do not replay this call.',
             },
@@ -160,22 +200,23 @@ export function createConversationRepository(store: UseStore = createStore(datab
         conversation: next,
         messages: repairedMessages,
         tools: repairedTools,
-        artifacts,
+        variables: vars,
         checkpoint,
       }
     }
-    return { conversation, messages, tools, artifacts, checkpoint }
+    return { conversation, messages, tools, variables: vars, checkpoint }
   }
   async function remove(conversation: Conversation) {
     await transaction('readwrite', async (db) => {
-      const prefixes = ['message', 'tool', 'asset', 'artifact', 'payload', 'checkpoint', 'request']
+      const prefixes = ['message', 'tool', 'asset', 'checkpoint', 'request']
       const keys = await Promise.all(
         prefixes.map((type) =>
           promisifyRequest(db.getAllKeys(range(`${type}:${conversation.id}:`)))
         )
       )
       for (const key of keys.flat()) db.delete(key)
-      db.delete(conversationKey(conversation.schemeId, conversation.id))
+      db.delete(`vars:${conversation.id}`)
+      db.delete(conversationKey(conversation.id))
     })
   }
   return {
@@ -185,10 +226,8 @@ export function createConversationRepository(store: UseStore = createStore(datab
     load,
     remove,
     read,
-    list: async (schemeId: string) =>
-      (await list<Conversation>(`conversation:${schemeId}:`)).sort(
-        (a, b) => b.updatedAt - a.updatedAt
-      ),
+    list: async () =>
+      (await list<Conversation>(`conversation:`)).sort((a, b) => b.updatedAt - a.updatedAt),
     requests: (id: string) => list<RequestRecord>(`request:${id}:`),
   }
 }

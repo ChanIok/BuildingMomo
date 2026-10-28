@@ -34,6 +34,12 @@ export interface WorkspaceSnapshot {
   }
 }
 
+/** 一次同步中发生变化的方案内容；与当前 UI 焦点无关。 */
+export type WorkspaceSchemeData = Omit<
+  HomeSchemeSnapshot,
+  'name' | 'filePath' | 'lastModified' | 'source' | 'cloudRoomCode'
+>
+
 /** 个人目录视图状态，不携带家具数据，也不触发家具数据失效。 */
 export interface WorkspaceCollectionViewState {
   id: string

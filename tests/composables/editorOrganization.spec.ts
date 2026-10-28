@@ -6,6 +6,7 @@ import { useEditorOrganization } from '@/composables/editor/useEditorOrganizatio
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
+import { useTabStore } from '@/stores/tabStore'
 import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
 import { isCollectionTree, UNCLASSIFIED } from '@/lib/collectionTree'
 import { makeAppItem, makeScheme } from '../fixtures/item'
@@ -57,7 +58,7 @@ function setup() {
   const scope = effectScope()
   scopes.push(scope)
   const { host } = scope.run(() => useAiEditorHost())!
-  const snapshot = host.snapshot(['a', 'b', 'c'])
+  const snapshot = host.snapshot(scheme.id, ['a', 'b', 'c'])
   const history = useEditorHistory()
   const command = {
     collections: [
@@ -69,9 +70,9 @@ function setup() {
       { id: 'arch', name: 'Arch', collectionId: 'details', itemIds: ['b'] },
     ],
   }
-  const execute = async (parameters: unknown = command, id = host.current().version) => {
+  const execute = async (parameters: unknown = command, id = host.revision(scheme.id)) => {
     try {
-      return host.apply(parameters, id)
+      return host.apply(scheme.id, parameters, id)
     } catch (cause) {
       return {
         ok: false,
@@ -101,9 +102,15 @@ it('directly writes nested collections and singleton groups in ONE transaction, 
       { groupId: 7, movedItemCount: 2, remainingMemberCount: 1, originCleared: true },
     ],
   })
-  expect(host.current().version).not.toBe(snapshot.id)
-  expect(host.snapshot(['a', 'b', 'c']).items.map((item) => item.id)).toEqual(['a', 'b', 'c'])
-  expect(host.snapshot(['a', 'b', 'c']).items.map((item) => item.groupId)).toEqual([10, 11, 8])
+  expect(host.revision(scheme.id)).not.toBe(snapshot.id)
+  expect(host.snapshot(scheme.id, ['a', 'b', 'c']).items.map((item) => item.id)).toEqual([
+    'a',
+    'b',
+    'c',
+  ])
+  expect(host.snapshot(scheme.id, ['a', 'b', 'c']).items.map((item) => item.groupId)).toEqual([
+    10, 11, 8,
+  ])
   expect(scheme.selectedItemIds.value).toBe(selection)
   expect(scheme.items.value.slice(2)).toEqual(items.slice(2))
   for (let i = 2; i < items.length; i++) expect(scheme.items.value[i]).toBe(items[i])
@@ -131,7 +138,7 @@ it('restores the entire tree, names and origins with one undo/redo, never rewind
     origins: scheme.groupOrigins.value,
   })
   await execute()
-  const nextId = host.current().version
+  const nextId = host.revision(scheme.id)
   const after = structuredClone({
     items: scheme.items.value,
     tree: scheme.collectionTree.value,
@@ -144,14 +151,14 @@ it('restores the entire tree, names and origins with one undo/redo, never rewind
     origins: scheme.groupOrigins.value,
   }).toEqual(before)
   expect(scheme.maxGroupId.value).toBe(11)
-  expect(() => host.assertCurrent(nextId)).toThrow()
+  expect(host.revision(scheme.id)).not.toBe(nextId)
   history.redo()
   expect({
     items: scheme.items.value,
     tree: scheme.collectionTree.value,
     origins: scheme.groupOrigins.value,
   }).toEqual(after)
-  expect(() => host.assertCurrent(snapshot.id)).toThrow()
+  expect(host.revision(scheme.id)).not.toBe(snapshot.id)
   history.undo()
   await execute({
     collections: [],
@@ -175,7 +182,9 @@ it('reuses existing authorized collection IDs for subsequent edits and removes d
   ).toBe(true)
   expect(scheme.collectionTree.value.groups.map((group) => group.groupId)).toEqual([7, 8, 9, 12])
   expect(scheme.collectionTree.value.nodes).toHaveLength(4) // Existing empty folders are preserved.
-  expect(host.snapshot(['a', 'b', 'c']).groups.some((group) => group.groupId === 12)).toBe(true)
+  expect(
+    host.snapshot(scheme.id, ['a', 'b', 'c']).groups.some((group) => group.groupId === 12)
+  ).toBe(true)
 })
 
 it('rejects invalid or unauthorized commands without touching references, history, selection or ID allocators', async () => {
@@ -207,7 +216,7 @@ it('rejects invalid or unauthorized commands without touching references, histor
   expect(scheme.history.value).toBeUndefined()
 })
 
-it.each(['hidden', 'locked', 'deleted', 'scheme-switch', 'dispose'])(
+it.each(['hidden', 'locked', 'deleted', 'dispose'])(
   'rejects an in-flight command after %s changes',
   async (action) => {
     const { editor, scheme, scope, snapshot, execute } = setup()
@@ -215,7 +224,6 @@ it.each(['hidden', 'locked', 'deleted', 'scheme-switch', 'dispose'])(
     if (action === 'locked') scheme.lockedGroupIds.value = new Set([7])
     if (action === 'deleted')
       scheme.items.value = scheme.items.value.filter((item) => item.internalId !== 'a')
-    if (action === 'scheme-switch') editor.createScheme('Other')
     if (action === 'dispose') scope.stop()
     expect((await execute(undefined, snapshot.id)).ok).toBe(false)
     expect(scheme.maxGroupId.value).toBe(9)
@@ -233,7 +241,7 @@ it('checks the editor version and destination restrictions independently before 
     )
   ).toThrow()
   scheme.lockedCollectionIds.value = new Set([UNCLASSIFIED])
-  host.snapshot(['a', 'b', 'c'])
+  host.snapshot(scheme.id, ['a', 'b', 'c'])
   expect(() =>
     organization.organize(
       { collections: [], groups: [{ id: 'x', name: 'X', collectionId: null, itemIds: ['a'] }] },
@@ -279,4 +287,29 @@ it('uses the standard cloud transaction queue and replays the same data, names, 
   expect(remote.collectionTree.value).toEqual(scheme.collectionTree.value)
   expect(remote.groupOrigins.value).toEqual(scheme.groupOrigins.value)
   expect(scheme.items.value).toEqual(original.items)
+})
+
+it('commits to a background scheme without moving UI focus; its own history and persistence notification are updated', async () => {
+  const { editor, scheme, execute, history } = setup()
+  const before = scheme.items.value
+  editor.createScheme('Other')
+  const other = editor.activeScheme!
+  const version = editor.sceneVersion
+  const workspaceVersion = editor.workspaceVersion
+  expect((await execute()).ok).toBe(true)
+  expect(editor.activeScheme).toBe(other)
+  expect(other.items.value).toHaveLength(0)
+  expect(other.history.value).toBeUndefined()
+  expect(scheme.history.value?.transactionUndoStack).toHaveLength(1)
+  expect(editor.sceneVersion).toBe(version)
+  expect(editor.workspaceVersion).toBeGreaterThan(workspaceVersion)
+  const after = scheme.items.value
+  useTabStore().setActiveTab(useTabStore().tabs.find((tab) => tab.schemeId === scheme.id)!.id)
+  history.undo()
+  expect(scheme.items.value).toEqual(before)
+  expect(scheme.maxGroupId.value).toBe(11)
+  expect(other.items.value).toEqual([])
+  history.redo()
+  expect(scheme.items.value).toEqual(after)
+  expect(other.history.value).toBeUndefined()
 })

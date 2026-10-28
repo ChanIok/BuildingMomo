@@ -33,8 +33,6 @@ withDefaults(defineProps<{ content: string; final?: boolean }>(), { final: true 
     :render-code-blocks-as-pre="true"
     :smooth-streaming="false"
     :fade="false"
-    :batch-rendering="false"
-    :parse-coalesce-ms="0"
     :show-tooltips="false"
     :defer-nodes-until-visible="false"
   />

@@ -1,4 +1,3 @@
-import type { CollectionTree } from '@/lib/collectionTree'
 import * as Comlink from 'comlink'
 import { saveWorkspaceSnapshot } from '../lib/workspaceSnapshotStore'
 import type { AppItem } from '../types/editor'
@@ -6,6 +5,7 @@ import type {
   WorkspaceSnapshot,
   ValidationResult,
   WorkspaceCollectionViewState,
+  WorkspaceSchemeData,
 } from '../types/persistence'
 import { checkFurnitureColors } from '../lib/furnitureColorValidation'
 import { getSafeScaleRange } from '../lib/scaleLimits'
@@ -335,21 +335,8 @@ const api = {
         cloudRoomCode?: string
       }[]
     }
-    // 当前激活方案的完整数据 (可选)
-    activeSchemeData?: {
-      id: string
-      items: AppItem[]
-      selectedItemIds: any
-      currentViewConfig: any
-      viewState: any
-      collectionTree?: CollectionTree
-      collapsedCollectionIds?: ReadonlySet<string>
-      hiddenCollectionIds?: ReadonlySet<string>
-      lockedCollectionIds?: ReadonlySet<string>
-      hiddenGroupIds?: ReadonlySet<number>
-      lockedGroupIds?: ReadonlySet<number>
-      groupOrigins: Map<number, string> // 组合原点映射: groupId -> originItemId
-    }
+    // 本次发生变化的方案，不受激活标签限制。
+    schemeData?: WorkspaceSchemeData[]
     collectionViewStates?: WorkspaceCollectionViewState[]
     // 是否立即保存（跳过防抖）
     immediate?: boolean
@@ -386,14 +373,11 @@ const api = {
     }
     currentSnapshot.editor.schemes = newSchemesList
 
-    // 2. 更新当前方案内容 (如果提供了)
-    let targetScheme = null
-    if (payload.activeSchemeData) {
-      targetScheme = currentSnapshot.editor.schemes.find(
-        (s) => s.id === payload.activeSchemeData!.id
-      )
+    // 2. 按身份更新所有受影响方案。
+    for (const data of payload.schemeData ?? []) {
+      const targetScheme = currentSnapshot.editor.schemes.find((s) => s.id === data.id)
       if (targetScheme) {
-        Object.assign(targetScheme, payload.activeSchemeData)
+        Object.assign(targetScheme, data)
         targetScheme.lastModified = Date.now()
       }
     }
@@ -424,12 +408,9 @@ const api = {
     // 仅持久化视图状态，不触发家具校验。
     const shouldValidate = settings.enableDuplicateDetection || settings.enableLimitDetection
 
-    if (shouldValidate && (payload.activeSchemeData || !payload.collectionViewStates)) {
-      if (targetScheme) {
-        return { validation: runValidation(targetScheme.items, settings, targetScheme.filePath) }
-      } else {
-        return { validation: runValidationOnSnapshot() }
-      }
+    if (shouldValidate && (payload.schemeData || !payload.collectionViewStates)) {
+      // 验证结果展示的是当前方案，不是本次数组中最后一个后台方案。
+      return { validation: runValidationOnSnapshot() }
     }
 
     return {}

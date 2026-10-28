@@ -108,7 +108,8 @@ export function streamModel(options: {
           assertNotAborted(abortSignal)
           if (url.protocol !== 'momo-asset:') throw new AiError('image')
           const blob = await options.resolveAsset(url.pathname)
-          if (!blob || blob.type !== 'image/png') throw new AiError('image')
+          if (!blob || !['image/png', 'image/webp', 'image/jpeg'].includes(blob.type))
+            throw new AiError('image')
           return { data: new Uint8Array(await blob.arrayBuffer()), mediaType: blob.type }
         })
       ),
@@ -132,7 +133,13 @@ export function modelFailure(error: unknown): unknown {
       /* Some gateways return plain text. */
     }
     const text = error.responseBody ?? error.message
-    if (detail.code === 'context_length_exceeded') return new AiError('context_overflow')
+    if (
+      detail.code === 'context_length_exceeded' ||
+      /context_length_exceeded|context[_ ](?:length|window)|maximum context|prompt is too long|too many (?:input )?tokens|上下文|输入.*过长/i.test(
+        text
+      )
+    )
+      return new AiError('context_overflow')
     if (/^max_(?:completion_)?tokens$/.test(String(detail.param ?? '')))
       return new AiError('output_limit')
     if (
@@ -148,12 +155,6 @@ export function modelFailure(error: unknown): unknown {
       )
     )
       return new AiError('output_limit')
-    if (
-      /context_length_exceeded|context[_ ](?:length|window)|maximum context|prompt is too long|too many (?:input )?tokens|上下文|输入.*过长/i.test(
-        text
-      )
-    )
-      return new AiError('context_overflow')
     return new AiError(error.statusCode ? 'http' : 'network')
   }
   return new AiError('provider')

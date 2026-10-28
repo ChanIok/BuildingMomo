@@ -14,6 +14,7 @@ import type {
   WorkspaceSnapshot,
   HomeSchemeSnapshot,
   WorkspaceCollectionViewState,
+  WorkspaceSchemeData,
 } from '../types/persistence'
 
 const CURRENT_VERSION = 2
@@ -48,6 +49,24 @@ export function useWorkspaceWorker() {
   let contentPending = false
   let immediatePending = false
   const pendingViewStates = new Set<string>()
+  const syncedContent = new Map<string, WorkspaceSchemeData>()
+
+  function schemeContent(scheme: HomeScheme): WorkspaceSchemeData {
+    return {
+      id: scheme.id,
+      items: toRaw(scheme.items.value),
+      selectedItemIds: toRaw(scheme.selectedItemIds.value),
+      currentViewConfig: toRaw(scheme.currentViewConfig.value),
+      viewState: toRaw(scheme.viewState.value),
+      groupOrigins: toRaw(scheme.groupOrigins.value),
+      collectionTree: toRaw(scheme.collectionTree.value),
+      collapsedCollectionIds: toRaw(scheme.collapsedCollectionIds.value),
+      hiddenCollectionIds: toRaw(scheme.hiddenCollectionIds.value),
+      lockedCollectionIds: toRaw(scheme.lockedCollectionIds.value),
+      hiddenGroupIds: toRaw(scheme.hiddenGroupIds.value),
+      lockedGroupIds: toRaw(scheme.lockedGroupIds.value),
+    }
+  }
 
   // 通过同一个防抖通道合并内容与轻量视图更新，包括切换方案前的折叠操作；
   // 仅更新视图时不发送家具数据。
@@ -84,38 +103,37 @@ export function useWorkspaceWorker() {
       })),
     }
 
-    // 2. 准备当前激活方案的内容 (Active Scheme Data)
-    let activeSchemeData = undefined
-    if (includeContent && editorStore.activeScheme) {
-      const scheme = editorStore.activeScheme
-      activeSchemeData = {
-        id: scheme.id,
-        items: toRaw(scheme.items.value),
-        selectedItemIds: toRaw(scheme.selectedItemIds.value),
-        currentViewConfig: toRaw(scheme.currentViewConfig.value),
-        viewState: toRaw(scheme.viewState.value),
-        groupOrigins: toRaw(scheme.groupOrigins.value),
-        collectionTree: toRaw(scheme.collectionTree.value),
-        collapsedCollectionIds: toRaw(scheme.collapsedCollectionIds.value),
-        hiddenCollectionIds: toRaw(scheme.hiddenCollectionIds.value),
-        lockedCollectionIds: toRaw(scheme.lockedCollectionIds.value),
-        hiddenGroupIds: toRaw(scheme.hiddenGroupIds.value),
-        lockedGroupIds: toRaw(scheme.lockedGroupIds.value),
-      }
-    }
+    // 2. 当前方案保留原有同步行为；后台方案只在内容引用变化时发送。
+    // 引用比较沿用不可变编辑契约，折叠状态继续走轻量通道。
+    const activeSchemeId = editorStore.activeScheme?.id
+    const schemeData = includeContent
+      ? editorStore.schemes.map(schemeContent).filter((data) => {
+          const previous = syncedContent.get(data.id)
+          return (
+            data.id === activeSchemeId ||
+            !previous ||
+            (Object.keys(data) as (keyof WorkspaceSchemeData)[]).some(
+              (key) => key !== 'collapsedCollectionIds' && data[key] !== previous[key]
+            )
+          )
+        })
+      : undefined
 
     try {
       // 3. 发送统一指令
       const result = await workerApi.updateState({
         meta,
-        activeSchemeData,
+        schemeData,
         collectionViewStates:
           !includeContent || collectionViewStates.length ? collectionViewStates : undefined,
         immediate,
       })
+      for (const data of schemeData ?? []) syncedContent.set(data.id, data)
+      for (const id of syncedContent.keys())
+        if (!editorStore.getSchemeById(id)) syncedContent.delete(id)
 
       // 4. 更新验证状态 (如果有)
-      if (result.validation) {
+      if (result.validation && editorStore.activeScheme?.id === activeSchemeId) {
         validationStore.setValidationResults(result.validation)
       }
     } catch (error) {
@@ -267,7 +285,7 @@ export function useWorkspaceWorker() {
     // 2b. 内容性变化 (Scene, Selection) -> 延迟保存 (Worker 端保持 2s 节流)
     const unwatchContent = watch(
       [
-        () => editorStore.sceneVersion,
+        () => editorStore.workspaceVersion,
         () => editorStore.selectionVersion,
         () => editorStore.activeScheme?.hiddenGroupIds.value,
         () => editorStore.activeScheme?.lockedGroupIds.value,
@@ -412,23 +430,12 @@ export function useWorkspaceWorker() {
   const createCurrentSnapshot = (): WorkspaceSnapshot => {
     const schemesValue = editorStore.schemes || []
     const schemesSnapshot: HomeSchemeSnapshot[] = schemesValue.map((scheme) => ({
-      id: scheme.id,
+      ...schemeContent(scheme),
       name: scheme.name.value,
       filePath: scheme.filePath.value,
       lastModified: scheme.lastModified.value,
       source: scheme.source.value,
       cloudRoomCode: scheme.cloudRoomCode.value,
-      items: toRaw(scheme.items.value),
-      selectedItemIds: toRaw(scheme.selectedItemIds.value),
-      currentViewConfig: toRaw(scheme.currentViewConfig.value),
-      viewState: toRaw(scheme.viewState.value),
-      groupOrigins: toRaw(scheme.groupOrigins.value),
-      collectionTree: toRaw(scheme.collectionTree.value),
-      collapsedCollectionIds: toRaw(scheme.collapsedCollectionIds.value),
-      hiddenCollectionIds: toRaw(scheme.hiddenCollectionIds.value),
-      lockedCollectionIds: toRaw(scheme.lockedCollectionIds.value),
-      hiddenGroupIds: toRaw(scheme.hiddenGroupIds.value),
-      lockedGroupIds: toRaw(scheme.lockedGroupIds.value),
     }))
 
     return {

@@ -13,6 +13,7 @@ import {
 } from '../../lib/editorTransactions'
 import type {
   EditorTransaction,
+  HomeScheme,
   HistoryStack,
   SelectionHistoryEntry,
   TransactionHistoryEntry,
@@ -40,17 +41,13 @@ export function useEditorHistory() {
   }
 
   /**
-   * 确保当前激活的方案拥有初始化的历史记录栈
+   * 确保目标方案拥有初始化的历史记录栈（默认当前方案）
    * 如果当前方案为空，则返回 null
    */
-  function ensureHistoryStack(): HistoryStack | null {
-    if (!activeScheme.value) return null
-
-    if (!activeScheme.value.history.value) {
-      activeScheme.value.history.value = initHistoryStack()
-    }
-
-    return activeScheme.value.history.value
+  function ensureHistoryStack(scheme = activeScheme.value): HistoryStack | null {
+    if (!scheme) return null
+    if (!scheme.history.value) scheme.history.value = initHistoryStack()
+    return scheme.history.value
   }
 
   /**
@@ -158,22 +155,27 @@ export function useEditorHistory() {
    *
    * @param intent 意图的前缀（如 'transform.move', 'group.create' 等，用于界面文案呈现以及查错）
    * @param execute 实际触发数据修改的闭包函数
+   * @param scheme 事务所属方案；UI 默认使用当前方案，后台编辑显式传入目标
    */
-  function recordTransaction<T>(intent: string, execute: () => T): T {
-    const scheme = activeScheme.value
+  function recordTransaction<T>(
+    intent: string,
+    execute: () => T,
+    scheme: HomeScheme | null = activeScheme.value
+  ): T {
     if (!scheme) {
       return execute()
     }
 
     // 所有编辑入口统一校验选择范围和保护限制。
-    if (store.constrainSelectionToEditable()) store.triggerSelectionUpdate()
+    if (scheme === activeScheme.value && store.constrainSelectionToEditable())
+      store.triggerSelectionUpdate()
 
     // [第①步]：零开销缓存当前的引用状态
     const before = captureSchemeSnapshot(scheme)
     const renderVersion = store.sceneVersion
     const selectionBefore = cloneSelection(scheme.selectedItemIds.value)
 
-    // [第②步]：执行副作用操作，真正修改 activeScheme 里的内容或指针
+    // [第②步]：执行副作用操作，修改目标方案里的内容或指针
     const result = execute()
 
     // [第③步]：零开销缓存这之后的引用状态
@@ -190,7 +192,7 @@ export function useEditorHistory() {
 
     if (transaction) {
       store.recordRenderTransaction(transaction, renderVersion)
-      const history = ensureHistoryStack()
+      const history = ensureHistoryStack(scheme)
       if (!history) return result
 
       // 生成操作包裹并装载进撤销堆栈（Undo）

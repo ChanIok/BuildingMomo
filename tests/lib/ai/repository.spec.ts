@@ -2,22 +2,15 @@ import 'fake-indexeddb/auto'
 import { createStore } from 'idb-keyval'
 import { expect, it } from 'vitest'
 import { createConversationRepository } from '@/lib/ai/repository'
-import { createArtifacts } from '@/lib/ai/artifacts'
-import type {
-  ConversationRecords,
-  PayloadRecord,
-  AssetRecord,
-  MessageRecord,
-  ToolRecord,
-} from '@/lib/ai/types'
+import type { AssetRecord, MessageRecord, ToolRecord } from '@/lib/ai/types'
 
 export function repository() {
   return createConversationRepository(createStore(`ai-test-${crypto.randomUUID()}`, 'records'))
 }
 
-it('allocates ordered messages transactionally, lists by scheme and loads ordered records without assets', async () => {
+it('allocates ordered messages transactionally, lists global conversations and loads ordered records without assets', async () => {
   const repo = repository()
-  const conversation = await repo.create('scheme', 'House')
+  const conversation = await repo.create('House')
   const input = {
     role: 'user' as const,
     content: 'Do not change the garden',
@@ -30,18 +23,17 @@ it('allocates ordered messages transactionally, lists by scheme and loads ordere
     repo.append(conversation, { ...input, content: 'Continue' }),
   ])
   expect([a.message.sequence, b.message.sequence]).toEqual([0, 1])
-  expect((await repo.load('scheme', conversation.id))?.conversation.nextSequence).toBe(2)
-  expect((await repo.load('scheme', conversation.id))?.messages.map((m) => m.content)).toEqual([
+  expect((await repo.load(conversation.id))?.conversation.nextSequence).toBe(2)
+  expect((await repo.load(conversation.id))?.messages.map((m) => m.content)).toEqual([
     input.content,
     'Continue',
   ])
-  expect((await repo.list('other')).length).toBe(0)
-  expect((await repo.list('scheme'))[0]?.id).toBe(conversation.id)
+  expect((await repo.list())[0]?.id).toBe(conversation.id)
 })
 
 it('atomically stores outcome and Blob, recovers prepared edits as uncertain without replaying', async () => {
   const repo = repository(),
-    conversation = await repo.create('scheme', 'House')
+    conversation = await repo.create('House')
   conversation.lastRun = { id: 'r', state: 'running' }
   const appended = await repo.append(conversation, {
     role: 'assistant',
@@ -55,11 +47,11 @@ it('atomically stores outcome and Blob, recovers prepared edits as uncertain wit
     conversationId: conversation.id,
     messageId: appended.message.id,
     providerCallId: 'provider-1',
-    name: 'apply',
+    name: 'execute_js',
     input: {},
-    effect: 'edit',
-    state: 'prepared',
+    state: 'requested',
     assets: [],
+    edits: [{ id: 'edit-1', schemeId: 'scheme', state: 'prepared', input: {} }],
   }
   const message: MessageRecord = { ...appended.message, toolIds: [tool.id] }
   const asset: AssetRecord = {
@@ -71,7 +63,7 @@ it('atomically stores outcome and Blob, recovers prepared edits as uncertain wit
     bytes: 3,
   }
   await repo.save(appended.conversation, [tool, message, asset])
-  const loaded = (await repo.load('scheme', conversation.id))!
+  const loaded = (await repo.load(conversation.id))!
   expect(loaded.messages[0]?.state).toBe('interrupted')
   expect(loaded.tools[0]?.state).toBe('uncertain')
   expect(loaded.conversation.lastRun?.state).toBe('interrupted')
@@ -80,12 +72,12 @@ it('atomically stores outcome and Blob, recovers prepared edits as uncertain wit
   expect(await repo.read(asset.id)).toBeUndefined()
   expect(await repo.read(message.id)).toBeUndefined()
   expect(await repo.read(tool.id)).toBeUndefined()
-  expect(await repo.load('scheme', conversation.id)).toBeNull()
+  expect(await repo.load(conversation.id)).toBeNull()
 })
 
 it('does not rewrite old messages during checkpoints and rolls back a failed batch', async () => {
   const repo = repository(),
-    conversation = await repo.create('scheme', 'House')
+    conversation = await repo.create('House')
   const { conversation: next, message } = await repo.append(conversation, {
     role: 'user',
     content: 'original',
@@ -122,7 +114,7 @@ it('rolls back records and metadata together when an IndexedDB write fails mid-t
       return callback(db)
     })
   )
-  const conversation = await repo.create('s', 'Before')
+  const conversation = await repo.create('Before')
   const asset: AssetRecord = {
     id: `asset:${conversation.id}:png`,
     conversationId: conversation.id,
@@ -136,43 +128,51 @@ it('rolls back records and metadata together when an IndexedDB write fails mid-t
     code: 'storage',
   })
   fail = false
-  expect((await repo.list('s'))[0]?.title).toBe('Before')
+  expect((await repo.list())[0]?.title).toBe('Before')
   expect(await repo.read(asset.id)).toBeUndefined()
 })
 
-it('commits selection reference and message together; restores metadata without eager payloads and deletes both', async () => {
+it('restores variables and short references without executing code, and deletes them with the conversation', async () => {
   const repo = repository(),
-    conversation = await repo.create('scheme', 'References')
-  const records: ConversationRecords = { conversation, messages: [], tools: [], artifacts: [] }
-  const store = createArtifacts(records, repo)
-  const a = await store.add(
-    { kind: 'set', schemeId: 'scheme', label: 'Selected', revision: 'v1', count: 2 },
-    ['b', 'a']
-  )
-  const next = await repo.append(
-    conversation,
-    {
-      role: 'user',
-      content: 'This selection',
-      state: 'complete',
-      toolIds: [],
-      references: [a.ref],
-      runId: 'r',
-    },
-    store.staged
-  )
-  const loaded = (await repo.load('scheme', conversation.id))!
-  expect(loaded.messages[0]?.references).toEqual(['R1'])
-  expect(loaded.artifacts[0]).toEqual(a)
-  expect(JSON.stringify(loaded)).not.toContain('["a","b"]')
-  expect((await repo.read<PayloadRecord>(a.payloadId!))?.data).toEqual(['a', 'b'])
-  expect(
-    await createArtifacts(loaded, repo).add(
-      { kind: 'set', schemeId: 'scheme', label: 'Selected', revision: 'v1', count: 2 },
-      ['a', 'b']
-    )
-  ).toEqual(a)
-  await repo.remove(next.conversation)
-  expect(await repo.read(a.id)).toBeUndefined()
-  expect(await repo.read(a.payloadId!)).toBeUndefined()
+    conversation = await repo.create('Shared')
+  const variables = {
+    id: `vars:${conversation.id}`,
+    conversationId: conversation.id,
+    values: { selected: [{ ref: 1, instanceId: 1000 }], count: 1 },
+    references: [{ schemeId: 'scheme-a', internalId: 'private-uuid', revision: 'r1' }],
+  }
+  await repo.save(conversation, [variables])
+  const restored = await repo.load(conversation.id)
+  expect(restored?.variables).toEqual(variables)
+  expect(restored?.messages).toEqual([])
+  expect(restored?.tools).toEqual([])
+  await repo.remove(conversation)
+  expect(await repo.read(variables.id)).toBeUndefined()
+  expect(await repo.load(conversation.id)).toBeNull()
+})
+
+it('upgrades the fixed database name in place, discarding the unreleased artifact schema', async () => {
+  const old = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open('buildingmomo-ai', 1)
+    request.onupgradeneeded = () => request.result.createObjectStore('records')
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  await new Promise<void>((resolve) => {
+    const tx = old.transaction('records', 'readwrite')
+    tx.objectStore('records').put({ ref: 'R1' }, 'artifact:old')
+    tx.oncomplete = () => resolve()
+  })
+  old.close()
+  const repo = createConversationRepository()
+  expect(await repo.read('artifact:old')).toBeUndefined()
+  const conversation = await repo.create('New schema')
+  expect((await repo.load(conversation.id))?.variables.values).toEqual({})
+  const opened = await new Promise<IDBDatabase>((resolve) => {
+    const request = indexedDB.open('buildingmomo-ai')
+    request.onsuccess = () => resolve(request.result)
+  })
+  expect(opened.version).toBe(2)
+  expect([...opened.objectStoreNames]).toEqual(['records'])
+  opened.close()
 })
