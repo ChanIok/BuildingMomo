@@ -111,7 +111,7 @@ const viewPresets = computed(() => [
       <span class="text-[10px] font-medium text-muted-foreground select-none">{{
         t('menu.view')
       }}</span>
-      <div class="flex w-full max-w-[320px] items-center justify-between">
+      <div class="flex w-full max-w-[280px] items-center justify-between">
         <SidebarToggleItem
           :model-value="viewPreset === 'perspective'"
           @update:model-value="

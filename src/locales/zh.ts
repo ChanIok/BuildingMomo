@@ -436,6 +436,7 @@ export const zhLocale = {
       showEditorSettings: '编辑器设置 (3)',
       showDisplaySettings: '显示设置 (4)',
       showDesktopSettings: '客户端设置 (5)',
+      showAI: '超级大喵 (6)',
     },
     tool: {
       select: '选择工具',

@@ -468,6 +468,7 @@ export const enLocale = {
       showEditorSettings: 'Editor Settings (3)',
       showDisplaySettings: 'Display Settings (4)',
       showDesktopSettings: 'Desktop Settings (5)',
+      showAI: 'Super Momo (6)',
     },
     tool: {
       select: 'Select',

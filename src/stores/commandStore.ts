@@ -436,6 +436,17 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () => desktopStore.isDesktop,
       execute: () => uiStore.setSidebarView('desktopSettings'),
     },
+    {
+      id: 'sidebar.showAI',
+      label: t('command.sidebar.showAI'),
+      shortcut: '6',
+      category: 'view',
+      enabled: () => settingsStore.canUseExperimentalFeatures,
+      execute: () => {
+        console.log('[Command] 切换到AI面板')
+        uiStore.setSidebarView('ai')
+      },
+    },
 
     // ===== 编辑菜单 =====
     {

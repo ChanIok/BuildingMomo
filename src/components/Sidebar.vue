@@ -15,6 +15,7 @@ import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
 import SidebarDesktopSettings from './SidebarDesktopSettings.vue'
 import SidebarAI from './ai/SidebarAI.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
+import IconMomo from './icons/IconMomo.vue'
 import { useDesktopStore } from '../stores/desktopStore'
 import {
   ChevronDown,
@@ -24,7 +25,6 @@ import {
   PictureInPicture2,
   Settings2,
   SlidersHorizontal,
-  Sparkles,
 } from 'lucide-vue-next'
 
 const editorStore = useEditorStore()
@@ -64,101 +64,102 @@ watch(
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div class="flex h-full w-full flex-col">
         <div class="shrink-0 border-b p-2 pl-4">
-          <div class="flex items-center justify-between gap-2 bg-transparent p-0">
-            <div class="flex flex-wrap gap-1">
-              <SidebarToggleItem
-                :model-value="uiStore.sidebarView === 'structure'"
-                @update:model-value="
-                  (v: boolean) => {
-                    if (v) uiStore.setSidebarView('structure')
-                  }
-                "
-                :tooltip="t('sidebar.structure')"
-                shortcut="1"
-              >
-                <Layers class="h-4 w-4" />
-              </SidebarToggleItem>
-
-              <SidebarToggleItem
-                :model-value="uiStore.sidebarView === 'transform'"
-                @update:model-value="
-                  (v: boolean) => {
-                    if (v) uiStore.setSidebarView('transform')
-                  }
-                "
-                :tooltip="t('sidebar.transform')"
-                shortcut="2"
-              >
-                <Settings2 class="h-4 w-4" />
-              </SidebarToggleItem>
-
-              <SidebarToggleItem
-                :model-value="uiStore.sidebarView === 'editorSettings'"
-                @update:model-value="
-                  (v: boolean) => {
-                    if (v) uiStore.setSidebarView('editorSettings')
-                  }
-                "
-                :tooltip="t('sidebar.editorSettings')"
-                shortcut="3"
-              >
-                <SlidersHorizontal class="h-4 w-4" />
-              </SidebarToggleItem>
-              <SidebarToggleItem
-                :model-value="uiStore.sidebarView === 'displaySettings'"
-                @update:model-value="
-                  (v: boolean) => {
-                    if (v) uiStore.setSidebarView('displaySettings')
-                  }
-                "
-                :tooltip="t('sidebar.display.label')"
-                shortcut="4"
-              >
-                <PictureInPicture2 class="h-4 w-4" />
-              </SidebarToggleItem>
-
-              <SidebarToggleItem
-                v-if="desktopStore.isDesktop"
-                :model-value="uiStore.sidebarView === 'desktopSettings'"
-                @update:model-value="
-                  (v: boolean) => {
-                    if (v) uiStore.setSidebarView('desktopSettings')
-                  }
-                "
-                :tooltip="t('sidebar.desktop.label')"
-                shortcut="5"
-              >
-                <Laptop class="h-4 w-4" />
-              </SidebarToggleItem>
-              <SidebarToggleItem
-                v-if="settingsStore.canUseExperimentalFeatures"
-                :model-value="uiStore.sidebarView === 'ai'"
-                @update:model-value="
-                  (v: boolean) => {
-                    if (v) uiStore.setSidebarView('ai')
-                  }
-                "
-                :tooltip="t('ai.title')"
-              >
-                <Sparkles class="h-4 w-4" />
-              </SidebarToggleItem>
-            </div>
-
+          <div class="flex w-full max-w-[240px] items-center justify-between">
             <SidebarToggleItem
-              v-if="isCompactSidebar"
-              :model-value="!isHeaderCollapsed"
+              :model-value="uiStore.sidebarView === 'structure'"
               @update:model-value="
                 (v: boolean) => {
-                  isHeaderCollapsed = !v
+                  if (v) uiStore.setSidebarView('structure')
                 }
               "
-              :tooltip="
-                isHeaderCollapsed ? t('sidebar.header.expand') : t('sidebar.header.collapse')
-              "
+              :tooltip="t('sidebar.structure')"
+              shortcut="1"
             >
-              <ChevronDown v-if="isHeaderCollapsed" class="h-4 w-4" />
-              <ChevronUp v-else class="h-4 w-4" />
+              <Layers class="h-4 w-4" />
             </SidebarToggleItem>
+
+            <SidebarToggleItem
+              :model-value="uiStore.sidebarView === 'transform'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) uiStore.setSidebarView('transform')
+                }
+              "
+              :tooltip="t('sidebar.transform')"
+              shortcut="2"
+            >
+              <Settings2 class="h-4 w-4" />
+            </SidebarToggleItem>
+
+            <SidebarToggleItem
+              :model-value="uiStore.sidebarView === 'editorSettings'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) uiStore.setSidebarView('editorSettings')
+                }
+              "
+              :tooltip="t('sidebar.editorSettings')"
+              shortcut="3"
+            >
+              <SlidersHorizontal class="h-4 w-4" />
+            </SidebarToggleItem>
+            <SidebarToggleItem
+              :model-value="uiStore.sidebarView === 'displaySettings'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) uiStore.setSidebarView('displaySettings')
+                }
+              "
+              :tooltip="t('sidebar.display.label')"
+              shortcut="4"
+            >
+              <PictureInPicture2 class="h-4 w-4" />
+            </SidebarToggleItem>
+
+            <SidebarToggleItem
+              v-if="desktopStore.isDesktop"
+              :model-value="uiStore.sidebarView === 'desktopSettings'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) uiStore.setSidebarView('desktopSettings')
+                }
+              "
+              :tooltip="t('sidebar.desktop.label')"
+              shortcut="5"
+            >
+              <Laptop class="h-4 w-4" />
+            </SidebarToggleItem>
+            <SidebarToggleItem
+              v-if="settingsStore.canUseExperimentalFeatures"
+              :model-value="uiStore.sidebarView === 'ai'"
+              @update:model-value="
+                (v: boolean) => {
+                  if (v) uiStore.setSidebarView('ai')
+                }
+              "
+              :tooltip="t('ai.title')"
+              shortcut="6"
+            >
+              <IconMomo class="h-4 w-4" />
+            </SidebarToggleItem>
+
+            <template v-if="isCompactSidebar">
+              <div class="mx-0.5 h-4 w-px bg-sidebar-border" />
+              <SidebarToggleItem
+                :model-value="!isHeaderCollapsed"
+                @update:model-value="
+                  (v: boolean) => {
+                    isHeaderCollapsed = !v
+                  }
+                "
+                :tooltip="
+                  isHeaderCollapsed ? t('sidebar.header.expand') : t('sidebar.header.collapse')
+                "
+              >
+                <ChevronDown v-if="isHeaderCollapsed" class="h-4 w-4" />
+                <ChevronUp v-else class="h-4 w-4" />
+              </SidebarToggleItem>
+            </template>
           </div>
         </div>
 
