@@ -57,6 +57,7 @@ const menuHasOrigin = computed(
 )
 const query = ref('')
 const importDialogOpen = ref(false)
+const directory = useCollectionPanel(query, { groups, ungrouped })
 const {
   rows,
   destinations,
@@ -75,18 +76,20 @@ const {
   collapseAll,
   restriction,
   groupsForEntry,
-} = useCollectionPanel(query, { groups, ungrouped })
+  visibleEntryForGroup,
+} = directory
 const {
   select,
   deselect,
   clear: clearSelection,
   adopt: adoptSelection,
   selectionState,
+  selectionPresentation,
   selectionCoverage,
   isSelected,
   entries: selectedEntries,
   reset: resetSelectionAnchor,
-} = useGroupPanelSelection(rows, groups, groupsForEntry, query)
+} = useGroupPanelSelection(directory, groups, query)
 const editing = ref<CollectionEntry | null>(null)
 const dragged = ref<CollectionEntry | null>(null)
 const dragEntries = shallowRef<CollectionEntry[]>([])
@@ -258,10 +261,8 @@ function inheritedReason(row: CollectionRow, kind: 'hidden' | 'locked') {
 
 function toggleVisibility(row: CollectionRow, event: Pick<MouseEvent, 'altKey'>) {
   if (event.altKey) store.showOnly(entryOf(row))
-  else if (!inheritedReason(row, 'hidden')) {
-    if (row.kind !== 'collection') store.setGroupHidden(row.id, !row.group.ownHidden)
-    else store.setCollectionRestriction(row.id, 'hidden', !row.hidden)
-  }
+  else if (row.kind !== 'collection') store.setGroupHidden(row.id, !row.group.ownHidden)
+  else store.setCollectionRestriction(row.id, 'hidden', !row.hidden)
   // 显隐变化可能从选择中移除受限家具，此时不自动滚动。
   panelSelectionVersion = store.selectionVersion
 }
@@ -649,11 +650,11 @@ function rowProps(row: CollectionRow) {
         ? scheme?.activeGroupId.value === row.id
         : scheme?.activeCollectionId.value === row.id,
     selectionState: selectionState(row),
+    selectionPresentation: selectionPresentation(row),
     selectionSummary:
       coverage.selected > 0
         ? t('groups.selectionCount', { count: coverage.selected, total: coverage.total })
         : undefined,
-    selected: isSelected(row),
     editing: !!isEditing(row),
     draft: isEditing(row) ? draft.value : '',
     draggable:
@@ -708,25 +709,27 @@ watch(
     )
     if (selected.length !== 1) return
     const id = selected[0]!.id
-    const kind = id === 0 ? 'ungrouped' : 'group'
-    // 仅跟随树中已展开可见的行，画布选择不自动展开集合。
-    if (!rows.value.some((row) => row.kind === kind && row.id === id)) return
+    // 折叠分支只定位到最近可见的祖先，画布选择不自动展开集合。
+    if (!visibleEntryForGroup(id)) return
     if (store.activeScheme) {
       store.activeScheme.activeGroupId.value = id
       store.activeScheme.activeCollectionId.value = null
     }
     if (pointerInside.value || query.value.trim() || editing.value !== null) return
     const schemeId = store.activeSchemeId
+    const selectionVersion = store.selectionVersion
     await nextTick()
     if (
       !uiStore.groupPanelOpen ||
       store.activeSchemeId !== schemeId ||
+      store.selectionVersion !== selectionVersion ||
       pointerInside.value ||
       query.value.trim() ||
       editing.value !== null
     )
       return
-    scrollToEntry({ kind, id })
+    const entry = visibleEntryForGroup(id)
+    if (entry) scrollToEntry(entry)
   },
   { immediate: true, flush: 'post' }
 )

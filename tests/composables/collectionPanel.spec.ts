@@ -90,6 +90,7 @@ it('keeps ungrouped furniture in a dynamic root aggregate, outside directory ope
   })
   panel.collapseAll()
   expect(panel.rows.value.at(-1)?.kind).toBe('ungrouped')
+  expect(panel.visibleEntryForGroup(0)).toEqual(loose)
   query.value = 'Walls'
   expect(panel.rows.value.some((row) => row.kind === 'ungrouped')).toBe(false)
   query.value = 'groups.ungrouped'
@@ -231,15 +232,21 @@ it('temporarily expands search paths, restores collapse state, and supports expl
   panel.collapseAll()
   expect(panel.rows.value.map((row) => row.id)).toEqual([root, UNCLASSIFIED])
   const collapsed = scheme.collapsedCollectionIds.value
+  expect(panel.visibleEntryForGroup(7)).toEqual({ kind: 'collection', id: root })
+  expect(panel.visibleEntryForGroup(8)).toEqual({ kind: 'collection', id: UNCLASSIFIED })
   query.value = 'Walls'
   expect(panel.rows.value.map((row) => row.id)).toEqual([root, child, 7])
+  expect(panel.visibleEntryForGroup(7)).toEqual({ kind: 'group', id: 7 })
+  expect(panel.visibleEntryForGroup(8)).toBeUndefined()
   panel.toggleCollection(root)
   expect(scheme.collapsedCollectionIds.value).toBe(collapsed)
   query.value = ''
   expect(panel.rows.value.map((row) => row.id)).toEqual([root, UNCLASSIFIED])
   panel.toggleCollection(root)
+  expect(panel.visibleEntryForGroup(7)).toEqual({ kind: 'collection', id: child })
   panel.toggleCollection(child)
   expect(panel.rows.value.map((row) => row.id)).toContain(7)
+  expect(panel.visibleEntryForGroup(7)).toEqual({ kind: 'group', id: 7 })
   panel.collapseAll()
   panel.toggleCollection(UNCLASSIFIED)
   expect(panel.rows.value.map((row) => row.id)).toEqual([root, UNCLASSIFIED, 8])

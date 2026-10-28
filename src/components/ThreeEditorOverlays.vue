@@ -331,14 +331,15 @@ function handleViewInfoClick() {
   <div
     v-show="uiStore.groupPanelOpen"
     id="canvas-group-panel"
-    class="absolute top-4 bottom-18 left-4 z-40 max-w-[calc(100%-2rem)] rounded-md border border-border shadow-2xl backdrop-blur-sm"
+    class="absolute top-4 bottom-18 left-4 z-40 max-w-[calc(100%-2rem)]"
     :style="groupPanelStyle"
     @pointerdown.stop
     @pointerup.stop
     @dblclick.stop
     @contextmenu.stop
   >
-    <div class="h-full overflow-hidden rounded-[inherit]">
+    <!-- 外观和裁剪由同一层处理，右侧拖拽手柄留在裁剪区域外。 -->
+    <div class="h-full overflow-hidden rounded-md border border-border shadow-2xl backdrop-blur-sm">
       <GroupPanel />
     </div>
     <div

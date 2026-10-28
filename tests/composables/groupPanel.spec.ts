@@ -53,12 +53,7 @@ function setup() {
     const panel = useGroupPanel(),
       query = ref('')
     const directory = useCollectionPanel(query, panel)
-    const selection = useGroupPanelSelection(
-      directory.rows,
-      panel.groups,
-      directory.groupsForEntry,
-      query
-    )
+    const selection = useGroupPanelSelection(directory, panel.groups, query)
     const selectGroup = (id: number) =>
       selection.select({ kind: 'group', id }, { ctrlKey: false, metaKey: false, shiftKey: false })
     return { store, scheme, panel, selectGroup, selection, history: useEditorHistory() }

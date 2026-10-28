@@ -485,6 +485,26 @@ export function useCollectionPanel(
         : (structure.value.collectionGroups.get(entry.id) ?? [])
   }
 
+  function ancestorIdsForEntry(entry: CollectionEntry): readonly string[] {
+    if (entry.kind === 'ungrouped') return []
+    if (entry.kind === 'collection') return paths.value.get(entry.id)?.slice(1) ?? []
+    const parent = assignments.value.get(entry.id)?.collectionId
+    return parent ? (paths.value.get(parent) ?? []) : [UNCLASSIFIED]
+  }
+
+  /** 定位到组本身或最近可见的祖先，不改变展开状态。 */
+  function visibleEntryForGroup(id: number): CollectionEntry | undefined {
+    const kind = id === 0 ? 'ungrouped' : 'group'
+    if (rows.value.some((row) => row.kind === kind && row.id === id)) return { kind, id }
+    if (id === 0 || !groupsById.value.has(id)) return undefined
+    const ancestors = ancestorIdsForEntry({ kind, id })
+    const visible = new Set(
+      rows.value.filter((row) => row.kind === 'collection').map((row) => row.id)
+    )
+    const ancestor = ancestors.find((id) => visible.has(id))
+    return ancestor ? { kind: 'collection', id: ancestor } : undefined
+  }
+
   function toggleCollection(id: string) {
     const scheme = store.activeScheme!
     activateCollection(id)
@@ -532,5 +552,7 @@ export function useCollectionPanel(
     collapseAll,
     restriction,
     groupsForEntry,
+    ancestorIdsForEntry,
+    visibleEntryForGroup,
   }
 }

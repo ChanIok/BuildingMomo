@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   ChevronDown,
   ChevronRight,
@@ -11,15 +12,18 @@ import {
 } from 'lucide-vue-next'
 import { useI18n } from '@/composables/useI18n'
 import type { CollectionRow } from '@/composables/editor/useCollectionPanel'
-import type { GroupSelectionState } from '@/composables/editor/useGroupPanelSelection'
+import type {
+  GroupSelectionPresentation,
+  GroupSelectionState,
+} from '@/composables/editor/useGroupPanelSelection'
 
 const props = defineProps<{
   row: CollectionRow
   offset: number
   active: boolean
   selectionState: GroupSelectionState
+  selectionPresentation: GroupSelectionPresentation
   selectionSummary?: string
-  selected: boolean
   editing: boolean
   draft: string
   draggable: boolean
@@ -48,22 +52,36 @@ const props = defineProps<{
   }
 }>()
 const { t } = useI18n()
+// 眼睛表示自身开关；行置灰和说明表示上级集合对实际可见性的限制。
+const ownHidden = computed(() =>
+  props.row.kind === 'collection' ? props.row.hidden : props.row.group.ownHidden
+)
+const selected = computed(() => props.selectionPresentation === 'selected')
+const containsSelection = computed(() => props.selectionPresentation === 'contains')
 function nameOf(row: CollectionRow) {
   return row.kind !== 'collection' ? row.group.name : row.name
 }
 function visibilityLabel() {
-  return (
-    props.hiddenReason ??
-    t(
-      (props.row.kind !== 'collection' ? props.row.group.hidden : props.row.hidden)
-        ? 'groups.show'
-        : 'groups.hide',
-      { name: nameOf(props.row) }
-    )
-  )
+  return t(ownHidden.value ? 'groups.show' : 'groups.hide', { name: nameOf(props.row) })
+}
+function visibilityHint() {
+  return [
+    t(ownHidden.value ? 'groups.showHint' : 'groups.hideHint'),
+    props.hiddenReason ? t('groups.hiddenByParent') : undefined,
+    t('groups.showOnlyHint'),
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+function lockHint() {
+  if (props.lockedReason) return t('groups.lockedByParent')
+  const locked = props.row.kind === 'collection' ? props.row.locked : props.row.group.ownLocked
+  return t(locked ? 'groups.unlockHint' : 'groups.lockHint')
 }
 function rowClass() {
-  if (props.selected) return 'bg-primary/12 text-primary hover:bg-primary/16'
+  if (selected.value) return 'bg-primary/12 text-primary hover:bg-primary/16'
+  if (containsSelection.value && props.row.kind === 'collection' && !props.row.expanded)
+    return 'bg-primary/12 hover:bg-primary/16'
   return 'hover:bg-primary/8'
 }
 const dropClasses = {
@@ -94,14 +112,17 @@ function cancelSelection(event: MouseEvent) {
     :aria-expanded="row.kind === 'collection' ? row.expanded : undefined"
     :aria-selected="selected"
     :data-selection="selectionState"
+    :data-selection-presentation="selectionPresentation"
     :aria-description="
-      selectionState === 'none'
-        ? undefined
-        : t(
-            selectionState === 'partial'
-              ? 'groups.partiallySelected'
-              : 'groups.allFurnitureSelected'
-          )
+      containsSelection
+        ? t('groups.containsSelection')
+        : selectionState === 'none'
+          ? undefined
+          : t(
+              selectionState === 'partial'
+                ? 'groups.partiallySelected'
+                : 'groups.allFurnitureSelected'
+            )
     "
     class="group absolute top-0 left-0 flex h-8 w-full items-center gap-1 rounded-sm pr-1 outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset"
     :class="[rowClass(), dropClass()]"
@@ -116,34 +137,88 @@ function cancelSelection(event: MouseEvent) {
     @click="actions.activate(row, $event)"
     @keydown="actions.treeKey($event, row)"
   >
-    <!-- 组行仅预留箭头列；平铺列表无需前导留白。 -->
+    <!-- 选择按钮复用左侧槽位；集合保留展开箭头，平铺行使用紧凑槽位。 -->
     <span
-      v-if="row.kind === 'collection' || row.depth > 0"
       class="grid shrink-0 items-center gap-1"
-      :class="row.kind === 'collection' ? 'grid-cols-[1.5rem_0.875rem]' : 'grid-cols-[1.5rem]'"
-      :aria-hidden="row.kind === 'group' ? true : undefined"
+      :class="
+        row.kind === 'collection'
+          ? 'grid-cols-[1.5rem_0.875rem]'
+          : row.depth > 0
+            ? 'grid-cols-[1.5rem]'
+            : 'grid-cols-[0.875rem]'
+      "
     >
-      <template v-if="row.kind === 'collection'">
+      <button
+        v-if="row.kind === 'collection'"
+        type="button"
+        class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background/80 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+        :disabled="searching"
+        :aria-expanded="row.expanded"
+        :aria-label="
+          t(row.expanded ? 'groups.collapseCollection' : 'groups.expandCollection', {
+            name: row.name,
+          })
+        "
+        @click.stop="actions.toggleCollection(row.id)"
+        @dblclick.stop
+      >
+        <ChevronDown v-if="row.expanded" class="h-3 w-3" /><ChevronRight v-else class="h-3 w-3" />
+      </button>
+      <span class="relative grid h-7 place-items-center">
         <button
+          v-if="selected"
+          data-group-deselect
           type="button"
-          class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background/80 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-          :disabled="searching"
-          :aria-expanded="row.expanded"
-          :aria-label="
-            t(row.expanded ? 'groups.collapseCollection' : 'groups.expandCollection', {
-              name: row.name,
-            })
-          "
-          @click.stop="actions.toggleCollection(row.id)"
+          :draggable="false"
+          :aria-label="t('groups.deselect', { name: nameOf(row) })"
+          class="absolute -inset-x-1 inset-y-0 flex items-center justify-center rounded hover:bg-background/80 focus-visible:ring-1 focus-visible:ring-ring"
+          @pointerdown.stop
+          @click.stop="cancelSelection"
           @dblclick.stop
+          @dragstart.stop.prevent
         >
-          <ChevronDown v-if="row.expanded" class="h-3 w-3" /><ChevronRight v-else class="h-3 w-3" />
+          <span
+            aria-hidden="true"
+            class="grid h-3.5 w-3.5 place-items-center rounded-[3px] border border-primary/80 bg-primary/80 text-primary-foreground"
+          >
+            <svg
+              class="h-2.5 w-2.5"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M2.5 6 5 8.5 9.5 3.5" />
+            </svg>
+          </span>
         </button>
-        <FolderOpen v-if="row.expanded" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><Folder
-          v-else
-          class="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-        />
-      </template>
+        <span
+          v-else-if="containsSelection"
+          data-group-contains-selection
+          :data-group-hint="t('groups.containsSelection')"
+          aria-hidden="true"
+          class="grid h-3.5 w-3.5 place-items-center rounded-[3px] border border-primary/40 bg-primary/8 text-primary/75"
+        >
+          <svg
+            class="h-2.5 w-2.5"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+          >
+            <path d="M3 6h6" />
+          </svg>
+        </span>
+        <template v-else-if="row.kind === 'collection'">
+          <FolderOpen v-if="row.expanded" class="h-3.5 w-3.5 text-muted-foreground" /><Folder
+            v-else
+            class="h-3.5 w-3.5 text-muted-foreground"
+          />
+        </template>
+      </span>
     </span>
     <input
       v-if="editing"
@@ -179,38 +254,6 @@ function cancelSelection(event: MouseEvent) {
     >
       {{ nameOf(row) }}
     </button>
-    <!-- 保留占位，仅选中节点显示取消选择按钮。 -->
-    <span class="grid h-7 w-6 shrink-0 place-items-center">
-      <button
-        v-if="selected"
-        data-group-deselect
-        type="button"
-        :draggable="false"
-        :aria-label="t('groups.deselect', { name: nameOf(row) })"
-        class="flex h-7 w-6 items-center justify-center rounded hover:bg-background/80 focus-visible:ring-1 focus-visible:ring-ring"
-        @pointerdown.stop
-        @click.stop="cancelSelection"
-        @dblclick.stop
-        @dragstart.stop.prevent
-      >
-        <span
-          aria-hidden="true"
-          class="grid h-3.5 w-3.5 place-items-center rounded-[3px] border border-primary/80 bg-primary/80 text-primary-foreground"
-        >
-          <svg
-            class="h-2.5 w-2.5"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M2.5 6 5 8.5 9.5 3.5" />
-          </svg>
-        </span>
-      </button>
-    </span>
     <span
       class="shrink-0 px-1 text-xs text-muted-foreground tabular-nums"
       :data-group-hint="selectionSummary"
@@ -226,33 +269,25 @@ function cancelSelection(event: MouseEvent) {
       }}
     </span>
     <div class="flex shrink-0">
-      <span
-        :data-group-hint="`${visibilityLabel()}\n${t('groups.showOnlyHint')}`"
-        class="inline-flex"
-      >
+      <span :data-group-hint="visibilityHint()" class="inline-flex">
         <button
           type="button"
           class="flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-background/80 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
-          :class="[
-            (row.kind !== 'collection' ? row.group.hidden : row.hidden || row.inheritedHidden)
-              ? 'text-amber-600 dark:text-amber-400'
-              : 'text-muted-foreground',
-            { 'opacity-40': !!hiddenReason },
-          ]"
-          :aria-pressed="
-            row.kind !== 'collection' ? row.group.hidden : row.hidden || row.inheritedHidden
-          "
+          :class="ownHidden ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'"
+          :aria-pressed="ownHidden"
           :aria-label="visibilityLabel()"
+          :aria-description="hiddenReason"
           @click.stop="actions.toggleVisibility(row, $event)"
           @dblclick.stop
         >
-          <EyeOff
-            v-if="row.kind !== 'collection' ? row.group.hidden : row.hidden || row.inheritedHidden"
+          <component
+            :is="ownHidden ? EyeOff : Eye"
             class="h-3.5 w-3.5"
-          /><Eye v-else class="h-3.5 w-3.5" />
+            :class="{ 'opacity-60': !!hiddenReason }"
+          />
         </button>
       </span>
-      <span data-group-hint class="inline-flex">
+      <span :data-group-hint="lockHint()" class="inline-flex">
         <button
           type="button"
           class="flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-background/80 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"

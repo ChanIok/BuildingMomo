@@ -2,21 +2,26 @@ import { sameSelectionEntries } from '@/lib/selectionReference'
 import { computed, shallowRef, watch, type Ref } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useEditorSelection } from './useEditorSelection'
-import type { CollectionEntry, CollectionRow } from './useCollectionPanel'
+import type { CollectionEntry, useCollectionPanel } from './useCollectionPanel'
 import { UNCLASSIFIED } from '@/lib/collectionTree'
 import type { PanelGroup } from './useGroupPanel'
 import { groupRowKey } from './useGroupVirtualList'
 
+// 家具覆盖程度用于数量与辅助描述，节点展示由独立的关系状态决定。
 export type GroupSelectionState = 'none' | 'partial' | 'full'
+export type GroupSelectionPresentation = 'selected' | 'covered' | 'contains' | 'none'
 type Modifiers = Pick<MouseEvent, 'ctrlKey' | 'metaKey' | 'shiftKey'>
 const selectionOptions = { skipGroupExpansion: true, ignoreSelectionFilter: true }
 
 export function useGroupPanelSelection(
-  rows: Ref<CollectionRow[]>,
+  directory: Pick<
+    ReturnType<typeof useCollectionPanel>,
+    'rows' | 'groupsForEntry' | 'ancestorIdsForEntry'
+  >,
   groups: Ref<PanelGroup[]>,
-  groupsForEntry: (entry: CollectionEntry) => readonly number[],
   query: Ref<string>
 ) {
+  const { rows, groupsForEntry, ancestorIdsForEntry } = directory
   const store = useEditorStore()
   const { updateSelection, resolveSelectionTargets, clearSelection } = useEditorSelection()
   const anchor = shallowRef<CollectionEntry | null>(null)
@@ -62,6 +67,7 @@ export function useGroupPanelSelection(
   function isSelected(entry: CollectionEntry) {
     return selectedKeys.value.has(groupRowKey(entry))
   }
+
   function reset() {
     anchor.value = null
     range = null
@@ -121,6 +127,18 @@ export function useGroupPanelSelection(
   function selectionState(entry: CollectionEntry): GroupSelectionState {
     const { selected, total } = selectionCoverage(entry)
     return selected === 0 ? 'none' : selected === total ? 'full' : 'partial'
+  }
+
+  // 空集合没有家具覆盖数量，需要通过明确选中的节点补充祖先提示。
+  const selectedAncestors = computed(() => new Set(entries.value.flatMap(ancestorIdsForEntry)))
+  function selectionPresentation(entry: CollectionEntry): GroupSelectionPresentation {
+    if (isSelected(entry)) return 'selected'
+    if (ancestorIdsForEntry(entry).some((id) => isSelected({ kind: 'collection', id })))
+      return 'covered'
+    return selectionCoverage(entry).selected > 0 ||
+      (entry.kind === 'collection' && selectedAncestors.value.has(entry.id))
+      ? 'contains'
+      : 'none'
   }
 
   function deselect(entry: CollectionEntry) {
@@ -224,6 +242,7 @@ export function useGroupPanelSelection(
     clear,
     adopt,
     selectionState,
+    selectionPresentation,
     selectionCoverage,
     isSelected,
     entries,

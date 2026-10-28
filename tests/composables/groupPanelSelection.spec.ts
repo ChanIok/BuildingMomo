@@ -58,12 +58,7 @@ function setup(tree = false) {
     const groups = panel.groups
     const query = ref('')
     const directory = useCollectionPanel(query, panel)
-    const selection = useGroupPanelSelection(
-      directory.rows,
-      groups,
-      directory.groupsForEntry,
-      query
-    )
+    const selection = useGroupPanelSelection(directory, groups, query)
     const click = (entry: CollectionEntry, modifiers: Partial<MouseEvent> = {}) =>
       selection.select(entry, { ctrlKey: false, metaKey: false, shiftKey: false, ...modifiers })
     const group = (id: number, modifiers: Partial<MouseEvent> = {}) =>
@@ -193,10 +188,13 @@ it('selects the ungrouped aggregate with modifiers, partial coverage, history an
     selection.select(loose, { ctrlKey: false, metaKey: false, shiftKey: false, ...modifiers })
   useEditorSelection().updateSelection(['loose'], false)
   expect(selection.selectionState(loose)).toBe('partial')
+  expect(selection.selectionPresentation(loose)).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'collection', id: UNCLASSIFIED })).toBe('none')
   expect(selection.isSelected(loose)).toBe(false)
   click()
   expect(ids()).toEqual(['loose', 'loose-2'])
   expect(selection.isSelected(loose)).toBe(true)
+  expect(selection.selectionPresentation(loose)).toBe('selected')
   group(2, { ctrlKey: true })
   expect(ids()).toEqual(['g2', 'loose', 'loose-2'])
   selection.deselect(loose)
@@ -344,6 +342,88 @@ it('honors protection, ignores category filters and marks all selectable members
   collection('a', { ctrlKey: true })
   expect(ids()).toEqual(['g4', 'g5', 'g6'])
   expect(scheme.items.value).toHaveLength(8)
+})
+
+it('separates selected roots from covered descendants and preserves explicit child selection on replay', () => {
+  const { scheme, collection, group, selection, directory, history, ids } = setup(true)
+  const house = { kind: 'collection', id: 'a' } as const
+  const child = { kind: 'collection', id: 'child' } as const
+  const walls = { kind: 'group', id: 1 } as const
+  directory.toggleCollection('a')
+  const collapsed = scheme.collapsedCollectionIds.value
+  collection('a')
+  const selectedItems = ids()
+  expect(selection.selectionPresentation(house)).toBe('selected')
+  expect(selection.selectionPresentation(child)).toBe('covered')
+  expect(selection.selectionPresentation(walls)).toBe('covered')
+  expect(selection.selectionPresentation({ kind: 'group', id: 2 })).toBe('covered')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'b' })).toBe('none')
+  expect(selection.selectionCoverage(house)).toEqual({ selected: 3, total: 3 })
+  expect(scheme.collapsedCollectionIds.value).toBe(collapsed)
+  expect(scheme.selectedEntries.value).toEqual([house])
+  expect(ids()).toEqual(selectedItems)
+  directory.toggleCollection('a')
+  group(1, { ctrlKey: true })
+  expect(selection.selectionPresentation(walls)).toBe('selected')
+  expect(selection.selectionPresentation(child)).toBe('covered')
+  selection.deselect(house)
+  expect(selection.selectionPresentation(house)).toBe('contains')
+  expect(selection.selectionPresentation(walls)).toBe('selected')
+  expect(selection.selectionPresentation(child)).toBe('none')
+  history.undo()
+  expect(selection.selectionPresentation(house)).toBe('selected')
+  expect(selection.selectionPresentation(walls)).toBe('selected')
+  expect(selection.selectionPresentation(child)).toBe('covered')
+  history.redo()
+  expect(selection.selectionPresentation(house)).toBe('contains')
+  expect(selection.selectionPresentation(child)).toBe('none')
+})
+
+it('keeps carried partial canvas selection visible outside an explicitly selected collection', () => {
+  const { scheme, collection, selection, ids } = setup(true)
+  useEditorSelection().updateSelection(['g1-a'], false, { skipGroupExpansion: true })
+  collection('b', { ctrlKey: true })
+  expect(ids()).toEqual(['g1-a', 'g3'])
+  expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'b' }])
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'b' })).toBe('selected')
+  expect(selection.selectionPresentation({ kind: 'group', id: 3 })).toBe('covered')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'a' })).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'group', id: 1 })).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'child' })).toBe('none')
+  collection('a', { ctrlKey: true })
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'a' })).toBe('selected')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'child' })).toBe('covered')
+  expect(selection.selectionPresentation({ kind: 'group', id: 1 })).toBe('covered')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'b' })).toBe('selected')
+})
+
+it('propagates empty node selection upward and does not promote full canvas coverage to a collection selection', () => {
+  const { scheme, selection, collection, ids } = setup(true)
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    nodes: [
+      ...scheme.collectionTree.value.nodes,
+      { id: 'nested-empty', name: 'Empty', parentId: 'child', order: 0 },
+    ],
+  }
+  collection('nested-empty')
+  expect(ids()).toEqual([])
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'nested-empty' })).toBe(
+    'selected'
+  )
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'child' })).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'a' })).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'group', id: 2 })).toBe('none')
+  useEditorSelection().updateSelection(['g1-a', 'g1-b', 'g2'], false)
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'a' })).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'child' })).toBe('contains')
+  expect(selection.selectionPresentation({ kind: 'group', id: 1 })).toBe('selected')
+  expect(selection.selectionPresentation({ kind: 'group', id: 2 })).toBe('selected')
+  expect(selection.selectionPresentation({ kind: 'collection', id: 'nested-empty' })).toBe('none')
+  collection(UNCLASSIFIED)
+  expect(selection.selectionPresentation({ kind: 'collection', id: UNCLASSIFIED })).toBe('selected')
+  expect(selection.selectionPresentation({ kind: 'group', id: 4 })).toBe('covered')
+  expect(selection.selectionPresentation({ kind: 'ungrouped', id: 0 })).toBe('none')
 })
 
 it('retains explicit empty nodes through unrelated protection updates and ignores unchanged flags', () => {

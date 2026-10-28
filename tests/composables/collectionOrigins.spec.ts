@@ -81,12 +81,7 @@ function setup() {
     const panel = useGroupPanel()
     const query = ref('')
     const directory = useCollectionPanel(query, panel)
-    const selection = useGroupPanelSelection(
-      directory.rows,
-      panel.groups,
-      directory.groupsForEntry,
-      query
-    )
+    const selection = useGroupPanelSelection(directory, panel.groups, query)
     const select = (id: string) =>
       selection.select(
         { kind: 'collection', id },
