@@ -1,5 +1,6 @@
 import { resolveSelectionReference } from '@/lib/selectionReference'
 import { storeToRefs } from 'pinia'
+import { computed } from 'vue'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -171,6 +172,28 @@ export function useEditorAlignment() {
       return unit.items.map((item) => ({ type: 'single', groupId: null, items: [item] }))
     })
   }
+
+  // 单组内逐件分布；跨组或混选时，完整组仍作为整体。
+  // 按钮与执行入口共用实际可编辑的分布单元。
+  const distributionUnits = computed(() => {
+    const scheme = activeScheme.value
+    if (!scheme) return []
+    const selectedIds = new Set(
+      [...scheme.selectedItemIds.value].filter((id) => store.isItemEditable(id))
+    )
+    const units = buildAlignUnits(selectedIds)
+    const onlyUnit = units.length === 1 ? units[0] : undefined
+    if (onlyUnit?.type === 'group') {
+      return onlyUnit.items.map((item): AlignUnit => ({
+        type: 'single',
+        groupId: null,
+        items: [item],
+      }))
+    }
+    return units
+  })
+
+  const canDistributeSelectedItems = computed(() => distributionUnits.value.length >= 3)
 
   /**
    * 对齐选中物品（沿指定轴对齐到最小值/中心/最大值）
@@ -662,7 +685,7 @@ export function useEditorAlignment() {
    * 分布选中物品（沿指定轴均匀分布）
    *
    * 支持工作坐标系：当工作坐标系启用时，在工作坐标系下进行分布
-   * 支持组合：完整选中的组作为一个单元参与分布，部分选中的成员各自分布
+   * 支持组合：单组内逐件分布；跨组或混选时，完整组作为一个单元，部分成员各自分布
    *
    * @param axis - 分布轴 ('x' | 'y' | 'z')
    */
@@ -670,13 +693,10 @@ export function useEditorAlignment() {
     if (!activeScheme.value) return
 
     const scheme = activeScheme.value
-    const selectedIds = scheme.selectedItemIds.value
-    if (selectedIds.size < 3) return // 至少需要3个物品
+    const alignUnits = distributionUnits.value
+    if (alignUnits.length < 3) return
 
     recordTransaction(`distribute.${axis}`, () => {
-      // 按组聚合选中物品
-      const alignUnits = buildAlignUnits(selectedIds)
-
       // 为每个对齐单元计算中心点（工作坐标系）
       const unitsWithCenter = alignUnits.map((unit) => {
         // 计算单元的中心（所有成员的平均位置）
@@ -715,8 +735,11 @@ export function useEditorAlignment() {
       const unitDeltas = new Map<AlignUnit, { x: number; y: number; z: number }>()
 
       unitsWithCenter.forEach(({ unit, workingCenter }, index) => {
+        // 两端保持原位，未发生位移的家具保留原引用。
+        if (index === 0 || index === unitsWithCenter.length - 1) return
         const newValue = first + spacing * index
         const delta = newValue - workingCenter[axis]
+        if (delta === 0) return
 
         // 构造工作坐标系下的位移向量
         const workingDelta = { x: 0, y: 0, z: 0 }
@@ -729,7 +752,7 @@ export function useEditorAlignment() {
       })
 
       // 应用位移到所有物品
-      activeScheme.value!.items.value = activeScheme.value!.items.value.map((item) => {
+      scheme.items.value = scheme.items.value.map((item) => {
         // 找到该物品所属的对齐单元
         const unit = alignUnits.find((u) => u.items.some((i) => i.internalId === item.internalId))
         if (!unit) return item
@@ -751,6 +774,7 @@ export function useEditorAlignment() {
 
   return {
     alignSelectedItems,
+    canDistributeSelectedItems,
     distributeSelectedItems,
   }
 }

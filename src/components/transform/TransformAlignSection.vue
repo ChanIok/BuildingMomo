@@ -26,7 +26,8 @@ defineProps<Props>()
 
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { alignSelectedItems, distributeSelectedItems } = useEditorAlignment()
+const { alignSelectedItems, canDistributeSelectedItems, distributeSelectedItems } =
+  useEditorAlignment()
 
 // 开始选择参照物
 function startSelectingAlignReference() {
@@ -244,7 +245,7 @@ function formatWorkingRotation() {
               <TooltipTrigger as-child>
                 <button
                   @click="distributeSelectedItems('x')"
-                  :disabled="selectionInfo.count < 3"
+                  :disabled="!canDistributeSelectedItems"
                   class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <AlignHorizontalSpaceBetween :size="14" class="shrink-0" />
@@ -321,7 +322,7 @@ function formatWorkingRotation() {
               <TooltipTrigger as-child>
                 <button
                   @click="distributeSelectedItems('y')"
-                  :disabled="selectionInfo.count < 3"
+                  :disabled="!canDistributeSelectedItems"
                   class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <AlignVerticalSpaceBetween :size="14" class="shrink-0" />
@@ -398,7 +399,7 @@ function formatWorkingRotation() {
               <TooltipTrigger as-child>
                 <button
                   @click="distributeSelectedItems('z')"
-                  :disabled="selectionInfo.count < 3"
+                  :disabled="!canDistributeSelectedItems"
                   class="flex flex-1 items-center justify-center rounded-md bg-sidebar-accent px-2 py-2 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <AlignVerticalSpaceBetween :size="14" class="shrink-0" />
