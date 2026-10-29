@@ -19,6 +19,8 @@ export interface DesktopVersion {
 }
 
 export interface DesktopStatus {
+  /** Native AI bridge protocol; absent on older desktop shells. */
+  aiProtocol?: number
   /** 是否处于桌面宿主 (WebView2) 环境 */
   isDesktop: boolean
   /** 当前进程是否处于管理员运行权限 (Elevated) */

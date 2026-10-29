@@ -13,7 +13,9 @@ import {
 import { effectiveReasoning } from './reasoning'
 import { streamModel, modelFailure } from './model'
 import type { ConversationRepository } from './repository'
-import { createWorkbenchTools, workbenchTools, describeVariables } from './tools'
+import { workbenchTools, describeVariables } from './tools'
+import { executeWorkbenchTool } from './execution'
+import { acquireAiExecution } from './executionGate'
 import { formatInputError } from './toolSchema'
 import type { ScriptExecutor } from './scriptClient'
 import {
@@ -27,9 +29,10 @@ import {
   type MessageRecord,
   type RequestRecord,
   type EditorHost,
-  type ToolOutput,
   type ToolRecord,
 } from './types'
+
+export { unresolvedEdits } from './execution'
 
 export interface RunProgress {
   phase: 'preparing' | 'requesting' | 'summarizing' | 'tools'
@@ -75,13 +78,6 @@ function inputError(error: unknown, name: string): string {
       : 'Invalid tool input'
 }
 
-export function unresolvedEdits(records: ConversationRecords) {
-  const acknowledged = new Set(records.messages.flatMap((message) => message.acknowledges ?? []))
-  return records.tools.flatMap((tool) =>
-    tool.edits.filter((edit) => edit.state === 'uncertain' && !acknowledged.has(edit.id))
-  )
-}
-
 export function createAgentRunner(
   repository: ConversationRepository,
   generate: typeof streamModel = streamModel
@@ -92,15 +88,7 @@ export function createAgentRunner(
     const { records, scene, connection, policy, onChange, onProgress } = options
     const runId = crypto.randomUUID()
     const runContext = options.context ?? scene.context()
-    const workbench = createWorkbenchTools(
-      records,
-      repository,
-      scene,
-      options.language ?? 'zh',
-      options.script,
-      runContext.schemeId
-    )
-    const definitions = workbench.definitions
+    const definitions = workbenchTools
     const toolTokens = await estimateToolTokens(definitions)
     let progress: RunProgress = { phase: 'preparing', startedAt: Date.now() }
     let draft: MessageRecord | undefined
@@ -435,68 +423,17 @@ export function createAgentRunner(
     async function executeTool(tool: ToolRecord) {
       assertCurrent()
       report({ phase: 'tools', toolId: tool.id, diagnostics: undefined })
-      if (tool.name !== 'execute_js' || tool.inputError) {
-        tool.state = 'failed'
-        tool.result = {
-          ok: false,
-          error: { code: 'invalid_input', message: tool.inputError ?? 'Use execute_js({code})' },
-        }
-        await save([tool])
-        return
-      }
-      let output: ToolOutput
-      try {
-        output = await workbench.execute(tool, signal)
-      } catch (error) {
-        tool.state = tool.edits.some((e) => e.state === 'uncertain' || e.state === 'prepared')
-          ? 'uncertain'
-          : 'interrupted'
-        tool.result = {
-          ok: false,
-          error: {
-            code: failure(error).code,
-            message: error instanceof Error ? error.message : String(error),
-          },
-        }
-        await save([tool])
-        throw error
-      }
-      const assets: AssetRecord[] = []
-      const nextTool = { ...tool, assets: [...tool.assets] }
-      for (const image of output.attachments ?? []) {
-        const asset: AssetRecord = {
-          id: image.imageId,
-          conversationId: records.conversation.id,
-          width: image.width,
-          height: image.height,
-          bytes: image.blob.size,
-          blob: image.blob,
-          mediaType: image.blob.type,
-          ...(image.details ? { details: image.details } : {}),
-        }
-        nextTool.assets.push({
-          id: asset.id,
-          width: asset.width,
-          height: asset.height,
-          bytes: asset.bytes,
-          mediaType: asset.mediaType,
-          ...(asset.details ? { details: asset.details } : {}),
-        })
-        assets.push(asset)
-      }
-      const { attachments: _attachments, variables, ...result } = output
-      nextTool.result = result
-      nextTool.state = tool.edits.some((e) => e.state === 'uncertain')
-        ? 'uncertain'
-        : result.ok
-          ? 'succeeded'
-          : signal.aborted
-            ? 'interrupted'
-            : 'failed'
-      await save([nextTool, ...assets, ...(variables ? [variables] : [])])
-      Object.assign(tool, nextTool)
-      if (variables) records.variables = variables
-      publish()
+      await executeWorkbenchTool({
+        records,
+        repository,
+        host: scene,
+        tool,
+        signal,
+        language: options.language,
+        script: options.script,
+        defaultSchemeId: runContext.schemeId,
+        onChange: publish,
+      })
     }
 
     records.conversation.lastRun = { id: runId, state: 'running' }
@@ -627,13 +564,18 @@ export function createAgentRunner(
   return {
     async run(options: RunOptions) {
       if (active) throw new AiError('busy')
-      const controller = new AbortController()
-      const done = execute(options, controller.signal)
-      active = { controller, done }
+      const release = acquireAiExecution()
       try {
-        await done
+        const controller = new AbortController()
+        const done = execute(options, controller.signal)
+        active = { controller, done }
+        try {
+          await done
+        } finally {
+          active = null
+        }
       } finally {
-        active = null
+        release()
       }
     },
     async stop() {

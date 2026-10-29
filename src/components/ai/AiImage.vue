@@ -4,7 +4,12 @@ import { aiChatKey } from '@/composables/ai/chatContext'
 import { useI18n } from '@/composables/useI18n'
 import type { ImageReference } from '@/lib/ai/types'
 
-const props = defineProps<{ image: ImageReference; label: string; eager?: boolean }>()
+const props = defineProps<{
+  image: ImageReference
+  label: string
+  eager?: boolean
+  loadImage?: (id: string) => Promise<Blob | undefined>
+}>()
 const emit = defineEmits<{ open: [id: string] }>()
 const chat = inject(aiChatKey)!
 const { t } = useI18n()
@@ -25,7 +30,7 @@ async function show() {
   if (!activated) return
   const mine = generation
   try {
-    const blob = await chat.loadImage(props.image.id)
+    const blob = await (props.loadImage ?? chat.loadImage)(props.image.id)
     if (mine !== generation) return
     if (blob) url.value = URL.createObjectURL(blob)
     else unavailable.value = true

@@ -34,6 +34,7 @@ import {
 } from './lib/sceneAnalysis/captureBridge'
 import { useAiChat } from './composables/ai/useAiChat'
 import { aiChatKey } from './composables/ai/chatContext'
+import { externalAiKey, useExternalAi } from './composables/ai/useExternalAi'
 
 const notification = useNotification()
 const { t } = useI18n()
@@ -60,6 +61,13 @@ const gameDataStore = useGameDataStore()
 const settingsStore = useSettingsStore()
 const captureBridge = createAnalysisCaptureBridge()
 provide(analysisCaptureBridgeKey, captureBridge)
+provide(
+  externalAiKey,
+  useExternalAi({
+    enabled: computed(() => settingsStore.canUseExperimentalFeatures),
+    getCaptureProvider: () => captureBridge.provider.value,
+  })
+)
 provide(
   aiChatKey,
   useAiChat({

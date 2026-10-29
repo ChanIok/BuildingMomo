@@ -106,7 +106,7 @@ export function createConversationRepository(store: UseStore = defaultStore) {
     })
     return meta
   }
-  async function create(title: string) {
+  async function create(title: string, external?: Conversation['external']) {
     const time = Date.now()
     const conversation: Conversation = {
       id: crypto.randomUUID(),
@@ -114,6 +114,7 @@ export function createConversationRepository(store: UseStore = defaultStore) {
       createdAt: time,
       updatedAt: time,
       nextSequence: 0,
+      ...(external ? { external } : {}),
     }
     await save(conversation)
     return conversation

@@ -40,6 +40,8 @@ export interface Conversation {
   nextSequence: number
   lastRun?: { id: string; state: RunState; error?: Failure; warnings?: CallWarning[] }
   checkpointId?: string
+  /** Absent for existing built-in chats. External contexts never contain model messages. */
+  external?: { schemeId: string | null }
 }
 export interface MessageRecord {
   id: string

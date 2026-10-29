@@ -13,7 +13,7 @@ import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
 import SidebarDesktopSettings from './SidebarDesktopSettings.vue'
-import SidebarAI from './ai/SidebarAI.vue'
+import AiWorkspace from './ai/AiWorkspace.vue'
 import SidebarToggleItem from './SidebarToggleItem.vue'
 import IconMomo from './icons/IconMomo.vue'
 import { useDesktopStore } from '../stores/desktopStore'
@@ -196,7 +196,7 @@ watch(
         <div v-else-if="uiStore.sidebarView === 'desktopSettings'" class="mt-0 min-h-0 flex-1">
           <SidebarDesktopSettings class="h-full" />
         </div>
-        <SidebarAI
+        <AiWorkspace
           v-else-if="settingsStore.canUseExperimentalFeatures && uiStore.sidebarView === 'ai'"
           class="min-h-0 flex-1"
         />

@@ -7,12 +7,25 @@ AI 是工作区级的代码助手：会话独立于方案，模型通过 JavaScr
 ## 一条代码执行链路
 
 1. [App.vue](../../App.vue) 持有应用级聊天服务和截图桥接。[useAiChat.ts](../../composables/ai/useAiChat.ts) 管理全局会话、恢复、停止及界面投影。
-2. [runner.ts](runner.ts) 保存请求、流式回复和工具调用，完整生成成功后顺序执行 `execute_js`；每次执行的结果、图片和新变量在同一存储事务中保存，成功后才发布到内存。
+2. [runner.ts](runner.ts) 保存请求、流式回复和工具调用，完整生成成功后通过 [execution.ts](execution.ts) 顺序执行 `execute_js`；每次执行的结果、图片和新变量在同一存储事务中保存，成功后才发布到内存。
 3. [scriptClient.ts](scriptClient.ts) 每次创建可终止 Worker，[aiScript.worker.ts](../../workers/aiScript.worker.ts) 通过 [scriptRuntime.ts](scriptRuntime.ts) 执行支持 `await` 的 JS 函数体。宿主 API 通过异步消息调用，局部变量不跨执行保留。
 4. [tools.ts](tools.ts) 提供宿主 API、会话变量的家具引用解析，以及逐次编辑日志。[useAiEditorHost.ts](../../composables/ai/useAiEditorHost.ts) 按明确方案连接快照、截图和组织编辑，不切换界面来执行操作。
 5. [context.ts](context.ts) 组装 SDK 消息和上下文压缩；[model.ts](model.ts) 负责单次生成，协议、流解析、参数校验、图片编码与 usage 交给 AI SDK。工具执行和任务续接由 runner 管理。
 
 Worker 不接收 API Key、Pinia Store 或渲染器对象，不降级到主线程。它仍有同源网络和存储能力，不是恶意代码安全沙箱。停止或超时会终止 Worker，并禁止宿主继续执行排队操作；已完成的事务不会回滚。
+
+## 通过桌面 MCP 使用现有工具
+
+桌面版在 **AI → 外部 AI** 中开启本地 Streamable HTTP 服务。连接和客户端配置见 [桌面使用说明](../../../desktop/README.md#用桌面-ai-操作当前方案)。此入口仍要求现有实验功能鉴权，但不读取模型连接配置或 Key。
+
+- [mcp.ts](mcp.ts) 只适配协议、工具说明、输入校验、文本与图片返回；支持 `2026-07-28` 及 `2025-11-25`、`2025-06-18`、`2025-03-26` 的无传输会话 HTTP 模式。新协议显式校验请求元数据与头部一致性，旧协议支持 `initialize`，不分配 `Mcp-Session-Id`。取消绑定原生 HTTP 请求编号，不按可能跨客户端重复的 JSON-RPC id 取消其他任务。
+- [externalWorkbench.ts](externalWorkbench.ts) 通过 `Conversation.external` 标识外部执行上下文，复用原 IndexedDB 和正式事务。内部聊天列表不显示这些上下文。工具调用不伪造助手消息，也不产生模型请求记录；只有用户核对不确定编辑时保留确认消息。
+- `execute_js({code,contextId?})` 首次省略编号时创建独立上下文；后续显式携带。默认方案在创建时固定，显式方案参数仍沿用现有宿主能力。未知、已删除或内置聊天的编号不回退到其他上下文。
+- [execution.ts](execution.ts) 共用变量、图片及执行结果的保存边界。[executionGate.ts](executionGate.ts) 让内置 runner 和外部调用共用一个执行槽，不同时借用渲染器或交错执行脚本；用户手动编辑不受锁定。
+- [useExternalAi.ts](../../composables/ai/useExternalAi.ts) 在应用级持有服务，关闭侧栏不终止任务。页面代际、鉴权、停止和取消通过 WebView2 专用消息与 C++ 两端联动；页面刷新或导航会停用原生服务，旧回执不进入新页面。
+- [SidebarExternalAI.vue](../../components/ai/SidebarExternalAI.vue) 展示连接、上下文、脚本回执和图片，提供停止、删除及人工核对入口。客户端只需本地 MCP 地址，不使用连接令牌；端口保存在网站设置中。
+
+相关定向测试为 `tests/lib/ai/externalWorkbench.spec.ts`、`tests/lib/ai/mcp.spec.ts` 和 `tests/composables/ai/externalAi.spec.ts`。原生服务的监听、退出和真实客户端连接仍需用桌面产物验证。
 
 ## 数据留在执行环境，按需输出
 

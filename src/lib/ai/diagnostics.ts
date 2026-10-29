@@ -1,12 +1,12 @@
 import type { ConversationRepository } from './repository'
 import { AiError, type ConversationRecords } from './types'
 
-async function blobDataUrl(blob: Blob) {
+export async function blobBase64(blob: Blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer())
   let binary = ''
   for (let start = 0; start < bytes.length; start += 0x8000)
     binary += String.fromCharCode(...bytes.subarray(start, start + 0x8000))
-  return `data:${blob.type};base64,${btoa(binary)}`
+  return btoa(binary)
 }
 
 export async function exportConversation(
@@ -24,7 +24,10 @@ export async function exportConversation(
       if (!includeImages) return metadata
       const asset = await repository.read<import('./types').AssetRecord>(metadata.id)
       if (!asset || asset.conversationId !== records.conversation.id) throw new AiError('storage')
-      return { ...metadata, dataUrl: await blobDataUrl(asset.blob) }
+      return {
+        ...metadata,
+        dataUrl: `data:${asset.blob.type};base64,${await blobBase64(asset.blob)}`,
+      }
     })
   )
   return JSON.stringify(

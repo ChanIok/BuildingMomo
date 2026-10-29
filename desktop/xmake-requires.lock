@@ -3,6 +3,12 @@
         version = "1.0"
     },
     ["windows|x64"] = {
+        ["vcpkg::cpp-httplib#f56260b5"] = {
+            version = "latest"
+        },
+        ["vcpkg::nlohmann-json#f56260b5"] = {
+            version = "latest"
+        },
         ["vcpkg::webview2#f56260b5"] = {
             version = "latest"
         },

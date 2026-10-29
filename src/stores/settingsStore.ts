@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { useLocalStorage } from '@vueuse/core'
-import { computed, reactive, ref, watchEffect } from 'vue'
-import { DEFAULT_AI_PREFERENCES, type AiSettings } from '@/lib/ai/connection'
+import { computed, ref, watchEffect } from 'vue'
+import { DEFAULT_AI_PREFERENCES, DEFAULT_AI_SETTINGS, type AiSettings } from '@/lib/ai/connection'
 import type { ModelAssetProfile } from '@nuan5-pro/render/furniture'
 import type { RenderQuality } from '@/lib/renderQuality'
 
@@ -151,6 +151,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const STORAGE_KEY = 'buildingmomo_settings'
 const PASSWORD_STORAGE_KEY = 'momo_lab_password'
+const AI_STORAGE_KEY = 'buildingmomo_ai_settings'
 
 export const useSettingsStore = defineStore('settings', () => {
   // 使用 VueUse 的 useLocalStorage，自动持久化
@@ -161,30 +162,9 @@ export const useSettingsStore = defineStore('settings', () => {
     ? Math.min(100, Math.max(50, Math.round(settings.value.renderResolution)))
     : DEFAULT_SETTINGS.renderResolution
 
-  // AI 配置由统一 Store 持有，沿用原存储键；连接解析与预算计算留在 AI 模块。
-  const ai = reactive({
-    connection: useLocalStorage<AiSettings['connection']>('buildingmomo_ai_connection', {
-      provider: 'compatible',
-      apiUrl: 'https://api.openai.com/v1',
-      model: '',
-    }),
-    apiKey: useLocalStorage('buildingmomo_ai_key', ''),
-    contextWindow: useLocalStorage(
-      'buildingmomo_ai_context_window_v1',
-      DEFAULT_AI_PREFERENCES.contextWindow
-    ),
-    maxTokens: useLocalStorage(
-      'buildingmomo_ai_output_tokens_v1',
-      DEFAULT_AI_PREFERENCES.maxTokens
-    ),
-    imageBudgetMiB: useLocalStorage(
-      'buildingmomo_ai_image_budget_mib',
-      DEFAULT_AI_PREFERENCES.imageBudgetMiB
-    ),
-    modelSettings: useLocalStorage<AiSettings['modelSettings']>(
-      'buildingmomo_ai_model_options_v3',
-      {}
-    ),
+  // AI 配置由统一 Store 持有，集中保存在单个持久化对象中
+  const ai = useLocalStorage<AiSettings>(AI_STORAGE_KEY, structuredClone(DEFAULT_AI_SETTINGS), {
+    mergeDefaults: true,
   })
 
   // 先沿用本地口令，启动时静默验证。
@@ -209,8 +189,8 @@ export const useSettingsStore = defineStore('settings', () => {
   // 重置为默认设置
   function resetSettings(): void {
     settings.value = structuredClone(DEFAULT_SETTINGS)
-    // 恢复偏好，不清除连接、凭据和已保存的模型参数。
-    Object.assign(ai, DEFAULT_AI_PREFERENCES)
+    // 恢复偏好，不清除连接、凭据、外部端口与模式，以及已保存的模型参数。
+    Object.assign(ai.value, DEFAULT_AI_PREFERENCES)
     console.log('[SettingsStore] Settings reset to default')
   }
 

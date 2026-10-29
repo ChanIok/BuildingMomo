@@ -9,15 +9,17 @@ import {
   CircleAlert,
   Download,
   LoaderCircle,
+  MoreHorizontal,
   Plus,
+  Radio,
   Settings2,
   Square,
   Trash2,
-  Wrench,
 } from 'lucide-vue-next'
 import { aiChatKey, type ChatEntry } from '@/composables/ai/chatContext'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { resolveAiConfig } from '@/lib/ai/context'
+import { aiExecutionBusy } from '@/lib/ai/executionGate'
 import { useI18n } from '@/composables/useI18n'
 import { Button } from '@/components/ui/button'
 import {
@@ -39,6 +41,14 @@ import {
 } from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { downloadBlob } from '@/composables/fileOps/download'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { useDesktopStore } from '@/stores/desktopStore'
 import AiSettingsDialog from './AiSettingsDialog.vue'
 import AiImage from './AiImage.vue'
 import AiMarkdown from './AiMarkdown.vue'
@@ -57,13 +67,16 @@ const {
   isLoading,
   storageState,
   contextInfo,
-  compacted,
   interrupted,
   sessions,
   sessionId,
   uncertain,
 } = chat
 const settings = useSettingsStore()
+const desktop = useDesktopStore()
+const workspace = inject<
+  { panel: any; switchTo: (mode: 'builtin' | 'external') => void } | undefined
+>('aiWorkspacePanel', undefined)
 const isConfigured = computed(() => {
   try {
     return Boolean(resolveAiConfig(settings.ai))
@@ -93,7 +106,10 @@ const following = ref(true)
 let lastScrollTop = 0,
   touchY: number | undefined
 let scrollFrame: number | undefined
-const canSend = computed(() => Boolean(draft.value.trim()) && !isRunning.value && !isLoading.value)
+const canSend = computed(
+  () =>
+    Boolean(draft.value.trim()) && !isRunning.value && !isLoading.value && !aiExecutionBusy.value
+)
 const visibleEntries = computed(() =>
   entries.value.filter(
     (entry) =>
@@ -346,40 +362,43 @@ async function downloadTrace() {
         <Button
           variant="ghost"
           size="icon-sm"
-          :disabled="!canExportTrace"
-          :title="t('ai.trace.title')"
-          :aria-label="t('ai.trace.title')"
-          @click="openExport"
-          ><Download class="size-4"
-        /></Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
           :disabled="isLoading"
           :title="t('ai.newChat')"
           :aria-label="t('ai.newChat')"
           @click="reset"
-          ><Plus class="size-4"
-        /></Button>
-        <Button
-          v-if="sessionId"
-          variant="ghost"
-          size="icon-sm"
-          :disabled="isLoading"
-          :title="t('ai.deleteChat')"
-          :aria-label="t('ai.deleteChat')"
-          @click="deleteOpen = true"
-          ><Trash2 class="size-4"
-        /></Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          :disabled="isRunning"
-          :title="t('ai.settings')"
-          :aria-label="t('ai.settings')"
-          @click="settingsOpen = true"
-          ><Settings2 class="size-4"
-        /></Button>
+        >
+          <Plus class="size-4" />
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger as-child>
+            <Button variant="ghost" size="icon-sm" :title="t('ai.more')" :aria-label="t('ai.more')">
+              <MoreHorizontal class="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" class="w-44">
+            <DropdownMenuItem :disabled="isRunning" @click="settingsOpen = true">
+              <Settings2 class="mr-2 size-4" />
+              <span>{{ t('ai.settings') }}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem :disabled="!canExportTrace" @click="openExport">
+              <Download class="mr-2 size-4" />
+              <span>{{ t('ai.trace.title') }}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem v-if="desktop.isDesktop" @click="workspace?.switchTo('external')">
+              <Radio class="mr-2 size-4" />
+              <span>{{ t('ai.external.switchToExternal') }}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              class="text-destructive focus:text-destructive"
+              :disabled="isLoading || !sessionId"
+              @click="deleteOpen = true"
+            >
+              <Trash2 class="mr-2 size-4" />
+              <span>{{ t('ai.deleteChat') }}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
     <div class="relative flex min-h-0 flex-1 flex-col">

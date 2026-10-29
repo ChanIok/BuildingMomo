@@ -72,6 +72,53 @@ async function setup(provider: AnalysisCaptureProvider | null = null, enabled = 
   }
   return { editor, scheme, settings, enabled, repository, mount, ...(await mount()) }
 }
+
+it('keeps external execution contexts out of the built-in chat picker', async () => {
+  const s = await setup()
+  const external = await s.repository.create('External task', { schemeId: s.scheme.id })
+  await s.chat.reset()
+  expect(s.chat.sessions.value.some((entry) => entry.id === external.id)).toBe(false)
+  await s.chat.openSession(external.id)
+  expect(s.chat.sessionId.value).toBe('')
+})
+
+it.each([1200, undefined])(
+  'restores the latest successful chat input usage (%s) without substituting total tokens',
+  async (inputTokens) => {
+    const s = await setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => stream({ content: 'Done' }, 'stop'))
+    )
+    await s.chat.send('Usage')
+    const conversation = (await s.repository.load(s.chat.sessionId.value))!.conversation
+    const [saved] = await s.repository.requests(conversation.id)
+    const request = {
+      ...saved!,
+      diagnostics: {
+        ...saved!.diagnostics,
+        usage: { ...saved!.diagnostics.usage!, inputTokens, totalTokens: 1500 },
+      },
+    }
+    const later = { ...request, startedAt: request.startedAt + 1, estimatedTokens: 9999 }
+    await s.repository.save(conversation, [
+      request,
+      { ...request, id: `${request.id}:older`, startedAt: 0, estimatedTokens: 1 },
+      { ...later, id: `${request.id}:summary`, kind: 'summary' },
+      { ...later, id: `${request.id}:unfinished`, endedAt: undefined },
+      {
+        ...later,
+        id: `${request.id}:failed`,
+        error: { code: 'network', name: 'AiError' },
+      },
+    ])
+
+    await s.chat.openSession(conversation.id)
+    expect(s.chat.contextInfo.value?.estimated).toBe(request.estimatedTokens)
+    expect(s.chat.contextInfo.value?.actual).toBe(inputTokens)
+  }
+)
+
 function stream(delta: unknown, finish = 'tool_calls') {
   return new Response(
     `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\ndata: [DONE]\n\n`,

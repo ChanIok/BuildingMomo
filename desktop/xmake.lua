@@ -15,14 +15,14 @@ set_policy("package.requires_lock", true)
 add_requireconfs("vcpkg::*", {
     configs = {baseline = "1ea949145db9db7c9b254062f94acdaeed947767"}
 })
-add_requires("vcpkg::webview2", "vcpkg::wil")
+add_requires("vcpkg::webview2", "vcpkg::wil", "vcpkg::cpp-httplib", "vcpkg::nlohmann-json")
 
 target("BuildingMomo")
     set_kind("binary")
-    add_files("src/*.cpp", "resources/app.rc")
+    add_files("src/**.cpp", "resources/app.rc")
     add_rules("build_info")
     add_includedirs("src", "resources", "build/generated")
-    add_packages("vcpkg::webview2", "vcpkg::wil")
+    add_packages("vcpkg::webview2", "vcpkg::wil", "vcpkg::cpp-httplib", "vcpkg::nlohmann-json")
     add_defines("UNICODE", "_UNICODE", "NOMINMAX", "WIN32_LEAN_AND_MEAN", "_WIN32_WINNT=0x0A00")
     add_cxflags("/utf-8")
     add_links("user32", "gdi32", "shell32", "ole32", "shlwapi", "version", "advapi32", "psapi", "dwmapi")
@@ -37,3 +37,15 @@ target("BuildingMomo")
     if is_mode("debug") then
         add_defines("BUILDINGMOMO_DESKTOP_DEBUG")
     end
+
+-- 独立的原生定向测试，不启动桌面应用，也不参与默认构建。
+target("desktop_tests")
+    set_default(false)
+    set_kind("binary")
+    add_files("tests/native_tests.cpp", "src/app_state.cpp", "src/mcp/mcp_server.cpp",
+        "src/rtss/rtss_limiter.cpp", "src/string_utils.cpp")
+    add_includedirs("src")
+    add_packages("vcpkg::webview2", "vcpkg::wil", "vcpkg::cpp-httplib", "vcpkg::nlohmann-json")
+    add_defines("UNICODE", "_UNICODE", "NOMINMAX", "WIN32_LEAN_AND_MEAN", "_WIN32_WINNT=0x0A00")
+    add_cxflags("/utf-8")
+    add_links("user32", "ole32", "advapi32")

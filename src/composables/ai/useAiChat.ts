@@ -1,6 +1,7 @@
 import { computed, onScopeDispose, shallowRef, triggerRef, watch, type Ref } from 'vue'
 import { useLocalStorage, useTimestamp } from '@vueuse/core'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { aiExecutionBusy } from '@/lib/ai/executionGate'
 import { resolveConnection } from '@/lib/ai/connection'
 import { resolveAiConfig } from '@/lib/ai/context'
 import { useAiEditorHost } from './useAiEditorHost'
@@ -185,7 +186,10 @@ export function useAiChat(options: {
     if (loaded) {
       try {
         const reqs = await repository.requests(loaded.conversation.id)
-        const lastReq = reqs.at(-1)
+        const lastReq = reqs
+          .filter((request) => request.kind === 'chat' && request.endedAt && !request.error)
+          .sort((a, b) => a.startedAt - b.startedAt)
+          .at(-1)
         if (lastReq) {
           const imageCount = loaded.tools.reduce((sum, t) => sum + (t.assets?.length ?? 0), 0)
           contextInfo.value = {
@@ -197,8 +201,7 @@ export function useAiChat(options: {
             requestMaxOutputTokens: lastReq.maxOutputTokens,
             images: imageCount,
             compacted: Boolean(loaded.checkpoint),
-            actual:
-              lastReq.diagnostics.usage?.totalTokens ?? lastReq.diagnostics.usage?.promptTokens,
+            actual: lastReq.diagnostics.usage?.inputTokens,
           }
           return
         }
@@ -235,9 +238,10 @@ export function useAiChat(options: {
     try {
       const listed = await repository.list()
       if (mine !== navigation || disposed) return
-      sessions.value = listed
+      sessions.value = listed.filter((entry) => !entry.external)
       const target = fresh ? '' : (id ?? (activeConversation.value || sessions.value[0]?.id))
-      const loaded = target ? await repository.load(target) : null
+      const candidate = target ? await repository.load(target) : null
+      const loaded = candidate?.conversation.external ? null : candidate
       if (mine !== navigation || disposed) return
       records.value = loaded
       activeConversation.value = loaded?.conversation.id ?? ''
@@ -282,6 +286,10 @@ export function useAiChat(options: {
   async function send(text: string, continueOnly = false) {
     text = text.trim()
     if (phase.value !== 'idle' || !options.enabled.value || (!text && !continueOnly)) return false
+    if (aiExecutionBusy.value) {
+      error.value = t('ai.errors.busy')
+      return false
+    }
     if (storageState.value === 'error') {
       error.value = t('ai.errors.storage')
       return false

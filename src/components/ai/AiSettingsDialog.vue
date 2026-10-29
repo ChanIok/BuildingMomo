@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import type { AcceptableValue } from 'reka-ui'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useI18n } from '@/composables/useI18n'
 import { AiError } from '@/lib/ai/types'
@@ -92,8 +93,9 @@ function changeProvider() {
   customAddress.value = false
   error.value = ''
 }
-function handleProviderChange(value: string) {
-  provider.value = value as AiProvider
+function handleProviderChange(value: AcceptableValue) {
+  if (!isAiProvider(value)) return
+  provider.value = value
   changeProvider()
 }
 function useDefaultAddress() {
@@ -198,8 +200,9 @@ function restoreReasoning() {
     error.value = t('ai.errors.settings')
   }
 }
-function handleReasoningChange(value: string) {
-  reasoning.value = value as AiReasoning
+function handleReasoningChange(value: AcceptableValue) {
+  const level = REASONING_LEVELS.find((level) => level === value)
+  if (level !== undefined) reasoning.value = level
 }
 function readJson(value: string, field: string) {
   try {
@@ -570,7 +573,7 @@ function save() {
           </div>
         </div>
 
-        <DialogFooter class="mt-5 flex items-center justify-end gap-2 border-t pt-3">
+        <DialogFooter class="mt-5">
           <Button
             type="button"
             variant="outline"

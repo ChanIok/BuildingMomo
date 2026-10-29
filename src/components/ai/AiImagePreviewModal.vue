@@ -12,6 +12,7 @@ import type { ImageReference } from '@/lib/ai/types'
 const props = defineProps<{
   open: boolean
   image: ImageReference | null
+  loadImage?: (id: string) => Promise<Blob | undefined>
 }>()
 
 const emit = defineEmits<{
@@ -117,7 +118,7 @@ watch(
     isLoading.value = true
 
     try {
-      const blob = await chat.loadImage(image.id)
+      const blob = await (props.loadImage ?? chat.loadImage)(image.id)
       if (blob && isCurrentLoad()) {
         currentBlob.value = blob
         url.value = URL.createObjectURL(blob)

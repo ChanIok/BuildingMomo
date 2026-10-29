@@ -1,41 +1,22 @@
 #pragma once
 
-#include <windows.h>
-#include <objbase.h>
-#include <WebView2.h>
-#include <wil/com.h>
+#include "vendor/std.hpp"
 
-#include <expected>
-#include <string>
-#include <string_view>
-
-#include "gpu_priority.hpp"
+#include "vendor/windows.hpp"
 
 namespace desktop {
 
-#ifdef BUILDINGMOMO_DESKTOP_DEBUG
-inline constexpr std::wstring_view kAppOrigin = L"http://localhost:5173";
-#else
-inline constexpr std::wstring_view kAppOrigin = L"https://lab.infinitymomo.com";
-#endif
+struct AppState;
+
 inline constexpr UINT kWebViewErrorMessage = WM_APP + 1;
 
-struct AppState {
-  HINSTANCE instance = nullptr;
-  HWND window = nullptr;
-  GpuPriorityState gpu_priority;
-  wil::com_ptr<ICoreWebView2Environment> environment;
-  wil::com_ptr<ICoreWebView2Controller> controller;
-  wil::com_ptr<ICoreWebView2> webview;
-  std::wstring user_data_folder;
-  std::wstring pending_error;
-  bool shutting_down = false;
-  int exit_code = 0;
-};
-
-auto initialize(AppState& state, int show_command) -> std::expected<void, std::wstring>;
+// 初始化应用生命周期：启动 GPU 日志 → 创建主窗口 → 启动 MCP/RTSS → 初始化 WebView2
+auto initialize(AppState& state, int show_command) -> std::expected<void, std::string>;
+// 优雅关闭应用：标记退出 → 关闭后台各子系统 → 释放 WebView 控制器与 COM 资源
 auto shutdown(AppState& state) -> void;
-auto report_webview_error(AppState& state, std::wstring_view operation, HRESULT result) -> void;
+// 记录 WebView2 运行期错误并在主循环中排队弹窗
+auto report_webview_error(AppState& state, std::string_view operation, HRESULT result) -> void;
+// 弹出错误模态提示框并销毁主窗口
 auto show_pending_error(AppState& state) -> void;
 
 }  // namespace desktop

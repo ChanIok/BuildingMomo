@@ -52,11 +52,27 @@ export interface AiSettings extends AiPreferences {
   connection: Pick<AiConnection, 'provider' | 'apiUrl' | 'model' | 'headers'>
   apiKey: string
   modelSettings: Record<string, ModelSettings>
+  externalPort: number
+  panelMode: 'builtin' | 'external'
 }
 export const DEFAULT_AI_PREFERENCES: AiPreferences = {
   contextWindow: 256_000,
   maxTokens: 128_000,
   imageBudgetMiB: 32,
+}
+export const DEFAULT_AI_SETTINGS: AiSettings = {
+  connection: {
+    provider: 'compatible',
+    apiUrl: 'https://api.openai.com/v1',
+    model: '',
+  },
+  apiKey: '',
+  contextWindow: DEFAULT_AI_PREFERENCES.contextWindow,
+  maxTokens: DEFAULT_AI_PREFERENCES.maxTokens,
+  imageBudgetMiB: DEFAULT_AI_PREFERENCES.imageBudgetMiB,
+  modelSettings: {},
+  externalPort: 50725,
+  panelMode: 'builtin',
 }
 
 export function getModelSettings(

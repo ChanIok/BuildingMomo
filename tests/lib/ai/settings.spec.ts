@@ -39,7 +39,7 @@ afterEach(() => {
 })
 
 it('persists credentials and per-model settings without sharing options across connections', async () => {
-  localStorage.setItem('buildingmomo_ai_key', 'key')
+  localStorage.setItem('buildingmomo_ai_settings', JSON.stringify({ apiKey: 'key' }))
   const settings = store().ai
   expect(() => resolveAiConfig(settings)).toThrow()
   expect(settings.apiKey).toBe('key')
@@ -100,4 +100,17 @@ it('resets preferences and budgets without clearing connections, credentials or 
   expect(JSON.stringify(ai.modelSettings)).toBe(options)
   await nextTick()
   expect(store().ai).toEqual(ai)
+})
+
+it('persists externalPort and panelMode in the unified ai settings store', async () => {
+  const current = store()
+  current.ai.externalPort = 52000
+  current.ai.panelMode = 'external'
+  await nextTick()
+  const raw = JSON.parse(localStorage.getItem('buildingmomo_ai_settings') ?? '{}')
+  expect(raw.externalPort).toBe(52000)
+  expect(raw.panelMode).toBe('external')
+  const restored = store()
+  expect(restored.ai.externalPort).toBe(52000)
+  expect(restored.ai.panelMode).toBe('external')
 })

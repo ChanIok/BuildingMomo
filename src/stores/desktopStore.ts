@@ -102,6 +102,7 @@ export const useDesktopStore = defineStore('desktop', () => {
     if (!data || typeof data !== 'object') return
 
     if (data.type === 'desktopStatus' && data.status) {
+      status.value.aiProtocol = Number(data.aiProtocol) || 0
       status.value.isDesktop = true
       status.value.isElevated = Boolean(data.status.isElevated)
       status.value.runAsAdminEnabled = Boolean(data.status.runAsAdminEnabled)

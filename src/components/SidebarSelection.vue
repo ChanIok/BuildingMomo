@@ -93,7 +93,7 @@ const selectedGroupInfo = computed(() => {
 
   // 如果所有选中物品都是无组
   if (groupIds.size === 1 && groupIds.has(0)) {
-    return { type: 'none', count: items.length }
+    return { type: 'none' as const, count: items.length }
   }
 
   // 如果所有选中物品都属于同一组
@@ -101,7 +101,7 @@ const selectedGroupInfo = computed(() => {
     const groupId = Array.from(groupIds)[0]!
     const groupItems = getGroupItems(groupId)
     return {
-      type: 'single',
+      type: 'single' as const,
       groupId,
       selectedCount: items.length,
       totalCount: groupItems.length,
@@ -111,7 +111,7 @@ const selectedGroupInfo = computed(() => {
   // 如果选中了多个组(或混合)
   const groupCount = Array.from(groupIds).filter((id) => id > 0).length
   return {
-    type: 'multiple',
+    type: 'multiple' as const,
     groupCount,
     selectedCount: items.length,
   }
