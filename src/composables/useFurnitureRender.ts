@@ -47,6 +47,7 @@ export function installFurnitureRender(
   waiters.clear()
   return {
     beforeRender: context.beforeRender,
+    setMaterialAnimation: context.setMaterialAnimation,
     prepareScene: context.prepareScene,
     dispose() {
       disposed = true
