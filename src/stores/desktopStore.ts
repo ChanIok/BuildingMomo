@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
+import { useI18n } from '@/composables/useI18n'
+import { useNotification } from '@/composables/useNotification'
 import type { DesktopSettings, DesktopStatus, CleanMemoryResult } from '@/types/desktop'
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -18,6 +20,7 @@ const DEFAULT_DESKTOP_STATUS: DesktopStatus = {
   gameFocused: false,
   isLimiting: false,
   version: null,
+  highPerformanceGpuEnabled: null,
 }
 
 const STORAGE_KEY = 'buildingmomo_desktop_settings'
@@ -27,6 +30,8 @@ const STORAGE_KEY = 'buildingmomo_desktop_settings'
  * 负责桌面客户端专有能力的配置持久化及与 C++ 宿主 (WebView2) 的双向 IPC 通信
  */
 export const useDesktopStore = defineStore('desktop', () => {
+  const { t } = useI18n()
+  const notification = useNotification()
   // ========== 状态定义 ==========
 
   /**
@@ -110,6 +115,10 @@ export const useDesktopStore = defineStore('desktop', () => {
       status.value.gameRunning = Boolean(data.status.gameRunning)
       status.value.gameFocused = Boolean(data.status.gameFocused)
       status.value.isLimiting = Boolean(data.status.isLimiting)
+      status.value.highPerformanceGpuEnabled =
+        typeof data.status.highPerformanceGpuEnabled === 'boolean'
+          ? data.status.highPerformanceGpuEnabled
+          : null
       // 旧外壳不下发 version，保持 null 以便界面回退到纯网页样式
       status.value.version = data.version?.commit
         ? {
@@ -117,6 +126,13 @@ export const useDesktopStore = defineStore('desktop', () => {
             committedAt: String(data.version.committedAt ?? ''),
           }
         : null
+    } else if (data.type === 'highPerformanceGpuResult') {
+      status.value.highPerformanceGpuEnabled = Boolean(data.enabled)
+      if (data.success) {
+        notification.info(t('sidebar.desktop.runAsAdminRestartHint'))
+      } else {
+        notification.error(t('sidebar.desktop.gpuPreferenceSaveFailed'))
+      }
     } else if (data.type === 'cleanMemoryResult') {
       const target = data.target as 'game' | 'editor'
       const resolver = cleanMemoryResolvers.get(target)
@@ -144,6 +160,12 @@ export const useDesktopStore = defineStore('desktop', () => {
       type: 'setRunAsAdmin',
       enabled,
     })
+  }
+
+  // 启动配置仅由宿主保存和确认，不写入 localStorage，也不在刷新时自动回传覆盖。
+  function setHighPerformanceGpu(enabled: boolean): void {
+    if (status.value.highPerformanceGpuEnabled === null) return
+    getWebview()?.postMessage({ type: 'setHighPerformanceGpu', enabled })
   }
 
   const cleanMemoryResolvers = new Map<string, (result: CleanMemoryResult) => void>()
@@ -219,5 +241,6 @@ export const useDesktopStore = defineStore('desktop', () => {
     syncWindowAppearance,
     cleanMemory,
     setRunAsAdmin,
+    setHighPerformanceGpu,
   }
 })

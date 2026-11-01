@@ -157,7 +157,8 @@ auto broadcast_status(AppState& state) -> void {
                          {"rtssAvailable", status.available},
                          {"gameRunning", status.game_running},
                          {"gameFocused", status.game_focused},
-                         {"isLimiting", status.is_limiting}}},
+                         {"isLimiting", status.is_limiting},
+                         {"highPerformanceGpuEnabled", system::is_high_performance_gpu_enabled()}}},
                        {"version",
                         {{"commit", string::to_utf8(BUILDINGMOMO_COMMIT)},
                          {"committedAt", string::to_utf8(BUILDINGMOMO_COMMITTED_AT)}}}});
@@ -190,6 +191,13 @@ auto handle_message(AppState& state, std::wstring_view message_json) -> void {
       if (const auto enabled = extract_bool(message, "enabled")) {
         system::set_no_admin_marker(!*enabled);
         broadcast_status(state);
+      }
+    } else if (type == "setHighPerformanceGpu") {
+      if (const auto enabled = extract_bool(message, "enabled")) {
+        const bool saved = system::set_high_performance_gpu_enabled(*enabled);
+        send_message(state, {{"type", "highPerformanceGpuResult"},
+                             {"success", saved},
+                             {"enabled", system::is_high_performance_gpu_enabled()}});
       }
     } else if (type == "setWindowAppearance") {
       set_window_appearance(state, message);

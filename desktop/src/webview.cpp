@@ -3,6 +3,7 @@
 #include "vendor/std.hpp"
 
 #include "vendor/webview2.hpp"
+#include "vendor/webview2_environment_options.hpp"
 #include "vendor/wil.hpp"
 #include "vendor/windows.hpp"
 #include "vendor/windows/shellapi.hpp"
@@ -14,6 +15,7 @@
 #include "desktop_bridge.hpp"
 #include "gpu_priority/gpu_priority.hpp"
 #include "mcp/mcp_server.hpp"
+#include "system_utils.hpp"
 
 namespace desktop::webview {
 
@@ -220,9 +222,17 @@ auto initialize(AppState& state) -> std::expected<void, std::string> {
   }
   state.user_data_folder = folder.wstring();
 
+  auto options = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+  if (!options) return std::unexpected("无法创建 WebView2 启动配置。");
+  // 在 GPU 子进程启动前设置；不能等网页握手后再切换。
+  if (system::is_high_performance_gpu_enabled()) {
+    result = options->put_AdditionalBrowserArguments(L"--force-high-performance-gpu");
+    if (FAILED(result)) return std::unexpected("无法设置 WebView2 GPU 启动参数。");
+  }
+
   // 异步创建 WebView2 运行时环境对象
   result = CreateCoreWebView2EnvironmentWithOptions(
-      nullptr, state.user_data_folder.c_str(), nullptr,
+      nullptr, state.user_data_folder.c_str(), options.Get(),
       Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
           [&state](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
             return on_environment_created(state, result, environment);

@@ -1215,6 +1215,9 @@ export const enLocale = {
         'Provides necessary system privileges for framerate control and memory management.',
       runAsAdminRestartHint: 'Saved. Changes will take effect on next launch.',
       performance: 'Performance & Scheduling',
+      highPerformanceGpu: 'Prefer High-Performance GPU',
+      highPerformanceGpuHint: 'Prefer a discrete GPU; turn off to let the system choose.',
+      gpuPreferenceSaveFailed: 'Could not save GPU preference. Please retry.',
       gpuPriority: 'GPU Realtime Priority',
       gpuPriorityHint:
         'Allocates maximum GPU scheduling priority to the editor for smooth viewport performance.',

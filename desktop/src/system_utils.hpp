@@ -32,4 +32,8 @@ auto has_no_admin_marker() -> bool;
 // 创建或删除禁用管理员权限的标记文件
 auto set_no_admin_marker(bool disable_admin) -> void;
 
+// 高性能 GPU 偏好保存在原生标记文件中，供 WebView2 启动前读取。
+auto is_high_performance_gpu_enabled() -> bool;
+auto set_high_performance_gpu_enabled(bool enabled) -> bool;
+
 }  // namespace desktop::system

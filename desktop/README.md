@@ -83,7 +83,11 @@ tool_timeout_sec = 75
 
 服务只监听 `127.0.0.1`，并校验 Host 和 Origin，不使用连接认证。服务开启期间，同机其他程序也可调用接口。网页通过已有 WebView2 消息桥执行工具，不直接请求本地端口。原生层只转发专用 AI 消息，不把桌面管理命令开放给 MCP。
 
-## GPU 调度
+## GPU 选择与调度
+
+**客户端设置 → 性能调度 → 优先使用高性能 GPU** 默认开启，启动时向 WebView2 传入 `--force-high-performance-gpu`；关闭后由系统选择。修改后重启客户端生效，与 GPU 实时调度优先级独立。
+
+偏好通过 `%LOCALAPPDATA%\BuildingMomo\use_system_gpu` 标记文件保存（存在表示关闭）。若无法操作界面，可退出客户端后手动创建该空文件，再启动恢复系统选择。
 
 启用 GPU 实时调度配置时，宿主识别当前 WebView2 环境的 GPU 进程，尝试将其 GPU 调度优先级设为 **Real Time**，不修改 CPU 优先级。每个 PID 在本次监视期间只尝试一次，新 GPU 进程出现时重新检查配置。关闭配置不会恢复已设置的优先级，退出时只停止监视，不恢复原值。
 
@@ -143,4 +147,5 @@ xmake run desktop_tests
 
 ```powershell
 pnpm test tests/lib/ai/mcp.spec.ts tests/composables/ai/externalAi.spec.ts
+pnpm test tests/stores/desktopStore.spec.ts
 ```

@@ -37,6 +37,8 @@ export interface DesktopStatus {
   isLimiting: boolean
   /** 外壳版本信息；纯网页环境为 null */
   version: DesktopVersion | null
+  /** 由原生宿主持久化的启动偏好；旧外壳不支持时为 null。 */
+  highPerformanceGpuEnabled: boolean | null
 }
 
 export interface CleanMemoryResult {

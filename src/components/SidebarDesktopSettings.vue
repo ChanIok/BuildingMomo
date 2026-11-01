@@ -149,6 +149,25 @@ const gameBadge = computed(() => {
             {{ t('sidebar.desktop.performance') }}
           </h3>
 
+          <div
+            v-if="desktopStore.status.highPerformanceGpuEnabled !== null"
+            class="flex items-center justify-between"
+          >
+            <div class="mr-2 space-y-0.5">
+              <Label class="cursor-pointer text-xs" for="high-performance-gpu">
+                {{ t('sidebar.desktop.highPerformanceGpu') }}
+              </Label>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t('sidebar.desktop.highPerformanceGpuHint') }}
+              </p>
+            </div>
+            <Switch
+              id="high-performance-gpu"
+              :model-value="desktopStore.status.highPerformanceGpuEnabled"
+              @update:model-value="desktopStore.setHighPerformanceGpu"
+            />
+          </div>
+
           <!-- GPU 实时优先级：标准左右对齐布局 -->
           <div class="flex items-center justify-between">
             <div class="mr-2 space-y-0.5">

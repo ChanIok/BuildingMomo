@@ -14,6 +14,7 @@ namespace {
 
 constexpr auto kMutexName = L"Local\\BuildingMomo_SingleInstance_Mutex";
 constexpr auto kMarkerFileName = L"no_admin";
+constexpr auto kSystemGpuMarker = L"use_system_gpu";
 
 }  // namespace
 
@@ -126,6 +127,29 @@ auto set_no_admin_marker(bool disable_admin) -> void {
     // 允许提权：删除标记文件
     DeleteFileW(marker_file.c_str());
   }
+}
+
+auto is_high_performance_gpu_enabled() -> bool {
+  const auto folder = get_app_data_folder();
+  if (folder.empty()) return true;
+  const auto attrs = GetFileAttributesW((folder / kSystemGpuMarker).c_str());
+  return attrs == INVALID_FILE_ATTRIBUTES || (attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+auto set_high_performance_gpu_enabled(bool enabled) -> bool {
+  const auto folder = get_app_data_folder();
+  if (folder.empty()) return false;
+  std::error_code error;
+  if (enabled) {
+    std::filesystem::remove(folder / kSystemGpuMarker, error);
+    return !error;
+  }
+  std::filesystem::create_directories(folder, error);
+  if (error) return false;
+  wil::unique_handle marker(CreateFileW((folder / kSystemGpuMarker).c_str(), GENERIC_WRITE,
+                                        FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                        FILE_ATTRIBUTE_NORMAL, nullptr));
+  return static_cast<bool>(marker);
 }
 
 }  // namespace desktop::system
