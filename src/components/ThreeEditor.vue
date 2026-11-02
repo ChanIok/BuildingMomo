@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { furnitureRender, installFurnitureRender } from '@/composables/useFurnitureRender'
+import { installFurnitureRender } from '@/composables/useFurnitureRender'
+import { furnitureRender } from '@/composables/renderer/furnitureRenderState'
 import { createSceneCapture } from '@/composables/renderer/sceneCapture'
 import { analysisCaptureBridgeKey } from '@/lib/sceneAnalysis/captureBridge'
 import { homeOutputUniforms } from '@/composables/renderer/homeOutput'

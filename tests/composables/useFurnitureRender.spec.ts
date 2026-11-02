@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { RenderContextOptions } from '@nuan5-pro/render'
 import {
-  furnitureRender,
   installFurnitureRender,
   readyFurnitureRender,
 } from '../../src/composables/useFurnitureRender'
+import { furnitureRender } from '../../src/composables/renderer/furnitureRenderState'
 
 const state = vi.hoisted(() => ({ createLayer: vi.fn() }))
 vi.mock('@nuan5-pro/render', () => ({

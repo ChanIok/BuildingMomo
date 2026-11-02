@@ -16,7 +16,8 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { furnitureRender, readyFurnitureRender } from '@/composables/useFurnitureRender'
+import { readyFurnitureRender } from '@/composables/useFurnitureRender'
+import { furnitureRender } from '../furnitureRenderState'
 import { decodeColorMapToGroupMap } from '@/lib/colorMap'
 import {
   applyScaleRenderCompensationToPositionInPlace,

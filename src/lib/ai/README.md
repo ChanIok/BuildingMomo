@@ -12,6 +12,8 @@ AI 是工作区级的代码助手：会话独立于方案，模型通过 JavaScr
 4. [tools.ts](tools.ts) 提供宿主 API、会话变量的家具引用解析，以及逐次编辑日志。[useAiEditorHost.ts](../../composables/ai/useAiEditorHost.ts) 按明确方案连接快照、截图和组织编辑，不切换界面来执行操作。
 5. [context.ts](context.ts) 组装 SDK 消息和上下文压缩；[model.ts](model.ts) 负责单次生成，协议、流解析、参数校验、图片编码与 usage 交给 AI SDK。工具执行和任务续接由 runner 管理。
 
+聊天服务始终由 App 持有；[AiWorkspace.vue](../../components/ai/AiWorkspace.vue) 及 Markdown 样式仅在打开 AI 面板时加载。SDK 的 schema 转换在执行时加载，runner 在模型请求时加载 `model.ts`，后者按当前连接加载 Provider。模块加载期间仍受本轮取消信号约束，不自动重发请求。宿主通过轻量的 [furnitureRenderState.ts](../../composables/renderer/furnitureRenderState.ts) 读取现有模型边界，不引入创建 GPU 上下文的实现。
+
 Worker 不接收 API Key、Pinia Store 或渲染器对象，不降级到主线程。它仍有同源网络和存储能力，不是恶意代码安全沙箱。停止或超时会终止 Worker，并禁止宿主继续执行排队操作；已完成的事务不会回滚。
 
 ## 通过桌面 MCP 使用现有工具

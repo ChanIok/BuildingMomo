@@ -38,6 +38,10 @@ withDefaults(defineProps<{ content: string; final?: boolean }>(), { final: true 
   />
 </template>
 
+<style>
+@import 'markstream-vue/index.css' layer(components);
+</style>
+
 <style scoped>
 .ai-markdown {
   min-width: 0;

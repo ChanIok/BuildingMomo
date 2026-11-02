@@ -11,7 +11,7 @@ import {
   type UsageAnchor,
 } from './context'
 import { effectiveReasoning } from './reasoning'
-import { streamModel, modelFailure } from './model'
+import type { streamModel, ModelRequest } from './model'
 import type { ConversationRepository } from './repository'
 import { workbenchTools, describeVariables } from './tools'
 import { executeWorkbenchTool } from './execution'
@@ -78,9 +78,11 @@ function inputError(error: unknown, name: string): string {
       : 'Invalid tool input'
 }
 
+type ModelGeneration = Awaited<ReturnType<typeof streamModel>>
+
 export function createAgentRunner(
   repository: ConversationRepository,
-  generate: typeof streamModel = streamModel
+  generate?: (request: ModelRequest) => ModelGeneration | Promise<ModelGeneration>
 ) {
   let active: { controller: AbortController; done: Promise<void> } | null = null
 
@@ -89,7 +91,7 @@ export function createAgentRunner(
     const runId = crypto.randomUUID()
     const runContext = options.context ?? scene.context()
     const definitions = workbenchTools
-    const toolTokens = await estimateToolTokens(definitions)
+    let toolTokens = 0
     let progress: RunProgress = { phase: 'preparing', startedAt: Date.now() }
     let draft: MessageRecord | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -248,8 +250,11 @@ export function createAgentRunner(
         record.diagnostics = { ...record.diagnostics, ...patch }
         report({ diagnostics: record.diagnostics })
       }
+      let modelRuntime: typeof import('./model') | undefined
       try {
-        const generation = generate({
+        modelRuntime = await import('./model')
+        assertCurrent()
+        const generation = await (generate ?? modelRuntime.streamModel)({
           connection,
           messages,
           tools: definitions,
@@ -268,6 +273,7 @@ export function createAgentRunner(
           },
           onResponse: (httpStatus) => diagnostics({ httpStatus, phase: 'waiting' }),
         })
+        assertCurrent()
         for await (const part of generation.stream) {
           assertCurrent()
           if (part.type === 'start-step') diagnostics({ warnings: part.warnings })
@@ -356,7 +362,9 @@ export function createAgentRunner(
       } catch (cause) {
         const error = signal.aborted
           ? new DOMException('Stopped', 'AbortError')
-          : modelFailure(cause)
+          : modelRuntime
+            ? modelRuntime.modelFailure(cause)
+            : cause
         record.error = failure(error)
         record.endedAt = Date.now()
         await flushDraft().catch(() => {})
@@ -441,6 +449,8 @@ export function createAgentRunner(
       onProgress(progress)
       if (options.text) await append('user', options.text, 'complete')
       else await save()
+      toolTokens = await estimateToolTokens(definitions)
+      assertCurrent()
       requireUserBudget(records, options.system, policy)
       while (true) {
         assertCurrent()

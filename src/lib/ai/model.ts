@@ -10,7 +10,7 @@ import {
 import { AiError, assertNotAborted } from './types'
 
 /** One SDK generation. The runner, not the SDK, owns tool execution and continuation. */
-export function streamModel(options: {
+export async function streamModel(options: {
   connection: AiConnection
   messages: ModelMessage[]
   tools: ToolSet
@@ -36,7 +36,7 @@ export function streamModel(options: {
         )
       : []
   )
-  const model = connectionModel(connection, async (requestUrl, init) => {
+  const model = await connectionModel(connection, async (requestUrl, init) => {
     assertNotAborted(abortSignal)
     const endpoint =
       connection.provider === 'compatible'
@@ -81,6 +81,7 @@ export function streamModel(options: {
       clearTimeout(timer)
     }
   })
+  assertNotAborted(abortSignal)
   return streamText({
     model,
     reasoning: effectiveReasoning(connection),

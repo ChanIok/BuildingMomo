@@ -32,12 +32,14 @@ vi.mock('@/stores/settingsStore', () => ({
   }),
 }))
 vi.mock('@/composables/useFurnitureRender', () => ({
+  readyFurnitureRender: () => state.ready(),
+}))
+vi.mock('@/composables/renderer/furnitureRenderState', () => ({
   furnitureRender: {
     get value() {
       return state.available ? state.layer : null
     },
   },
-  readyFurnitureRender: () => state.ready(),
 }))
 vi.mock('@/composables/useSceneInvalidate', () => ({ invalidateScene: vi.fn() }))
 

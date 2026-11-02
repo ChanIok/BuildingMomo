@@ -12,7 +12,7 @@ import RotateHintDialog from './components/RotateHintDialog.vue'
 import CoordinateDialog from './components/CoordinateDialog.vue'
 import AdvancedPasteDialog from './components/AdvancedPasteDialog.vue'
 import GroupMergeDialog from './components/GroupMergeDialog.vue'
-import { defineAsyncView } from './lib/asyncView'
+import { useAsyncView } from './composables/useAsyncView'
 import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
 import EditorLayout from './components/EditorLayout.vue'
@@ -25,8 +25,6 @@ import { useUIStore } from './stores/uiStore'
 import { useDesktopStore } from './stores/desktopStore'
 import { useCommandStore } from './stores/commandStore'
 import { removeLegacyDatabases } from './lib/legacyIdbCleanup'
-import { useNotification } from './composables/useNotification'
-import { useI18n } from './composables/useI18n'
 
 import {
   createAnalysisCaptureBridge,
@@ -36,25 +34,9 @@ import { useAiChat } from './composables/ai/useAiChat'
 import { aiChatKey } from './composables/ai/chatContext'
 import { externalAiKey, useExternalAi } from './composables/ai/useExternalAi'
 
-const notification = useNotification()
-const { t } = useI18n()
-function notifyViewLoadFailure(retry: () => void) {
-  // Keep the retry action available while Vue's shared load request is pending.
-  notification.error(t('asyncView.failed'), {
-    duration: Infinity,
-    dismissible: false,
-    action: { label: t('asyncView.retry'), onClick: retry },
-  })
-}
-const ThreeEditor = defineAsyncView(
-  () => import('./components/ThreeEditor.vue'),
-  notifyViewLoadFailure
-)
-const Sidebar = defineAsyncView(() => import('./components/Sidebar.vue'), notifyViewLoadFailure)
-const DocsViewer = defineAsyncView(
-  () => import('./components/DocsViewer.vue'),
-  notifyViewLoadFailure
-)
+const ThreeEditor = useAsyncView(() => import('./components/ThreeEditor.vue'))
+const Sidebar = useAsyncView(() => import('./components/Sidebar.vue'))
+const DocsViewer = useAsyncView(() => import('./components/DocsViewer.vue'))
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()

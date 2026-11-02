@@ -1,4 +1,4 @@
-import { asSchema, type ModelMessage, type FilePart, type ToolSet } from 'ai'
+import type { ModelMessage, FilePart, ToolSet } from 'ai'
 import {
   DEFAULT_AI_PREFERENCES,
   endpointIdentity,
@@ -86,6 +86,7 @@ export function resolveAiConfig(settings: AiSettings) {
 }
 
 export async function estimateToolTokens(tools: ToolSet) {
+  const { asSchema } = await import('ai')
   const declarations = await Promise.all(
     Object.entries(tools).map(async ([name, tool]) => ({
       name,

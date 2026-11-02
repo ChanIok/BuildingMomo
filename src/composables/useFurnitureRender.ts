@@ -1,4 +1,4 @@
-import { shallowRef, markRaw } from 'vue'
+import { markRaw } from 'vue'
 import {
   createRenderContext,
   createFurnitureLayer,
@@ -6,8 +6,8 @@ import {
   type FurnitureLayer,
   type FurnitureLayerOptions,
 } from '@nuan5-pro/render'
+import { furnitureRender } from './renderer/furnitureRenderState'
 
-export const furnitureRender = shallowRef<FurnitureLayer | null>(null)
 let initialize: (() => Promise<FurnitureLayer>) | null = null
 const waiters = new Set<() => void>()
 

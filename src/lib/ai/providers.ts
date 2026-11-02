@@ -1,9 +1,4 @@
 import type { LanguageModel } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createAnthropic } from '@ai-sdk/anthropic'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { createDeepSeek } from '@ai-sdk/deepseek'
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
   connectionUrl,
   resolveChatCompletionsUrl,
@@ -18,22 +13,39 @@ type ProviderSettings = {
   fetch: typeof fetch
 }
 const nativeProviders = {
-  openai: (settings: ProviderSettings, model: string) => createOpenAI(settings).responses(model),
-  'openai-chat': (settings: ProviderSettings, model: string) => createOpenAI(settings).chat(model),
-  anthropic: (settings: ProviderSettings, model: string) =>
-    createAnthropic({
+  openai: async (settings: ProviderSettings, model: string) => {
+    const { createOpenAI } = await import('@ai-sdk/openai')
+    return createOpenAI(settings).responses(model)
+  },
+  'openai-chat': async (settings: ProviderSettings, model: string) => {
+    const { createOpenAI } = await import('@ai-sdk/openai')
+    return createOpenAI(settings).chat(model)
+  },
+  anthropic: async (settings: ProviderSettings, model: string) => {
+    const { createAnthropic } = await import('@ai-sdk/anthropic')
+    return createAnthropic({
       ...settings,
       headers: { 'anthropic-dangerous-direct-browser-access': 'true', ...settings.headers },
-    })(model),
-  google: (settings: ProviderSettings, model: string) => createGoogleGenerativeAI(settings)(model),
-  deepseek: (settings: ProviderSettings, model: string) => createDeepSeek(settings)(model),
+    })(model)
+  },
+  google: async (settings: ProviderSettings, model: string) => {
+    const { createGoogleGenerativeAI } = await import('@ai-sdk/google')
+    return createGoogleGenerativeAI(settings)(model)
+  },
+  deepseek: async (settings: ProviderSettings, model: string) => {
+    const { createDeepSeek } = await import('@ai-sdk/deepseek')
+    return createDeepSeek(settings)(model)
+  },
 } satisfies Record<
   Exclude<AiProvider, 'compatible'>,
-  (settings: ProviderSettings, model: string) => LanguageModel
+  (settings: ProviderSettings, model: string) => Promise<LanguageModel>
 >
 
 /** Only adapter construction varies. Generation and editor tools have one execution path. */
-export function connectionModel(connection: AiConnection, fetcher: typeof fetch): LanguageModel {
+export async function connectionModel(
+  connection: AiConnection,
+  fetcher: typeof fetch
+): Promise<LanguageModel> {
   const url = connectionUrl(connection.apiUrl)
   url.search = ''
   const settings = {
@@ -47,6 +59,7 @@ export function connectionModel(connection: AiConnection, fetcher: typeof fetch)
   settings.baseURL = new URL(resolveChatCompletionsUrl(url.toString()))
     .toString()
     .replace(/\/chat\/completions$/, '')
+  const { createOpenAICompatible } = await import('@ai-sdk/openai-compatible')
   return createOpenAICompatible({
     ...settings,
     name: 'momo',

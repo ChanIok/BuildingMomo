@@ -41,7 +41,7 @@ function request(patch: Partial<ModelRequest> = {}): ModelRequest {
 }
 async function generate(input: ModelRequest) {
   try {
-    const generation = streamModel(input)
+    const generation = await streamModel(input)
     for await (const part of generation.stream) if (part.type === 'error') throw part.error
     return await generation.finalStep
   } catch (error) {
@@ -260,6 +260,18 @@ it('does not send after preparation fails or is cancelled', async () => {
       },
     })
   ).catch(() => {})
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('does not start generation when stopped while the provider is loading', async () => {
+  const fetcher = vi.fn()
+  const controller = new AbortController()
+  vi.stubGlobal('fetch', fetcher)
+
+  const preparing = streamModel(request({ abortSignal: controller.signal }))
+  controller.abort()
+
+  await expect(preparing).rejects.toMatchObject({ name: 'AbortError' })
   expect(fetcher).not.toHaveBeenCalled()
 })
 

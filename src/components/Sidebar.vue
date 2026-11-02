@@ -13,7 +13,7 @@ import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
 import SidebarDesktopSettings from './SidebarDesktopSettings.vue'
-import AiWorkspace from './ai/AiWorkspace.vue'
+import { useAsyncView } from '@/composables/useAsyncView'
 import SidebarToggleItem from './SidebarToggleItem.vue'
 import IconMomo from './icons/IconMomo.vue'
 import { useDesktopStore } from '../stores/desktopStore'
@@ -32,6 +32,7 @@ const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const desktopStore = useDesktopStore()
 const { t } = useI18n()
+const AiWorkspace = useAsyncView(() => import('./ai/AiWorkspace.vue'))
 
 const isCompactSidebar = useMediaQuery('(max-height: 700px)')
 const isHeaderCollapsed = ref(false)

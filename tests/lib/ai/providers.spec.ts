@@ -39,7 +39,7 @@ function request(provider: AiProvider) {
   }
 }
 async function generate(input: Parameters<typeof streamModel>[0]) {
-  const result = streamModel(input)
+  const result = await streamModel(input)
   for await (const part of result.stream) if (part.type === 'error') throw modelFailure(part.error)
   return result.finalStep
 }

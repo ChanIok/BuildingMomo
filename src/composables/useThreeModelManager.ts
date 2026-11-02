@@ -1,5 +1,6 @@
 import { Vector3 } from 'three'
-import { furnitureRender, readyFurnitureRender } from './useFurnitureRender'
+import { readyFurnitureRender } from './useFurnitureRender'
+import { furnitureRender } from './renderer/furnitureRenderState'
 
 /** Editor geometry queries share the active viewport's package-owned resources. */
 const modelQueries = {
