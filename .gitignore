@@ -34,8 +34,6 @@ public/assets/terrain/
 # Auto-copied decoder files
 public/draco/
 functions/
-netlify/
-netlify.toml
 deno.lock
 scripts/clean-seo-for-secure.js
 scripts/manage-cloud-schemes.js
@@ -46,9 +44,6 @@ temp/
 .wrangler/
 # Workers
 cloud-sync-worker/
-
-# Local Netlify folder
-.netlify
 
 # AI
 .workbuddy
