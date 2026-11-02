@@ -81,7 +81,7 @@ export function useGroupPanelSelection(
     if (store.activeScheme?.selectedItemIds.value.size || explicit.value !== null) clearSelection()
     reset()
   }
-  /** 粘贴已在事务中更新家具选区；这里只接管节点，不另记一次选择历史。 */
+  /** 接管明确的节点选择并重置范围锚点，不另记选择历史。 */
   function adopt(entries: readonly CollectionEntry[]) {
     followCanvas()
     explicit.value = new Map(entries.map((entry) => [groupRowKey(entry), entry]))

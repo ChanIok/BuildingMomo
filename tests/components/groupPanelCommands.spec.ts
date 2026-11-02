@@ -294,22 +294,36 @@ it.each(['group', 'collection'])(
   }
 )
 
-it('does not adopt the ungrouped category or delete originals after pasting one furniture item', async () => {
-  const { panel, scheme } = mountSetup(panelSetup)
-  scheme.selectedItemIds.value = new Set(['item-2'])
-  panel.copyNodes()
-  const originals = scheme.items.value
-  const result = panel.pasteItems(panel.clipboard.value, 0, 0)
-  await nextTick()
-  expect(result.newIds).toHaveLength(1)
-  expect(scheme.selectedItemIds.value).toEqual(new Set(result.newIds))
-  expect(panel.selectedEntries.value).toEqual([])
-  panel.listKey({ key: 'Delete', preventDefault() {}, stopPropagation() {} })
-  expect(scheme.items.value.map((item) => item.internalId)).toEqual([
-    ...originals.map((item) => item.internalId),
-    ...result.newIds,
-  ])
-})
+it.each([true, false])(
+  'keeps repeated loose-item pastes scoped to their copies with panel open=%s',
+  async (open) => {
+    const { panel, scheme, ui } = mountSetup(panelSetup)
+    ui.groupPanelOpen = open
+    scheme.selectedItemIds.value = new Set(['item-2'])
+    panel.copyNodes()
+    const originals = scheme.items.value
+    const result = panel.pasteItems(panel.clipboard.value, 0, 0)
+    await nextTick()
+    expect(result.newIds).toHaveLength(1)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(result.newIds))
+    expect(scheme.selectedEntries.value).toBeNull()
+    const data = panel.buildClipboardDataFromSelection()
+    expect(data.items.map((item: { internalId: string }) => item.internalId)).toEqual(result.newIds)
+    const second = panel.pasteItems(data, 0, 0)
+    await nextTick()
+    expect(second.newIds).toHaveLength(1)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(second.newIds))
+    expect(scheme.selectedEntries.value).toBeNull()
+    expect(scheme.history.value!.transactionUndoStack.at(-1)!.entriesAfter).toBeNull()
+    expect(panel.selectedEntries.value).toEqual([])
+    panel.listKey({ key: 'Delete', preventDefault() {}, stopPropagation() {} })
+    expect(scheme.items.value.map((item) => item.internalId)).toEqual([
+      ...originals.map((item) => item.internalId),
+      ...result.newIds,
+      ...second.newIds,
+    ])
+  }
+)
 
 it('merges the captured panel scope rather than a later canvas selection, with undo', async () => {
   const { panel, scheme, ui, dialog } = mountSetup(() => {

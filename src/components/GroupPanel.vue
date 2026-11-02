@@ -443,7 +443,7 @@ watch(
             )?.collectionId
       revealCollection(parent ?? null)
     }
-    adoptSelection(target.roots)
+    // 粘贴事务已提交家具与节点选择，面板只负责展开、定位和焦点。
     panelSelectionVersion = store.selectionVersion
     dismissMenu()
     const first = target.roots[0]

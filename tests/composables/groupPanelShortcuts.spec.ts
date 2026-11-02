@@ -6,6 +6,8 @@ import { useUIStore } from '@/stores/uiStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
 import { useClipboard } from '@/composables/useClipboard'
+import { useEditorHistory } from '@/composables/editor/useEditorHistory'
+import { makeAppItem } from '../fixtures/item'
 
 const keyboard = vi.hoisted(() => ({ listener: null as ((event: KeyboardEvent) => void) | null }))
 vi.mock('@vueuse/core', async (original) => ({
@@ -104,3 +106,45 @@ it('enables shared paste and advanced paste for an empty collection clipboard', 
   commands.executeCommand('edit.paste')
   expect(store.activeScheme!.collectionTree.value.nodes).toHaveLength(2)
 })
+
+it.each([0, 7])(
+  'duplicates a canvas item from group %s repeatedly with E and after undo/redo',
+  (groupId) => {
+    const { store, shortcutMap } = setup()
+    store.createScheme('continuous duplicate')
+    const scheme = store.activeScheme!
+    const original = makeAppItem({ internalId: 'source', instanceId: 1, groupId })
+    scheme.items.value = [original]
+    scheme.maxInstanceId.value = 1
+    scheme.maxGroupId.value = groupId
+    scheme.selectedItemIds.value = new Set(['source'])
+    store.triggerSceneUpdate()
+    store.triggerSelectionUpdate()
+    const clipboard = useClipboard().clipboard.value
+    expect(shortcutMap.value.get('e')?.id).toBe('edit.duplicate')
+
+    function duplicate(total: number) {
+      keyboard.listener!({ key: 'e', repeat: false, preventDefault() {} } as KeyboardEvent)
+      expect(scheme.items.value).toHaveLength(total)
+      const copy = scheme.items.value.at(-1)!
+      expect(copy.groupId).toBe(0)
+      expect(scheme.selectedItemIds.value).toEqual(new Set([copy.internalId]))
+      expect(scheme.selectedEntries.value).toBeNull()
+      expect(scheme.items.value[0]).toBe(original)
+    }
+
+    duplicate(2)
+    duplicate(3)
+    duplicate(4)
+    expect(scheme.history.value!.transactionUndoStack).toHaveLength(3)
+    const selection = new Set(scheme.selectedItemIds.value)
+    const history = useEditorHistory()
+    history.undo()
+    expect(scheme.items.value).toHaveLength(3)
+    history.redo()
+    expect(scheme.selectedItemIds.value).toEqual(selection)
+    expect(scheme.selectedEntries.value).toBeNull()
+    duplicate(5)
+    expect(useClipboard().clipboard.value).toBe(clipboard)
+  }
+)

@@ -250,7 +250,8 @@ export function useClipboard() {
   }
 
   /**
-   * 无参时复制画布家具选区；传节点时复制完整组/集合，不受画布保护和过滤影响。
+   * 无参时复制明确选中的完整节点及额外选中的可编辑家具；传节点时只复制指定节点。
+   * 节点内容不受画布保护和过滤影响，额外家具仍遵守编辑限制。
    * 画布只选一件时脱组；面板选中的单家具组仍保留组身份。
    * 目录、组原点和个人标记均在复制时快照，不在粘贴时回读源方案。
    */
@@ -260,17 +261,22 @@ export function useClipboard() {
       return createEmptyClipboardData()
     }
 
+    const includeCanvasSelection = entries === undefined
     entries ??= scheme.selectedEntries.value ?? undefined
     const resolved = entries ? resolveCollectionEntries(scheme, entries) : null
-    const sourceItems =
-      resolved?.items ??
-      scheme.items.value.filter(
-        (item) =>
-          scheme.selectedItemIds.value.has(item.internalId) && store.isItemEditable(item.internalId)
-      )
+    const nodeItems = resolved?.items ?? []
+    const nodeItemIds = new Set(nodeItems.map((item) => item.internalId))
+    const sourceItems = includeCanvasSelection
+      ? scheme.items.value.filter(
+          (item) =>
+            nodeItemIds.has(item.internalId) ||
+            (scheme.selectedItemIds.value.has(item.internalId) &&
+              store.isItemEditable(item.internalId))
+        )
+      : nodeItems
     const copiedItems = sourceItems.map(cloneItem)
 
-    if (!entries && copiedItems.length === 1) {
+    if (!entries?.length && copiedItems.length === 1) {
       const singleItem = copiedItems[0]
       if (singleItem && singleItem.groupId > 0) {
         singleItem.groupId = 0
@@ -332,14 +338,13 @@ export function useClipboard() {
     })
   }
 
-  /** 清空当前选择，只选中刚插入的这些 internalId。 */
-  function selectInsertedItems(ids: string[]) {
+  /** 在粘贴事务内统一选择新增家具和节点；没有节点时继续使用画布选区。 */
+  function selectInsertedItems(ids: string[], roots: PasteResult['roots']) {
     const scheme = activeScheme.value
     if (!scheme) return
 
-    scheme.selectedEntries.value = null
-    scheme.selectedItemIds.value.clear()
-    ids.forEach((id) => scheme.selectedItemIds.value.add(id))
+    scheme.selectedItemIds.value = new Set(ids)
+    scheme.selectedEntries.value = roots.length > 0 ? roots : null
   }
 
   /**
@@ -554,8 +559,7 @@ export function useClipboard() {
       scheme.maxGroupId.value = currentMaxGroupId
 
       if (updateSelection) {
-        selectInsertedItems(newIds)
-        scheme.selectedEntries.value = restored.roots
+        selectInsertedItems(newIds, restored.roots)
       }
 
       if (triggerUpdates) {
@@ -698,8 +702,7 @@ export function useClipboard() {
       }
 
       if (createdIds.length > 0 || roots.length > 0) {
-        selectInsertedItems(createdIds)
-        activeScheme.value!.selectedEntries.value = roots
+        selectInsertedItems(createdIds, roots)
         if (createdIds.length > 0) {
           triggerRef(activeScheme.value!.groupOrigins)
           store.triggerSceneUpdate()

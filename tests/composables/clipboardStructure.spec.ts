@@ -221,6 +221,79 @@ it('takes a canvas item selection without expanding to its unselected group or c
   expect(panelSingle.items[0]!.groupId).toBe(9)
 })
 
+it.each(['group', 'collection'] as const)(
+  'keeps a mixed %s and loose-item selection complete across repeated duplicates',
+  (kind) => {
+    const { scheme, clipboard, history } = setup()
+    scheme.selectedEntries.value = kind === 'group' ? [{ kind, id: 7 }] : outdoor
+    const ids = kind === 'group' ? ['roof', 'loose'] : ['roof', 'wall', 'tree', 'loose']
+    scheme.selectedItemIds.value = new Set(ids)
+    let selected = new Set(ids)
+
+    for (let round = 1; round <= 3; round++) {
+      const data = clipboard.buildClipboardDataFromSelection()
+      expect(new Set(data.items.map((item) => item.internalId))).toEqual(selected)
+      expect(data.structure.collectionIds).toHaveLength(kind === 'group' ? 0 : 3)
+      const result = clipboard.pasteItems(data, 0, 0)
+      expect(result.newIds).toHaveLength(ids.length)
+      expect(scheme.items.value).toHaveLength(5 + round * ids.length)
+      selected = new Set(result.newIds)
+      expect(scheme.selectedItemIds.value).toEqual(selected)
+      expect(scheme.selectedEntries.value).toEqual(result.roots)
+      expect(
+        scheme.items.value.filter((item) => selected.has(item.internalId) && item.groupId === 0)
+      ).toHaveLength(1)
+    }
+
+    history.undo()
+    history.redo()
+    const data = clipboard.buildClipboardDataFromSelection()
+    expect(new Set(data.items.map((item) => item.internalId))).toEqual(selected)
+  }
+)
+
+it('copies complete implicit nodes plus editable carried items without widening explicit node requests', () => {
+  const { store, scheme, clipboard } = setup()
+  store.setGroupHidden(7, true)
+  store.setGroupLocked(10, true)
+  scheme.selectedEntries.value = outdoor
+  scheme.selectedItemIds.value = new Set(['tree', 'loose', 'other'])
+  expect(clipboard.buildClipboardDataFromSelection().items.map((item) => item.internalId)).toEqual([
+    'roof',
+    'wall',
+    'tree',
+    'loose',
+  ])
+  expect(
+    clipboard.buildClipboardDataFromSelection(outdoor).items.map((item) => item.internalId)
+  ).toEqual(['roof', 'wall', 'tree'])
+  expect(clipboard.buildClipboardDataFromSelection([]).items).toEqual([])
+})
+
+it('keeps step-repeated loose items as a canvas selection ready for another duplicate', () => {
+  const { scheme, clipboard, history } = setup()
+  scheme.selectedItemIds.value = new Set(['loose'])
+  clipboard.copy()
+  const result = clipboard.advancedPaste({
+    mode: 'stepRepeat',
+    stepRepeat: {
+      repeatCount: 2,
+      positionDelta: { x: 10, y: 0, z: 0 },
+      rotationDelta: { x: 0, y: 0, z: 0 },
+      scaleMultiplier: { x: 1, y: 1, z: 1 },
+    },
+  })
+  expect(scheme.selectedEntries.value).toBeNull()
+  expect(scheme.selectedItemIds.value).toEqual(new Set(result.newIds))
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+  history.undo()
+  expect(scheme.selectedItemIds.value).toEqual(new Set(['loose']))
+  history.redo()
+  const data = clipboard.buildClipboardDataFromSelection()
+  expect(data.items.map((item) => item.internalId)).toEqual(result.newIds)
+  expect(clipboard.pasteItems(data, 0, 0).newIds).toHaveLength(2)
+})
+
 it('pastes empty collections as one undoable step without updating furniture or the scene', () => {
   const { store, scheme, clipboard, history } = setup()
   const items = scheme.items.value
