@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up BuildingMomo database
+
+[Service]
+Type=oneshot
+User=momo
+Group=momo
+UMask=0077
+ExecStart=/bin/sh -c '/opt/buildingmomo/momo-server backup -db /var/lib/buildingmomo/momo.sqlite -file /var/lib/buildingmomo/backups/momo-$(date +%%Y-%%m-%%d).sqlite && find /var/lib/buildingmomo/backups -name "momo-*.sqlite" -type f -mtime +3 -delete'

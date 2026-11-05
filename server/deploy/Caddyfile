@@ -1,0 +1,23 @@
+# Replace the site address and static root with your existing deployment.
+example.com {
+	root * /srv/buildingmomo/current
+	encode zstd gzip
+
+	@protected {
+		path /assets/colors/* /assets/data/* /assets/furniture-v2/* /assets/terrain/*
+		not path /assets/data/building-momo-furniture.json /assets/data/home-buildable-area.json
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8788
+	}
+	handle @protected {
+		forward_auth 127.0.0.1:8788 {
+			uri /internal/auth
+		}
+		header Cache-Control "private, no-cache"
+		file_server
+	}
+	handle {
+		file_server
+	}
+}

@@ -665,6 +665,7 @@ export const zhLocale = {
 
   cloudScheme: {
     title: '云方案',
+    recoveryName: '{name}（未同步恢复副本）',
     dialogTitle: '加入云方案',
     description: '输入口令即可进入同一个实时编辑房间。',
     displayName: '协作者昵称',
@@ -722,6 +723,7 @@ export const zhLocale = {
       disconnected: '已断开',
     },
     toast: {
+      recoverySaved: '未确认的编辑已保留为本地恢复副本。',
       created: '已创建云方案',
       joined: '已加入云方案',
       disconnected: '已断开云方案连接',
@@ -730,6 +732,7 @@ export const zhLocale = {
       conflict: '远端版本已更新，当前方案已重新加载',
     },
     error: {
+      submissionRejected: '服务器拒绝了提交，未确认的编辑已保留。请重新连接或检查客户端版本。',
       noActiveScheme: '请先打开一个方案后再创建云方案',
       invalidRoomCode: '请输入有效的云方案口令',
       invalidDisplayName: '请输入协作者昵称',

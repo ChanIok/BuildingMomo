@@ -11,7 +11,10 @@ namespace desktop::webview {
 #ifdef BUILDINGMOMO_DESKTOP_DEBUG
 inline constexpr std::wstring_view kAppOrigin = L"http://localhost:5173";
 #else
-inline constexpr std::wstring_view kAppOrigin = L"https://lab.infinitymomo.com";
+#ifndef BUILDINGMOMO_APP_ORIGIN
+#error "Set MOMO_DESKTOP_ORIGIN when building the Release desktop app."
+#endif
+inline constexpr std::wstring_view kAppOrigin = BUILDINGMOMO_APP_ORIGIN;
 #endif
 
 // 校验给定 URL 是否属于应用可信任的宿主地址

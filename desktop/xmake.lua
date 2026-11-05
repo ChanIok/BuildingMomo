@@ -37,6 +37,16 @@ target("BuildingMomo")
     if is_mode("debug") then
         add_defines("BUILDINGMOMO_DESKTOP_DEBUG")
     end
+    on_load(function (target)
+        if not is_mode("release") then return end
+        local origin = (os.getenv("MOMO_DESKTOP_ORIGIN") or ""):trim():gsub("/+$", "")
+        -- 未配置时由 webview.hpp 阻止主程序编译，不影响独立的 desktop_tests。
+        if origin == "" then return end
+        assert(origin:match("^https://[%w][%w%.%-]*$") or
+            origin:match("^https://[%w][%w%.%-]*:%d+$"),
+            "MOMO_DESKTOP_ORIGIN must be an HTTPS origin without a path, query or credentials")
+        target:add("defines", 'BUILDINGMOMO_APP_ORIGIN=L"' .. origin .. '"')
+    end)
 
 -- 独立的原生定向测试，不启动桌面应用，也不参与默认构建。
 target("desktop_tests")

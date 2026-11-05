@@ -23,13 +23,17 @@ Debug 固定加载 `http://localhost:5173`。云端功能仍需现有 Vite `/api
 
 ## Release 构建
 
-在仓库根目录执行：
+将仓库根目录 [.env.example](../.env.example) 中的 `MOMO_DESKTOP_ORIGIN` 填入不提交 Git 的 `.env.local`，值为正式站点的 HTTPS Origin（不含路径、查询参数或账号信息）。已有环境变量优先。
+
+在仓库根目录执行，脚本会读取本地配置：
 
 ```powershell
 pnpm run build:cpp --release
 ```
 
-产物为 `desktop/build/windows/x64/release/BuildingMomo.exe`，固定加载 **https://lab.infinitymomo.com**。运行时需要网络和 WebView2 Runtime；Loader 静态链接，无需随程序放置 `WebView2Loader.dll`。网页更新不需要重新构建外壳。
+直接使用 xmake 时先设置同名环境变量。GitHub Actions 使用仓库 Secret `MOMO_DESKTOP_ORIGIN`；Debug 仍固定使用 localhost，不需要正式站点配置。该 Origin 同时用于页面加载、导航限制和消息来源校验。
+
+产物为 `desktop/build/windows/x64/release/BuildingMomo.exe`，加载构建时配置的站点。运行时需要网络和 WebView2 Runtime；Loader 静态链接，无需随程序放置 `WebView2Loader.dll`。网页更新不需要重新构建外壳。
 
 直接启动，无需参数：
 

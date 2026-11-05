@@ -35,7 +35,6 @@ public/assets/terrain/
 public/draco/
 functions/
 deno.lock
-scripts/clean-seo-for-secure.js
 scripts/manage-cloud-schemes.js
 
 temp/
@@ -50,3 +49,8 @@ cloud-sync-worker/
 
 # env
 .env.secure
+
+# Self-hosted backend runtime data and local configuration
+server/bin/
+server/data/
+server/*.env

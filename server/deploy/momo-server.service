@@ -1,0 +1,29 @@
+[Unit]
+Description=BuildingMomo cloud collaboration
+After=network.target
+
+[Service]
+Type=simple
+User=momo
+Group=momo
+WorkingDirectory=/var/lib/buildingmomo
+EnvironmentFile=/etc/buildingmomo/server.env
+Environment=GOMAXPROCS=1
+Environment=GOMEMLIMIT=256MiB
+ExecStart=/opt/buildingmomo/momo-server serve -db /var/lib/buildingmomo/momo.sqlite -listen 127.0.0.1:8788
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+StateDirectory=buildingmomo
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/buildingmomo
+MemoryHigh=384M
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

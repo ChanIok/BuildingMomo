@@ -21,7 +21,7 @@ BuildingMomo 是基于 Vue 3、TypeScript、Pinia、Three.js/TresJS 的无限暖
 
 - `pnpm dev`：启动前端开发服务器。
 - `pnpm exec vue-tsc -b`：TypeScript 类型检查。
-- `pnpm run build` / `pnpm run build:secure`：普通 / secure 前端构建，均生成英文入口。
+- `pnpm run build`：前端构建并生成英文入口；`VITE_ENABLE_SECURE_MODE=true` 时自动清理 SEO。
 - `pnpm run fetch-data`：更新 `public/assets` 下的游戏数据和图标。
 - `pnpm test`：运行 Vitest 测试。
 - 云端开发与桌面构建命令见 `package.json`。
@@ -31,7 +31,7 @@ BuildingMomo 是基于 Vue 3、TypeScript、Pinia、Three.js/TresJS 的无限暖
 - 使用 Node.js 24 和 pnpm；安装须应用 `pnpm-workspace.yaml` 中的 TresJS patch，不直接修改 `node_modules`。
 - 测试位于 `tests/`，使用独立 Vitest 配置，不加载 PWA 插件。
 - 格式化由 Husky 的 pre-commit `lint-staged` 统一执行。不要主动运行 Prettier 或制造与任务无关的格式化 diff。
-- 不主动执行构建和全量测试：`pnpm run build`、`build:secure`、`build:cpp`、`pnpm exec vue-tsc -b`、无参数 `pnpm test` 只有在用户明确要求时才运行。
+- 不主动执行构建和全量测试：`pnpm run build`、`build:cpp`、`pnpm exec vue-tsc -b`、无参数 `pnpm test` 只有在用户明确要求时才运行。
 - 针对当前修改的定向测试不受此限制：`pnpm test tests/<相关文件或目录>` 可直接运行。
 
 ## 不可破坏的核心约束

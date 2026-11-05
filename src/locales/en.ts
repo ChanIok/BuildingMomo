@@ -704,6 +704,7 @@ export const enLocale = {
 
   cloudScheme: {
     title: 'Cloud Scheme',
+    recoveryName: '{name} (unsynced recovery)',
     dialogTitle: 'Join Cloud Scheme',
     description: 'Enter a code to join the same live editing room.',
     displayName: 'Collaborator Name',
@@ -763,6 +764,7 @@ export const enLocale = {
       disconnected: 'Disconnected',
     },
     toast: {
+      recoverySaved: 'Unconfirmed edits were kept in a local recovery copy.',
       created: 'Cloud scheme created',
       joined: 'Joined cloud scheme',
       disconnected: 'Disconnected from cloud scheme',
@@ -771,6 +773,8 @@ export const enLocale = {
       conflict: 'Remote version changed; the scheme has been reloaded',
     },
     error: {
+      submissionRejected:
+        'The server rejected a submission. Unconfirmed edits were retained. Reconnect or check the client version.',
       noActiveScheme: 'Open a scheme before creating a cloud scheme',
       invalidRoomCode: 'Please enter a valid cloud scheme code',
       invalidDisplayName: 'Please enter a collaborator name',

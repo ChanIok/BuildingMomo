@@ -10,10 +10,11 @@ import {
 } from '@/lib/editorTransactions'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
+import { useTabStore } from '@/stores/tabStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useNotification } from '@/composables/useNotification'
 import { useI18n } from '@/composables/useI18n'
-import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
+import { buildSharedSchemeSnapshot, sharedSchemeContentMatches } from '@/lib/schemeSnapshot'
 import {
   getGroupChanges,
   reconcileCollectionGroups,
@@ -39,6 +40,8 @@ interface CloudSession {
   schemeId: string | null
   socket: WebSocket | null
   inFlightTransactionId: string | null
+  ready: boolean
+  preservedVersion: number | null
 }
 
 // 当前仍然有效的云协同会话。
@@ -79,6 +82,8 @@ function createSession(displayName: string, roomCode = ''): CloudSession {
     schemeId: null,
     socket: null,
     inFlightTransactionId: null,
+    ready: false,
+    preservedVersion: null,
   }
 }
 
@@ -116,6 +121,7 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
 export function useCloudSchemeSync() {
   const editorStore = useEditorStore()
   const cloudStore = useCloudSchemeStore()
+  const tabStore = useTabStore()
   const { markTransactionCommitted, markTransactionsStale } = useEditorHistory()
   const notification = useNotification()
   const { t } = useI18n()
@@ -259,6 +265,73 @@ export function useCloudSchemeSync() {
     stopTransactionWatch = null
   }
 
+  // 恢复副本仍是普通本地方案，由既有 Workspace Worker 持久化。
+  function preservePendingWork(schemeId: string | null, force = false) {
+    if (!schemeId) return
+    const scheme = editorStore.getSchemeById(schemeId)
+    if (!scheme || (!force && !editorStore.peekPendingTransaction(schemeId))) return
+    const session = currentSession?.schemeId === schemeId ? currentSession : null
+    if (!force && session?.preservedVersion === editorStore.transactionVersion) return
+    const pending = editorStore.pendingTransactions.filter((tx) => tx.schemeId === schemeId)
+    const activeTabId = tabStore.activeTabId
+    const recoveryId = editorStore.openArchivedSchemeSnapshot(
+      {
+        name: scheme.name.value,
+        items: scheme.items.value,
+        collectionTree: scheme.collectionTree.value,
+        groupOrigins: Array.from(scheme.groupOrigins.value),
+        currentViewConfig: scheme.currentViewConfig.value,
+        viewState: scheme.viewState.value,
+      },
+      { archiveName: t('cloudScheme.recoveryName', { name: scheme.name.value }) }
+    )
+    const recovery = editorStore.getSchemeById(recoveryId)!
+    // 已确认的较早消息可能暂时覆盖了乐观画面；恢复副本仍应包含全部未确认意图。
+    for (const transaction of pending) applyEditorTransactionToScheme(recovery, transaction)
+    tabStore.activeTabId = activeTabId
+    if (session) session.preservedVersion = editorStore.transactionVersion
+    editorStore.triggerSceneUpdate(recovery)
+    notification.warning(t('cloudScheme.toast.recoverySaved'))
+  }
+
+  function overlapsPending(transaction: EditorTransaction, schemeId: string | null) {
+    if (!schemeId) return false
+    const pending = editorStore.pendingTransactions.filter((tx) => tx.schemeId === schemeId)
+    if (!pending.length) return false
+    const items = editorStore.getSchemeById(schemeId)?.items.value ?? []
+    const touched = collectTransactionTouchedItemIds(transaction, items)
+    const groups = collectTransactionTouchedGroupIds(transaction)
+    const treeChanged = transaction.ops.some((op) => op.type === 'set_collection_tree')
+    const metadataChanged = transaction.ops.some(
+      (op) => op.type === 'set_group_names' || op.type === 'set_group_origins'
+    )
+    return pending.some((tx) => {
+      if (treeChanged && tx.ops.some((op) => op.type === 'set_collection_tree')) return true
+      for (const id of collectTransactionTouchedItemIds(tx, items)) if (touched.has(id)) return true
+      if (
+        metadataChanged ||
+        tx.ops.some((op) => op.type === 'set_group_names' || op.type === 'set_group_origins')
+      ) {
+        for (const id of collectTransactionTouchedGroupIds(tx)) if (groups.has(id)) return true
+      }
+      return false
+    })
+  }
+
+  function finishHandshake(session: CloudSession) {
+    session.ready = true
+    cloudStore.status = 'connected'
+    if (pendingConnectedEventType.value) {
+      appendHistoryEvent({
+        type: pendingConnectedEventType.value,
+        actorClientId: session.clientId,
+        actorDisplayName: session.displayName,
+      })
+      pendingConnectedEventType.value = null
+    }
+    void flushPendingTransactions()
+  }
+
   // 用云端发回来的完整文档替换本地方案内容。
   // 它既用于首次加入房间，也用于冲突重置、整份快照覆盖等场景。
   function applyRemoteDocument(document: CloudSchemeDocument, session?: CloudSession | null) {
@@ -360,7 +433,7 @@ export function useCloudSchemeSync() {
   // 这里故意一次只允许飞一条，避免前后顺序乱掉。
   async function flushPendingTransactions() {
     const session = currentSession
-    if (!session) return
+    if (!session || !session.ready) return
     if (isApplyingRemoteUpdate.value) return
     if (!session.socket || session.socket.readyState !== WebSocket.OPEN) return
     if (!cloudStore.isConnected || !session.schemeId) return
@@ -396,7 +469,13 @@ export function useCloudSchemeSync() {
       return
     }
 
-    const message = JSON.parse(raw) as CloudWsIncomingMessage
+    let message: CloudWsIncomingMessage
+    try {
+      message = JSON.parse(raw) as CloudWsIncomingMessage
+    } catch {
+      session.socket?.close(1002, 'Invalid cloud message')
+      return
+    }
 
     switch (message.type) {
       case 'hello':
@@ -409,17 +488,11 @@ export function useCloudSchemeSync() {
           notification.error(t('groups.syncUnavailable'))
           return
         }
-        cloudStore.revision = message.revision
-        cloudStore.status = 'connected'
-        if (pendingConnectedEventType.value) {
-          appendHistoryEvent({
-            type: pendingConnectedEventType.value,
-            actorClientId: session.clientId,
-            actorDisplayName: session.displayName,
-          })
-          pendingConnectedEventType.value = null
-        }
-        void flushPendingTransactions()
+        // hello 不代表文档已对齐；收到完整 snapshot 后才能上传。
+        if (session.ready) cloudStore.status = 'connected'
+        return
+      case 'scheme_name':
+        if (session.schemeId) editorStore.updateSchemeInfo(session.schemeId, { name: message.name })
         return
       case 'presence':
         appendPresenceHistory(message.users)
@@ -430,11 +503,14 @@ export function useCloudSchemeSync() {
         notification.error(message.message)
         return
       case 'reset':
+        preservePendingWork(session.schemeId)
         if (session.schemeId) {
           editorStore.clearPendingTransactions(session.schemeId)
         }
         session.inFlightTransactionId = null
         applyRemoteDocument(message.document, session)
+        if (!isActiveSession(session)) return
+        finishHandshake(session)
         cloudStore.status = 'conflict'
         appendHistoryEvent({
           type: 'conflict_reload',
@@ -444,11 +520,30 @@ export function useCloudSchemeSync() {
         notification.warning(t('cloudScheme.toast.conflict'))
         return
       case 'snapshot':
+        preservePendingWork(session.schemeId)
         applyRemoteDocument(message.document, session)
+        if (isActiveSession(session)) finishHandshake(session)
         return
       case 'tx_committed': {
+        if (!session.ready) return
+        if (message.revision <= cloudStore.revision) return
+        if (message.revision !== cloudStore.revision + 1) {
+          session.ready = false
+          session.socket?.close(1012, 'Revision gap')
+          return
+        }
+        if (
+          message.authorClientId !== session.clientId &&
+          overlapsPending(message.transaction, session.schemeId)
+        ) {
+          preservePendingWork(session.schemeId)
+          // 不把冲突的乐观链当成新 revision 的编辑继续发送。
+          session.ready = false
+          session.socket?.close(1012, 'Pending edits overlap remote changes')
+          return
+        }
         cloudStore.revision = message.revision
-        cloudStore.status = 'connected'
+        if (session.ready) cloudStore.status = 'connected'
         applyCommittedTransaction(message.transaction)
 
         const isOwn = message.authorClientId === session.clientId
@@ -468,7 +563,9 @@ export function useCloudSchemeSync() {
             message.transaction.id,
             message.transaction
           )
-          session.inFlightTransactionId = null
+          if (session.inFlightTransactionId === message.transaction.id) {
+            session.inFlightTransactionId = null
+          }
         } else {
           markTransactionsStale(
             message.transaction.schemeId,
@@ -500,6 +597,7 @@ export function useCloudSchemeSync() {
   // 建立当前 session 的 WebSocket 连接。
   // 即使旧 socket 晚到 open / close，也会因为 session 身份不匹配而被忽略。
   async function connectSocket(session: CloudSession) {
+    session.ready = false
     closeSessionSocket(session)
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -540,18 +638,20 @@ export function useCloudSchemeSync() {
         handleIncomingMessage(session, event.data)
       })
 
-      nextSocket.addEventListener('close', () => {
-        if (session.socket === nextSocket) {
-          session.socket = null
-        }
-
+      nextSocket.addEventListener('close', (event: CloseEvent) => {
+        if (session.socket !== nextSocket) return
+        session.socket = null
+        session.ready = false
+        session.inFlightTransactionId = null
         if (isActiveSession(session)) {
-          session.inFlightTransactionId = null
-          if (cloudStore.roomCode) {
-            cloudStore.status = 'disconnected'
+          if (cloudStore.roomCode) cloudStore.status = 'disconnected'
+          // 断线后由用户手动重连，完整快照覆盖前再保护未确认编辑。
+          if (event.code === 1008) {
+            preservePendingWork(session.schemeId)
+            if (session.schemeId) editorStore.clearPendingTransactions(session.schemeId)
+            cloudStore.setError(t('cloudScheme.error.submissionRejected'))
           }
         }
-
         resolveOnce(false)
       })
 
@@ -767,6 +867,17 @@ export function useCloudSchemeSync() {
       return false
     }
 
+    if (currentSession?.schemeId === scheme.id) {
+      const session = currentSession
+      cloudStore.status = 'connecting'
+      pendingConnectedEventType.value = 'reconnected'
+      try {
+        return await connectSocket(session)
+      } catch {
+        return false
+      }
+    }
+
     const roomCode = normalizeRoomCode(scheme.cloudRoomCode.value)
     const displayName = normalizeDisplayName(getStoredDisplayName())
     if (!roomCode || !displayName) {
@@ -789,6 +900,10 @@ export function useCloudSchemeSync() {
       }
 
       if (data.document.collectionTreeVersion !== 3) throw new Error(t('groups.syncUnavailable'))
+      // 工作台恢复不包含待提交队列；只按实际编辑内容判断是否需要副本。
+      if (!sharedSchemeContentMatches(scheme, data.document.scheme)) {
+        preservePendingWork(scheme.id, true)
+      }
       const schemeId = editorStore.openCloudSchemeSnapshot(data.document.scheme, roomCode)
       editorStore.setSchemeCloudMeta(schemeId, {
         source: 'cloud',
@@ -810,7 +925,7 @@ export function useCloudSchemeSync() {
       return true
     } catch (error) {
       abortSessionAttempt(session)
-      console.warn('[CloudScheme] Auto reconnect failed:', error)
+      console.warn('[CloudScheme] Reconnect failed:', error)
       return false
     }
   }
@@ -822,6 +937,7 @@ export function useCloudSchemeSync() {
     const schemeId = cloudStore.schemeId
     const session = currentSession
 
+    preservePendingWork(schemeId)
     currentSession = null
     closeSessionSocket(session)
 
@@ -852,7 +968,7 @@ export function useCloudSchemeSync() {
       return
     }
 
-    if (cloudStore.schemeId === scheme.id && cloudStore.isConnected) {
+    if (currentSession?.schemeId === scheme.id) {
       return
     }
 

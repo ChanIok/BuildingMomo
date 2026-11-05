@@ -1,6 +1,6 @@
 # 手动构建桌面端外壳（Win32 + WebView2）。
 # 只提供 workflow_dispatch，不做 push/PR 自动触发。
-# Release 版固定加载 https://lab.infinitymomo.com，因此不需要构建前端产物。
+# Release 版通过 MOMO_DESKTOP_ORIGIN Secret 配置站点，不需要构建前端产物。
 
 name: Build Desktop
 
@@ -53,7 +53,12 @@ jobs:
 
       - name: Build
         working-directory: desktop
+        env:
+          MOMO_DESKTOP_ORIGIN: ${{ secrets.MOMO_DESKTOP_ORIGIN }}
         run: |
+          if ('${{ inputs.mode }}' -eq 'release' -and [string]::IsNullOrWhiteSpace($env:MOMO_DESKTOP_ORIGIN)) {
+            throw 'Configure the MOMO_DESKTOP_ORIGIN repository secret before a Release build.'
+          }
           xmake f -p windows -a x64 -m ${{ inputs.mode }} --toolchain=msvc -y
           xmake build -y
 

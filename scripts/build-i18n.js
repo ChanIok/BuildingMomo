@@ -7,10 +7,10 @@ const __dirname = path.dirname(__filename)
 const distDir = path.resolve(__dirname, '../dist')
 const enDir = path.join(distDir, 'en')
 
-console.log('Building i18n versions...')
+console.log('正在生成中英文入口...')
 
 if (!fs.existsSync(distDir)) {
-  console.error('dist directory not found. Please run build first.')
+  console.error('找不到 dist 目录，请先构建前端。')
   process.exit(1)
 }
 
@@ -85,5 +85,5 @@ enHtmlContent = enHtmlContent.replace(
 // Write the file
 fs.writeFileSync(path.join(enDir, 'index.html'), enHtmlContent)
 
-console.log('Created dist/en/index.html')
-console.log('i18n build complete.')
+console.log('已生成 dist/en/index.html。')
+console.log('中英文入口生成完成。')

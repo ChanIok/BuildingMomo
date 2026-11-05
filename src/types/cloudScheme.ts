@@ -109,6 +109,12 @@ export interface CloudWsPushTransactionMessage {
   transaction: EditorTransaction
 }
 
+export interface CloudWsSchemeNameMessage {
+  type: 'scheme_name'
+  roomCode: string
+  name: string
+}
+
 export type CloudWsIncomingMessage =
   | CloudWsHelloMessage
   | CloudWsSnapshotMessage
@@ -116,5 +122,6 @@ export type CloudWsIncomingMessage =
   | CloudWsResetMessage
   | CloudWsPresenceMessage
   | CloudWsErrorMessage
+  | CloudWsSchemeNameMessage
 
 export type CloudWsOutgoingMessage = CloudWsPushTransactionMessage

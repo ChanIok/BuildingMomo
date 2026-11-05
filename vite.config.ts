@@ -232,8 +232,8 @@ export default defineConfig(({ mode }) => {
             fs: { allow: [searchForWorkspaceRoot(process.cwd()), renderSource] },
           }
         : {}),
-      // 本地联调：另开 `npm run dev:cloudflare-functions`（wrangler pages dev，默认 8788）。
-      // 将 /api 全部转发到 Pages Functions，否则仅 Vite 时 /api/login、/api/cloud-schemes 会 404。
+      // 本地联调：另开 `pnpm dev:server`（Go 后端，默认 8788）。
+      // 迁移期间也可使用原 Cloudflare Functions；两者使用同一 API 和 WS 代理。
       proxy: {
         '/api': {
           target: cloudApiProxyTarget,
