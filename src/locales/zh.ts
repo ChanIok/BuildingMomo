@@ -354,10 +354,10 @@ export const zhLocale = {
     unlockAll: '全部解锁',
     mergeDialog: {
       title: '合并到哪个组',
-      description: '选区涉及多个组，合并后只保留一个。',
+      description: '这些组属于不同集合，请选择保留的组，或在公共集合下新建组。',
       keepHint: '保留名称与集合',
       newGroup: '新建组',
-      newGroupHint: '默认名称，未分类',
+      newGroupHint: '默认名称 · {path}',
     },
   },
   // 方案相关
@@ -1108,7 +1108,7 @@ export const zhLocale = {
     noSelection: '请选择物品查看详情或进行操作',
     selectionSettings: '选择设置',
     autoSelectGroup: '自动选择整组',
-    autoSelectGroupHint: '关闭后，可直接选择组内家具，保留原分组。',
+    autoSelectGroupHint: '点击组内任意家具，直接选中整个组合。',
     selectionFilter: {
       title: '可选类别',
       categories: {

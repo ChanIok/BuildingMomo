@@ -387,10 +387,11 @@ export const enLocale = {
     unlockAll: 'Unlock all',
     mergeDialog: {
       title: 'Which group to keep',
-      description: 'Several groups are selected; only one can remain.',
+      description:
+        'These groups belong to different collections. Keep an existing group or create one in their common collection.',
       keepHint: 'Keeps its name and collection',
       newGroup: 'New group',
-      newGroupHint: 'Default name, unclassified',
+      newGroupHint: 'Default name · {path}',
     },
   },
   // Scheme
@@ -1158,7 +1159,7 @@ export const enLocale = {
     noSelection: 'Select items to view details or edit',
     selectionSettings: 'Selection settings',
     autoSelectGroup: 'Auto-select whole groups',
-    autoSelectGroupHint: 'Turn off to select furniture within a group without ungrouping.',
+    autoSelectGroupHint: 'Select any piece of furniture to select the entire group.',
     selectionFilter: {
       title: 'Selectable categories',
       categories: {

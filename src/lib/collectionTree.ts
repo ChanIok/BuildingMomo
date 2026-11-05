@@ -198,6 +198,21 @@ export function collectionAncestors(
   return result
 }
 
+/** 多个组的直接归属是否一致，以及新组应落入的最近公共集合。 */
+export function resolveGroupCollection(tree: CollectionTree, groupIds: readonly number[]) {
+  const parents = new Map(tree.groups.map((group) => [group.groupId, group.collectionId]))
+  const collections = groupIds.map((id) => parents.get(id) ?? null)
+  const first = collections[0] ?? null
+  const sameCollection = collections.every((id) => id === first)
+  if (sameCollection) return { sameCollection, collectionId: first }
+  if (collections.includes(null)) return { sameCollection, collectionId: null }
+
+  const nodes = new Map(tree.nodes.map((node) => [node.id, node]))
+  const paths = collections.map((id) => collectionAncestors(nodes, id))
+  const collectionId = paths[0]!.find((id) => paths.every((path) => path.includes(id))) ?? null
+  return { sameCollection, collectionId }
+}
+
 /** 只有一对一重新编号才迁移组身份；合并不能把源组的个人状态带到目标组。 */
 export function getGroupChanges(
   previous: readonly { internalId: string; groupId: number }[],

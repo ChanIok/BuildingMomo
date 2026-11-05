@@ -186,18 +186,19 @@ describe('partial grouping and protected origins', () => {
     expect(commands.isCommandEnabled('edit.group')).toBe(false)
   })
 
-  it('opens the merge target chooser from the command when the selection spans two groups', () => {
-    const { store, scheme, selection } = setup()
+  it('silently merges partial groups from the command without changing unselected members', () => {
+    const { store, scheme, selection, items } = setup()
     const ui = useUIStore()
     selection.updateSelection(['a', 'c'], false, { skipGroupExpansion: true })
     const commands = useCommandStore()
     expect(commands.isCommandEnabled('edit.group')).toBe(true)
     commands.executeCommand('edit.group')
-    expect(ui.groupMergeOpen).toBe(true)
-    expect(ui.groupMergeCandidates).toEqual([7, 8])
-    expect(store.itemsMap.get('a')!.groupId).toBe(7)
-    expect(store.itemsMap.get('c')!.groupId).toBe(8)
-    expect(scheme.history.value?.transactionUndoStack ?? []).toHaveLength(0)
+    expect(ui.groupMergeOpen).toBe(false)
+    expect(store.itemsMap.get('a')!.groupId).toBe(9)
+    expect(store.itemsMap.get('c')!.groupId).toBe(9)
+    expect(store.itemsMap.get('b')).toBe(items[1])
+    expect(store.itemsMap.get('d')).toBe(items[3])
+    expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
   })
 
   it('merges a partial selection into the group it touches without changing unselected furniture', () => {
@@ -244,7 +245,6 @@ describe('partial grouping and protected origins', () => {
     expect(store.itemsMap.get('d')!.groupId).toBe(7)
     selection.updateSelection(['a', 'c'], false, { skipGroupExpansion: true })
     const groups = useEditorGroups()
-    expect(groups.resolveGroupRequest()).toEqual({ kind: 'choose', candidates: [7, 8] })
     expect(groups.groupInto(8)).toBe(true)
     expect(scheme.groupOrigins.value.has(7)).toBe(false)
     expect(scheme.groupOrigins.value.get(8)).toBe('c')

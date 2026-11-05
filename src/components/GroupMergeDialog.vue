@@ -27,11 +27,23 @@ const emit = defineEmits<{
 const store = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
-const { groupInto, canGroupSelection } = useEditorGroups()
+const { groupInto, canGroupSelection, getNewGroupCollectionId } = useEditorGroups()
 
-// 唯一候选组已在上层静默合并，因此这里至少涉及两个组，默认落在“新建组”。
+// 仅跨集合且组面板打开时询问，默认在公共集合下新建组。
 const NEW_GROUP = 'new'
 const target = ref<string>(NEW_GROUP)
+
+const newGroupPath = computed(() => {
+  const scheme = store.activeScheme
+  const scope = uiStore.groupMergeTarget
+  if (!scheme || !scope) return t('groups.unclassified')
+  const nodes = new Map(scheme.collectionTree.value.nodes.map((node) => [node.id, node]))
+  const path = collectionAncestors(nodes, getNewGroupCollectionId(scope))
+    .reverse()
+    .map((id) => nodes.get(id)!.name)
+    .join(' / ')
+  return path || t('groups.unclassified')
+})
 
 const options = computed(() => {
   const scheme = store.activeScheme
@@ -139,7 +151,7 @@ function submit() {
               {{ t('groups.mergeDialog.newGroup') }}
             </span>
             <p class="text-xs text-muted-foreground">
-              {{ t('groups.mergeDialog.newGroupHint') }}
+              {{ t('groups.mergeDialog.newGroupHint', { path: newGroupPath }) }}
             </p>
           </div>
         </label>

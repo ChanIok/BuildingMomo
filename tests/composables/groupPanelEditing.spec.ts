@@ -12,6 +12,7 @@ import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelect
 import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
 import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
 import { setSchemeItems } from '@/lib/groupState'
+import { collectionTreesEqual } from '@/lib/collectionTree'
 import type { GroupEditTarget } from '@/types/editor'
 import { makeAppItem } from '../fixtures/item'
 
@@ -31,6 +32,7 @@ afterEach(() => {
 function setup() {
   return scope.run(() => {
     const store = useEditorStore()
+    useUIStore().groupPanelOpen = true
     store.createScheme('panel editing')
     const scheme = store.activeScheme!
     scheme.items.value = [
@@ -154,20 +156,46 @@ it('does not hide or lock a visible target when merging a protected source into 
   expect(scheme.lockedGroupIds.value).toEqual(new Set([7]))
 })
 
-it('creates an unclassified group without inheriting source names or personal flags', () => {
+it('silently creates a group in the common collection in one undoable transaction', () => {
   const { store, scheme, groups, target, history } = setup()
+  const ui = useUIStore()
+  ui.groupPanelOpen = false
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    groups: scheme.collectionTree.value.groups.map((group) =>
+      group.groupId === 9 ? { ...group, collectionId: 'house', order: 42 } : group
+    ),
+  }
+  const before = scheme.items.value
+  const tree = scheme.collectionTree.value
+  const origins = scheme.groupOrigins.value
   store.setCollectionRestriction('house', 'hidden', true)
   store.setGroupLocked(8, true)
   store.setGroupHidden(7, true)
-  expect(groups.groupInto(null, target([7, 8]))).toBe(true)
+  expect(groups.requestGroup(target([7, 8]))).toBe(true)
+  expect(ui.groupMergeOpen).toBe(false)
   expect(scheme.items.value.map((item) => item.groupId)).toEqual([10, 10, 10, 9, 0])
-  expect(scheme.collectionTree.value.groups.map((entry) => entry.groupId)).toEqual([9])
-  expect(scheme.collectionTree.value.nodes).toHaveLength(3)
-  expect(store.isItemEditable('a')).toBe(true)
+  expect(scheme.items.value[3]).toBe(before[3])
+  expect(scheme.collectionTree.value.groups).toEqual([
+    tree.groups[2],
+    { groupId: 10, collectionId: 'house', order: 43 },
+  ])
+  expect(scheme.groupOrigins.value.size).toBe(0)
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+  // 不继承源组个人状态，但仍遵守目标集合的继承限制。
+  expect(store.isItemVisible('a')).toBe(false)
   history.undo()
+  expect(scheme.items.value).toEqual(before)
+  expect(scheme.collectionTree.value).toEqual(tree)
+  expect(scheme.groupOrigins.value).toEqual(origins)
   expect(scheme.maxGroupId.value).toBe(10)
   history.redo()
-  expect(store.isItemEditable('a')).toBe(true)
+  expect(scheme.collectionTree.value.groups.find((group) => group.groupId === 10)).toEqual({
+    groupId: 10,
+    collectionId: 'house',
+    order: 43,
+  })
+  expect(store.isItemVisible('a')).toBe(false)
   expect(scheme.hiddenGroupIds.value.has(10)).toBe(false)
   expect(scheme.lockedGroupIds.value.has(10)).toBe(false)
 })
@@ -252,18 +280,18 @@ it('rejects stale panel groups and a dialog scope belonging to a different schem
   expect(current.items.value).toBe(before)
 })
 
-it('queues complete cloud patches and replays them without sharing personal flags', () => {
+it('queues new-group membership and collection together without sharing personal flags', () => {
   const { store, scheme, groups, target } = setup()
   const before = scheme.items.value
   const tree = scheme.collectionTree.value
   scheme.source.value = 'cloud'
   store.setGroupHidden(7, true)
   store.setGroupLocked(8, true)
-  expect(groups.groupInto(8, target([7, 8]))).toBe(true)
+  expect(groups.groupInto(null, target([7, 8]))).toBe(true)
   expect(store.pendingTransactions).toHaveLength(1)
   const transaction = store.pendingTransactions[0]!
   const patch = transaction.ops.find((op) => op.type === 'patch_items')!
-  expect(patch.changes.map((change) => change.itemId)).toEqual(['a', 'b'])
+  expect(patch.changes.map((change) => change.itemId)).toEqual(['a', 'b', 'c'])
   expect(
     transaction.ops.every((op) =>
       ['patch_items', 'set_group_names', 'set_group_origins', 'set_collection_tree'].includes(
@@ -277,8 +305,8 @@ it('queues complete cloud patches and replays them without sharing personal flag
   peer.collectionTree.value = tree
   peer.hiddenGroupIds.value = new Set([7])
   applyEditorTransactionToScheme(peer, { ...transaction, schemeId: peer.id })
-  expect(peer.items.value.map((item) => item.groupId)).toEqual([8, 8, 8, 9, 0])
-  expect(peer.collectionTree.value).toEqual(scheme.collectionTree.value)
+  expect(peer.items.value.map((item) => item.groupId)).toEqual([10, 10, 10, 9, 0])
+  expect(collectionTreesEqual(peer.collectionTree.value, scheme.collectionTree.value)).toBe(true)
   expect(peer.hiddenGroupIds.value).toEqual(new Set([7]))
   expect(peer.lockedGroupIds.value.size).toBe(0)
 })

@@ -325,49 +325,65 @@ it.each([true, false])(
   }
 )
 
-it('merges the captured panel scope rather than a later canvas selection, with undo', async () => {
-  const { panel, scheme, ui, dialog } = mountSetup(() => {
-    const state = panelSetup()
-    state.store.setGroupHidden(7, true)
-    state.store.setGroupLocked(8, true)
-    const props = shallowReactive({ open: false })
-    watch(
-      () => state.ui.groupMergeOpen,
-      (open) => {
-        props.open = open
+it.each(['8', 'new'])(
+  'merges the captured panel scope into %s rather than a later canvas selection',
+  async (choice) => {
+    const { panel, scheme, ui, dialog } = mountSetup(() => {
+      const state = panelSetup()
+      const tree = state.scheme.collectionTree.value
+      state.scheme.collectionTree.value = {
+        nodes: [...tree.nodes, { id: 'floor', name: 'Floor', parentId: 'house', order: 0 }],
+        groups: tree.groups.map((group) =>
+          group.groupId === 7 ? { ...group, collectionId: 'floor' } : group
+        ),
       }
-    )
-    const dialog = (GroupMergeDialog as any).setup(props, {
-      expose() {},
-      emit: (_event: string, open: boolean) => {
-        state.ui.groupMergeOpen = open
-      },
+      state.store.setGroupHidden(7, true)
+      state.store.setGroupLocked(8, true)
+      const props = shallowReactive({ open: false })
+      watch(
+        () => state.ui.groupMergeOpen,
+        (open) => {
+          props.open = open
+        }
+      )
+      const dialog = (GroupMergeDialog as any).setup(props, {
+        expose() {},
+        emit: (_event: string, open: boolean) => {
+          state.ui.groupMergeOpen = open
+        },
+      })
+      return { ...state, dialog }
     })
-    return { ...state, dialog }
-  })
-  await nextTick()
-  panel.activate(panel.rows.value[0], { ctrlKey: false, metaKey: false, shiftKey: false })
-  panel.prepareMenu({
-    target: { closest: () => ({ dataset: { rowKey: 'collection:house' } }) },
-    preventDefault() {},
-  })
-  panel.setMenuOpen(true)
-  panel.requestGroup(panel.menuGroupTarget.value)
-  await nextTick()
-  expect(ui.groupMergeOpen).toBe(true)
-  dialog.target.value = '8'
-  useEditorSelection().updateSelection(['item-2'], false)
-  await nextTick()
-  expect(dialog.canSubmit.value).toBe(true)
-  dialog.submit()
-  await nextTick()
-  expect(scheme.items.value.map((item) => item.groupId)).toEqual([8, 8, 0])
-  expect(scheme.selectedItemIds.value).toEqual(new Set(['item-2']))
-  expect(ui.groupMergeTarget).toBeNull()
-  useEditorHistory().undo()
-  expect(scheme.items.value.map((item) => item.groupId)).toEqual([7, 8, 0])
-  expect(scheme.hiddenGroupIds.value.has(7)).toBe(true)
-})
+    await nextTick()
+    panel.activate(panel.rows.value[0], { ctrlKey: false, metaKey: false, shiftKey: false })
+    panel.prepareMenu({
+      target: { closest: () => ({ dataset: { rowKey: 'collection:house' } }) },
+      preventDefault() {},
+    })
+    panel.setMenuOpen(true)
+    panel.requestGroup(panel.menuGroupTarget.value)
+    await nextTick()
+    expect(ui.groupMergeOpen).toBe(true)
+    dialog.target.value = choice
+    useEditorSelection().updateSelection(['item-2'], false)
+    await nextTick()
+    expect(dialog.canSubmit.value).toBe(true)
+    expect(dialog.newGroupPath.value).toBe('House')
+    dialog.submit()
+    await nextTick()
+    const resultId = choice === 'new' ? 9 : 8
+    expect(scheme.items.value.map((item) => item.groupId)).toEqual([resultId, resultId, 0])
+    expect(scheme.collectionTree.value.groups[0]).toMatchObject({
+      groupId: resultId,
+      collectionId: 'house',
+    })
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-2']))
+    expect(ui.groupMergeTarget).toBeNull()
+    useEditorHistory().undo()
+    expect(scheme.items.value.map((item) => item.groupId)).toEqual([7, 8, 0])
+    expect(scheme.hiddenGroupIds.value.has(7)).toBe(true)
+  }
+)
 
 it('does not submit metadata to another scheme even before the close watcher runs', async () => {
   const { store, source, target, dialog, emit } = mountSetup(() => {

@@ -144,43 +144,33 @@ describe('group management', () => {
     expect(scheme.items.value.find((item) => item.internalId === 'd')!.groupId).toBe(7)
   })
 
-  it('asks for a target when the selection spans several groups and keeps only the chosen identity', () => {
-    const { scheme, history } = setup()
-    scheme.collectionTree.value = {
-      nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
-      groups: [
-        { groupId: 8, name: 'Roof', collectionId: 'house', order: 1 },
-        { groupId: 7, name: 'Walls', collectionId: 'house', order: 0 },
-      ],
+  it.each([
+    { collectionId: null, panelOpen: false },
+    { collectionId: null, panelOpen: true },
+    { collectionId: 'house', panelOpen: false },
+    { collectionId: 'house', panelOpen: true },
+  ])(
+    'silently creates a group in $collectionId with panel open: $panelOpen',
+    ({ collectionId, panelOpen }) => {
+      const { scheme } = setup()
+      scheme.collectionTree.value = {
+        nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
+        groups: [
+          { groupId: 8, name: 'Roof', collectionId, order: 1 },
+          { groupId: 7, name: 'Walls', collectionId, order: 0 },
+        ],
+      }
+      // 散件跟随结果，不把相同集合中的组合并判定为跨集合。
+      scheme.selectedItemIds.value = new Set(['a', 'b', 'c', 'd'])
+      const groups = useEditorGroups()
+      const ui = useUIStore()
+      ui.groupPanelOpen = panelOpen
+      expect(groups.requestGroup()).toBe(true)
+      expect(ui.groupMergeOpen).toBe(false)
+      expect(scheme.items.value.map((item) => item.groupId)).toEqual([9, 9, 9, 9])
+      expect(scheme.collectionTree.value.groups).toEqual([{ groupId: 9, collectionId, order: 0 }])
     }
-    scheme.selectedItemIds.value = new Set(['a', 'b', 'c'])
-    const groups = useEditorGroups()
-    const ui = useUIStore()
-    expect(groups.resolveGroupRequest()).toEqual({ kind: 'choose', candidates: [7, 8] })
-    expect(groups.requestGroup()).toBe(false)
-    expect(ui.groupMergeOpen).toBe(true)
-    expect(ui.groupMergeCandidates).toEqual([7, 8])
-    expect(groups.groupInto(8)).toBe(true)
-    expect(scheme.items.value.map((item) => item.groupId)).toEqual([8, 8, 8, 0])
-    expect(scheme.collectionTree.value.groups).toEqual([
-      { groupId: 8, name: 'Roof', collectionId: 'house', order: 1 },
-    ])
-    history.undo()
-    expect(groupNamesOf(scheme)).toEqual(
-      new Map([
-        [7, 'Walls'],
-        [8, 'Roof'],
-      ])
-    )
-    expect(scheme.collectionTree.value.groups.find((group) => group.groupId === 7)).toEqual({
-      groupId: 7,
-      name: 'Walls',
-      collectionId: 'house',
-      order: 0,
-    })
-    history.redo()
-    expect(groupNamesOf(scheme)).toEqual(new Map([[8, 'Roof']]))
-  })
+  )
 
   it('does not move a dissolved group name onto an unnamed target', () => {
     const { scheme } = setup()

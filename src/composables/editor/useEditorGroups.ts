@@ -1,4 +1,4 @@
-import { patchGroupNames } from '@/lib/collectionTree'
+import { patchGroupNames, resolveGroupCollection } from '@/lib/collectionTree'
 import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
 import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../../stores/editorStore'
@@ -6,7 +6,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useEditorHistory } from './useEditorHistory'
 import type { AppItem, GroupEditTarget } from '../../types/editor'
 
-/** 成组动作将要作用的目标；多个候选必须由调用方选择。 */
+/** 成组动作；仅在跨集合且组面板打开时需要选择目标。 */
 export type GroupRequest =
   | { kind: 'none' }
   | { kind: 'create' }
@@ -15,6 +15,7 @@ export type GroupRequest =
 
 export function useEditorGroups() {
   const store = useEditorStore()
+  const uiStore = useUIStore()
   // 注意：itemsMap 和 groupsMap 必须在 store 中导出
   const { activeScheme, itemsMap, groupsMap } = storeToRefs(store)
   const { recordTransaction } = useEditorHistory()
@@ -115,13 +116,29 @@ export function useEditorGroups() {
     return false
   }
 
-  /** 唯一候选组直接合并；选区涉及多个组时交由调用方选择目标。 */
+  /** 多组新建时继承公共集合；普通成组和单组拆分仍默认未分类。 */
+  function getNewGroupCollectionId(target: GroupEditTarget = selectionTarget()): string | null {
+    const candidates = getSelectedGroupIds(target)
+    return activeScheme.value && candidates.length > 1
+      ? resolveGroupCollection(activeScheme.value.collectionTree.value, candidates).collectionId
+      : null
+  }
+
+  /** 归属明确时静默成组；跨集合且面板打开时选择要保留的组。 */
   function resolveGroupRequest(target: GroupEditTarget = selectionTarget()): GroupRequest {
     const selected = targetItems(target)
     if (selected.size < 2) return { kind: 'none' }
     const candidates = getSelectedGroupIds(target)
     if (!candidates.length) return { kind: 'create' }
-    if (candidates.length > 1) return { kind: 'choose', candidates }
+    if (candidates.length > 1) {
+      const { sameCollection } = resolveGroupCollection(
+        activeScheme.value!.collectionTree.value,
+        candidates
+      )
+      return !sameCollection && uiStore.groupPanelOpen
+        ? { kind: 'choose', candidates }
+        : { kind: 'create' }
+    }
     const targetId = candidates[0]!
     if (hasMemberOutside(targetId, selected)) return { kind: 'merge', targetId }
     // 选区完全落在该组内部时没有可并入的家具：整组选中无事可做，部分成员则拆分为新组。
@@ -141,6 +158,7 @@ export function useEditorGroups() {
   /**
    * 把选中的家具并入 targetId；targetId 为 null 时新建组。
    * 合并沿用目标组 ID，因此名称、所属集合、顺序、显隐锁定与组原点都保持不变。
+   * 多组新建不继承源组身份，归入最近公共集合。
    */
   function groupInto(
     targetId: number | null,
@@ -159,6 +177,8 @@ export function useEditorGroups() {
       return false
 
     const nextGroupId = targetId ?? scheme.maxGroupId.value + 1
+    const createsMergedGroup = targetId === null && getSelectedGroupIds(target).length > 1
+    const collectionId = createsMergedGroup ? getNewGroupCollectionId(target) : null
 
     return recordTransaction(targetId === null ? 'group.create' : 'group.merge', () => {
       const items = scheme.items.value
@@ -185,7 +205,18 @@ export function useEditorGroups() {
       const live = new Set<number>()
       for (const item of scheme.items.value) if (item.groupId > 0) live.add(item.groupId)
       const groups = previousTree.groups.filter((group) => live.has(group.groupId))
-      if (groups.length !== previousTree.groups.length) {
+      if (createsMergedGroup) {
+        const assignments = new Map(groups.map((group) => [group.groupId, group]))
+        let order = -1
+        for (const id of live) {
+          if (id === nextGroupId) continue
+          const group = assignments.get(id)
+          if ((group?.collectionId ?? null) === collectionId)
+            order = Math.max(order, group?.order ?? id)
+        }
+        groups.push({ groupId: nextGroupId, collectionId, order: order + 1 })
+      }
+      if (createsMergedGroup || groups.length !== previousTree.groups.length) {
         scheme.collectionTree.value = { ...previousTree, groups }
       }
       scheme.groupOrigins.value = reconcileGroupOrigins(
@@ -204,14 +235,13 @@ export function useEditorGroups() {
     return groupInto(request.kind === 'merge' ? request.targetId : null)
   }
 
-  /** 成组入口：目标唯一时立即执行，涉及多个组时打开目标选择对话框。 */
+  /** 成组入口：仅跨集合且组面板打开时询问，其余可执行动作立即提交。 */
   function requestGroup(target: GroupEditTarget = selectionTarget()): boolean {
     const request = resolveGroupRequest(target)
     if (request.kind === 'none') return false
     if (request.kind !== 'choose') {
       return groupInto(request.kind === 'merge' ? request.targetId : null, target)
     }
-    const uiStore = useUIStore()
     uiStore.groupMergeCandidates = [...request.candidates]
     uiStore.groupMergeTarget = target
     uiStore.groupMergeOpen = true
@@ -329,6 +359,7 @@ export function useEditorGroups() {
     canGroupSelection,
     canUngroupSelection,
     getSelectedGroupIds,
+    getNewGroupCollectionId,
     ungroupSelected,
     getGroupItems,
     getItemGroupId,

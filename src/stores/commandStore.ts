@@ -595,7 +595,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.group'),
       shortcut: 'Ctrl+G',
       category: 'edit',
-      // 选区无组时新建；只涉及一个组时并入该组；涉及多个组时打开目标选择。
+      // 统一由组编辑入口决定静默成组，或在跨集合且组面板打开时询问目标。
       enabled: () => canGroupSelection(),
       execute: () => {
         console.log('[Command] 成组')

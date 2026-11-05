@@ -8,6 +8,7 @@ import {
   patchGroupNames,
   readCollectionTree,
   reconcileCollectionGroups,
+  resolveGroupCollection,
 } from '@/lib/collectionTree'
 import {
   applyEditorTransactionToScheme,
@@ -21,6 +22,39 @@ import { makeAppItem, makeScheme } from '../fixtures/item'
 const directory = () => ({
   nodes: [{ id: 'house', name: 'House', parentId: null, order: 0 }],
   groups: [{ groupId: 7, collectionId: 'house', order: 0 }],
+})
+
+it('resolves common collections by identity, including ancestors and unclassified groups', () => {
+  const nodes = [
+    { id: 'house', name: 'House', parentId: null, order: 0 },
+    { id: 'floor', name: 'Floor', parentId: 'house', order: 0 },
+    { id: 'room', name: 'Room', parentId: 'floor', order: 0 },
+    { id: 'other-room', name: 'Room', parentId: 'floor', order: 1 },
+    { id: 'garden', name: 'House', parentId: null, order: 1 },
+  ]
+  for (const [parents, collectionId] of [
+    [['room', 'room'], 'room'],
+    [['room', 'other-room'], 'floor'],
+    [['floor', 'room', 'house'], 'house'],
+    [['house', 'garden'], null],
+    [['house', null], null],
+    [[null, null], null],
+  ] as const) {
+    const groups = parents.map((parent, index) => ({
+      groupId: index + 1,
+      collectionId: parent,
+      order: index,
+    }))
+    expect(
+      resolveGroupCollection(
+        { nodes, groups },
+        groups.map((group) => group.groupId)
+      )
+    ).toEqual({
+      collectionId,
+      sameCollection: parents.every((id) => id === parents[0]),
+    })
+  }
 })
 
 it('stores a name on an unclassified group without introducing directory structure or a default-name record', () => {
