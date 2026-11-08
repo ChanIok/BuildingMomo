@@ -268,6 +268,19 @@ it('returns the original single scene blob, with panel metadata and no compositi
   expect(env.encode).not.toHaveBeenCalled()
 })
 
+it('captures the active viewport with camera metadata and no furniture candidates', async () => {
+  const captureViewport = vi.fn(async () => ({
+    ...sceneImage(),
+    details: { camera: { projection: 'perspective' } },
+  }))
+  const provider = { render: vi.fn(), captureViewport }
+  const { host, scheme } = setup({ getCaptureProvider: () => provider })
+  const result = await host.viewport(scheme.id, new AbortController().signal)
+  expect(captureViewport).toHaveBeenCalledOnce()
+  expect(result.details).toMatchObject({ schemeId: scheme.id, revision: expect.any(String) })
+  expect(captureViewport.mock.calls[0]).toHaveLength(1)
+})
+
 it('preflights a later inaccessible member set before capturing the first panel', async () => {
   const provider = { render: vi.fn(async () => sceneImage()) }
   const { host, scheme } = setup({ getCaptureProvider: () => provider })

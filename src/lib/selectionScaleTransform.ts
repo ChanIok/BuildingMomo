@@ -30,6 +30,36 @@ export function visualScaleAxisToDataAxis(axis: VisualScaleAxis): 'X' | 'Y' | 'Z
   return axis === 'x' ? 'Y' : axis === 'y' ? 'X' : 'Z'
 }
 
+export interface VisualScale {
+  x: number
+  y: number
+  z: number
+}
+
+export interface DataScale {
+  X: number
+  Y: number
+  Z: number
+}
+
+/** 存档 Scale 转视觉轴；轴对应关系只由 visualScaleAxisToDataAxis 提供。 */
+export function dataScaleToVisualScale(scale: Partial<DataScale> = {}): VisualScale {
+  return {
+    x: scale[visualScaleAxisToDataAxis('x')] ?? 1,
+    y: scale[visualScaleAxisToDataAxis('y')] ?? 1,
+    z: scale[visualScaleAxisToDataAxis('z')] ?? 1,
+  }
+}
+
+/** 视觉轴转存档 Scale；AI 与侧栏写入共用，不另写 X/Y 交换。 */
+export function visualScaleToDataScale(scale: VisualScale): DataScale {
+  const result: DataScale = { X: 1, Y: 1, Z: 1 }
+  for (const axis of ['x', 'y', 'z'] as const) {
+    result[visualScaleAxisToDataAxis(axis)] = scale[axis]
+  }
+  return result
+}
+
 function getFactorRange(
   items: AppItem[],
   dataAxis: 'X' | 'Y' | 'Z',

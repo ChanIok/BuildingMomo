@@ -10,12 +10,19 @@ export interface ScriptResult {
   error?: { code: string; message: string }
 }
 
-/** Restrict persisted vars to data. Never silently lose functions, NaN, cycles or prototypes. */
-export function serializeData(
+type UndefinedPolicy = 'reject' | 'null'
+
+/** Shared JSON serializer; persisted vars reject undefined while diagnostics normalize it. */
+function serializeJson(
   value: unknown,
   path = 'vars',
-  parents = new Set<object>()
+  parents = new Set<object>(),
+  undefinedPolicy: UndefinedPolicy = 'reject'
 ): JsonValue {
+  if (value === undefined) {
+    if (undefinedPolicy === 'null') return null
+    throw new Error(`${path}: only finite JSON data can be saved`)
+  }
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value !== 'object') throw new Error(`${path}: only finite JSON data can be saved`)
@@ -29,13 +36,32 @@ export function serializeData(
   parents.add(value)
   try {
     if (Array.isArray(value))
-      return Array.from(value, (v, i) => serializeData(v, `${path}[${i}]`, parents))
+      return Array.from(value, (v, i) =>
+        serializeJson(v, `${path}[${i}]`, parents, undefinedPolicy)
+      )
     return Object.fromEntries(
-      Object.entries(value).map(([key, v]) => [key, serializeData(v, `${path}.${key}`, parents)])
+      Object.entries(value).map(([key, v]) => [
+        key,
+        serializeJson(v, `${path}.${key}`, parents, undefinedPolicy),
+      ])
     )
   } finally {
     parents.delete(value)
   }
+}
+
+/** Restrict persisted vars to data. Never silently lose functions, NaN, cycles or prototypes. */
+export function serializeData(
+  value: unknown,
+  path = 'vars',
+  parents = new Set<object>()
+): JsonValue {
+  return serializeJson(value, path, parents, 'reject')
+}
+
+/** Console output is diagnostic data; missing optional fields are represented as null. */
+function serializeOutput(value: unknown, path = 'output', parents = new Set<object>()): JsonValue {
+  return serializeJson(value, path, parents, 'null')
 }
 
 /** Disposable execution; only vars survives. Worker isolation is not a hostile-code sandbox. */
@@ -55,7 +81,7 @@ export async function evaluateScript(
   const vars = structuredClone(values)
   const logs: JsonValue[][] = []
   const print = (...args: unknown[]) => {
-    const row = args.map((arg) => (arg === undefined ? 'undefined' : serializeData(arg, 'output')))
+    const row = args.map((arg) => (arg === undefined ? 'undefined' : serializeOutput(arg)))
     logs.push(row)
     onLog?.(row)
   }
@@ -67,7 +93,16 @@ export async function evaluateScript(
       'structure',
       'refresh',
       'render',
+      'viewport',
+      'catalog',
       'organize',
+      'edit',
+      'place',
+      'remove',
+      'rotate',
+      'translate',
+      'scale',
+      'duplicate',
       'help',
       'history',
       'showImage',

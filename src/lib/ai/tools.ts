@@ -32,7 +32,8 @@ api.items(schemeId?) → 可见、未锁定家具的完整数组。
 api.selection(schemeId?) → 当前选区的家具数组，空选区返回 []。
 api.structure(schemeId?) → {groups,collections}，现有分组和分类树（含空分类），通过 groupId 对应家具。
 api.refresh(items) → 按原成员及顺序读取当前数据；成员缺失、隐藏或锁定时整次报错。
-省略 schemeId 时使用本轮消息固定的默认方案，切换标签不改变目标。
+api.catalog({query?,gameIds?}) → 在宿主端按家具名称/分类或精确 gameId 查询目录；query 可为字符串或字符串数组，返回匹配的 {gameId,name,sizeCm,scaleRange,rotationAllowed,combination}。不要无条件读取全目录；用筛选结果取 gameId 交给 api.place。
+省略 schemeId 时使用本轮消息固定的默认方案，切换标签不改变目标；api.viewport() 是例外，只捕获调用时当前打开的方案和视口。
 家具数据类型：
 Vector3 = {x:number,y:number,z:number}。
 Bounds = {min:Vector3,max:Vector3,source:'model-aabb'|'furniture-box'|'slide-path'}，表示保守 AABB。
@@ -47,8 +48,17 @@ camera:{azimuth?,elevation?,fov?,distance?,target?:{x,y,z}}，方位 0 从 +X �
 atlas 展示原素材图标，可用于后台方案；仅接受 items/label/kind/layout，默认 4 列、240×232 单元格。
 layout:{columns?,cellWidth?,cellHeight?}，面板内仅用于 atlas。外层省略时自动紧凑排版，等比缩放、不裁切；显式指定时使用等大网格，默认单元格取原图最大宽、高加 32px 标题区，外层 cellHeight 须大于 32。
 工具结果自动包含 images:[{id,width,height,bytes,details}]，id 即 imageId；details.panels 含编号、标题、视角及渲染/缺失情况，合图面板另含 frame:{x,y,width,height}。结合渲染与缺失情况判断图片覆盖范围。
+api.viewport() → 获取用户当前 3D 视口画面和实际相机信息，不移动相机、不改变选择、不产生编辑。返回的 view.details.camera 包含 projection、position、forward、viewMatrix、projectionMatrix，view.details.viewport 包含输出尺寸；不返回家具列表。需要按视角筛选家具时，在脚本局部变量中 await api.items()，依据返回的 camera、viewport 和家具 position/bounds 自行 filter，只输出少量候选。
 
 ## 编辑与回查
+每次写入都是一笔可撤销的正式事务，直接生效，可用撤销恢复；编辑前旧快照先 refresh 并重新判断。
+api.edit(items) → 把改过字段的家具数组写回场景。items 来自 api.items/selection/refresh，可直接改 position/rotation/scale/gameId/groupId；省略的字段保持原状。坐标与 api.items 同义：position 为世界厘米、Z 向上，rotation 为视觉角度，scale 为视觉 x/y/z。
+api.place(items,schemeId?) → [{gameId,position,rotation?,scale?,groupId?}]，新增家具并返回带 ref、instanceId、bounds 的新家具数组；省略的旋转、缩放、分组使用默认值。组合家具会按目录定义展开，组合条目使用默认旋转和缩放。省略 schemeId 用本轮默认方案。
+api.remove(items) → 删除给定家具数组。
+api.rotate(items,{delta,pivot}) → 以世界坐标 pivot、视觉角度 delta 围绕组合旋转，一次事务。
+api.translate(items,{delta}) → 按世界厘米 delta 平移，一次事务。
+api.scale(items,{factors,pivot}) → 以世界坐标 pivot、视觉轴 factors 做组合缩放，一次事务。
+api.duplicate(items,{offsets}) → 按多个世界坐标偏移复制家具，返回按 offset 分组的新家具数组，一次事务。
 api.organize(groups,collections=[]) → 一笔可撤销的分类与编组编辑。
 groups:[{name,items,collectionId?:string|null,order?}]；collections:[{id,name,parentId:string|null,order?}]。
 新分类 id 为本调用自选局部名称；collectionId/parentId 可引用它或已有分类。省略 collectionId 为 null。
@@ -82,7 +92,13 @@ console.log(vars.groups.map(g=>({name:g.name,count:g.items.length})));
 核验候选组后提交：await api.organize(vars.groups);
 批量合图：vars.batches 为围绕待判断问题准备的 {name,items,views:[{name,camera},…]} 数组，各批选择互补视角。
 const panels=vars.batches.flatMap(batch=>batch.views.map(view=>({items:batch.items,label:batch.name+" · "+view.name,camera:view.camera})));
-await api.render(panels);`
+await api.render(panels);
+
+读取当前视口并在脚本内筛选，不把完整方案输出到上下文：
+const view=await api.viewport();
+const items=await api.items();
+// 按 view.details.camera 和 view.details.viewport 投影筛选 items；只 console.log 少量候选。
+console.log(view.details.camera, view.details.viewport, items.length);`
 
 export const workbenchTools = {
   execute_js: {
@@ -215,6 +231,70 @@ export function createWorkbenchTools(
         if (!id || refs.some((r) => r.schemeId !== id))
           throw new AiError('invalid_input', 'Use a nonempty set from one scheme')
         return id
+      }
+      const checkRevision = (refs: ItemReference[], id: string) => {
+        const version = host.revision(id)
+        if (refs.some((r) => r.revision !== version))
+          throw new AiError(
+            'stale',
+            'Furniture snapshot changed. Refresh the members and reconsider the grouping before editing.'
+          )
+        return version
+      }
+      /** 所有写入共用同一套 prepared/uncertain 门禁与逐次编辑回执。 */
+      const commitEdit = async (schemeId: string, command: unknown, version: string) => {
+        const acknowledged = new Set(records.messages.flatMap((m) => m.acknowledges ?? []))
+        if (
+          records.tools.some((t) =>
+            t.edits.some(
+              (e) => ['prepared', 'uncertain'].includes(e.state) && !acknowledged.has(e.id)
+            )
+          )
+        )
+          throw new AiError(
+            'uncertain_edit',
+            'Check and acknowledge the unresolved edit before editing again'
+          )
+        const edit: ToolRecord['edits'][number] = {
+          id: `${tool.id}:edit:${tool.edits.length}`,
+          schemeId,
+          state: 'prepared',
+          input: command,
+        }
+        tool.edits.push(edit)
+        try {
+          await repository.save(records.conversation, [tool])
+        } catch (error) {
+          storageFailure = error
+          edit.state = 'failed'
+          throw error
+        }
+        let appliedEdit: ToolRecord['edits'][number]['outcome']
+        try {
+          assertNotAborted(controller.signal)
+          const result = host.apply(schemeId, command, version)
+          edit.result = result.data
+          edit.outcome = result.edit
+          appliedEdit = result.edit
+          edit.state = result.ok ? 'succeeded' : 'failed'
+        } catch (error) {
+          edit.state = 'failed'
+          edit.result = { error: error instanceof Error ? error.message : String(error) }
+          await repository.save(records.conversation, [tool])
+          throw error
+        }
+        try {
+          await repository.save(records.conversation, [tool])
+        } catch (error) {
+          storageFailure = error
+          edit.state = 'uncertain'
+          throw error
+        }
+        return {
+          receipt: data(publicEdit(edit)),
+          itemIds: appliedEdit?.itemIds ?? [],
+          itemIdGroups: appliedEdit?.itemIdGroups ?? [],
+        }
       }
       const dispatch: HostCall = async (method, args) => {
         assertNotAborted(controller.signal)
@@ -379,19 +459,76 @@ export function createWorkbenchTools(
           })
           return data({ imageId, width: image.width, height: image.height, details: image.details })
         }
-        if (method === 'organize') {
-          const acknowledged = new Set(records.messages.flatMap((m) => m.acknowledges ?? []))
-          if (
-            records.tools.some((t) =>
-              t.edits.some(
-                (e) => ['prepared', 'uncertain'].includes(e.state) && !acknowledged.has(e.id)
-              )
-            )
+        if (method === 'viewport') {
+          if (args.length) throw new AiError('invalid_input', 'viewport does not accept arguments')
+          const id = readString(
+            host.context().schemeId,
+            'No active scheme; open a scheme in the editor before capturing the current viewport'
           )
+          const image = await host.viewport(id, controller.signal)
+          assertNotAborted(controller.signal)
+          const imageId = `asset:${records.conversation.id}:${crypto.randomUUID()}`
+          attachments.push({
+            imageId,
+            blob: image.blob,
+            width: image.width,
+            height: image.height,
+            details: { ...image.details, schemeId: id },
+          })
+          return data({ imageId, width: image.width, height: image.height, details: image.details })
+        }
+        if (method === 'catalog') {
+          const filter = args[0] === undefined ? {} : readObject(args[0], ['query', 'gameIds'])
+          const queries =
+            filter.query === undefined
+              ? []
+              : Array.isArray(filter.query)
+                ? filter.query.map((query) =>
+                    readString(query, 'catalog query').toLocaleLowerCase()
+                  )
+                : [readString(filter.query, 'catalog query').toLocaleLowerCase()]
+          const gameIds =
+            filter.gameIds === undefined
+              ? null
+              : (() => {
+                  if (
+                    !Array.isArray(filter.gameIds) ||
+                    !filter.gameIds.every((id) => Number.isSafeInteger(id) && (id as number) > 0)
+                  )
+                    throw new AiError('invalid_input', 'catalog gameIds must be positive integers')
+                  return new Set(filter.gameIds as number[])
+                })()
+          const limit = 100
+          if (!queries.length && !gameIds)
             throw new AiError(
-              'uncertain_edit',
-              'Check and acknowledge the unresolved edit before editing again'
+              'invalid_input',
+              'catalog requires query or gameIds; for example api.catalog({query:"屋顶"})'
             )
+          const matches = host.catalog().filter((entry) => {
+            if (gameIds && !gameIds.has(entry.gameId)) return false
+            if (!queries.length) return true
+            const haystack = [entry.nameZh, entry.nameEn, entry.categoryZh, entry.categoryEn]
+              .filter((value): value is string => Boolean(value))
+              .map((value) => value.toLocaleLowerCase())
+            return queries.some((query) => haystack.some((value) => value.includes(query)))
+          })
+          if (matches.length > limit)
+            throw new AiError(
+              'invalid_input',
+              `catalog query matched ${matches.length} items; refine the query`
+            )
+          return serializeData(
+            matches.map((entry) => ({
+              gameId: entry.gameId,
+              name: (language === 'en' ? entry.nameEn : entry.nameZh) ?? null,
+              sizeCm: entry.sizeCm,
+              scaleRange: entry.scaleRange,
+              rotationAllowed: entry.rotationAllowed,
+              combination: entry.combination,
+            }))
+          )
+        }
+        if (method === 'organize') {
           if (!Array.isArray(args[0]) || !args[0].length)
             throw new AiError('invalid_input', 'organize expects a nonempty groups array')
           const groups = args[0].map((value, index) => {
@@ -400,12 +537,6 @@ export function createWorkbenchTools(
           })
           const refs = groups.flatMap((g) => g.refs),
             id = oneScheme(refs)
-          const version = host.revision(id)
-          if (refs.some((r) => r.revision !== version))
-            throw new AiError(
-              'stale',
-              'Furniture snapshot changed. Refresh the members and reconsider the grouping before editing.'
-            )
           const command = {
             collections: args[1] ?? [],
             groups: groups.map((g) => ({
@@ -416,40 +547,122 @@ export function createWorkbenchTools(
               ...(g.input.order === undefined ? {} : { order: g.input.order }),
             })),
           }
-          const edit: ToolRecord['edits'][number] = {
-            id: `${tool.id}:edit:${tool.edits.length}`,
-            schemeId: id,
-            state: 'prepared',
-            input: command,
+          return (await commitEdit(id, command, checkRevision(refs, id))).receipt
+        }
+        if (method === 'edit') {
+          const refs = references(args[0])
+          if (!refs.length)
+            throw new AiError('invalid_input', 'edit expects a nonempty furniture array')
+          const id = oneScheme(refs)
+          const version = checkRevision(refs, id)
+          const items = (args[0] as unknown as Record<string, unknown>[]).map((entry, index) => {
+            try {
+              return {
+                itemId: refs[index]!.internalId,
+                ...(entry.position !== undefined ? { position: readVector(entry.position) } : {}),
+                ...(entry.rotation !== undefined ? { rotation: readVector(entry.rotation) } : {}),
+                ...(entry.scale !== undefined ? { scale: readVector(entry.scale) } : {}),
+                ...(entry.gameId !== undefined ? { gameId: entry.gameId } : {}),
+                ...(entry.groupId !== undefined ? { groupId: entry.groupId } : {}),
+              }
+            } catch (error) {
+              throw new AiError(
+                'invalid_input',
+                `items[${index}]: ${error instanceof Error ? error.message : String(error)}`
+              )
+            }
+          })
+          return (await commitEdit(id, { kind: 'edit', items }, version)).receipt
+        }
+        if (method === 'place') {
+          if (!Array.isArray(args[0]) || !args[0].length)
+            throw new AiError('invalid_input', 'place expects a nonempty items array')
+          const id = readString(
+            args[1] ?? defaultSchemeId,
+            'schemeId (no default scheme; call api.schemes())'
+          )
+          const items = args[0].map((value, index) => {
+            try {
+              const spec = readObject(value, ['gameId', 'position', 'rotation', 'scale', 'groupId'])
+              if (!Number.isSafeInteger(spec.gameId) || (spec.gameId as number) <= 0)
+                throw new AiError('invalid_input', 'gameId must be a positive integer')
+              return {
+                gameId: spec.gameId as number,
+                position: readVector(spec.position),
+                ...(spec.rotation !== undefined ? { rotation: readVector(spec.rotation) } : {}),
+                ...(spec.scale !== undefined ? { scale: readVector(spec.scale) } : {}),
+                ...(spec.groupId !== undefined ? { groupId: spec.groupId } : {}),
+              }
+            } catch (error) {
+              throw new AiError(
+                'invalid_input',
+                `items[${index}]: ${error instanceof Error ? error.message : String(error)}`
+              )
+            }
+          })
+          const committed = await commitEdit(id, { kind: 'place', items }, host.revision(id))
+          return serializeData(read(id, committed.itemIds))
+        }
+        if (method === 'remove') {
+          const refs = references(args[0])
+          if (!refs.length)
+            throw new AiError('invalid_input', 'remove expects a nonempty furniture array')
+          const id = oneScheme(refs)
+          const version = checkRevision(refs, id)
+          return (
+            await commitEdit(
+              id,
+              { kind: 'remove', itemIds: refs.map((r) => r.internalId) },
+              version
+            )
+          ).receipt
+        }
+        if (method === 'rotate' || method === 'translate' || method === 'scale') {
+          const refs = references(args[0])
+          if (!refs.length)
+            throw new AiError('invalid_input', `${method} expects a nonempty furniture array`)
+          const id = oneScheme(refs)
+          const options = readObject(args[1], ['delta', 'factors', 'pivot'])
+          const command = {
+            kind: method,
+            itemIds: refs.map((r) => r.internalId),
+            ...(method === 'rotate'
+              ? { delta: readVector(options.delta), pivot: readVector(options.pivot) }
+              : method === 'translate'
+                ? { delta: readVector(options.delta) }
+                : { factors: readVector(options.factors), pivot: readVector(options.pivot) }),
           }
-          tool.edits.push(edit)
-          try {
-            await repository.save(records.conversation, [tool])
-          } catch (error) {
-            storageFailure = error
-            edit.state = 'failed'
-            throw error
-          }
-          try {
-            assertNotAborted(controller.signal)
-            const result = host.apply(id, command, version)
-            edit.result = result.data
-            edit.outcome = result.edit
-            edit.state = result.ok ? 'succeeded' : 'failed'
-          } catch (error) {
-            edit.state = 'failed'
-            edit.result = { error: error instanceof Error ? error.message : String(error) }
-            await repository.save(records.conversation, [tool])
-            throw error
-          }
-          try {
-            await repository.save(records.conversation, [tool])
-          } catch (error) {
-            storageFailure = error
-            edit.state = 'uncertain'
-            throw error
-          }
-          return data(publicEdit(edit))
+          const version = checkRevision(refs, id)
+          return (await commitEdit(id, command, version)).receipt
+        }
+        if (method === 'duplicate') {
+          const refs = references(args[0])
+          if (!refs.length)
+            throw new AiError('invalid_input', 'duplicate expects a nonempty furniture array')
+          const id = oneScheme(refs)
+          const options = readObject(args[1], ['offsets'])
+          if (!Array.isArray(options.offsets) || !options.offsets.length)
+            throw new AiError('invalid_input', 'duplicate expects a nonempty offsets array')
+          const offsets = options.offsets.map((offset, index) => {
+            try {
+              return readVector(offset)
+            } catch (error) {
+              throw new AiError(
+                'invalid_input',
+                `offsets[${index}]: ${error instanceof Error ? error.message : String(error)}`
+              )
+            }
+          })
+          const version = checkRevision(refs, id)
+          const committed = await commitEdit(
+            id,
+            { kind: 'duplicate', itemIds: refs.map((r) => r.internalId), offsets },
+            version
+          )
+          const groups = committed.itemIdGroups.length
+            ? committed.itemIdGroups
+            : [committed.itemIds]
+          return serializeData(groups.map((itemIds) => read(id, itemIds)))
         }
         if (method === 'history') {
           const options =

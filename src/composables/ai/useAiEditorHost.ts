@@ -4,6 +4,11 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { furnitureRender } from '@/composables/renderer/furnitureRenderState'
 import { useEditorOrganization } from '@/composables/editor/useEditorOrganization'
+import {
+  sceneEditPostcondition,
+  useEditorSceneEdit,
+  verifySceneEdit,
+} from '@/composables/editor/useEditorSceneEdit'
 import { createAnalysisSnapshot } from '@/lib/sceneAnalysis/snapshot'
 import { createAnalysisRenderSnapshot } from '@/lib/sceneAnalysis/renderSnapshot'
 import { getAnalysisBounds } from '@/lib/sceneAnalysis/geometry'
@@ -13,7 +18,7 @@ import {
   organizationPostcondition,
   verifyOrganization,
 } from '@/lib/sceneAnalysis/organizationState'
-import { AiError, assertNotAborted, type EditorHost } from '@/lib/ai/types'
+import { AiError, assertNotAborted, type CatalogEntry, type EditorHost } from '@/lib/ai/types'
 import type { AnalysisCaptureProvider, AnalysisImageOutput } from '@/lib/sceneAnalysis/images'
 
 /** Captures explicit targets per operation; never owns a conversation-wide selection. */
@@ -24,6 +29,11 @@ export function useAiEditorHost(
     game = useGameDataStore(),
     settings = useSettingsStore()
   const organization = useEditorOrganization()
+  const sceneEdit = useEditorSceneEdit({
+    isReady: () => game.isInitialized,
+    getFurniture: game.getFurniture,
+    getScaleRange: game.getFurnitureScaleRange,
+  })
   const provider = options.getCaptureProvider ?? (() => null)
   const epoch = crypto.randomUUID()
   const revisions = new Map<string, { tokens: unknown[]; revision: number }>()
@@ -126,6 +136,23 @@ export function useAiEditorHost(
           }
         },
         getBounds: (item) => getAnalysisBounds(item, geometry()),
+      })
+    },
+    catalog(): CatalogEntry[] {
+      return Object.entries(game.furnitureData).map(([key, item]) => {
+        const gameId = Number(key)
+        const category = game.furnitureCategories[item.categoryId]
+        return {
+          gameId,
+          nameZh: item.name_cn ?? null,
+          nameEn: item.name_en ?? null,
+          categoryZh: category?.name_cn ?? null,
+          categoryEn: category?.name_en ?? null,
+          sizeCm: item.size ?? null,
+          scaleRange: item.scaleRange ?? null,
+          rotationAllowed: item.rotationAllowed,
+          combination: Boolean(item.combination?.length),
+        }
       })
     },
     async render(id, panels, signal, layout) {
@@ -250,10 +277,85 @@ export function useAiEditorHost(
       task.assertCurrent()
       return board
     },
+    async viewport(id, signal) {
+      const scheme = getScheme(id)
+      if (editor.activeScheme !== scheme)
+        throw new AiError(
+          'image',
+          'Open the target scheme in the model viewport before capturing the current view.'
+        )
+      const capture = provider()
+      if (!capture?.captureViewport)
+        throw new AiError('image', 'Load the model viewport before capturing the current view')
+      const version = revision(id)
+      const captureRevision = capture.revision?.()
+      const policy = () =>
+        JSON.stringify([
+          settings.settings.threeDisplayMode,
+          settings.settings.modelAssetProfile,
+          settings.settings.materialAssetProfile,
+          settings.settings.renderQuality,
+          settings.settings.lightingMode,
+          settings.settings.todMinute,
+          settings.settings.shadowsEnabled,
+        ])
+      const renderPolicy = policy()
+      const assertCurrent = () => {
+        assertNotAborted(signal)
+        if (
+          editor.activeScheme !== scheme ||
+          revision(id) !== version ||
+          capture !== provider() ||
+          captureRevision !== capture.revision?.() ||
+          renderPolicy !== policy()
+        )
+          throw new AiError('stale')
+      }
+      const output = await capture.captureViewport({ signal, assertCurrent })
+      assertCurrent()
+      return {
+        ...output,
+        details: {
+          ...output.details,
+          schemeId: id,
+          revision: version,
+        },
+      }
+    },
     apply(id, parameters, version) {
       const scheme = getScheme(id)
       if (revision(id) !== version)
         throw new AiError('stale', 'Scheme changed; refresh the items before editing.')
+      const kind =
+        parameters && typeof parameters === 'object' && !Array.isArray(parameters)
+          ? (parameters as { kind?: unknown }).kind
+          : undefined
+      if (
+        kind === 'edit' ||
+        kind === 'place' ||
+        kind === 'remove' ||
+        kind === 'rotate' ||
+        kind === 'translate' ||
+        kind === 'scale' ||
+        kind === 'duplicate'
+      ) {
+        const result = sceneEdit.apply(parameters, {
+          schemeId: id,
+          sceneVersion: editor.sceneVersion,
+        })
+        return {
+          // Internal item IDs stay host-side; the model re-reads via api.items().
+          ok: true,
+          data: { kind: result.kind, count: result.count },
+          edit: {
+            schemeId: id,
+            transactionId: result.transactionId,
+            postcondition: sceneEditPostcondition(scheme, result.itemIds),
+            itemIds: result.itemIds,
+            itemIdGroups: result.itemIdGroups,
+          },
+        }
+      }
       const result = organization.organize(parameters, {
         schemeId: id,
         sceneVersion: editor.sceneVersion,
@@ -268,7 +370,18 @@ export function useAiEditorHost(
         },
       }
     },
-    verify: (edit) => verifyOrganization(editor.getSchemeById(edit.schemeId), edit.postcondition),
+    verify: (edit) => {
+      const scheme = editor.getSchemeById(edit.schemeId)
+      let kind: unknown
+      try {
+        kind = JSON.parse(edit.postcondition).kind
+      } catch {
+        kind = undefined
+      }
+      return kind === 'scene'
+        ? verifySceneEdit(scheme, edit.postcondition)
+        : verifyOrganization(scheme, edit.postcondition)
+    },
   }
   return { host }
 }

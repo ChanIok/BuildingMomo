@@ -1,5 +1,39 @@
 import type { GameColorMap } from '@/types/editor'
 
+export function cloneColorMap(colorMap: GameColorMap | undefined): GameColorMap | undefined {
+  if (Array.isArray(colorMap)) return [...colorMap]
+  if (colorMap && typeof colorMap === 'object') return { ...colorMap }
+  return undefined
+}
+
+/** Copy a ColorMap while remapping the group IDs encoded in its values. */
+export function remapColorMapGroupIds(
+  colorMap: GameColorMap | undefined,
+  groupIdMap: ReadonlyMap<number, number>
+): GameColorMap | undefined {
+  if (!colorMap || groupIdMap.size === 0) return cloneColorMap(colorMap)
+  if (Array.isArray(colorMap))
+    return colorMap.map((raw) => {
+      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 10) return raw
+      const oldGroupId = Math.floor(raw / 10)
+      const colorIndex = raw % 10
+      return (groupIdMap.get(oldGroupId) ?? oldGroupId) * 10 + colorIndex
+    })
+
+  const result: Record<string, number> = {}
+  for (const [groupKey, raw] of Object.entries(colorMap)) {
+    const oldGroupId = Number(groupKey)
+    if (!Number.isFinite(oldGroupId) || oldGroupId < 0 || typeof raw !== 'number') continue
+    const nextGroupId = groupIdMap.get(oldGroupId) ?? oldGroupId
+    if (!Number.isFinite(raw) || raw <= 0) result[String(nextGroupId)] = raw
+    else {
+      const colorIndex = raw < 10 ? raw : raw % 10
+      result[String(nextGroupId)] = nextGroupId === 0 ? colorIndex : nextGroupId * 10 + colorIndex
+    }
+  }
+  return result
+}
+
 /**
  * 从 ColorMap 中解析单个颜色索引（旧系统，单槽染色）
  *

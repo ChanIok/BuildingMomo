@@ -65,6 +65,7 @@ it('sends the basic API and batch-render example in the first tool declaration, 
   for (const signature of [
     'api.items(schemeId?)',
     'api.render(panels,layout?)',
+    'api.viewport()',
     'api.organize(groups,collections=[])',
     'vars.batches',
     'flatMap',

@@ -153,6 +153,19 @@ it('supports native filtering and local helpers without automatically printing o
   expect(() => serializeData({ bad: Infinity })).toThrow('finite JSON')
 })
 
+it('normalizes nested undefined values in console diagnostics without weakening vars validation', async () => {
+  const result = await evaluateScript(
+    'console.log({missing:{value:undefined},present:1}); vars.ok=1',
+    {},
+    vi.fn()
+  )
+  expect(result).toMatchObject({
+    ok: true,
+    logs: [[{ missing: { value: null }, present: 1 }]],
+    values: { ok: 1 },
+  })
+})
+
 it('passes two furniture batches and three views as one six-panel request and one final attachment', async () => {
   const f = await setup()
   const { output } = await f.run(`

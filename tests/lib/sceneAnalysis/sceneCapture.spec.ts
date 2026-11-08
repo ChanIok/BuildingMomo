@@ -568,3 +568,59 @@ it('tints capture-owned instance colors without changing source buffers or mater
   material.dispose()
   mesh.dispose()
 })
+
+it('waits for the live projection before capturing after a scene edit', async () => {
+  const { mesh, snapshot, geometry, material } = fixture()
+  const { renderer } = rendererMock()
+  let ready = false
+  const waitUntilReady = vi.fn(async () => {
+    ready = true
+  })
+  const context = {
+    createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+    putImageData() {},
+    fillRect() {},
+    fillText() {},
+    measureText: () => ({ width: 0 }),
+  }
+  vi.stubGlobal('document', {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => context,
+      toBlob(callback: (blob: Blob) => void) {
+        callback(new Blob(['png'], { type: 'image/png' }))
+      },
+    }),
+  })
+  const glRenderer = { ...renderer, getContext: () => ({ isContextLost: () => false }) }
+  glRenderer.readRenderTargetPixels.mockImplementation(
+    (_target: unknown, _x: number, _y: number, _w: number, _h: number, bytes: Uint8Array) => {
+      bytes[0] = 1
+    }
+  )
+  const provider = createSceneCapture({
+    renderer: glRenderer as never,
+    scene: new Scene(),
+    getLayer: () => ({ getInstance: () => ({ mesh, index: 0 }) }) as never,
+    isReady: () => ready,
+    waitUntilReady,
+    beforeRender() {},
+    invalidate() {},
+    getRevision: () => 0,
+    withCamera(_camera, draw) {
+      return draw()
+    },
+  })
+  await expect(
+    provider.render(
+      snapshot,
+      { itemIds: ['a'] },
+      { signal: new AbortController().signal, assertCurrent() {} }
+    )
+  ).resolves.toMatchObject({ width: 1024, height: 1024 })
+  expect(waitUntilReady).toHaveBeenCalledOnce()
+  geometry.dispose()
+  material.dispose()
+  mesh.dispose()
+})

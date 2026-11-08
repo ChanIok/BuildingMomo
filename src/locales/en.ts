@@ -17,7 +17,7 @@ export const enLocale = {
       step3: 'Ask your desktop AI to analyze schemes or execute edits',
       enable: 'Allow external AI connections',
       intro:
-        'Analyze and organize schemes from your desktop AI without a model API key. Enabling this grants access to the existing script tools.',
+        'Analyze and edit schemes from your desktop AI without a model API key. Enabling this grants access to the existing script tools.',
       upgrade: 'Update BuildingMomo Desktop to use external AI connections.',
       starting: 'Updating connection…',
       waiting: 'Server enabled, waiting for calls',
@@ -195,9 +195,9 @@ export const enLocale = {
     newChat: 'New conversation',
     welcome: 'How can I help you?',
     intro:
-      'Select furniture in the scene to analyze spatial structure, organize into sets and groups, or ask questions.',
+      'Select furniture in the scene to analyze spatial structure, batch-edit or place furniture, organize sets and groups, or ask questions.',
     privacy:
-      'Questions, tool code, requested results and images are sent to your configured API. Computation runs in a local Worker. Organization edits take effect directly and support Undo.',
+      'Questions, tool code, requested results and images are sent to your configured API. Computation runs in a local Worker. Edits take effect directly and support Undo.',
     example:
       'Analyze the selected furniture and organize them into editable sets and groups by architectural structure.',
     placeholder: 'Describe a task, or continue your conversation…',

@@ -1,6 +1,6 @@
 import { collectionAncestors, isCollectionTree } from '@/lib/collectionTree'
 import { matrixTransform } from '@/lib/matrixTransform'
-import { visualScaleAxisToDataAxis } from '@/lib/selectionScaleTransform'
+import { dataScaleToVisualScale } from '@/lib/selectionScaleTransform'
 import {
   SceneAnalysisError,
   type AnalysisGroup,
@@ -64,14 +64,7 @@ export function createAnalysisSnapshot(input: AnalysisSnapshotInput): AnalysisSn
         groupId: item.groupId,
         position: readVector(matrixTransform.dataPositionToWorld(item)),
         rotation: readVector(matrixTransform.dataRotationToVisual(item.rotation)),
-        scale: readVector(
-          Object.fromEntries(
-            (['x', 'y', 'z'] as const).map((axis) => [
-              axis,
-              item.extra.Scale?.[visualScaleAxisToDataAxis(axis)] ?? 1,
-            ])
-          )
-        ),
+        scale: readVector(dataScaleToVisualScale(item.extra.Scale)),
         bounds,
       }
     })

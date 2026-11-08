@@ -71,6 +71,7 @@ import { recordRenderFrame, recordGpuFrame } from '@/composables/useFpsMonitor'
 import { createGpuFrameTimer } from '@/composables/renderer/gpuFrameTimer'
 import { getRenderQuality } from '@/lib/renderQuality'
 import { useDevicePixelRatio } from '@vueuse/core'
+import { SceneAnalysisError } from '@/lib/sceneAnalysis/types'
 
 // 设置 Three.js 全局 Z 轴向上
 Object3D.DEFAULT_UP.set(0, 0, 1)
@@ -390,12 +391,41 @@ const {
   interactionAdapter: standardInteractionAdapter,
   isInteractionReady,
   isModelCaptureReady,
+  waitUntilModelCaptureReady,
   setHoveredItemId: setStandardHoveredItemId,
   setupIconFacing,
   renderSelectionOutlineMaskPass,
   renderSelectionOutlineOverlay,
   syncOutlineSceneTransform,
 } = useThreeInstancedRenderer(isTransformDragging)
+
+async function waitUntilCaptureReady(signal: AbortSignal) {
+  const deadline = performance.now() + 10_000
+  while (environmentTransition?.pending || !isModelCaptureReady()) {
+    if (signal.aborted) throw new SceneAnalysisError('cancelled', 'Image request was cancelled')
+    if (performance.now() >= deadline)
+      throw new SceneAnalysisError(
+        'unavailable',
+        'Model viewport did not finish preparing before capture timed out'
+      )
+    if (!environmentTransition?.pending)
+      await waitUntilModelCaptureReady(signal, Math.max(1, deadline - performance.now()))
+    else await new Promise((resolve) => setTimeout(resolve, 16))
+  }
+}
+
+async function waitUntilViewportReady(signal: AbortSignal) {
+  const deadline = performance.now() + 10_000
+  while (environmentTransition?.pending || !isInteractionReady.value) {
+    if (signal.aborted) throw new SceneAnalysisError('cancelled', 'Image request was cancelled')
+    if (performance.now() >= deadline)
+      throw new SceneAnalysisError(
+        'unavailable',
+        'The model viewport did not become ready before capture timed out'
+      )
+    await new Promise((resolve) => setTimeout(resolve, 16))
+  }
+}
 
 // Progressive model loading changes capture evidence. Compare borrowed resources,
 // not mesh-map identity: ordinary group edits may republish the same projection.
@@ -610,9 +640,13 @@ function handleTresReady(context: any) {
       scene,
       getLayer: () => furnitureRender.value,
       isReady: () => !environmentTransition?.pending && isModelCaptureReady(),
+      waitUntilReady: waitUntilCaptureReady,
       beforeRender: () => furniture.beforeRender(),
       invalidate: () => context.renderer.invalidate(),
       getRevision: () => captureRevision.value,
+      getViewportCamera: () => activeCameraRef.value,
+      isViewportReady: () => !environmentTransition?.pending && isInteractionReady.value,
+      waitUntilViewportReady,
       withCamera(camera, draw) {
         const previous = captureCamera
         captureCamera = camera

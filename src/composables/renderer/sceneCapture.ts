@@ -34,6 +34,8 @@ import {
   type AnalysisViewRequest,
 } from '@/lib/sceneAnalysis/images'
 
+const maxViewportCaptureSize = 1024
+
 function captureBoxCorners(box: Box3, matrix = new Matrix4()) {
   const corners: Vector3[] = []
   for (const x of [box.min.x, box.max.x])
@@ -345,6 +347,19 @@ export function readAnalysisPixels(
   }
 }
 
+function viewportCameraDetails(camera: Camera) {
+  camera.updateMatrixWorld(true)
+  const forward = camera.getWorldDirection(new Vector3())
+  const details: Record<string, unknown> = {
+    projection: 'fov' in camera ? 'perspective' : 'orthographic',
+    position: camera.position.toArray(),
+    forward: forward.toArray(),
+    viewMatrix: camera.matrixWorldInverse.toArray(),
+    projectionMatrix: camera.projectionMatrix.toArray(),
+  }
+  return details
+}
+
 export function createSceneCapture(options: {
   renderer: WebGLRenderer
   scene: Scene
@@ -354,17 +369,29 @@ export function createSceneCapture(options: {
   beforeRender: () => void
   invalidate: () => void
   getRevision: () => number
+  getViewportCamera?: () => Camera | null
+  isViewportReady?: () => boolean
+  waitUntilViewportReady?: (signal: AbortSignal) => Promise<void>
+  waitUntilReady?: (signal: AbortSignal) => Promise<void>
 }): AnalysisCaptureProvider & { dispose(): void } {
   let disposed = false
   let queue = Promise.resolve()
   const captureImage: AnalysisCaptureProvider['render'] = async (snapshot, request, task) => {
     assertImageTask(task)
     if (disposed) throw new SceneAnalysisError('cancelled', 'Viewport capture owner was disposed')
-    const layer = options.getLayer()
-    if (!layer || !options.isReady() || options.renderer.getContext().isContextLost()) {
+    if (options.renderer.getContext().isContextLost()) {
       throw new SceneAnalysisError(
         'unavailable',
-        'Model viewport is not ready; wait for loading and end dragging before capturing'
+        '3D viewport is not ready; wait for loading and end dragging before capturing'
+      )
+    }
+    if ((!options.getLayer() || !options.isReady()) && options.waitUntilReady)
+      await options.waitUntilReady(task.signal)
+    const layer = options.getLayer()
+    if (!layer || !options.isReady()) {
+      throw new SceneAnalysisError(
+        'unavailable',
+        '3D viewport is not ready; wait for loading and end dragging before capturing'
       )
     }
     if (
@@ -470,11 +497,93 @@ export function createSceneCapture(options: {
       },
     }
   }
+  const captureViewport: NonNullable<AnalysisCaptureProvider['captureViewport']> = async (task) => {
+    assertImageTask(task)
+    if (disposed) throw new SceneAnalysisError('cancelled', 'Viewport capture owner was disposed')
+    if (options.renderer.getContext().isContextLost())
+      throw new SceneAnalysisError(
+        'unavailable',
+        '3D viewport is not ready; wait for loading and end dragging before capturing'
+      )
+    const viewportReady = options.isViewportReady ?? options.isReady
+    if (!viewportReady() && options.waitUntilViewportReady)
+      await options.waitUntilViewportReady(task.signal)
+    if (!viewportReady())
+      throw new SceneAnalysisError(
+        'unavailable',
+        '3D viewport is not ready; wait for loading and end dragging before capturing'
+      )
+    const camera = options.getViewportCamera?.()
+    if (!camera)
+      throw new SceneAnalysisError('unavailable', 'The active model viewport camera is unavailable')
+    const source = options.renderer.domElement
+    const sourceWidth = source.width,
+      sourceHeight = source.height
+    if (!sourceWidth || !sourceHeight)
+      throw new SceneAnalysisError('unavailable', 'The model viewport has no drawable pixels')
+    camera.updateMatrixWorld(true)
+    const scale = Math.min(1, maxViewportCaptureSize / Math.max(sourceWidth, sourceHeight))
+    const width = Math.max(1, Math.round(sourceWidth * scale))
+    const height = Math.max(1, Math.round(sourceHeight * scale))
+    const state = {
+      target: options.renderer.getRenderTarget(),
+      face: options.renderer.getActiveCubeFace(),
+      level: options.renderer.getActiveMipmapLevel(),
+      viewport: options.renderer.getViewport(new Vector4()),
+      scissor: options.renderer.getScissor(new Vector4()),
+      scissorTest: options.renderer.getScissorTest(),
+      clear: options.renderer.getClearColor(new Color()),
+      alpha: options.renderer.getClearAlpha(),
+      autoClear: options.renderer.autoClear,
+    }
+    try {
+      options.renderer.setRenderTarget(null)
+      options.renderer.setViewport(0, 0, sourceWidth, sourceHeight)
+      options.renderer.setScissorTest(false)
+      options.withCamera(camera, () => {
+        options.beforeRender()
+        options.renderer.render(options.scene, camera)
+      })
+      assertImageTask(task)
+      const { canvas, context } = createAnalysisCanvas(width, height)
+      context.drawImage(source, 0, 0, width, height)
+      const blob = await canvasImage(canvas, 'image/webp')
+      assertImageTask(task)
+      if (disposed) throw new SceneAnalysisError('cancelled', 'Viewport capture owner was disposed')
+      return {
+        blob,
+        width,
+        height,
+        details: {
+          viewport: { width, height },
+          camera: viewportCameraDetails(camera),
+        },
+      }
+    } finally {
+      options.renderer.setRenderTarget(state.target, state.face, state.level)
+      options.renderer.setViewport(state.viewport)
+      options.renderer.setScissor(state.scissor)
+      options.renderer.setScissorTest(state.scissorTest)
+      options.renderer.setClearColor(state.clear, state.alpha)
+      options.renderer.autoClear = state.autoClear
+      options.invalidate()
+    }
+  }
   return {
     revision: options.getRevision,
     render(snapshot, request, task) {
       // Serialize encoding as well as draws to bound transient framebuffer memory.
       const result = queue.then(() => captureImage(snapshot, request, task))
+      queue = result.then(
+        () => {},
+        () => {}
+      )
+      return result
+    },
+    captureViewport(task) {
+      // The current canvas and its camera are shared with the live editor; serialize
+      // the draw/readback with framed captures to avoid interleaving renderer state.
+      const result = queue.then(() => captureViewport(task))
       queue = result.then(
         () => {},
         () => {}

@@ -36,6 +36,7 @@ import { initEulerMatrixCache } from '@nuan5-pro/render'
 import { requiredInstanceCount } from '@/lib/renderInstanceBudget'
 import { invalidateScene } from '@/composables/useSceneInvalidate'
 import type { ScreenPoint } from '@/lib/interaction/screenGeometry'
+import { SceneAnalysisError } from '@/lib/sceneAnalysis/types'
 
 // 全局 BVH 初始化标志（确保只初始化一次）
 let bvhInitialized = false
@@ -82,6 +83,18 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
   let modelPickBVH: ObjectBVH | null = null
   let modelPickMeshMap: Map<string, InstancedMesh> | null = null
   let modelPickBoundsDirty = false
+
+  function isModelCaptureReady() {
+    return (
+      !isDisposed &&
+      !rebuildPending &&
+      !rebuildRunner &&
+      !isTransformDragging?.value &&
+      interactionReady.value &&
+      settingsStore.settings.threeDisplayMode === 'model' &&
+      modelMode.isProjectionCurrent()
+    )
+  }
 
   function buildSidebarHoveredItemIds(): Set<string> | null {
     const scheme = editorStore.activeScheme
@@ -143,6 +156,23 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
           scheduleRebuild()
         }
       })
+  }
+
+  /** Wait for the same projection used by picking and the live viewport. */
+  async function waitUntilModelCaptureReady(signal: AbortSignal, timeoutMs = 10_000) {
+    const deadline = performance.now() + timeoutMs
+    while (!isModelCaptureReady()) {
+      if (signal.aborted) throw new SceneAnalysisError('cancelled', 'Image request was cancelled')
+      if (performance.now() >= deadline)
+        throw new SceneAnalysisError(
+          'unavailable',
+          'Model viewport did not finish rebuilding before capture timed out'
+        )
+
+      const runner = rebuildRunner
+      if (runner) await Promise.race([runner, new Promise((resolve) => setTimeout(resolve, 16))])
+      else await new Promise((resolve) => setTimeout(resolve, 16))
+    }
   }
 
   /**
@@ -1098,14 +1128,8 @@ export function useThreeInstancedRenderer(isTransformDragging?: Ref<boolean>) {
 
   // 返回统一接口
   return {
-    isModelCaptureReady: () =>
-      !isDisposed &&
-      !rebuildPending &&
-      !rebuildRunner &&
-      !isTransformDragging?.value &&
-      interactionReady.value &&
-      settingsStore.settings.threeDisplayMode === 'model' &&
-      modelMode.isProjectionCurrent(),
+    isModelCaptureReady,
+    waitUntilModelCaptureReady,
     isInteractionReady: computed(() => interactionReady.value),
     instancedMesh: boxMode.mesh,
     iconInstancedMesh: iconMode.mesh,

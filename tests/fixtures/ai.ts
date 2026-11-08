@@ -38,18 +38,50 @@ export async function workbenchFixture() {
       if (members.some((id) => !s.items.some((i) => i.id === id))) throw new AiError('scope')
       return { ...s, id: version, items: s.items.filter((i) => members.includes(i.id)) }
     }),
+    catalog: () => [
+      {
+        gameId: 1,
+        nameZh: '椅子',
+        nameEn: 'Chair',
+        categoryZh: '家具',
+        categoryEn: 'Furniture',
+        sizeCm: [100, 100, 150],
+        scaleRange: [0.7, 1.3],
+        rotationAllowed: { x: true, y: true, z: true },
+        combination: false,
+      },
+    ],
     render: vi.fn(async () => ({
       blob: new Blob(['png'], { type: 'image/png' }),
       width: 100,
       height: 100,
       details: {},
     })),
-    apply: vi.fn(() => {
+    viewport: vi.fn(async () => ({
+      blob: new Blob(['webp'], { type: 'image/webp' }),
+      width: 100,
+      height: 100,
+      details: {
+        viewport: { width: 100, height: 100 },
+        camera: { projection: 'perspective' },
+      },
+    })),
+    apply: vi.fn((_schemeId: string, command: unknown) => {
       version = 'v2'
+      const kind =
+        command && typeof command === 'object' && !Array.isArray(command)
+          ? (command as { kind?: unknown }).kind
+          : undefined
       return {
         ok: true,
         data: { regroupedItemCount: 2, groups: [{ groupId: 1 }], collections: [] },
-        edit: { schemeId: 'scheme-1', transactionId: 'tx', postcondition: 'groups' },
+        edit: {
+          schemeId: 'scheme-1',
+          transactionId: 'tx',
+          postcondition: 'groups',
+          itemIds: kind === 'place' || kind === 'duplicate' ? ['a'] : undefined,
+          itemIdGroups: kind === 'duplicate' ? [['a']] : undefined,
+        },
       }
     }),
     verify: () => true,

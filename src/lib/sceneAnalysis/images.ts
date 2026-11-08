@@ -52,6 +52,8 @@ export interface AnalysisCaptureProvider {
     request: AnalysisViewRequest,
     task: AnalysisImageTask
   ): Promise<AnalysisImageOutput>
+  /** Optional because lightweight test/external providers may only support framed rendering. */
+  captureViewport?(task: AnalysisImageTask): Promise<AnalysisImageOutput>
 }
 
 export function assertImageTask(task: AnalysisImageTask) {

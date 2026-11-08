@@ -87,6 +87,9 @@ export interface EditOutcome {
   schemeId: string
   transactionId?: string
   postcondition: string
+  /** Host-only IDs used to materialize newly placed script references. */
+  itemIds?: string[]
+  itemIdGroups?: string[][]
 }
 export interface ToolRecord {
   id: string
@@ -191,6 +194,18 @@ export interface ScriptItem {
   scale: import('../sceneAnalysis/types').AnalysisVector3
   bounds: import('../sceneAnalysis/types').AnalysisBounds | null
 }
+/** 完整物品库目录条目；场景里没有的家具也能被检索到。 */
+export interface CatalogEntry {
+  gameId: number
+  nameZh: string | null
+  nameEn: string | null
+  categoryZh: string | null
+  categoryEn: string | null
+  sizeCm: readonly [number, number, number] | null
+  scaleRange: readonly [number, number] | null
+  rotationAllowed: { x: boolean; y: boolean; z: boolean }
+  combination: boolean
+}
 export interface RenderPanel {
   label: string
   members: string[]
@@ -213,11 +228,17 @@ export interface EditorHost {
     collections: import('../collectionTree').SchemeCollection[]
   }
   snapshot(schemeId: string, members?: string[]): import('../sceneAnalysis/types').AnalysisSnapshot
+  catalog(): CatalogEntry[]
   render(
     schemeId: string,
     panels: RenderPanel[],
     signal: AbortSignal,
     layout?: import('../sceneAnalysis/images').ImageLayout
+  ): Promise<import('../sceneAnalysis/images').AnalysisImageOutput>
+  /** Capture the active 3D viewport without changing camera, selection, or scene data. */
+  viewport(
+    schemeId: string,
+    signal: AbortSignal
   ): Promise<import('../sceneAnalysis/images').AnalysisImageOutput>
   apply(schemeId: string, parameters: unknown, version: string): ToolOutput
   verify(edit: EditOutcome): boolean

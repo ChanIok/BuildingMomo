@@ -13,6 +13,7 @@ import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorHistory } from './editor/useEditorHistory'
+import { cloneColorMap, remapColorMapGroupIds } from '@/lib/colorMap'
 import {
   applyRelativeSelectionTransform,
   createSelectionTransformFrame,
@@ -33,19 +34,6 @@ function generateUUID(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString(16)
   })
-}
-
-/** 染色数据可能是数组或对象，这里各拷贝一份，避免和场景里别的物品共用一个引用。 */
-function cloneColorMap(colorMap: AppItem['extra']['ColorMap'] | undefined) {
-  if (Array.isArray(colorMap)) {
-    return [...colorMap]
-  }
-
-  if (colorMap && typeof colorMap === 'object') {
-    return { ...colorMap }
-  }
-
-  return undefined
 }
 
 /** 判断两份染色是否一样，给「要不要改 extra」时当比较用。 */
@@ -98,52 +86,6 @@ function cloneItem(item: AppItem): AppItem {
     rotation: { ...item.rotation },
     extra: cloneItemExtra(item.extra),
   }
-}
-
-/**
- * 游戏里染色会把「组号」编进数字里。场景里已有家具的组被改过编号时，
- * 染色里藏着的旧组号也要跟着换，否则颜色会指错组。
- */
-function remapColorMapGroupIds(
-  colorMap: AppItem['extra']['ColorMap'] | undefined,
-  groupIdMap: Map<number, number>
-) {
-  if (!colorMap || groupIdMap.size === 0) {
-    return cloneColorMap(colorMap)
-  }
-
-  if (Array.isArray(colorMap)) {
-    return colorMap.map((raw) => {
-      // 小于 10 的数当作「单色槽位」，里面没有组号，不用改
-      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 10) {
-        return raw
-      }
-
-      const oldGroupId = Math.floor(raw / 10)
-      const colorIndex = raw % 10
-      const nextGroupId = groupIdMap.get(oldGroupId) ?? oldGroupId
-      return nextGroupId * 10 + colorIndex
-    })
-  }
-
-  const result: Record<string, number> = {}
-  for (const [groupKey, raw] of Object.entries(colorMap)) {
-    const parsedGroupId = Number(groupKey)
-    if (!Number.isFinite(parsedGroupId) || parsedGroupId < 0 || typeof raw !== 'number') {
-      continue
-    }
-
-    const nextGroupId = groupIdMap.get(parsedGroupId) ?? parsedGroupId
-    if (!Number.isFinite(raw) || raw <= 0) {
-      result[String(nextGroupId)] = raw
-      continue
-    }
-
-    const colorIndex = raw < 10 ? raw : raw % 10
-    result[String(nextGroupId)] = nextGroupId === 0 ? colorIndex : nextGroupId * 10 + colorIndex
-  }
-
-  return result
 }
 
 /**

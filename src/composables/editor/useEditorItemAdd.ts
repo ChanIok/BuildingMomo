@@ -17,6 +17,41 @@ function generateUUID(): string {
   })
 }
 
+export interface PlacedItemFields {
+  /** 数据空间位置（存档坐标，Y 向下）。 */
+  position?: { x: number; y: number; z: number }
+  /** 数据空间旋转（度）。 */
+  rotation?: { x: number; y: number; z: number }
+  /** 存档 Scale，非视觉轴。 */
+  scale?: { X: number; Y: number; Z: number }
+  groupId?: number
+  colorMap?: AppItem['extra']['ColorMap']
+}
+
+/** 人工放置与 AI 放置共用的默认家具结构，位置必须由调用方决定。 */
+export function createPlacedItem(
+  gameId: number,
+  instanceId: number,
+  fields: PlacedItemFields = {}
+): AppItem {
+  return {
+    internalId: generateUUID(),
+    gameId,
+    instanceId,
+    x: fields.position?.x ?? 0,
+    y: fields.position?.y ?? 0,
+    z: fields.position?.z ?? 0,
+    rotation: fields.rotation ?? { x: 0, y: 0, z: 0 },
+    groupId: fields.groupId ?? 0,
+    extra: {
+      Scale: fields.scale ?? { X: 1, Y: 1, Z: 1 },
+      AttachID: 0,
+      TempInfo: {},
+      ColorMap: fields.colorMap ?? { '0': 0 },
+    },
+  }
+}
+
 // 位置获取函数（由 ThreeEditor 注册）- 单例模式，所有调用共享同一个 ref
 const getAddPositionFn = ref<(() => [number, number, number] | null) | null>(null)
 
@@ -63,27 +98,10 @@ export function useEditorItemAdd() {
     // 2. 分配 Instance ID
     const instanceId = ++scheme.maxInstanceId.value
 
-    // 3. 创建新物品
-    const newItem: AppItem = {
-      internalId: generateUUID(),
-      gameId: itemId,
-      instanceId,
-      x: position[0],
-      y: position[1], // 注意：position 已经是游戏坐标系（Y 已转换）
-      z: position[2],
-      rotation: {
-        x: 0, // Roll
-        y: 0, // Pitch
-        z: 0, // Yaw
-      },
-      groupId: 0, // 未成组
-      extra: {
-        Scale: { X: 1, Y: 1, Z: 1 },
-        AttachID: 0,
-        TempInfo: {},
-        ColorMap: { '0': 0 },
-      },
-    }
+    // 3. 创建新物品（position 已经是游戏坐标系，Y 已转换）
+    const newItem = createPlacedItem(itemId, instanceId, {
+      position: { x: position[0], y: position[1], z: position[2] },
+    })
 
     recordTransaction('item.add', () => {
       // 4. 添加到场景（创建新数组以触发推断引擎）
@@ -117,29 +135,23 @@ export function useEditorItemAdd() {
     const position = getAddPosition()
     const groupId = scheme.maxGroupId.value + 1
     let instanceId = scheme.maxInstanceId.value
-    const newItems = members.map((member, index): AppItem => {
-      instanceId++
-      return {
-        internalId: generateUUID(),
-        gameId: member.itemId,
-        instanceId,
-        x: position[0] + member.position[0],
-        y: position[1] + member.position[1],
-        z: position[2] + member.position[2],
+    const newItems = members.map((member, index): AppItem =>
+      createPlacedItem(member.itemId, ++instanceId, {
+        position: {
+          x: position[0] + member.position[0],
+          y: position[1] + member.position[1],
+          z: position[2] + member.position[2],
+        },
         rotation: {
           x: member.rotation[0],
           y: member.rotation[1],
           z: member.rotation[2],
         },
+        scale: { X: member.scale[0], Y: member.scale[1], Z: member.scale[2] },
         groupId,
-        extra: {
-          Scale: { X: member.scale[0], Y: member.scale[1], Z: member.scale[2] },
-          AttachID: 0,
-          TempInfo: {},
-          ColorMap: colorPreset ? { ...colorPreset.colorMaps[index] } : { '0': 0 },
-        },
-      }
-    })
+        colorMap: colorPreset ? { ...colorPreset.colorMaps[index] } : undefined,
+      })
+    )
 
     recordTransaction('item.add.combination', () => {
       scheme.items.value = [...scheme.items.value, ...newItems]
