@@ -73,8 +73,8 @@ export interface ValidationItem {
   rotation: { Pitch: number; Yaw: number; Roll: number }
 }
 
-// 旧版/方案码使用的扁平数据结构。
-// 游戏文件的兼容解析与新格式序列化由 lib/gameDataFormat 负责。
+// 旧版扁平存档结构，仅用于内部导出（如关闭方案历史）。
+// 外部方案的兼容解析统一由 lib/gameDataFormat 负责，不要用它描述远端响应。
 export interface GameDataFile {
   Name?: string
   NeedRestore?: boolean

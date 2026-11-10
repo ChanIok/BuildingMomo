@@ -1,6 +1,6 @@
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useNotification } from '@/composables/useNotification'
-import type { AppItem, GameDataFile, GameItem } from '@/types/editor'
+import type { AppItem, GameItem } from '@/types/editor'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
 import { parseGameDataContent } from '@/lib/gameDataFormat'
@@ -282,7 +282,7 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
     try {
       ensureResourcesReady()
 
-      const apiUrl = `https://api-nikki.ranaxro.com/home-build-data?${encodeURIComponent(schemeCode)}`
+      const apiUrl = `https://api-nikki.ranaxro.com/home-build-data?code=${encodeURIComponent(schemeCode)}&format=v2`
       const response = await fetch(apiUrl)
 
       if (!response.ok) {
@@ -294,9 +294,9 @@ export function createCodeImportOps(params: CreateCodeImportOpsParams) {
         return
       }
 
-      const jsonData = (await response.json()) as GameDataFile
+      const jsonData = (await response.json()) as { Snapshots?: unknown }
 
-      if (!jsonData || !Object.prototype.hasOwnProperty.call(jsonData, 'PlaceInfo')) {
+      if (!jsonData || !Object.prototype.hasOwnProperty.call(jsonData, 'Snapshots')) {
         notification.error(t('fileOps.importCode.parseError'))
         return
       }
