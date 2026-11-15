@@ -301,8 +301,9 @@ export const useEditorStore = defineStore('editor', () => {
     const hiddenCollections = new Set(scheme.hiddenCollectionIds.value)
     const hiddenGroups = new Set(scheme.hiddenGroupIds.value)
     const onlyUnclassified = entry.kind === 'collection' && entry.id === UNCLASSIFIED
-    if (onlyUnclassified || (entry.kind === 'group' && !assignments.get(entry.id)))
-      hiddenCollections.delete(UNCLASSIFIED)
+    const inUnclassified =
+      onlyUnclassified || (entry.kind === 'group' && !assignments.get(entry.id))
+    if (inUnclassified) hiddenCollections.delete(UNCLASSIFIED)
     for (const id of path) hiddenCollections.delete(id)
     // 在分支根节点隐藏目标路径之外的分支，并保留后代状态，
     // 便于之后按住 Alt 点击时显示其他分支，且不清除其子节点设置。
@@ -316,6 +317,11 @@ export const useEditorStore = defineStore('editor', () => {
     }
     for (const id of groupsMap.value.keys()) {
       const parent = assignments.get(id) ?? null
+      // 未分类也是一个分支：目标在外部时只隐藏整个分支，不改写组自身的显隐。
+      if (parent === null && !inUnclassified) {
+        hiddenCollections.add(UNCLASSIFIED)
+        continue
+      }
       if (entry.kind === 'group' && id === entry.id) hiddenGroups.delete(id)
       else if (
         !(onlyUnclassified && parent === null) &&

@@ -552,23 +552,90 @@ it('applies unclassified restrictions dynamically without overwriting group flag
   expect(scheme.hiddenCollectionIds.value.size).toBe(0)
 })
 
-it('shows only unclassified groups while retaining their own hiding', () => {
-  const { store, scheme, panel } = setup()
+it.each(['collection', 'group', 'ungrouped'] as const)(
+  'hides unclassified as a branch when showing only an external %s and restores it in one action',
+  (kind) => {
+    const { store, scheme, panel, child } = setup()
+    setSchemeItems(scheme, [
+      ...scheme.items.value,
+      makeAppItem({ internalId: 'hidden-own', groupId: 9 }),
+      makeAppItem({ internalId: 'loose', groupId: 0 }),
+    ])
+    store.setGroupHidden(9, true)
+    store.setGroupLocked(8, true)
+    const items = scheme.items.value,
+      tree = scheme.collectionTree.value,
+      locked = scheme.lockedGroupIds.value,
+      version = store.sceneVersion,
+      historySize = scheme.history.value!.transactionUndoStack.length
+    const entry =
+      kind === 'collection' ? { kind, id: child } : { kind, id: kind === 'group' ? 7 : 0 }
+    store.showOnly(entry)
+    expect(store.renderItemIds).toEqual(new Set([kind === 'ungrouped' ? 'loose' : 'a']))
+    expect(scheme.hiddenCollectionIds.value.has(UNCLASSIFIED)).toBe(true)
+    expect(scheme.hiddenGroupIds.value).toEqual(new Set(kind === 'ungrouped' ? [9] : [9, 0]))
+    expect(panel.rows.value.find((row) => row.id === UNCLASSIFIED)).toMatchObject({ hidden: true })
+    expect(panel.rows.value.find((row) => row.kind === 'group' && row.id === 8)).toMatchObject({
+      group: { hidden: true, ownHidden: false },
+    })
+    const selectionVersion = store.selectionVersion
+    store.showOnly(entry)
+    expect(store.selectionVersion).toBe(selectionVersion)
+
+    store.setCollectionRestriction(UNCLASSIFIED, 'hidden', false)
+    expect(store.renderItemIds).toEqual(new Set(kind === 'ungrouped' ? ['b', 'loose'] : ['a', 'b']))
+    expect(store.isItemVisible('hidden-own')).toBe(false)
+    expect(store.isItemEditable('b')).toBe(false)
+    expect(panel.restriction(null, 'hidden')).toBeUndefined()
+    expect(scheme.items.value).toBe(items)
+    expect(scheme.collectionTree.value).toBe(tree)
+    expect(scheme.lockedGroupIds.value).toBe(locked)
+    expect(store.sceneVersion).toBe(version)
+    expect(scheme.history.value!.transactionUndoStack).toHaveLength(historySize)
+  }
+)
+
+it('inherits show-only branch hiding dynamically as groups enter and leave unclassified', () => {
+  const { store, scheme, panel, child } = setup()
+  store.showOnly({ kind: 'collection', id: child })
+  expect(store.isItemVisible('b')).toBe(false)
+  panel.move({ kind: 'group', id: 8 }, child)
+  expect(store.isItemVisible('b')).toBe(true)
+  panel.move({ kind: 'group', id: 7 }, null)
+  expect(store.isItemVisible('a')).toBe(false)
+  setSchemeItems(scheme, [
+    ...scheme.items.value,
+    makeAppItem({ internalId: 'new-group', groupId: 9 }),
+  ])
+  expect(store.isItemVisible('new-group')).toBe(false)
+  expect(scheme.hiddenGroupIds.value).toEqual(new Set([0]))
+  store.setCollectionRestriction(UNCLASSIFIED, 'hidden', false)
+  expect(store.renderItemIds).toBeNull()
+})
+
+it('switches show-only between collections and unclassified while retaining child hiding', () => {
+  const { store, scheme, panel, child } = setup()
   setSchemeItems(scheme, [
     ...scheme.items.value,
     makeAppItem({ internalId: 'hidden-own', groupId: 9 }),
+    makeAppItem({ internalId: 'sibling', groupId: 10 }),
     makeAppItem({ internalId: 'loose', groupId: 0 }),
   ])
   store.setGroupHidden(9, true)
   store.setCollectionRestriction(UNCLASSIFIED, 'hidden', true)
   const tree = scheme.collectionTree.value
+  store.showOnly({ kind: 'collection', id: child })
   store.showOnly({ kind: 'collection', id: UNCLASSIFIED })
-  expect(store.renderItemIds).toEqual(new Set(['b']))
+  expect(store.renderItemIds).toEqual(new Set(['b', 'sibling']))
   expect(scheme.hiddenCollectionIds.value.has(UNCLASSIFIED)).toBe(false)
   expect(scheme.hiddenGroupIds.value.has(9)).toBe(true)
   store.setCollectionRestriction(UNCLASSIFIED, 'hidden', true)
   store.showOnly({ kind: 'group', id: 8 })
   expect(store.renderItemIds).toEqual(new Set(['b']))
+  expect(scheme.hiddenGroupIds.value.has(10)).toBe(true)
+  store.showOnly({ kind: 'group', id: 7 })
+  expect(store.renderItemIds).toEqual(new Set(['a']))
+  expect(scheme.hiddenGroupIds.value.has(8)).toBe(false)
   store.showOnly({ kind: 'collection', id: UNCLASSIFIED })
   expect(store.renderItemIds).toEqual(new Set(['b']))
   expect(scheme.collectionTree.value).toBe(tree)
