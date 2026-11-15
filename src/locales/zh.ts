@@ -505,6 +505,9 @@ export const zhLocale = {
       quickAlign: '快速对齐',
       replaceFurniture: '替换',
     },
+    selection: {
+      toggleAutoSelectGroup: '切换自动选择整组',
+    },
     selectionAction: {
       new: '新选区',
       add: '加选',
@@ -768,6 +771,10 @@ export const zhLocale = {
   // 错误和通知
   notification: {
     furnitureDataLoadFailed: '家具数据加载失败，部分功能可能不可用',
+    autoSelectGroup: {
+      enabled: '自动选择整组：已开启',
+      disabled: '自动选择整组：已关闭',
+    },
     fileUpdate: {
       title: '检测到文件更新',
       desc: '文件 {name} 已更新，最后修改时间：{time}。\n\n是否立即导入最新数据？',

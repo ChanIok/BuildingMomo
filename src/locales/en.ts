@@ -539,6 +539,9 @@ export const enLocale = {
       quickAlign: 'Quick Align',
       replaceFurniture: 'Replace',
     },
+    selection: {
+      toggleAutoSelectGroup: 'Toggle Auto-select Whole Groups',
+    },
     selectionAction: {
       new: 'Set',
       add: 'Extend',
@@ -812,6 +815,10 @@ export const enLocale = {
   // Errors and Notifications
   notification: {
     furnitureDataLoadFailed: 'Failed to load furniture data, some features may be unavailable',
+    autoSelectGroup: {
+      enabled: 'Auto-select whole groups: On',
+      disabled: 'Auto-select whole groups: Off',
+    },
     fileUpdate: {
       title: 'File Update Detected',
       desc: 'File {name} updated at {time}.\n\nImport new data?',

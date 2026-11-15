@@ -2,16 +2,22 @@
 import { computed, ref, useId } from 'vue'
 import { ChevronRight } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
+import { useCommandStore } from '@/stores/commandStore'
 import { useI18n } from '@/composables/useI18n'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import Kbd from '@/components/ui/kbd/Kbd.vue'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { SELECTION_CATEGORY_IDS, type SelectionCategoryId } from '@/types/furniture'
 
 const editorStore = useEditorStore()
+const commandStore = useCommandStore()
+const autoSelectGroupCommand = computed(() =>
+  commandStore.commandMap.get('selection.toggleAutoSelectGroup')
+)
 const { t } = useI18n()
 const panelId = useId()
 const expanded = ref(true)
@@ -72,8 +78,11 @@ function setCategoryEnabled(id: SelectionCategoryId, enabled: boolean) {
       <div class="flex flex-col gap-4 px-4 pb-4">
         <div class="flex items-center justify-between gap-3">
           <div class="space-y-0.5">
-            <Label :for="`${panelId}-group`" class="text-xs">
+            <Label :for="`${panelId}-group`" class="flex flex-wrap items-center gap-2 text-xs">
               {{ t('sidebar.autoSelectGroup') }}
+              <Kbd v-if="autoSelectGroupCommand?.shortcut">{{
+                autoSelectGroupCommand.shortcut
+              }}</Kbd>
             </Label>
             <p :id="`${panelId}-group-hint`" class="text-[11px] leading-4 text-muted-foreground">
               {{ t('sidebar.autoSelectGroupHint') }}
@@ -82,6 +91,7 @@ function setCategoryEnabled(id: SelectionCategoryId, enabled: boolean) {
           <Switch
             :id="`${panelId}-group`"
             v-model="editorStore.autoExpandGroupSelection"
+            :aria-keyshortcuts="autoSelectGroupCommand?.shortcut"
             :aria-describedby="`${panelId}-group-hint`"
           />
         </div>

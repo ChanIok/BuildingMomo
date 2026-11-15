@@ -593,6 +593,24 @@ export const useCommandStore = defineStore('command', () => {
       },
     },
     {
+      id: 'selection.toggleAutoSelectGroup',
+      label: t('command.selection.toggleAutoSelectGroup'),
+      shortcut: 'Shift+G',
+      allowRepeat: false,
+      category: 'selection',
+      enabled: () => true,
+      execute: () => {
+        editorStore.autoExpandGroupSelection = !editorStore.autoExpandGroupSelection
+        notification.info(
+          t(
+            editorStore.autoExpandGroupSelection
+              ? 'notification.autoSelectGroup.enabled'
+              : 'notification.autoSelectGroup.disabled'
+          )
+        )
+      },
+    },
+    {
       id: 'edit.group',
       label: t('command.edit.group'),
       shortcut: 'Ctrl+G',

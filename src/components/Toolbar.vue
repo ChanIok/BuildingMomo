@@ -667,6 +667,7 @@ watch(
         <MenubarTrigger class="text-sm font-medium">{{ t('menu.selection') }}</MenubarTrigger>
         <MenubarContent :sideOffset="10">
           <template v-for="cmd in selectionCommands" :key="cmd.id">
+            <MenubarSeparator v-if="cmd.id === 'selection.toggleAutoSelectGroup'" />
             <MenubarItem :disabled="!isEnabled(cmd.id)" @click="handleCommand(cmd.id)">
               {{ cmd.label }}
               <MenubarShortcut v-if="cmd.shortcut">{{ cmd.shortcut }}</MenubarShortcut>
