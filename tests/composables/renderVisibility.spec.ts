@@ -1,3 +1,4 @@
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, type EffectScope } from 'vue'
@@ -9,7 +10,6 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
-import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useThreeInstancedRenderer } from '@/composables/renderer/core'
 import { useSlidePathRenderer } from '@/composables/renderer/useSlidePathRenderer'
@@ -428,7 +428,7 @@ it('renders new furniture, keeps hidden furniture after deleting visible items, 
   expect(added.groupId).toBe(0)
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(3))
   useEditorSelection().selectAll()
-  useEditorManipulation().deleteSelected()
+  useEditorRemoval().remove()
   await vi.waitFor(() => expect(renderer.simpleBoxInstancedMesh.value?.count).toBe(0))
   expect(scheme.items.value).toEqual([items[0]])
   useEditorHistory().undo()

@@ -313,7 +313,7 @@ export const zhLocale = {
     newCollection: '新集合',
     createSubcollection: '新建子集合',
     renameCollection: '重命名集合',
-    deleteCollection: '移除集合，内容移至上一级',
+    dissolveCollection: '移除集合，内容移至上一级',
     collapseAll: '全部折叠',
     unclassified: '未分类',
     root: '顶层',

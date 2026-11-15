@@ -90,10 +90,10 @@ it('keeps explicit list group selection when automatic group expansion is disabl
   expect(ids()).toEqual([])
 })
 
-it('adopts pasted roots without losing selected ungrouped furniture on additive selection', () => {
+it('keeps pasted roots and selected ungrouped furniture on additive selection', () => {
   const { scheme, selection, group, ids } = setup()
   scheme.selectedItemIds.value = new Set(['g1-a', 'g1-b', 'loose'])
-  selection.adopt([{ kind: 'group', id: 1 }])
+  scheme.selectedEntries.value = [{ kind: 'group', id: 1 }]
   expect(selection.entries.value).toEqual([{ kind: 'group', id: 1 }])
   expect(scheme.history.value).toBeUndefined()
   group(2, { ctrlKey: true })
@@ -314,7 +314,7 @@ it('distinguishes explicit collection nodes from content coverage, including emp
   collection('empty')
   expect(ids()).toEqual([])
   expect(selection.entries.value).toEqual([{ kind: 'collection', id: 'empty' }])
-  directory.deleteCollection('empty')
+  directory.dissolveCollection('empty')
   expect(selection.entries.value).toEqual([])
   useEditorSelection().updateSelection(['g1-a', 'g1-b', 'g2'], false)
   expect(selection.entries.value).toEqual([

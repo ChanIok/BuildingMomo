@@ -344,7 +344,7 @@ export const enLocale = {
     newCollection: 'New collection',
     createSubcollection: 'New subcollection',
     renameCollection: 'Rename collection',
-    deleteCollection: 'Remove collection; move contents to parent',
+    dissolveCollection: 'Remove collection; move contents to parent',
     collapseAll: 'Collapse all',
     unclassified: 'Unclassified',
     root: 'Top level',

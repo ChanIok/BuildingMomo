@@ -1,6 +1,5 @@
 import { resolveSelectionReference } from '@/lib/selectionReference'
 import { storeToRefs } from 'pinia'
-import { setSchemeItems } from '@/lib/groupState'
 import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
 import { useEditorStore } from '../../stores/editorStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -69,24 +68,6 @@ export function useEditorManipulation() {
 
     // 优先级 3: 几何中心
     return getSelectedItemsCenter()
-  }
-
-  // 删除选中物品
-  function deleteSelected() {
-    if (!activeScheme.value) return
-
-    recordTransaction('items.delete', () => {
-      setSchemeItems(
-        activeScheme.value!,
-        activeScheme.value!.items.value.filter(
-          (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
-        )
-      )
-      activeScheme.value!.selectedItemIds.value.clear()
-
-      store.triggerSceneUpdate()
-      store.triggerSelectionUpdate()
-    })
   }
 
   /**
@@ -684,7 +665,6 @@ export function useEditorManipulation() {
   return {
     getSelectedItemsCenter,
     getRotationCenter,
-    deleteSelected,
     translateSelectedItems,
     setSelectedPosition,
     rotateSelectedItemsRelative,

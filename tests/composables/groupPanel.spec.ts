@@ -1,3 +1,4 @@
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, ref, type EffectScope } from 'vue'
@@ -104,7 +105,7 @@ describe('group management', () => {
     expect(groupNamesOf(scheme).has(7)).toBe(false)
     history.undo()
     expect(groupNamesOf(scheme).get(7)).toBe('墙')
-    useEditorManipulation().deleteSelected()
+    useEditorRemoval().remove()
     expect(groupNamesOf(scheme).has(7)).toBe(false)
     history.undo()
     expect(groupNamesOf(scheme).get(7)).toBe('墙')
@@ -282,7 +283,7 @@ describe('group management', () => {
     expect([...scheme.selectedItemIds.value]).toEqual(['c'])
     // 即使调用方持有过期选择，也不能绕过事务入口的限制校验。
     scheme.selectedItemIds.value = new Set(['a', 'c'])
-    useEditorManipulation().deleteSelected()
+    useEditorRemoval().remove()
     expect(scheme.items.value.map((item) => item.internalId)).toEqual(['a', 'b', 'd'])
     expect(store.setItemInstanceId('a', 2000)).toBe(false)
     expect(store.setItemInstanceId('d', 1001)).toBe(false)
@@ -505,12 +506,14 @@ it.each(['unclassified', 'ungrouped'] as const)(
       { ctrlKey: false, metaKey: false, shiftKey: false }
     )
     expect(scheme.selectedItemIds.value.size).toBe(0)
+    // 切回画布选择，验证过期家具 ID 不能绕过保护；显式节点移除另有完整范围语义。
+    selection.updateSelection([], false)
     const items = scheme.items.value
     const manipulation = useEditorManipulation()
     scheme.selectedItemIds.value = new Set([id])
     manipulation.translateSelectedItems({ x: 10, y: 0, z: 0 })
     scheme.selectedItemIds.value = new Set([id])
-    manipulation.deleteSelected()
+    useEditorRemoval().remove()
     expect(scheme.items.value).toEqual(items)
     expect(scheme.items.value.every((item, index) => item === items[index])).toBe(true)
     expect(scheme.history.value!.transactionUndoStack).toHaveLength(historySize)

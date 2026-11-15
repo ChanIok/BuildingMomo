@@ -5,7 +5,7 @@ import { useEditorHistory } from '../composables/editor/useEditorHistory'
 import { useClipboard } from '../composables/useClipboard'
 import { useEditorSelection } from '../composables/editor/useEditorSelection'
 import { useEditorGroups } from '../composables/editor/useEditorGroups'
-import { useEditorManipulation } from '../composables/editor/useEditorManipulation'
+import { useEditorRemoval } from '../composables/editor/useEditorRemoval'
 import { useUIStore } from './uiStore'
 import { useSettingsStore } from './settingsStore'
 import { useFileOperations } from '../composables/useFileOperations'
@@ -38,11 +38,13 @@ export const useCommandStore = defineStore('command', () => {
     pasteItems,
     clipboard,
     canPaste,
+    canCopy,
+    canCut,
     buildClipboardDataFromSelection,
   } = useClipboard()
   const { selectAll, clearSelection, invertSelection, selectSameType } = useEditorSelection()
   const { requestGroup, canGroupSelection, ungroupSelected } = useEditorGroups()
-  const { deleteSelected } = useEditorManipulation()
+  const { canRemove, remove } = useEditorRemoval()
 
   const uiStore = useUIStore()
   const settingsStore = useSettingsStore()
@@ -477,7 +479,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.cut'),
       shortcut: 'Ctrl+X',
       category: 'edit',
-      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      enabled: () => canCut(),
       execute: () => {
         console.log('[Command] 剪切')
         cutCmd()
@@ -488,7 +490,7 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.copy'),
       shortcut: 'Ctrl+C',
       category: 'edit',
-      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      enabled: () => canCopy(),
       execute: () => {
         console.log('[Command] 复制')
         copyCmd()
@@ -541,10 +543,10 @@ export const useCommandStore = defineStore('command', () => {
       label: t('command.edit.delete'),
       shortcut: 'Delete',
       category: 'edit',
-      enabled: () => (editorStore.activeScheme?.selectedItemIds.value.size ?? 0) > 0,
+      enabled: () => canRemove(),
       execute: () => {
         console.log('[Command] 删除')
-        deleteSelected()
+        remove()
       },
     },
     {

@@ -1,3 +1,5 @@
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
+import { useClipboard } from '@/composables/useClipboard'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, ref, type EffectScope } from 'vue'
@@ -74,6 +76,7 @@ function setup() {
       scheme,
       query,
       directory,
+      removal: useEditorRemoval(),
       selection,
       target,
       groups: useEditorGroups(),
@@ -312,7 +315,7 @@ it('queues new-group membership and collection together without sharing personal
 })
 
 it('deletes a complete protected subtree in one transaction without deleting carried canvas items', () => {
-  const { store, scheme, directory, selection, history, query } = setup()
+  const { store, scheme, directory, removal, selection, history, query } = setup()
   scheme.items.value = [...scheme.items.value, makeAppItem({ internalId: 'e2', groupId: 9 })]
   scheme.collectionTree.value = {
     ...scheme.collectionTree.value,
@@ -338,7 +341,7 @@ it('deletes a complete protected subtree in one transaction without deleting car
   scheme.activeCollectionId.value = 'house'
   directory.collapseAll()
   query.value = 'Walls'
-  expect(directory.deleteEntries(selection.entries.value)).toBe(true)
+  expect(removal.remove(selection.entries.value)).toBe(true)
   expect(scheme.items.value).toEqual([before[3], before[4], before[5]])
   expect(scheme.items.value[0]).toBe(before[3])
   expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['empty'])
@@ -363,10 +366,10 @@ it('deletes a complete protected subtree in one transaction without deleting car
 })
 
 it('deletes an entire group but keeps its containing collection and unrelated metadata', () => {
-  const { scheme, directory } = setup()
+  const { scheme, removal } = setup()
   scheme.activeGroupId.value = 7
   const tree = scheme.collectionTree.value
-  expect(directory.deleteEntries([{ kind: 'group', id: 7 }])).toBe(true)
+  expect(removal.remove([{ kind: 'group', id: 7 }])).toBe(true)
   expect(scheme.items.value.map((item) => item.internalId)).toEqual(['c', 'e', 'd'])
   expect(scheme.collectionTree.value.nodes).toBe(tree.nodes)
   expect(scheme.collectionTree.value.groups.map((group) => group.groupId)).toEqual([8, 9])
@@ -375,11 +378,11 @@ it('deletes an entire group but keeps its containing collection and unrelated me
 })
 
 it('deletes empty collections without updating furniture, origins or the scene', () => {
-  const { store, scheme, directory } = setup()
+  const { store, scheme, removal } = setup()
   const items = scheme.items.value,
     origins = scheme.groupOrigins.value,
     sceneVersion = store.sceneVersion
-  expect(directory.deleteEntries([{ kind: 'collection', id: 'empty' }])).toBe(true)
+  expect(removal.remove([{ kind: 'collection', id: 'empty' }])).toBe(true)
   expect(scheme.items.value).toBe(items)
   expect(scheme.groupOrigins.value).toBe(origins)
   expect(store.sceneVersion).toBe(sceneVersion)
@@ -388,10 +391,10 @@ it('deletes empty collections without updating furniture, origins or the scene',
 })
 
 it('deduplicates mixed parent, child, group and ungrouped deletion targets', () => {
-  const { scheme, directory } = setup()
+  const { scheme, removal } = setup()
   scheme.selectedItemIds.value = new Set(['e'])
   expect(
-    directory.deleteEntries([
+    removal.remove([
       { kind: 'collection', id: 'house' },
       { kind: 'collection', id: 'floor' },
       { kind: 'group', id: 7 },
@@ -408,21 +411,21 @@ it('deduplicates mixed parent, child, group and ungrouped deletion targets', () 
 })
 
 it('deletes virtual unclassified contents, including groups without explicit metadata, without touching classified or ungrouped items', () => {
-  const { scheme, directory } = setup()
+  const { scheme, removal } = setup()
   scheme.items.value = [
     ...scheme.items.value,
     makeAppItem({ internalId: 'no-metadata', groupId: 10 }),
   ]
   scheme.maxGroupId.value = 10
   scheme.activeCollectionId.value = '@unclassified'
-  expect(directory.deleteEntries([{ kind: 'collection', id: '@unclassified' }])).toBe(true)
+  expect(removal.remove([{ kind: 'collection', id: '@unclassified' }])).toBe(true)
   expect(scheme.items.value.map((item) => item.internalId)).toEqual(['a', 'b', 'c', 'd'])
   expect(scheme.activeCollectionId.value).toBeNull()
   expect(scheme.collectionTree.value.nodes).toHaveLength(3)
 })
 
 it('rejects empty, stale and unavailable cloud delete targets without partial deletion', () => {
-  const { scheme, directory } = setup()
+  const { scheme, removal } = setup()
   const items = scheme.items.value,
     tree = scheme.collectionTree.value
   for (const entries of [
@@ -432,44 +435,48 @@ it('rejects empty, stale and unavailable cloud delete targets without partial de
       { kind: 'collection' as const, id: 'missing' },
     ],
   ]) {
-    expect(directory.canDeleteEntries(entries)).toBe(false)
-    expect(directory.deleteEntries(entries)).toBe(false)
+    expect(removal.canRemove(entries)).toBe(false)
+    expect(removal.remove(entries)).toBe(false)
   }
   scheme.source.value = 'cloud'
   const entries = [{ kind: 'collection' as const, id: 'house' }]
-  expect(directory.deleteEntries(entries)).toBe(false)
+  expect(removal.remove(entries)).toBe(false)
   expect(scheme.items.value).toBe(items)
   expect(scheme.collectionTree.value).toBe(tree)
 })
 
-it('replays cloud subtree deletion without sharing or clearing personal restrictions', () => {
-  const { store, scheme, directory } = setup()
-  const before = scheme.items.value,
-    tree = scheme.collectionTree.value,
-    origins = scheme.groupOrigins.value
-  store.setGroupHidden(7, true)
-  scheme.source.value = 'cloud'
-  useCloudSchemeStore().schemeId = scheme.id
-  useCloudSchemeStore().status = 'connected'
-  expect(directory.deleteEntries([{ kind: 'collection', id: 'house' }])).toBe(true)
-  const transaction = store.pendingTransactions[0]!
-  expect(transaction.ops.map((op) => op.type)).toEqual(
-    expect.arrayContaining([
-      'remove_items',
-      'set_collection_tree',
-      'set_group_names',
-      'set_group_origins',
-    ])
-  )
-  store.createScheme('remote deletion')
-  const peer = store.activeScheme!
-  peer.items.value = before
-  peer.collectionTree.value = tree
-  peer.groupOrigins.value = origins
-  applyEditorTransactionToScheme(peer, transaction)
-  expect(peer.items.value).toEqual(scheme.items.value)
-  expect(peer.collectionTree.value).toEqual(scheme.collectionTree.value)
-  expect(peer.groupOrigins.value.size).toBe(0)
-  expect(peer.hiddenGroupIds.value.size).toBe(0)
-  expect(scheme.hiddenGroupIds.value).toEqual(new Set([7]))
-})
+it.each(['delete', 'cut'] as const)(
+  'replays cloud subtree %s without sharing or clearing personal restrictions',
+  (operation) => {
+    const { store, scheme, removal } = setup()
+    const before = scheme.items.value,
+      tree = scheme.collectionTree.value,
+      origins = scheme.groupOrigins.value
+    store.setGroupHidden(7, true)
+    scheme.source.value = 'cloud'
+    useCloudSchemeStore().schemeId = scheme.id
+    useCloudSchemeStore().status = 'connected'
+    const entries = [{ kind: 'collection', id: 'house' }] as const
+    expect(operation === 'cut' ? useClipboard().cut(entries) : removal.remove(entries)).toBe(true)
+    const transaction = store.pendingTransactions[0]!
+    expect(transaction.ops.map((op) => op.type)).toEqual(
+      expect.arrayContaining([
+        'remove_items',
+        'set_collection_tree',
+        'set_group_names',
+        'set_group_origins',
+      ])
+    )
+    store.createScheme('remote deletion')
+    const peer = store.activeScheme!
+    peer.items.value = before
+    peer.collectionTree.value = tree
+    peer.groupOrigins.value = origins
+    applyEditorTransactionToScheme(peer, transaction)
+    expect(peer.items.value).toEqual(scheme.items.value)
+    expect(peer.collectionTree.value).toEqual(scheme.collectionTree.value)
+    expect(peer.groupOrigins.value.size).toBe(0)
+    expect(peer.hiddenGroupIds.value.size).toBe(0)
+    expect(scheme.hiddenGroupIds.value).toEqual(new Set([7]))
+  }
+)

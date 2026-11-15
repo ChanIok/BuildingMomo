@@ -107,6 +107,52 @@ it('enables shared paste and advanced paste for an empty collection clipboard', 
   expect(store.activeScheme!.collectionTree.value.nodes).toHaveLength(2)
 })
 
+it.each(
+  ['edit.delete', 'edit.cut'].flatMap((command) =>
+    ['empty', 'protected'].map((content) => ({ command, content }))
+  )
+)(
+  'executes $command on an explicitly selected $content collection without canvas selection',
+  ({ command, content }) => {
+    const { store, commands } = setup()
+    store.createScheme('collection commands')
+    const scheme = store.activeScheme!
+    scheme.collectionTree.value = {
+      nodes: [
+        { id: 'folder', name: 'Folder', parentId: null, order: 0 },
+        { id: 'empty-child', name: 'Empty child', parentId: 'folder', order: 0 },
+      ],
+      groups: content === 'protected' ? [{ groupId: 7, collectionId: 'folder', order: 0 }] : [],
+    }
+    if (content === 'protected') {
+      scheme.items.value = [makeAppItem({ internalId: 'hidden', groupId: 7 })]
+      store.setGroupHidden(7, true)
+      store.setCollectionRestriction('folder', 'locked', true)
+    }
+    scheme.selectedEntries.value = [{ kind: 'collection', id: 'folder' }]
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    expect(commands.isCommandEnabled('edit.copy')).toBe(true)
+    expect(commands.isCommandEnabled(command)).toBe(true)
+    commands.executeCommand(command)
+    expect(scheme.items.value).toEqual([])
+    expect(scheme.collectionTree.value).toEqual({ nodes: [], groups: [] })
+    expect(scheme.selectedEntries.value).toEqual([])
+    expect(commands.isCommandEnabled(command)).toBe(false)
+    expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+    if (command === 'edit.cut') {
+      expect(useClipboard().clipboard.value.structure.collectionIds).toEqual([
+        'folder',
+        'empty-child',
+      ])
+      expect(useClipboard().clipboard.value.items).toHaveLength(content === 'protected' ? 1 : 0)
+    }
+    useEditorHistory().undo()
+    expect(scheme.collectionTree.value.nodes).toHaveLength(2)
+    expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'folder' }])
+    expect(commands.isCommandEnabled(command)).toBe(true)
+  }
+)
+
 it.each([0, 7])(
   'duplicates a canvas item from group %s repeatedly with E and after undo/redo',
   (groupId) => {

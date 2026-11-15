@@ -4,7 +4,11 @@ import {
   createEmptyClipboardData,
   restoreClipboardStructure,
 } from '@/lib/clipboardStructure'
-import { resolveCollectionEntries } from '@/lib/collectionTargets'
+import {
+  hasOperationTargets,
+  resolveEditorOperationTargets,
+  type EditorOperationTargets,
+} from '@/lib/collectionTargets'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useI18n } from './useI18n'
 import { setSchemeItems } from '../lib/groupState'
@@ -13,6 +17,7 @@ import { storeToRefs } from 'pinia'
 import { useEditorStore } from '../stores/editorStore'
 import { useUIStore } from '../stores/uiStore'
 import { useEditorHistory } from './editor/useEditorHistory'
+import { useEditorRemoval } from './editor/useEditorRemoval'
 import { cloneColorMap, remapColorMapGroupIds } from '@/lib/colorMap'
 import {
   applyRelativeSelectionTransform,
@@ -23,6 +28,7 @@ import type {
   AdvancedPasteOptions,
   ClipboardData,
   CollectionEntry,
+  HomeScheme,
   PasteResult,
   StepRepeatConfig,
 } from '../types/editor'
@@ -171,6 +177,7 @@ export function useClipboard() {
   const { t } = useI18n()
   const { activeScheme, clipboardList: clipboard } = storeToRefs(store)
   const { recordTransaction } = useEditorHistory()
+  const { canRemove: canCut, getRemovalTarget, applyRemoval } = useEditorRemoval()
 
   function canInsertClipboard(data: ClipboardData, parentId?: string | null) {
     const scheme = activeScheme.value
@@ -199,24 +206,14 @@ export function useClipboard() {
    */
   function buildClipboardDataFromSelection(entries?: readonly CollectionEntry[]): ClipboardData {
     const scheme = activeScheme.value
-    if (!scheme) {
-      return createEmptyClipboardData()
-    }
+    if (!scheme) return createEmptyClipboardData()
+    const target = resolveEditorOperationTargets(scheme, store.isItemEditable, entries)
+    return target ? buildClipboardData(scheme, target) : createEmptyClipboardData()
+  }
 
-    const includeCanvasSelection = entries === undefined
-    entries ??= scheme.selectedEntries.value ?? undefined
-    const resolved = entries ? resolveCollectionEntries(scheme, entries) : null
-    const nodeItems = resolved?.items ?? []
-    const nodeItemIds = new Set(nodeItems.map((item) => item.internalId))
-    const sourceItems = includeCanvasSelection
-      ? scheme.items.value.filter(
-          (item) =>
-            nodeItemIds.has(item.internalId) ||
-            (scheme.selectedItemIds.value.has(item.internalId) &&
-              store.isItemEditable(item.internalId))
-        )
-      : nodeItems
-    const copiedItems = sourceItems.map(cloneItem)
+  function buildClipboardData(scheme: HomeScheme, target: EditorOperationTargets): ClipboardData {
+    const { entries } = target
+    const copiedItems = target.items.map(cloneItem)
 
     if (!entries?.length && copiedItems.length === 1) {
       const singleItem = copiedItems[0]
@@ -249,35 +246,39 @@ export function useClipboard() {
       })?.item.internalId,
       items: copiedItems,
       groupOrigins: copiedGroupOrigins,
-      structure: captureClipboardStructure(scheme, involvedGroupIds, resolved?.collectionIds),
+      structure: captureClipboardStructure(scheme, involvedGroupIds, target.collectionIds),
     }
   }
 
+  function canCopy(entries?: readonly CollectionEntry[]) {
+    const scheme = activeScheme.value
+    return (
+      !!scheme &&
+      hasOperationTargets(resolveEditorOperationTargets(scheme, store.isItemEditable, entries))
+    )
+  }
+
   /** 根据当前选中内容覆盖内存剪贴板（不写历史）。 */
-  function copyToClipboard(entries?: readonly CollectionEntry[]) {
+  function copy(entries?: readonly CollectionEntry[]) {
     if (!activeScheme.value) return
     const data = buildClipboardDataFromSelection(entries)
     if (containsClipboardData(data)) clipboard.value = data
   }
 
-  /** 先复制到剪贴板，再删掉选中项；整段包在一笔撤销里，可以一次 Ctrl+Z 找回。 */
-  function cutToClipboard() {
-    if (!activeScheme.value) return
-
-    recordTransaction('clipboard.cut', () => {
-      copyToClipboard()
-
-      setSchemeItems(
-        activeScheme.value!,
-        activeScheme.value!.items.value.filter(
-          (item) => !activeScheme.value!.selectedItemIds.value.has(item.internalId)
-        )
-      )
-      activeScheme.value!.selectedItemIds.value.clear()
-
-      store.triggerSceneUpdate()
-      store.triggerSelectionUpdate()
-    })
+  /** 同一份目标快照用于复制和移除，集合及全部内容合为一笔事务。 */
+  function cut(entries?: readonly CollectionEntry[]) {
+    const target = getRemovalTarget(entries)
+    if (!target) return false
+    const data = buildClipboardData(target.scheme, target)
+    recordTransaction(
+      'clipboard.cut',
+      () => {
+        clipboard.value = data
+        applyRemoval(target)
+      },
+      target.scheme
+    )
+    return true
   }
 
   /** 在粘贴事务内统一选择新增家具和节点；没有节点时继续使用画布选区。 */
@@ -565,28 +566,6 @@ export function useClipboard() {
     })
   }
 
-  /** 有选中则写入内存剪贴板（供 UI / 快捷键调用）。 */
-  function copy(entries?: readonly CollectionEntry[]) {
-    if (!activeScheme.value || (!entries && activeScheme.value.selectedItemIds.value.size === 0)) {
-      console.warn('[Clipboard] No items selected to copy')
-      return
-    }
-
-    copyToClipboard(entries)
-    console.log(`[Clipboard] Copied ${clipboard.value.items.length} items`)
-  }
-
-  /** 有选中则复制并删除原物（可撤销）。 */
-  function cut() {
-    if (!activeScheme.value || activeScheme.value.selectedItemIds.value.size === 0) {
-      console.warn('[Clipboard] No items selected to cut')
-      return
-    }
-
-    cutToClipboard()
-    console.log(`[Clipboard] Cut ${clipboard.value.items.length} items`)
-  }
-
   /** 剪贴板有内容则在原位置插入一份副本（新编号）。 */
   function paste() {
     if (!hasClipboardData.value) {
@@ -678,14 +657,14 @@ export function useClipboard() {
     hasClipboardData,
     canPaste,
     canPreserveSourceIds,
+    canCopy,
+    canCut,
     copy,
     cut,
     paste,
     advancedPaste,
     pasteItems,
     clearClipboard,
-    copyToClipboard,
-    cutToClipboard,
     buildClipboardDataFromSelection,
   }
 }

@@ -1,10 +1,10 @@
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ref } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
-import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
 import { UNCLASSIFIED } from '@/lib/collectionTree'
@@ -117,7 +117,7 @@ it('orders sibling groups and collections and lifts contents when removing a fol
   expect(panel.rows.value.filter((row) => row.kind === 'group').map((row) => row.id)).toEqual([
     8, 7,
   ])
-  panel.deleteCollection(child)
+  panel.dissolveCollection(child)
   expect(scheme.collectionTree.value.groups.every((entry) => entry.collectionId === root)).toBe(
     true
   )
@@ -328,7 +328,7 @@ it('shows a hidden collection through its ancestors while retaining child hiding
 it('removes membership with group deletion and restores it on undo, retaining empty folders', () => {
   const { store, scheme, child, history } = setup()
   useEditorSelection().updateSelection(['a'], false)
-  useEditorManipulation().deleteSelected()
+  useEditorRemoval().remove()
   expect(scheme.collectionTree.value.groups).toEqual([
     { groupId: 8, name: 'Garden', collectionId: null, order: 8 },
   ])
@@ -578,8 +578,8 @@ it('shows only unclassified groups while retaining their own hiding', () => {
 it('keeps the unclassified restriction controls reachable after deleting the last collection', () => {
   const { store, scheme, panel, child, root } = setup()
   store.setCollectionRestriction(UNCLASSIFIED, 'locked', true)
-  panel.deleteCollection(child)
-  panel.deleteCollection(root)
+  panel.dissolveCollection(child)
+  panel.dissolveCollection(root)
   expect(scheme.collectionTree.value.nodes).toHaveLength(0)
   expect(panel.rows.value[0]).toMatchObject({ id: UNCLASSIFIED, locked: true })
   store.setCollectionRestriction(UNCLASSIFIED, 'locked', false)

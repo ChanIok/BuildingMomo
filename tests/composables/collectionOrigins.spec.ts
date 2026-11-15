@@ -1,3 +1,4 @@
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
 import { useGameDataStore } from '@/stores/gameDataStore'
@@ -183,7 +184,7 @@ it('rejects partial or extra selections, and respects locked members', () => {
 })
 
 it('clears invalid origins in the same transaction and restores them with undo', () => {
-  const { scheme, origins, select, manipulation, history, directory } = setup()
+  const { scheme, origins, select, history, directory } = setup()
   origins.setCollectionOrigin('house', 'a')
   origins.setCollectionOrigin('floor', 'a')
   directory.move({ kind: 'group', id: 7 }, 'house')
@@ -192,7 +193,7 @@ it('clears invalid origins in the same transaction and restores them with undo',
   history.undo()
   expect(scheme.collectionTree.value.nodes[1]!.originItemId).toBe('a')
   select('house')
-  manipulation.deleteSelected()
+  useEditorRemoval().remove()
   expect(scheme.collectionTree.value.nodes.every((node) => !node.originItemId)).toBe(true)
   history.undo()
   expect(resolveSelectionReference(scheme)?.item.internalId).toBe('a')

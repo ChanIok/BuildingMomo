@@ -6,6 +6,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { useClipboard } from '@/composables/useClipboard'
 import { hasTextSelection } from '@/lib/keyboard'
 import type { GroupEditTarget } from '@/types/editor'
@@ -43,11 +44,15 @@ const { groups, ungrouped, renameGroup, canRenameGroup } = useGroupPanel()
 const { canGroupSelection, canUngroupSelection, requestGroup, ungroupSelected } = useEditorGroups()
 const {
   copy: copyNodes,
+  cut,
+  canCopy,
+  canCut,
   clipboard,
   canPaste,
   buildClipboardDataFromSelection,
   pasteItems,
 } = useClipboard()
+const { canRemove, remove } = useEditorRemoval()
 const { canEditCollectionOrigin, clearCollectionOrigin } = useEditorCollectionOrigins()
 const menuHasOrigin = computed(
   () =>
@@ -64,9 +69,7 @@ const {
   canEdit,
   createCollection,
   renameCollection,
-  deleteCollection,
-  canDeleteEntries,
-  deleteEntries,
+  dissolveCollection,
   canMoveMany,
   moveMany,
   normalizeEntries,
@@ -82,7 +85,6 @@ const {
   select,
   deselect,
   clear: clearSelection,
-  adopt: adoptSelection,
   selectionState,
   selectionPresentation,
   selectionCoverage,
@@ -393,18 +395,24 @@ function pasteMenu() {
   else if (row) pasteNodes(row.kind === 'collection' && !row.virtual ? row.id : row.parentId)
 }
 
-function deleteNodes(entries: readonly CollectionEntry[]) {
-  if (!deleteEntries(entries)) return
-  // 删除后将焦点留在列表，不自动聚焦或选中下一行。
+function finishRemoval() {
+  // 删除/剪切后将焦点留在列表，不自动聚焦或选中下一行。
   focused.value = null
   dismissMenu()
-  adoptSelection([])
   panelSelectionVersion = store.selectionVersion
   list.value?.focus({ preventScroll: true })
 }
 
+function deleteNodes(entries?: readonly CollectionEntry[]) {
+  if (remove(entries)) finishRemoval()
+}
+
+function cutNodes(entries?: readonly CollectionEntry[]) {
+  if (cut(entries)) finishRemoval()
+}
+
 // 仅列表焦点下接管节点命令；改名输入和原生文本复制仍由浏览器处理。
-function listKey(event: KeyboardEvent) {
+function listKey(event: KeyboardEvent, entries?: readonly CollectionEntry[]) {
   if (
     event.altKey ||
     (event.target as Element | null)?.closest('input, textarea, [contenteditable]')
@@ -413,18 +421,19 @@ function listKey(event: KeyboardEvent) {
   const key = event.key.toLowerCase()
   const control = event.ctrlKey || event.metaKey
   const copying = control && key === 'c' && !event.shiftKey
+  const cutting = control && key === 'x' && !event.shiftKey
   const pasting = control && key === 'v' && !event.shiftKey
   const duplicating = !control && !event.shiftKey && key === 'e'
   const deleting = !control && !event.shiftKey && key === 'delete'
-  if (!copying && !pasting && !duplicating && !deleting) return
-  if (copying && hasTextSelection()) return
+  if (!copying && !cutting && !pasting && !duplicating && !deleting) return
+  if ((copying || cutting) && hasTextSelection()) return
   event.preventDefault()
   event.stopPropagation()
-  if (copying) copyNodes(selectedEntries.value)
+  if (copying) copyNodes(entries)
+  else if (cutting) cutNodes(entries)
   else if (pasting) pasteNodes()
-  else if (deleting) deleteNodes(selectedEntries.value)
-  else if (canEdit.value && selectedEntries.value.length)
-    pasteItems(buildClipboardDataFromSelection(selectedEntries.value), 0, 0)
+  else if (deleting) deleteNodes(entries)
+  else if (canEdit.value) pasteItems(buildClipboardDataFromSelection(entries), 0, 0)
 }
 
 watch(
@@ -899,7 +908,7 @@ watch(
         <ContextMenuContent
           @close-auto-focus="restoreMenuFocus"
           @interact-outside="menuInteractedOutside = true"
-          @keydown.delete="listKey"
+          @keydown.delete="listKey($event, menuEntries)"
         >
           <template v-if="menuTarget === 'background'">
             <ContextMenuItem :disabled="!canEdit" @select="addCollection()">{{
@@ -913,7 +922,10 @@ watch(
             <ContextMenuLabel v-if="!singleMenuEntry">{{
               t('groups.selectedNodes', { count: menuEntries.length })
             }}</ContextMenuLabel>
-            <ContextMenuItem :disabled="!menuEntries.length" @select="copyNodes(menuEntries)">{{
+            <ContextMenuItem :disabled="!canCut(menuEntries)" @select="cutNodes(menuEntries)">{{
+              t('command.edit.cut')
+            }}</ContextMenuItem>
+            <ContextMenuItem :disabled="!canCopy(menuEntries)" @select="copyNodes(menuEntries)">{{
               t('command.edit.copy')
             }}</ContextMenuItem>
             <ContextMenuItem :disabled="!canEdit || !canPaste" @select="pasteMenu()">{{
@@ -999,8 +1011,8 @@ watch(
             </ContextMenuSub>
             <template v-if="singleMenuEntry && menuRow.kind === 'collection' && !menuRow.virtual">
               <ContextMenuSeparator />
-              <ContextMenuItem :disabled="!canEdit" @select="deleteCollection(menuRow.id)">{{
-                t('groups.deleteCollection')
+              <ContextMenuItem :disabled="!canEdit" @select="dissolveCollection(menuRow.id)">{{
+                t('groups.dissolveCollection')
               }}</ContextMenuItem>
             </template>
             <ContextMenuItem
@@ -1010,7 +1022,7 @@ watch(
             >
             <ContextMenuSeparator />
             <ContextMenuItem
-              :disabled="!canDeleteEntries(menuEntries)"
+              :disabled="!canRemove(menuEntries)"
               variant="destructive"
               @select="deleteNodes(menuEntries)"
             >

@@ -1,14 +1,55 @@
 import { collectionAncestors, UNCLASSIFIED, type CollectionTree } from './collectionTree.ts'
 import type { AppItem, CollectionEntry, HomeScheme } from '@/types/editor'
 
-/** 节点操作按完整结构解析，不受画布选择、显隐、锁定、搜索或折叠状态影响。 */
-export function resolveCollectionEntries(
-  scheme: Pick<HomeScheme, 'items' | 'collectionTree'>,
-  entries: readonly CollectionEntry[]
-) {
-  return resolveCollectionTargets(scheme.collectionTree.value, scheme.items.value, entries)
+export interface EditorOperationTargets {
+  entries: readonly CollectionEntry[] | null
+  items: AppItem[]
+  collectionIds: Set<string>
 }
 
+/** 无参解析当前节点选区及额外画布家具；传入节点时严格限定范围。 */
+export function resolveEditorOperationTargets(
+  scheme: Pick<HomeScheme, 'items' | 'collectionTree' | 'selectedEntries' | 'selectedItemIds'>,
+  isItemEditable: (id: string) => boolean,
+  entries?: readonly CollectionEntry[]
+): EditorOperationTargets | null {
+  const includeCanvasSelection = entries === undefined
+  const selectedEntries = entries ?? scheme.selectedEntries.value
+  const nodeEntries = selectedEntries ?? []
+  const nodes = new Set(scheme.collectionTree.value.nodes.map((node) => node.id))
+  const groups = new Set(scheme.items.value.map((item) => item.groupId))
+  if (
+    nodeEntries.some((entry) =>
+      entry.kind === 'group'
+        ? !groups.has(entry.id)
+        : entry.kind === 'collection' && entry.id !== UNCLASSIFIED && !nodes.has(entry.id)
+    )
+  )
+    return null
+
+  const target = resolveCollectionTargets(
+    scheme.collectionTree.value,
+    scheme.items.value,
+    nodeEntries
+  )
+  if (!includeCanvasSelection) return { ...target, entries: selectedEntries }
+  const nodeItems = new Set(target.items.map((item) => item.internalId))
+  return {
+    ...target,
+    entries: selectedEntries,
+    items: scheme.items.value.filter(
+      (item) =>
+        nodeItems.has(item.internalId) ||
+        (scheme.selectedItemIds.value.has(item.internalId) && isItemEditable(item.internalId))
+    ),
+  }
+}
+
+export function hasOperationTargets(target: EditorOperationTargets | null): boolean {
+  return !!target && (target.items.length > 0 || target.collectionIds.size > 0)
+}
+
+/** 节点操作按完整结构解析，不受画布选择、显隐、锁定、搜索或折叠状态影响。 */
 export function resolveCollectionTargets(
   tree: CollectionTree,
   items: readonly AppItem[],

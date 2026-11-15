@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useClipboard } from '@/composables/useClipboard'
+import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
 import { isCollectionTree } from '@/lib/collectionTree'
@@ -64,6 +65,177 @@ function setup() {
   return { store, scheme, clipboard: useClipboard(), history: useEditorHistory() }
 }
 const outdoor = [{ kind: 'collection', id: 'outdoor' }] as const
+
+it.each(['delete', 'cut'] as const)(
+  '%s removes explicit protected subtrees and editable carried items in one reversible transaction',
+  (operation) => {
+    const { store, scheme, clipboard, history } = setup()
+    store.setGroupHidden(7, true)
+    store.setGroupLocked(8, true)
+    store.setCollectionRestriction('outdoor', 'hidden', true)
+    store.setGroupLocked(10, true)
+    scheme.selectedEntries.value = [
+      ...outdoor,
+      { kind: 'collection', id: 'building' },
+      { kind: 'group', id: 7 },
+    ]
+    // 全部集合成员都受保护，画布额外选区仍只处理可编辑项。
+    scheme.selectedItemIds.value = new Set(['roof', 'loose', 'other'])
+    scheme.activeCollectionId.value = 'building'
+    scheme.maxInstanceId.value = 1200
+    const entries = scheme.selectedEntries.value
+    const beforeItems = scheme.items.value
+    const beforeTree = scheme.collectionTree.value
+    const origins = scheme.groupOrigins.value
+    const hidden = scheme.hiddenCollectionIds.value
+    const locked = scheme.lockedGroupIds.value
+    const expectedIds = ['roof', 'wall', 'tree', 'loose']
+    const copy = clipboard.buildClipboardDataFromSelection()
+    expect(copy.items.map((item) => item.internalId)).toEqual(expectedIds)
+
+    const removal = useEditorRemoval()
+    expect(removal.canRemove()).toBe(true)
+    expect(clipboard.canCut()).toBe(true)
+    expect(operation === 'cut' ? clipboard.cut() : removal.remove()).toBe(true)
+    expect(scheme.items.value).toEqual([beforeItems[3]])
+    expect(scheme.items.value[0]).toBe(beforeItems[3])
+    expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['tea', 'indoor'])
+    expect(scheme.collectionTree.value.groups).toEqual([beforeTree.groups[3]])
+    expect(scheme.groupOrigins.value.size).toBe(0)
+    expect(scheme.selectedItemIds.value.size).toBe(0)
+    expect(scheme.selectedEntries.value).toEqual([])
+    expect(scheme.activeCollectionId.value).toBeNull()
+    expect(scheme.hiddenCollectionIds.value).toBe(hidden)
+    expect(scheme.lockedGroupIds.value).toBe(locked)
+    expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+    const transaction = scheme.history.value!.transactionUndoStack[0]!
+    expect(transaction.entriesBefore).toEqual(entries)
+    expect(transaction.entriesAfter).toEqual([])
+    const removed = transaction.transaction.ops.find((op) => op.type === 'remove_items')!
+    expect(removed.items.map((item) => item.internalId)).toEqual(expectedIds)
+    if (operation === 'cut') expect(clipboard.clipboard.value).toEqual(copy)
+
+    history.undo()
+    expect(new Map(scheme.items.value.map((item) => [item.internalId, item]))).toEqual(
+      new Map(beforeItems.map((item) => [item.internalId, item]))
+    )
+    expect(scheme.collectionTree.value).toEqual(beforeTree)
+    expect(scheme.groupOrigins.value).toEqual(origins)
+    expect(scheme.selectedEntries.value).toEqual(entries)
+    expect(store.isItemVisible('roof')).toBe(false)
+    expect(store.isItemEditable('wall')).toBe(false)
+    expect(scheme.maxGroupId.value).toBe(10)
+    expect(scheme.maxInstanceId.value).toBe(1200)
+    history.redo()
+    expect(scheme.items.value.map((item) => item.internalId)).toEqual(['other'])
+    expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['tea', 'indoor'])
+    expect(scheme.selectedEntries.value).toEqual([])
+    if (operation === 'cut') {
+      clipboard.paste()
+      expect(scheme.items.value).toHaveLength(5)
+      expect(scheme.collectionTree.value.nodes).toHaveLength(5)
+      expect(isCollectionTree(scheme.collectionTree.value)).toBe(true)
+    }
+  }
+)
+
+it('cuts a specified protected collection without carrying or clearing unrelated selections', () => {
+  const { store, scheme, clipboard } = setup()
+  store.setCollectionRestriction('outdoor', 'locked', true)
+  scheme.selectedEntries.value = [
+    ...outdoor,
+    { kind: 'collection', id: 'indoor' },
+    { kind: 'ungrouped', id: 0 },
+  ]
+  scheme.selectedItemIds.value = new Set(['other', 'loose'])
+  expect(clipboard.cut(outdoor)).toBe(true)
+  expect(clipboard.clipboard.value.items.map((item) => item.internalId)).toEqual([
+    'roof',
+    'wall',
+    'tree',
+  ])
+  expect(scheme.items.value.map((item) => item.internalId)).toEqual(['other', 'loose'])
+  expect(scheme.selectedItemIds.value).toEqual(new Set(['other', 'loose']))
+  expect(scheme.selectedEntries.value).toEqual([
+    { kind: 'collection', id: 'indoor' },
+    { kind: 'ungrouped', id: 0 },
+  ])
+})
+
+it('cuts empty collections without touching furniture and pastes them across schemes', () => {
+  const { store, scheme, clipboard, history } = setup()
+  scheme.selectedEntries.value = [{ kind: 'collection', id: 'empty' }]
+  const items = scheme.items.value
+  const origins = scheme.groupOrigins.value
+  const sceneVersion = store.sceneVersion
+  expect(clipboard.canCopy()).toBe(true)
+  expect(clipboard.canCut()).toBe(true)
+  expect(clipboard.cut()).toBe(true)
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.groupOrigins.value).toBe(origins)
+  expect(store.sceneVersion).toBe(sceneVersion)
+  expect(scheme.collectionTree.value.nodes.some((node) => node.id === 'empty')).toBe(false)
+  expect(clipboard.clipboard.value.structure.collectionIds).toEqual(['empty'])
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+  history.undo()
+  expect(scheme.collectionTree.value.nodes.some((node) => node.id === 'empty')).toBe(true)
+  expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'empty' }])
+  history.redo()
+  expect(scheme.collectionTree.value.nodes.some((node) => node.id === 'empty')).toBe(false)
+  store.createScheme('empty destination')
+  clipboard.paste()
+  expect(store.activeScheme!.collectionTree.value.nodes).toHaveLength(1)
+  expect(store.activeScheme!.collectionTree.value.nodes[0]!.name).toBe('Empty')
+  expect(store.activeScheme!.items.value).toEqual([])
+})
+
+it('cuts canvas furniture without deleting its now-empty containing collection or ancestors', () => {
+  const { scheme, clipboard } = setup()
+  scheme.selectedItemIds.value = new Set(['roof', 'wall'])
+  const nodes = scheme.collectionTree.value.nodes
+  expect(clipboard.cut()).toBe(true)
+  expect(scheme.collectionTree.value.nodes).toBe(nodes)
+  expect(clipboard.clipboard.value.structure.collectionIds).toEqual([])
+  expect(scheme.selectedEntries.value).toBeNull()
+})
+
+it('rejects stale and unavailable cloud cuts without overwriting the clipboard or deleting partial targets', () => {
+  const { scheme, clipboard } = setup()
+  clipboard.copy(outdoor)
+  const previous = clipboard.clipboard.value
+  const items = scheme.items.value
+  const tree = scheme.collectionTree.value
+  scheme.selectedEntries.value = [...outdoor, { kind: 'collection', id: 'missing' }]
+  expect(clipboard.canCut()).toBe(false)
+  expect(clipboard.cut()).toBe(false)
+  scheme.selectedEntries.value = outdoor
+  scheme.source.value = 'cloud'
+  expect(clipboard.canCut()).toBe(false)
+  expect(clipboard.cut()).toBe(false)
+  useCloudSchemeStore().schemeId = scheme.id
+  useCloudSchemeStore().status = 'connected'
+  scheme.collectionsSupported.value = false
+  expect(clipboard.canCut()).toBe(false)
+  expect(clipboard.cut()).toBe(false)
+  expect(clipboard.clipboard.value).toBe(previous)
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.collectionTree.value).toBe(tree)
+  expect(scheme.history.value).toBeUndefined()
+})
+
+it.each(['delete', 'cut'] as const)(
+  'keeps offline canvas %s available without collection capabilities',
+  (operation) => {
+    const { store, scheme, clipboard } = setup()
+    scheme.source.value = 'cloud'
+    scheme.collectionsSupported.value = false
+    scheme.selectedItemIds.value = new Set(['roof'])
+    expect(operation === 'cut' ? clipboard.cut() : useEditorRemoval().remove()).toBe(true)
+    expect(scheme.items.value.some((item) => item.internalId === 'roof')).toBe(false)
+    expect(scheme.collectionTree.value.nodes).toHaveLength(5)
+    expect(store.pendingTransactions).toHaveLength(1)
+  }
+)
 
 it('captures complete panel subtrees, empty folders and own restrictions without carried canvas items', () => {
   const { store, scheme, clipboard } = setup()

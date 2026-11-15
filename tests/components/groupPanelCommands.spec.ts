@@ -78,9 +78,78 @@ function panelSetup() {
   }
   ui.groupPanelOpen = true
   const panel = (GroupPanel as any).setup({}, { expose() {} })
-  panel.list.value = { contains: () => true, querySelector: () => null }
+  panel.list.value = { contains: () => true, querySelector: () => null, focus: vi.fn() }
   return { store, scheme, ui, panel }
 }
+
+it.each(['Delete', 'x'])(
+  'uses the complete current selection for the panel %s shortcut',
+  async (key) => {
+    const { store, scheme, panel } = mountSetup(panelSetup)
+    vi.stubGlobal('window', { getSelection: () => null })
+    store.setGroupHidden(7, true)
+    store.setGroupLocked(8, true)
+    scheme.selectedEntries.value = [{ kind: 'collection', id: 'house' }]
+    scheme.selectedItemIds.value = new Set(['item-2'])
+    const preventDefault = vi.fn(),
+      stopPropagation = vi.fn()
+    panel.listKey({ key, ctrlKey: key === 'x', preventDefault, stopPropagation })
+    await nextTick()
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(stopPropagation).toHaveBeenCalledOnce()
+    expect(scheme.items.value).toEqual([])
+    expect(scheme.collectionTree.value.nodes).toEqual([])
+    expect(scheme.selectedEntries.value).toEqual([])
+    expect(panel.focused.value).toBeNull()
+    expect(panel.list.value.focus).toHaveBeenCalledWith({ preventScroll: true })
+    expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+    expect(scheme.history.value!.transactionUndoStack[0]!.entriesAfter).toEqual([])
+    if (key === 'x') expect(panel.clipboard.value.items).toHaveLength(3)
+    useEditorHistory().undo()
+    expect(scheme.items.value).toHaveLength(3)
+    expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['house'])
+    expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'house' }])
+    expect(store.isItemVisible('item-0')).toBe(false)
+    expect(store.isItemEditable('item-1')).toBe(false)
+  }
+)
+
+it.each(['deleteNodes', 'cutNodes'])(
+  'keeps unrelated selections inside the %s transaction for a specified menu target',
+  async (action) => {
+    const { scheme, panel } = mountSetup(panelSetup)
+    scheme.selectedEntries.value = [
+      { kind: 'collection', id: 'house' },
+      { kind: 'ungrouped', id: 0 },
+    ]
+    scheme.selectedItemIds.value = new Set(['item-0', 'item-1', 'item-2'])
+    panel[action]([{ kind: 'collection', id: 'house' }])
+    await nextTick()
+    expect(scheme.items.value.map((item) => item.internalId)).toEqual(['item-2'])
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-2']))
+    const remaining = [{ kind: 'ungrouped', id: 0 }]
+    expect(scheme.selectedEntries.value).toEqual(remaining)
+    expect(scheme.history.value!.transactionUndoStack[0]!.entriesAfter).toEqual(remaining)
+    useEditorHistory().undo()
+    useEditorHistory().redo()
+    expect(scheme.selectedEntries.value).toEqual(remaining)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-2']))
+  }
+)
+
+it('leaves native text cutting untouched while a collection is selected', () => {
+  const { scheme, panel } = mountSetup(panelSetup)
+  vi.stubGlobal('window', { getSelection: () => ({ toString: () => 'selected text' }) })
+  scheme.selectedEntries.value = [{ kind: 'collection', id: 'house' }]
+  const items = scheme.items.value
+  const preventDefault = vi.fn(),
+    stopPropagation = vi.fn()
+  panel.listKey({ key: 'x', ctrlKey: true, preventDefault, stopPropagation })
+  expect(preventDefault).not.toHaveBeenCalled()
+  expect(stopPropagation).not.toHaveBeenCalled()
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.history.value).toBeUndefined()
+})
 
 it('marks selected contents along folded paths without selecting their ancestor nodes', async () => {
   const { scheme, panel } = mountSetup(panelSetup)
@@ -320,7 +389,6 @@ it.each([true, false])(
     expect(scheme.items.value.map((item) => item.internalId)).toEqual([
       ...originals.map((item) => item.internalId),
       ...result.newIds,
-      ...second.newIds,
     ])
   }
 )

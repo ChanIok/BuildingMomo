@@ -81,11 +81,6 @@ export function useGroupPanelSelection(
     if (store.activeScheme?.selectedItemIds.value.size || explicit.value !== null) clearSelection()
     reset()
   }
-  /** 接管明确的节点选择并重置范围锚点，不另记选择历史。 */
-  function adopt(entries: readonly CollectionEntry[]) {
-    followCanvas()
-    explicit.value = new Map(entries.map((entry) => [groupRowKey(entry), entry]))
-  }
   function targetsFor(nodes: Iterable<CollectionEntry>) {
     const items = new Set<string>()
     for (const entry of nodes) {
@@ -240,7 +235,6 @@ export function useGroupPanelSelection(
     select,
     deselect,
     clear,
-    adopt,
     selectionState,
     selectionPresentation,
     selectionCoverage,
