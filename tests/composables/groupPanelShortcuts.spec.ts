@@ -140,7 +140,7 @@ it.each(
     expect(commands.isCommandEnabled(command)).toBe(false)
     expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
     if (command === 'edit.cut') {
-      expect(useClipboard().clipboard.value.structure.collectionIds).toEqual([
+      expect(useClipboard().clipboard.value.structure.tree.nodes.map((node) => node.id)).toEqual([
         'folder',
         'empty-child',
       ])

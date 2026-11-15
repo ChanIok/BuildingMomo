@@ -1,4 +1,4 @@
-import { collectionAncestors, emptyCollectionTree, type CollectionTree } from './collectionTree'
+import { emptyCollectionTree, type CollectionTree } from './collectionTree'
 import type { ClipboardData, ClipboardStructure, HomeScheme, PasteResult } from '@/types/editor'
 
 export function createEmptyClipboardData(): ClipboardData {
@@ -8,7 +8,7 @@ export function createEmptyClipboardData(): ClipboardData {
     groupOrigins: new Map(),
     structure: {
       tree: emptyCollectionTree(),
-      collectionIds: [],
+      sourceParents: { collections: new Map(), groups: new Map() },
       hiddenGroups: [],
       lockedGroups: [],
       hiddenCollections: [],
@@ -17,36 +17,54 @@ export function createEmptyClipboardData(): ClipboardData {
   }
 }
 
+/**
+ * 调用方已将选中的集合展开为完整子树；这里只快照实际复制的节点及自身标记。
+ * 外部祖先的结构和显隐、锁定状态不随内容搬运。
+ */
 export function captureClipboardStructure(
   scheme: HomeScheme,
   groupIds: ReadonlySet<number>,
   collectionIds: ReadonlySet<string> = new Set()
 ): ClipboardStructure {
   const tree = scheme.collectionTree.value
-  const nodes = new Map(tree.nodes.map((node) => [node.id, node]))
+  const nodes = tree.nodes.filter((node) => collectionIds.has(node.id)).map((node) => ({ ...node }))
   const groups = tree.groups.filter((group) => groupIds.has(group.groupId)).map((g) => ({ ...g }))
   const namedGroups = new Set(groups.map((group) => group.groupId))
   // 未命名、尚无目录元数据的组也要保留其组身份。
   for (const id of groupIds)
     if (!namedGroups.has(id)) groups.push({ groupId: id, collectionId: null, order: id })
-  const needed = new Set(collectionIds)
-  const parents = groups.flatMap((group) => (group.collectionId ? [group.collectionId] : []))
-  for (const id of [...collectionIds, ...parents])
-    for (const ancestor of collectionAncestors(nodes, id)) needed.add(ancestor)
+  // 将外部父级单独保存，并在副本树中断开引用，使剪贴板本身也是合法的 CollectionTree。
+  const sourceParents: ClipboardStructure['sourceParents'] = {
+    collections: new Map(),
+    groups: new Map(),
+  }
+  for (const node of nodes) {
+    if (node.parentId !== null && !collectionIds.has(node.parentId)) {
+      sourceParents.collections.set(node.id, node.parentId)
+      node.parentId = null
+    }
+  }
+  for (const group of groups) {
+    if (group.collectionId !== null && !collectionIds.has(group.collectionId)) {
+      sourceParents.groups.set(group.groupId, group.collectionId)
+      group.collectionId = null
+    }
+  }
   return {
-    tree: {
-      nodes: tree.nodes.filter((node) => needed.has(node.id)).map((node) => ({ ...node })),
-      groups,
-    },
-    collectionIds: [...collectionIds],
+    tree: { nodes, groups },
+    sourceParents,
     hiddenGroups: [...groupIds].filter((id) => scheme.hiddenGroupIds.value.has(id)),
     lockedGroups: [...groupIds].filter((id) => scheme.lockedGroupIds.value.has(id)),
-    hiddenCollections: [...needed].filter((id) => scheme.hiddenCollectionIds.value.has(id)),
-    lockedCollections: [...needed].filter((id) => scheme.lockedCollectionIds.value.has(id)),
+    hiddenCollections: [...collectionIds].filter((id) => scheme.hiddenCollectionIds.value.has(id)),
+    lockedCollections: [...collectionIds].filter((id) => scheme.lockedCollectionIds.value.has(id)),
   }
 }
 
-/** 新建副本节点，不通过名称匹配或合并目标方案的集合。undefined 表示沿用来源位置。 */
+/**
+ * 重建内部层级，只为实际复制的集合创建新 ID，不匹配名称或补建祖先。
+ * parentId 只影响根节点：undefined 使用默认归属，null 明确放到根层，字符串指定目标集合。
+ * 默认归属仅在同方案复用仍存在的来源父集合，否则放到根层（组合归入未分类）。
+ */
 export function restoreClipboardStructure(
   structure: ClipboardStructure,
   current: CollectionTree,
@@ -56,12 +74,13 @@ export function restoreClipboardStructure(
   copyName: (name: string) => string,
   itemIds: ReadonlyMap<string, string> = new Map()
 ) {
-  const sourceNodes = new Map(structure.tree.nodes.map((node) => [node.id, node]))
   const existing = new Set(current.nodes.map((node) => node.id))
-  const copied = new Set(structure.collectionIds)
-  const collectionMap = new Map<string, string>()
+  // 先分配全部集合 ID，后续恢复父子关系就不依赖节点的遍历顺序。
+  const collectionMap = new Map(structure.tree.nodes.map((node) => [node.id, crypto.randomUUID()]))
   const nodes = [...current.nodes]
   const groups = [...current.groups]
+  // 面板只选择、定位新增内容的根节点，不把已有目标集合纳入选区。
+  const roots: PasteResult['roots'] = []
   const nextOrder = (parent: string | null, kind: 'collection' | 'group') => {
     const orders =
       kind === 'collection'
@@ -70,27 +89,18 @@ export function restoreClipboardStructure(
     return Math.max(-1, ...orders) + 1
   }
 
-  function context(id: string | null): string | null {
-    if (id === null) return parentId ?? null
-    if (copied.has(id) || collectionMap.has(id)) return cloneNode(id)
+  function rootParent(sourceParent: string | undefined): string | null {
     if (parentId !== undefined) return parentId
-    if (sameScheme && existing.has(id)) return id
-    return cloneNode(id)
+    return sameScheme && sourceParent && existing.has(sourceParent) ? sourceParent : null
   }
-  function cloneNode(id: string): string {
-    const cached = collectionMap.get(id)
-    if (cached) return cached
-    const source = sourceNodes.get(id)!
-    // 显式复制的集合根不携带未选中的外部祖先；组根跨方案时则补全祖先路径。
-    const isRoot = copied.has(id) && !copied.has(source.parentId ?? '')
-    let parent: string | null
-    if (!isRoot) parent = context(source.parentId)
-    else if (parentId !== undefined) parent = parentId
-    else
-      parent =
-        sameScheme && source.parentId && existing.has(source.parentId) ? source.parentId : null
-    const nextId = crypto.randomUUID()
-    collectionMap.set(id, nextId)
+  // 根节点按来源顺序追加到目标末尾；子节点沿用内部顺序。
+  for (const source of [...structure.tree.nodes].sort((a, b) => a.order - b.order)) {
+    const nextId = collectionMap.get(source.id)!
+    const isRoot = source.parentId === null
+    const parent =
+      source.parentId === null
+        ? rootParent(structure.sourceParents.collections.get(source.id))
+        : collectionMap.get(source.parentId)!
     const { originItemId: sourceOrigin, ...nodeData } = source
     const originItemId = sourceOrigin ? itemIds.get(sourceOrigin) : undefined
     nodes.push({
@@ -99,35 +109,25 @@ export function restoreClipboardStructure(
       id: nextId,
       parentId: parent,
       name: isRoot && sameScheme ? copyName(source.name) : source.name,
-      order: copied.has(source.parentId ?? '') ? source.order : nextOrder(parent, 'collection'),
+      order: isRoot ? nextOrder(parent, 'collection') : source.order,
     })
-    return nextId
+    if (isRoot) roots.push({ kind: 'collection', id: nextId })
   }
-  for (const node of [...structure.tree.nodes].sort((a, b) => a.order - b.order))
-    if (copied.has(node.id)) cloneNode(node.id)
   for (const group of [...structure.tree.groups].sort((a, b) => a.order - b.order)) {
     const id = groupIds.get(group.groupId)
     if (id === undefined) continue
-    const parent = context(group.collectionId)
+    const isRoot = group.collectionId === null
+    const parent =
+      group.collectionId === null
+        ? rootParent(structure.sourceParents.groups.get(group.groupId))
+        : collectionMap.get(group.collectionId)!
     groups.push({
       ...group,
       groupId: id,
       collectionId: parent,
-      order: copied.has(group.collectionId ?? '') ? group.order : nextOrder(parent, 'group'),
+      order: isRoot ? nextOrder(parent, 'group') : group.order,
     })
+    if (isRoot) roots.push({ kind: 'group', id })
   }
-  // 跨方案补全的祖先也是新副本的根节点，面板应该选中并定位它们。
-  const newCollections = new Set(collectionMap.values())
-  const newGroups = new Set(groupIds.values())
-  const roots: PasteResult['roots'] = [
-    ...nodes
-      .filter((node) => newCollections.has(node.id) && !newCollections.has(node.parentId ?? ''))
-      .map((node) => ({ kind: 'collection' as const, id: node.id })),
-    ...groups
-      .filter(
-        (group) => newGroups.has(group.groupId) && !newCollections.has(group.collectionId ?? '')
-      )
-      .map((group) => ({ kind: 'group' as const, id: group.groupId })),
-  ]
   return { tree: { nodes, groups }, collectionMap, roots }
 }

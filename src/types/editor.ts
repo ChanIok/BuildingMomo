@@ -276,9 +276,13 @@ export type CollectionEntry =
   | { kind: 'ungrouped'; id: number }
 
 export interface ClipboardStructure {
+  /** 仅包含实际复制的节点，外部父级不进入树。 */
   tree: CollectionTree
-  /** 真正复制的集合；其余节点仅用于恢复来源路径。 */
-  collectionIds: string[]
+  /** 根节点的外部父集合，仅用于同方案默认粘贴时恢复归属。 */
+  sourceParents: {
+    collections: Map<string, string>
+    groups: Map<number, string>
+  }
   hiddenGroups: number[]
   lockedGroups: number[]
   hiddenCollections: string[]
@@ -287,7 +291,7 @@ export interface ClipboardStructure {
 
 export interface ClipboardData {
   referenceItemId?: string // 复制时确定的整体变换参考家具
-  sourceSchemeId?: string | null // 剪贴板来源方案 ID，用于判断高级粘贴模式可用性
+  sourceSchemeId?: string | null // 来源方案 ID，用于默认归属与保留源 ID 粘贴判断
   items: AppItem[] // 复制的物品列表
   groupOrigins: Map<number, string> // 组原点映射 (groupId -> originItemId)
   structure: ClipboardStructure

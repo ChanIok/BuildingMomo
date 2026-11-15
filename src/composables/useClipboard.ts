@@ -157,7 +157,7 @@ function getClipboardEffectiveWorkingRotation(
 type InsertIdMode = 'regenerate' | 'preserve-source'
 
 function containsClipboardData(data: ClipboardData) {
-  return data.items.length > 0 || data.structure.collectionIds.length > 0
+  return data.items.length > 0 || data.structure.tree.nodes.length > 0
 }
 
 /** insertClipboardData 的选项：是否记入撤销、是否刷新选中、是否通知场景重绘等。 */
@@ -185,12 +185,7 @@ export function useClipboard() {
     const existing = new Set(scheme.collectionTree.value.nodes.map((node) => node.id))
     if (parentId != null && !existing.has(parentId)) return false
     // 目录编辑的连接约束只作用于新能力，不阻断原有家具粘贴的离线事务。
-    const editsCollections =
-      parentId !== undefined ||
-      data.structure.collectionIds.length > 0 ||
-      data.structure.tree.nodes.some(
-        (node) => data.sourceSchemeId !== scheme.id || !existing.has(node.id)
-      )
+    const editsCollections = parentId !== undefined || data.structure.tree.nodes.length > 0
     return (
       !editsCollections ||
       scheme.source.value !== 'cloud' ||

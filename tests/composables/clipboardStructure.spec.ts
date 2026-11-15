@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
+import { useTabStore } from '@/stores/tabStore'
 import { useClipboard } from '@/composables/useClipboard'
 import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
@@ -175,7 +176,7 @@ it('cuts empty collections without touching furniture and pastes them across sch
   expect(scheme.groupOrigins.value).toBe(origins)
   expect(store.sceneVersion).toBe(sceneVersion)
   expect(scheme.collectionTree.value.nodes.some((node) => node.id === 'empty')).toBe(false)
-  expect(clipboard.clipboard.value.structure.collectionIds).toEqual(['empty'])
+  expect(clipboard.clipboard.value.structure.tree.nodes.map((node) => node.id)).toEqual(['empty'])
   expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
   history.undo()
   expect(scheme.collectionTree.value.nodes.some((node) => node.id === 'empty')).toBe(true)
@@ -195,7 +196,7 @@ it('cuts canvas furniture without deleting its now-empty containing collection o
   const nodes = scheme.collectionTree.value.nodes
   expect(clipboard.cut()).toBe(true)
   expect(scheme.collectionTree.value.nodes).toBe(nodes)
-  expect(clipboard.clipboard.value.structure.collectionIds).toEqual([])
+  expect(clipboard.clipboard.value.structure.tree.nodes).toEqual([])
   expect(scheme.selectedEntries.value).toBeNull()
 })
 
@@ -242,15 +243,24 @@ it('captures complete panel subtrees, empty folders and own restrictions without
   store.setGroupHidden(7, true)
   store.setGroupLocked(8, true)
   store.setCollectionRestriction('tea', 'hidden', true)
+  store.setCollectionRestriction('empty', 'locked', true)
   scheme.selectedItemIds.value = new Set(['loose'])
   const before = scheme.items.value
   clipboard.copy([...outdoor, { kind: 'collection', id: 'building' }, { kind: 'group', id: 7 }])
   const data = clipboard.clipboard.value
   expect(data.items.map((item) => item.internalId)).toEqual(['roof', 'wall', 'tree'])
-  expect(data.structure.collectionIds.sort()).toEqual(['building', 'empty', 'outdoor'])
+  expect(data.structure.tree.nodes.map((node) => node.id).sort()).toEqual([
+    'building',
+    'empty',
+    'outdoor',
+  ])
   expect(data.structure.hiddenGroups).toEqual([7])
   expect(data.structure.lockedGroups).toEqual([8])
-  expect(data.structure.hiddenCollections).toEqual(['tea'])
+  expect(data.structure.hiddenCollections).toEqual([])
+  expect(data.structure.lockedCollections).toEqual(['empty'])
+  expect(data.structure.sourceParents.collections).toEqual(new Map([['outdoor', 'tea']]))
+  expect(data.structure.sourceParents.groups.size).toBe(0)
+  expect(data.structure.tree.nodes.find((node) => node.id === 'outdoor')!.parentId).toBeNull()
   expect(isCollectionTree(data.structure.tree)).toBe(true)
   expect(scheme.items.value).toBe(before)
   expect(scheme.history.value).toBeUndefined()
@@ -347,13 +357,30 @@ it('copies an explicit collection across schemes without its external ancestors 
   expect(dest.items.value).toHaveLength(3)
 })
 
-it('retains individual group classifications locally and rebuilds only needed ancestor paths across schemes', () => {
+it('retains individual group classifications locally but carries no ancestor collections across schemes', () => {
   const { store, scheme, clipboard } = setup()
   clipboard.copy([
     { kind: 'group', id: 7 },
     { kind: 'group', id: 9 },
   ])
   expect(clipboard.clipboard.value.items).toHaveLength(2)
+  const { structure } = clipboard.clipboard.value
+  expect(structure.tree.nodes).toEqual([])
+  expect(structure.tree.groups.every((group) => group.collectionId === null)).toBe(true)
+  expect(structure.sourceParents.groups).toEqual(
+    new Map([
+      [7, 'building'],
+      [9, 'outdoor'],
+    ])
+  )
+  expect(isCollectionTree(structure.tree)).toBe(true)
+  // 复制后来源组改变归属，不应改变剪贴板里保存的位置。
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    groups: scheme.collectionTree.value.groups.map((group) =>
+      group.groupId === 7 ? { ...group, collectionId: 'indoor' } : group
+    ),
+  }
   clipboard.paste()
   expect(scheme.collectionTree.value.nodes).toHaveLength(5)
   expect(
@@ -363,18 +390,128 @@ it('retains individual group classifications locally and rebuilds only needed an
       .sort()
   ).toEqual(['building', 'outdoor'])
   store.createScheme('destination')
-  clipboard.paste()
   const dest = store.activeScheme!
-  expect(dest.collectionTree.value.nodes.map((node) => node.name).sort()).toEqual([
-    'Building',
-    'Outdoor',
-    'Tea',
-  ])
+  // 即使目标有同 ID 的集合，跨方案默认粘贴也不复用来源归属。
+  const nodes = [{ id: 'building', name: 'Building', parentId: null, order: 0 }]
+  dest.collectionTree.value = { nodes, groups: [] }
+  const result = clipboard.pasteItems(clipboard.clipboard.value, 0, 0)
+  expect(dest.collectionTree.value.nodes).toEqual(nodes)
+  expect(dest.collectionTree.value.groups.every((group) => group.collectionId === null)).toBe(true)
+  expect(result.roots).toEqual(
+    dest.collectionTree.value.groups.map((group) => ({ kind: 'group', id: group.groupId }))
+  )
+  expect(dest.selectedEntries.value).toEqual(result.roots)
   expect(dest.collectionTree.value.groups.map((group) => group.name).sort()).toEqual([
     'Roof',
     'Tree',
   ])
   expect(isCollectionTree(dest.collectionTree.value)).toBe(true)
+})
+
+it.each(['group', 'collection'] as const)(
+  'pastes a %s at the root when its source parent was deleted without rebuilding ancestors',
+  (kind) => {
+    const { scheme, clipboard } = setup()
+    if (kind === 'group') clipboard.copy([{ kind, id: 7 }])
+    else clipboard.copy(outdoor)
+    const parent = kind === 'group' ? 'building' : 'tea'
+    expect(useEditorRemoval().remove([{ kind: 'collection', id: parent }])).toBe(true)
+    const nodes = scheme.collectionTree.value.nodes
+    const result = clipboard.pasteItems(clipboard.clipboard.value, 0, 0)
+    if (kind === 'group') {
+      expect(scheme.collectionTree.value.nodes).toEqual(nodes)
+      expect(scheme.collectionTree.value.groups.at(-1)!.collectionId).toBeNull()
+    } else {
+      const root = scheme.collectionTree.value.nodes.find(
+        (node) => node.id === result.roots[0]!.id
+      )!
+      expect(root.name).toBe('Outdoor copy')
+      expect(root.parentId).toBeNull()
+      expect(scheme.collectionTree.value.nodes).toHaveLength(3)
+    }
+    expect(result.roots).toHaveLength(1)
+    expect(isCollectionTree(scheme.collectionTree.value)).toBe(true)
+  }
+)
+
+it.each(['destination', null])(
+  'pastes mixed roots across schemes into %s while preserving their internal hierarchy',
+  (parentId) => {
+    const { store, clipboard } = setup()
+    clipboard.copy([...outdoor, { kind: 'group', id: 10 }])
+    store.createScheme('destination')
+    const scheme = store.activeScheme!
+    scheme.collectionTree.value = {
+      nodes: [{ id: 'destination', name: 'Destination', parentId: null, order: 0 }],
+      groups: [],
+    }
+    const result = clipboard.pasteItems(clipboard.clipboard.value, 0, 0, parentId)
+    const tree = scheme.collectionTree.value
+    const root = tree.nodes.find((node) => node.name === 'Outdoor')!
+    const building = tree.nodes.find((node) => node.name === 'Building')!
+    const group = tree.groups.find((group) => group.name === 'Other')!
+    expect(root.parentId).toBe(parentId)
+    expect(group.collectionId).toBe(parentId)
+    expect(building.parentId).toBe(root.id)
+    expect(tree.nodes.find((node) => node.name === 'Empty')!.parentId).toBe(root.id)
+    expect(tree.groups.find((group) => group.name === 'Roof')!.collectionId).toBe(building.id)
+    expect(tree.groups.find((group) => group.name === 'Tree')!.collectionId).toBe(root.id)
+    expect(
+      tree.groups.filter((group) => group.collectionId === building.id).map((g) => g.order)
+    ).toEqual([1, 2])
+    expect(tree.nodes).toHaveLength(4)
+    expect(result.roots).toEqual([
+      { kind: 'collection', id: root.id },
+      { kind: 'group', id: group.groupId },
+    ])
+    expect(isCollectionTree(tree)).toBe(true)
+  }
+)
+
+it('cuts a group out for editing and back into its original collection without duplicating parents', () => {
+  const { store, scheme: source, clipboard, history } = setup()
+  const sourceNodes = source.collectionTree.value.nodes
+  expect(clipboard.cut([{ kind: 'group', id: 7 }])).toBe(true)
+  store.createScheme('workbench')
+  const workbench = store.activeScheme!
+  workbench.collectionTree.value = {
+    nodes: [{ id: 'bench', name: 'Bench', parentId: null, order: 0 }],
+    groups: [],
+  }
+  const first = clipboard.pasteItems(clipboard.clipboard.value, 0, 0, 'bench')
+  const groupId = workbench.items.value[0]!.groupId
+  expect(workbench.collectionTree.value.nodes).toHaveLength(1)
+  history.recordTransaction('test.edit', () => {
+    workbench.items.value = workbench.items.value.map((item) => ({ ...item, x: item.x + 10 }))
+    store.triggerSceneUpdate()
+  })
+  expect(clipboard.cut(first.roots)).toBe(true)
+  expect(clipboard.clipboard.value.structure.tree.nodes).toEqual([])
+  expect(clipboard.clipboard.value.structure.sourceParents.groups).toEqual(
+    new Map([[groupId, 'bench']])
+  )
+  expect(workbench.items.value).toEqual([])
+  useTabStore().openSchemeTab(source.id, source.name.value)
+  const result = clipboard.pasteItems(clipboard.clipboard.value, 0, 0, 'building')
+  const returned = source.items.value.find((item) => item.internalId === result.newIds[0])!
+  const returnedGroup = source.collectionTree.value.groups.find(
+    (group) => group.groupId === returned.groupId
+  )!
+  expect(returned.x).toBe(52)
+  expect(returnedGroup.name).toBe('Roof')
+  expect(returnedGroup.collectionId).toBe('building')
+  expect(source.groupOrigins.value.get(returned.groupId)).toBe(returned.internalId)
+  expect(source.collectionTree.value.nodes).toEqual(sourceNodes)
+  expect(source.items.value).toHaveLength(5)
+  const maxGroupId = source.maxGroupId.value
+  history.undo()
+  expect(source.items.value).toHaveLength(4)
+  expect(source.collectionTree.value.nodes).toEqual(sourceNodes)
+  expect(source.maxGroupId.value).toBe(maxGroupId)
+  history.redo()
+  expect(source.items.value).toContainEqual(returned)
+  expect(source.collectionTree.value.groups).toContainEqual(returnedGroup)
+  expect(source.collectionTree.value.nodes).toEqual(sourceNodes)
 })
 
 it('takes a canvas item selection without expanding to its unselected group or collection siblings', () => {
@@ -386,7 +523,7 @@ it('takes a canvas item selection without expanding to its unselected group or c
   scheme.selectedItemIds.value = new Set(['roof', 'tree'])
   const data = clipboard.buildClipboardDataFromSelection()
   expect(data.items.map((item) => item.internalId)).toEqual(['roof', 'tree'])
-  expect(data.structure.collectionIds).toEqual([])
+  expect(data.structure.tree.nodes).toEqual([])
   scheme.selectedItemIds.value = new Set(['roof'])
   expect(clipboard.buildClipboardDataFromSelection().items[0]!.groupId).toBe(0)
   const panelSingle = clipboard.buildClipboardDataFromSelection([{ kind: 'group', id: 9 }])
@@ -405,7 +542,7 @@ it.each(['group', 'collection'] as const)(
     for (let round = 1; round <= 3; round++) {
       const data = clipboard.buildClipboardDataFromSelection()
       expect(new Set(data.items.map((item) => item.internalId))).toEqual(selected)
-      expect(data.structure.collectionIds).toHaveLength(kind === 'group' ? 0 : 3)
+      expect(data.structure.tree.nodes).toHaveLength(kind === 'group' ? 0 : 3)
       const result = clipboard.pasteItems(data, 0, 0)
       expect(result.newIds).toHaveLength(ids.length)
       expect(scheme.items.value).toHaveLength(5 + round * ids.length)
@@ -501,7 +638,7 @@ it('copies virtual unclassified groups without requiring pre-existing group meta
   scheme.maxGroupId.value = 11
   clipboard.copy([{ kind: 'collection', id: '@unclassified' }])
   expect(clipboard.clipboard.value.items.map((item) => item.internalId)).toEqual(['unclassified'])
-  expect(clipboard.clipboard.value.structure.collectionIds).toEqual([])
+  expect(clipboard.clipboard.value.structure.tree.nodes).toEqual([])
   clipboard.paste()
   expect(
     scheme.collectionTree.value.groups.find((group) => group.groupId === 12)!.collectionId
@@ -585,20 +722,23 @@ it('refuses invalid destinations and protected preserve-ID collisions without cr
   expect(scheme.maxGroupId.value).toBe(10)
 })
 
-it('keeps inherited source restrictions external and inherits the explicit destination restrictions instead', () => {
-  const { store, scheme, clipboard } = setup()
-  store.setCollectionRestriction('tea', 'hidden', true)
-  store.setCollectionRestriction('indoor', 'locked', true)
-  clipboard.copy(outdoor)
-  clipboard.pasteItems(clipboard.clipboard.value, 0, 0, null)
-  expect(scheme.items.value.slice(5).every((item) => store.isItemEditable(item.internalId))).toBe(
-    true
-  )
-  clipboard.pasteItems(clipboard.clipboard.value, 0, 0, 'indoor')
-  expect(scheme.items.value.slice(8).every((item) => !store.isItemEditable(item.internalId))).toBe(
-    true
-  )
-})
+it.each(['group', 'collection'] as const)(
+  'keeps inherited source restrictions external to a %s and inherits destination restrictions instead',
+  (kind) => {
+    const { store, scheme, clipboard } = setup()
+    store.setCollectionRestriction('tea', 'hidden', true)
+    store.setCollectionRestriction('indoor', 'locked', true)
+    if (kind === 'group') clipboard.copy([{ kind, id: 7 }])
+    else clipboard.copy(outdoor)
+    const first = clipboard.pasteItems(clipboard.clipboard.value, 0, 0, null)
+    expect(first.newIds).toHaveLength(kind === 'group' ? 1 : 3)
+    expect(first.newIds.every((id) => store.isItemEditable(id))).toBe(true)
+    const second = clipboard.pasteItems(clipboard.clipboard.value, 0, 0, 'indoor')
+    expect(second.newIds).toHaveLength(first.newIds.length)
+    expect(second.newIds.every((id) => !store.isItemEditable(id))).toBe(true)
+    expect(scheme.collectionTree.value.nodes.some((node) => node.name === 'Tea copy')).toBe(false)
+  }
+)
 
 it('queues shared trees, names and furniture together while leaving personal flags local on remote replay', () => {
   const { store, scheme, clipboard } = setup()
@@ -629,15 +769,21 @@ it('queues shared trees, names and furniture together while leaving personal fla
   expect(scheme.collectionTree.value).toBe(before)
 })
 
-it('keeps the existing offline canvas-paste contract when no new collection hierarchy is required', () => {
-  const { scheme, clipboard } = setup()
-  scheme.selectedItemIds.value = new Set(['roof', 'wall'])
-  clipboard.copy()
-  scheme.source.value = 'cloud'
-  scheme.collectionsSupported.value = true
-  useCloudSchemeStore().status = 'disconnected'
-  expect(clipboard.canPaste.value).toBe(true)
-  clipboard.paste()
-  expect(scheme.items.value).toHaveLength(7)
-  expect(scheme.collectionTree.value.nodes).toHaveLength(5)
-})
+it.each([false, true])(
+  'keeps offline canvas paste available without creating collections, across schemes=%s',
+  (crossScheme) => {
+    const { store, scheme: source, clipboard } = setup()
+    source.selectedItemIds.value = new Set(['roof', 'wall'])
+    clipboard.copy()
+    if (crossScheme) store.createScheme('destination')
+    const scheme = store.activeScheme!
+    scheme.source.value = 'cloud'
+    scheme.collectionsSupported.value = false
+    useCloudSchemeStore().status = 'disconnected'
+    expect(clipboard.canPaste.value).toBe(true)
+    clipboard.paste()
+    expect(scheme.items.value).toHaveLength(crossScheme ? 2 : 7)
+    expect(scheme.collectionTree.value.nodes).toHaveLength(crossScheme ? 0 : 5)
+    expect(isCollectionTree(scheme.collectionTree.value)).toBe(true)
+  }
+)
