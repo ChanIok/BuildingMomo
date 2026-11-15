@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch, watchPostEffect } from 'vue'
-import { FolderInput, FolderPlus, Layers, ListChevronsDownUp, Search, X } from 'lucide-vue-next'
+import {
+  BrushCleaning,
+  FolderInput,
+  FolderPlus,
+  Layers,
+  ListChevronsDownUp,
+  Search,
+  X,
+} from 'lucide-vue-next'
 import { useEditorCollectionOrigins } from '@/composables/editor/useEditorCollectionOrigins'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useI18n } from '@/composables/useI18n'
+import { useNotification } from '@/composables/useNotification'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { useClipboard } from '@/composables/useClipboard'
@@ -40,6 +49,7 @@ import {
 const store = useEditorStore()
 const uiStore = useUIStore()
 const { t } = useI18n()
+const notification = useNotification()
 const { groups, ungrouped, renameGroup, canRenameGroup } = useGroupPanel()
 const { canGroupSelection, canUngroupSelection, requestGroup, ungroupSelected } = useEditorGroups()
 const {
@@ -52,7 +62,7 @@ const {
   buildClipboardDataFromSelection,
   pasteItems,
 } = useClipboard()
-const { canRemove, remove } = useEditorRemoval()
+const { canRemove, remove, emptyCollectionCount, cleanEmptyCollections } = useEditorRemoval()
 const { canEditCollectionOrigin, clearCollectionOrigin } = useEditorCollectionOrigins()
 const menuHasOrigin = computed(
   () =>
@@ -409,6 +419,11 @@ function deleteNodes(entries?: readonly CollectionEntry[]) {
 
 function cutNodes(entries?: readonly CollectionEntry[]) {
   if (cut(entries)) finishRemoval()
+}
+
+function cleanEmptyNodes() {
+  const count = cleanEmptyCollections()
+  if (count) notification.success(t('groups.emptyCollectionsCleaned', { count }))
 }
 
 // 仅列表焦点下接管节点命令；改名输入和原生文本复制仍由浏览器处理。
@@ -791,6 +806,25 @@ watch(
             </TooltipTrigger>
             <TooltipContent side="bottom" class="text-xs" :side-offset="-8">{{
               t('groups.createCollection')
+            }}</TooltipContent>
+          </Tooltip>
+          <Tooltip :delay-duration="300">
+            <TooltipTrigger as-child>
+              <span class="inline-flex">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-7 w-7"
+                  :disabled="!canEdit || emptyCollectionCount === 0"
+                  :aria-label="t('groups.cleanEmptyCollections', { count: emptyCollectionCount })"
+                  @click="cleanEmptyNodes()"
+                >
+                  <BrushCleaning class="h-4 w-4" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" class="text-xs" :side-offset="-8">{{
+              t('groups.cleanEmptyCollections', { count: emptyCollectionCount })
             }}</TooltipContent>
           </Tooltip>
           <Button

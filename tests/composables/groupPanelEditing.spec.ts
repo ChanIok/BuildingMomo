@@ -390,6 +390,150 @@ it('deletes empty collections without updating furniture, origins or the scene',
   expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
 })
 
+it('cleans all empty subtrees in one step while keeping protected furniture, unrelated selections and scene references', () => {
+  const { store, scheme, directory, removal, history, query } = setup()
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    nodes: [
+      ...scheme.collectionTree.value.nodes,
+      { id: 'empty-child', name: 'Child', parentId: 'empty', order: 0 },
+      { id: 'empty-leaf', name: 'Leaf', parentId: 'empty-child', order: 0 },
+      { id: 'empty-room', name: 'Room', parentId: 'house', order: 1 },
+    ],
+  }
+  store.setGroupHidden(7, true)
+  store.setGroupLocked(8, true)
+  store.setCollectionRestriction('empty', 'hidden', true)
+  store.setCollectionRestriction('empty-child', 'locked', true)
+  scheme.selectedEntries.value = [
+    { kind: 'collection', id: 'empty-leaf' },
+    { kind: 'collection', id: 'house' },
+  ]
+  scheme.selectedItemIds.value = new Set(['d'])
+  scheme.activeCollectionId.value = 'empty-leaf'
+  directory.collapseAll()
+  query.value = 'Walls'
+  const items = scheme.items.value,
+    tree = scheme.collectionTree.value,
+    origins = scheme.groupOrigins.value,
+    hidden = scheme.hiddenCollectionIds.value,
+    locked = scheme.lockedCollectionIds.value,
+    entries = scheme.selectedEntries.value,
+    sceneVersion = store.sceneVersion
+  const clipboard = useClipboard().clipboard.value
+
+  expect(removal.emptyCollectionCount.value).toBe(4)
+  expect(removal.cleanEmptyCollections()).toBe(4)
+  expect(scheme.collectionTree.value.nodes).toEqual(tree.nodes.slice(0, 2))
+  expect(scheme.collectionTree.value.groups).toEqual(tree.groups)
+  expect(scheme.items.value).toBe(items)
+  expect(scheme.groupOrigins.value).toBe(origins)
+  expect(store.sceneVersion).toBe(sceneVersion)
+  expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'house' }])
+  expect(scheme.selectedItemIds.value).toEqual(new Set(['d']))
+  expect(scheme.activeCollectionId.value).toBeNull()
+  expect(scheme.hiddenCollectionIds.value).toBe(hidden)
+  expect(scheme.lockedCollectionIds.value).toBe(locked)
+  expect(useClipboard().clipboard.value).toBe(clipboard)
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+  expect(
+    scheme.history.value!.transactionUndoStack[0]!.transaction.ops.map((op) => op.type)
+  ).toEqual(['set_collection_tree'])
+  expect(removal.emptyCollectionCount.value).toBe(0)
+  expect(removal.cleanEmptyCollections()).toBe(0)
+  expect(scheme.history.value!.transactionUndoStack).toHaveLength(1)
+
+  history.undo()
+  expect(scheme.collectionTree.value).toEqual(tree)
+  expect(scheme.selectedEntries.value).toEqual(entries)
+  expect(removal.emptyCollectionCount.value).toBe(4)
+  expect(store.isItemVisible('a')).toBe(false)
+  expect(store.isItemEditable('c')).toBe(false)
+  history.redo()
+  expect(scheme.collectionTree.value.nodes).toEqual(tree.nodes.slice(0, 2))
+  expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'house' }])
+})
+
+it('rechecks live furniture and the active scheme when cleaning empty collections', () => {
+  const { store, scheme, removal } = setup()
+  expect(removal.emptyCollectionCount.value).toBe(1)
+  scheme.items.value = [...scheme.items.value, makeAppItem({ internalId: 'new', groupId: 10 })]
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    groups: [
+      ...scheme.collectionTree.value.groups,
+      { groupId: 10, collectionId: 'empty', order: 0 },
+    ],
+  }
+  const sourceTree = scheme.collectionTree.value
+  expect(removal.cleanEmptyCollections()).toBe(0)
+  expect(removal.emptyCollectionCount.value).toBe(0)
+  expect(scheme.collectionTree.value).toBe(sourceTree)
+  expect(scheme.history.value).toBeUndefined()
+
+  store.createScheme('another scheme')
+  const target = store.activeScheme!
+  target.collectionTree.value = {
+    nodes: [
+      { id: 'parent', name: 'Parent', parentId: null, order: 0 },
+      { id: 'child', name: 'Child', parentId: 'parent', order: 0 },
+    ],
+    groups: [],
+  }
+  expect(removal.emptyCollectionCount.value).toBe(2)
+  expect(removal.cleanEmptyCollections()).toBe(2)
+  expect(target.collectionTree.value.nodes).toEqual([])
+  expect(scheme.collectionTree.value).toBe(sourceTree)
+  expect(scheme.items.value.some((item) => item.internalId === 'new')).toBe(true)
+})
+
+it('guards cloud cleanup and replays cleanup, undo and redo as collection-only transactions', () => {
+  const { store, scheme, removal, history } = setup()
+  const before = scheme.collectionTree.value,
+    items = scheme.items.value
+  scheme.source.value = 'cloud'
+  expect(removal.cleanEmptyCollections()).toBe(0)
+  const cloud = useCloudSchemeStore()
+  cloud.schemeId = scheme.id
+  cloud.status = 'connected'
+  scheme.collectionsSupported.value = false
+  expect(removal.cleanEmptyCollections()).toBe(0)
+  expect(scheme.collectionTree.value).toBe(before)
+  expect(store.pendingTransactions).toHaveLength(0)
+  expect(scheme.history.value).toBeUndefined()
+
+  scheme.collectionsSupported.value = true
+  expect(removal.cleanEmptyCollections()).toBe(1)
+  const after = scheme.collectionTree.value
+  expect(scheme.items.value).toBe(items)
+  expect(store.pendingTransactions).toHaveLength(1)
+  const cleanup = store.pendingTransactions[0]!
+  store.acknowledgePendingTransaction(cleanup.id)
+  history.markTransactionCommitted(scheme.id, cleanup.id)
+  history.undo()
+  expect(scheme.collectionTree.value).toEqual(before)
+  const undo = store.pendingTransactions[0]!
+  store.acknowledgePendingTransaction(undo.id)
+  history.redo()
+  expect(scheme.collectionTree.value).toEqual(after)
+  const transactions = [cleanup, undo, store.pendingTransactions[0]!]
+  expect(
+    transactions.every((tx) => tx.ops.length === 1 && tx.ops[0]!.type === 'set_collection_tree')
+  ).toBe(true)
+
+  store.createScheme('peer')
+  const peer = store.activeScheme!
+  peer.items.value = items
+  peer.collectionTree.value = before
+  applyEditorTransactionToScheme(peer, transactions[0]!)
+  expect(peer.collectionTree.value).toEqual(after)
+  applyEditorTransactionToScheme(peer, transactions[1]!)
+  expect(peer.collectionTree.value).toEqual(before)
+  applyEditorTransactionToScheme(peer, transactions[2]!)
+  expect(peer.collectionTree.value).toEqual(after)
+  expect(peer.items.value).toBe(items)
+})
+
 it('deduplicates mixed parent, child, group and ungrouped deletion targets', () => {
   const { scheme, removal } = setup()
   scheme.selectedItemIds.value = new Set(['e'])

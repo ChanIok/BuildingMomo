@@ -10,6 +10,7 @@ import {
   watch,
 } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { toast } from 'vue-sonner'
 import GroupPanel from '@/components/GroupPanel.vue'
 import GroupPanelRow from '@/components/GroupPanelRow.vue'
 import GroupMergeDialog from '@/components/GroupMergeDialog.vue'
@@ -81,6 +82,72 @@ function panelSetup() {
   panel.list.value = { contains: () => true, querySelector: () => null, focus: vi.fn() }
   return { store, scheme, ui, panel }
 }
+
+it('cleans empty collections through the toolbar handler and reports the actual removed count', async () => {
+  const { scheme, panel } = mountSetup(panelSetup)
+  scheme.collectionTree.value = {
+    ...scheme.collectionTree.value,
+    nodes: [
+      ...scheme.collectionTree.value.nodes,
+      { id: 'empty', name: 'Empty', parentId: null, order: 1 },
+      { id: 'child', name: 'Child', parentId: 'empty', order: 0 },
+    ],
+  }
+  scheme.selectedEntries.value = [
+    { kind: 'collection', id: 'empty' },
+    { kind: 'collection', id: 'house' },
+  ]
+  scheme.selectedItemIds.value = new Set(['item-2'])
+  panel.query.value = 'no matching rows'
+  const items = scheme.items.value
+  const success = vi.spyOn(toast, 'success').mockReturnValue('cleanup-toast')
+  try {
+    expect(panel.emptyCollectionCount.value).toBe(2)
+    panel.cleanEmptyNodes()
+    await nextTick()
+    expect(panel.emptyCollectionCount.value).toBe(0)
+    expect(scheme.collectionTree.value.nodes.map((node) => node.id)).toEqual(['house'])
+    expect(scheme.items.value).toBe(items)
+    expect(scheme.selectedItemIds.value).toEqual(new Set(['item-2']))
+    expect(scheme.selectedEntries.value).toEqual([{ kind: 'collection', id: 'house' }])
+    expect(success).toHaveBeenCalledExactlyOnceWith('groups.emptyCollectionsCleaned')
+    panel.cleanEmptyNodes()
+    expect(success).toHaveBeenCalledTimes(1)
+    useEditorHistory().undo()
+    expect(panel.emptyCollectionCount.value).toBe(2)
+  } finally {
+    success.mockRestore()
+  }
+})
+
+it('renders the cleanup button between new collection and collapse, disabled when unavailable', async () => {
+  const pinia = createPinia()
+  const store = useEditorStore(pinia)
+  store.createScheme('toolbar')
+  const scheme = store.activeScheme!
+  async function header() {
+    const html = await renderToString(createSSRApp(GroupPanel).use(pinia))
+    return html.match(/<header\b[^>]*>([\s\S]*?)<\/header>/)![1]!
+  }
+  function cleanupButton(html: string) {
+    return html.match(/<button\b[^>]*aria-label="groups.cleanEmptyCollections"[^>]*>/)![0]
+  }
+  const empty = await header()
+  expect(empty.indexOf('aria-label="groups.createCollection"')).toBeLessThan(
+    empty.indexOf('aria-label="groups.cleanEmptyCollections"')
+  )
+  expect(empty.indexOf('aria-label="groups.cleanEmptyCollections"')).toBeLessThan(
+    empty.indexOf('aria-label="groups.collapseAll"')
+  )
+  expect(cleanupButton(empty)).toMatch(/\sdisabled(?:=|[\s>])/)
+  scheme.collectionTree.value = {
+    nodes: [{ id: 'empty', name: 'Empty', parentId: null, order: 0 }],
+    groups: [],
+  }
+  expect(cleanupButton(await header())).not.toMatch(/\sdisabled(?:=|[\s>])/)
+  scheme.source.value = 'cloud'
+  expect(cleanupButton(await header())).toMatch(/\sdisabled(?:=|[\s>])/)
+})
 
 it.each(['Delete', 'x'])(
   'uses the complete current selection for the panel %s shortcut',

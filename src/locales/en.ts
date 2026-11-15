@@ -340,6 +340,8 @@ export const enLocale = {
     collapseCollection: 'Collapse collection “{name}”',
     directoryUpdated: '{actor} updated the collection tree',
     createCollection: 'New collection',
+    cleanEmptyCollections: 'Clean up empty collections ({count})',
+    emptyCollectionsCleaned: 'Removed {count} empty collections.',
     copyName: '{name} copy',
     newCollection: 'New collection',
     createSubcollection: 'New subcollection',

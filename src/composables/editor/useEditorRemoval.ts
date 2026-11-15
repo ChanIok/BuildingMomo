@@ -1,6 +1,8 @@
+import { computed } from 'vue'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorStore } from '@/stores/editorStore'
 import {
+  getEmptyCollectionIds,
   hasOperationTargets,
   resolveEditorOperationTargets,
   type EditorOperationTargets,
@@ -17,6 +19,12 @@ export function useEditorRemoval() {
   const store = useEditorStore()
   const cloud = useCloudSchemeStore()
   const { recordTransaction } = useEditorHistory()
+  const emptyCollectionCount = computed(() => {
+    const scheme = store.activeScheme
+    return scheme
+      ? getEmptyCollectionIds(scheme.collectionTree.value, scheme.items.value).length
+      : 0
+  })
 
   function getRemovalTarget(entries?: readonly CollectionEntry[]): RemovalTarget | null {
     const scheme = store.activeScheme
@@ -93,5 +101,25 @@ export function useEditorRemoval() {
     return true
   }
 
-  return { canRemove, remove, getRemovalTarget, applyRemoval }
+  function cleanEmptyCollections() {
+    const scheme = store.activeScheme
+    if (!scheme) return 0
+    // 点击时重新解析当前方案，不使用按钮显示的计数或当前选区作为删除依据。
+    const entries = getEmptyCollectionIds(scheme.collectionTree.value, scheme.items.value).map(
+      (id) => ({ kind: 'collection' as const, id })
+    )
+    const target = getRemovalTarget(entries)
+    if (!target) return 0
+    recordTransaction('collection.cleanup_empty', () => applyRemoval(target), scheme)
+    return target.collectionIds.size
+  }
+
+  return {
+    canRemove,
+    remove,
+    getRemovalTarget,
+    applyRemoval,
+    emptyCollectionCount,
+    cleanEmptyCollections,
+  }
 }

@@ -49,6 +49,18 @@ export function hasOperationTargets(target: EditorOperationTargets | null): bool
   return !!target && (target.items.length > 0 || target.collectionIds.size > 0)
 }
 
+/** 按完整家具数据判空；只有空子集合的祖先也可一次清理。 */
+export function getEmptyCollectionIds(tree: CollectionTree, items: readonly AppItem[]): string[] {
+  const liveGroups = new Set(items.map((item) => item.groupId))
+  const nodes = new Map(tree.nodes.map((node) => [node.id, node]))
+  const occupied = new Set<string>()
+  for (const group of tree.groups) {
+    if (!liveGroups.has(group.groupId)) continue
+    for (const id of collectionAncestors(nodes, group.collectionId)) occupied.add(id)
+  }
+  return tree.nodes.filter((node) => !occupied.has(node.id)).map((node) => node.id)
+}
+
 /** 节点操作按完整结构解析，不受画布选择、显隐、锁定、搜索或折叠状态影响。 */
 export function resolveCollectionTargets(
   tree: CollectionTree,
