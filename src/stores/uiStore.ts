@@ -32,8 +32,8 @@ export const useUIStore = defineStore('ui', () => {
   // 视图模式状态
   const viewMode = ref<'2d' | '3d'>('3d')
 
-  // 当前视图预设（透视、顶、前...）
-  const currentViewPreset = ref<ViewPreset>('perspective')
+  // 当前视图预设（冷启动默认顶视图，后续在同一会话中跨新方案沿用）
+  const currentViewPreset = ref<ViewPreset>('top')
 
   // 侧边栏视图状态
   const sidebarView = ref<

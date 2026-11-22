@@ -225,31 +225,6 @@ export function useThreeCamera(
 
   // === 响应式绑定 (Reactive Binding with Store) ===
 
-  /**
-   * 无物品新方案：固定顶视 + 固定距离/zoom，便于对着地图摆放；不随底图异步加载再改机位（用户手动挪后也不自动纠）。
-   */
-  function applyEmptySchemeDefaultTopView() {
-    const target: Vec3 = [...sceneCenter.value]
-    state.value.target = target
-
-    const { position, up, yaw, pitch } = computeViewPose(
-      'top',
-      target,
-      EMPTY_SCHEME_TOP_CAMERA_DISTANCE,
-      uiStore.workingCoordinateSystem,
-      { min: pitchMinRad.value, max: pitchMaxRad.value }
-    )
-    state.value.position = position
-    state.value.up = up
-    state.value.yaw = yaw
-    state.value.pitch = pitch
-    state.value.zoom = computeOrthographicFramingZoom(EMPTY_SCHEME_SYNTHETIC_MAX_DIM)
-
-    uiStore.setCurrentViewPreset('top')
-    controlMode.value = 'orbit'
-    markOrbitRuntimeWriteNeeded()
-  }
-
   // 1. Sync Store (Scheme Switch) -> Internal State
   watch(
     () => editorStore.activeSchemeId,
@@ -257,22 +232,15 @@ export function useThreeCamera(
       if (!newId) return
 
       const scheme = editorStore.activeScheme
-      // 更新一次基准距离
-      updateCameraDistance()
 
       // scheme.viewState 是 Ref，需要传入 .value
       if (scheme?.viewState.value) {
+        updateCameraDistance()
         // 恢复状态
         restoreSnapshot(scheme.viewState.value)
       } else {
-        state.value.target = [...sceneCenter.value]
-        if (scheme && scheme.items.value.length === 0) {
-          applyEmptySchemeDefaultTopView()
-        } else {
-          // 无状态（如新导入有物品），默认顶视；经 switchToViewPreset 做透视↔正交换算
-          state.value.zoom = 1
-          switchToViewPreset('top')
-        }
+        // 无状态（如新导入或新建方案）：沿用当前会话的视图预设并按新方案包围盒适配机位
+        fitCameraToScene()
       }
     },
     { immediate: true }
@@ -952,12 +920,11 @@ export function useThreeCamera(
     state.value.pitch = pitch
     state.value.zoom = zoom
 
-    // 5. 同步 UI Store
+    // 5. 同步 UI Store 与控制模式（透视视图保留用户偏好的 orbit / flight）
     uiStore.setCurrentViewPreset(preset)
+    controlMode.value =
+      preset === 'perspective' ? settingsStore.settings.perspectiveControlMode : 'orbit'
     markOrbitRuntimeWriteNeeded()
-
-    // 6. 确保控制模式正确
-    controlMode.value = 'orbit'
   }
 
   function focusOnSelection() {
