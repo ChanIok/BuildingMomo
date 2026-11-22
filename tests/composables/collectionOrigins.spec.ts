@@ -301,10 +301,17 @@ it('uses the collection reference for step repeat and never retains uncopied ori
   expect(store.itemsMap.get(copy.originItemId!)!.y).toBeCloseTo(0)
   origins.setCollectionOrigin('house', 'c')
   origins.setCollectionOrigin('floor', 'a')
-  const partial = clipboard.buildClipboardDataFromSelection([{ kind: 'group', id: 7 }])
+  const groupOnly = clipboard.buildClipboardDataFromSelection([{ kind: 'group', id: 7 }])
+  const fullHouse = clipboard.buildClipboardDataFromSelection([{ kind: 'collection', id: 'house' }])
+  const partialHouse = {
+    ...fullHouse,
+    items: fullHouse.items.filter((item) => item.internalId !== 'c'),
+  }
   store.createScheme('partial target')
-  clipboard.pasteItems(partial, 0, 0)
+  clipboard.pasteItems(groupOnly, 0, 0)
   const target = store.activeScheme!
+  expect(target.collectionTree.value.nodes).toEqual([])
+  clipboard.pasteItems(partialHouse, 0, 0)
   expect(
     target.collectionTree.value.nodes.find((node) => node.name === 'House')!.originItemId
   ).toBeUndefined()
