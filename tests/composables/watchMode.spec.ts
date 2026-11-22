@@ -282,7 +282,8 @@ describe('watch mode directory permission restore', () => {
       expect(root.requestPermission).toHaveBeenCalledOnce()
       expect(ops.canRestoreWatchMode.value).toBe(true)
       expect(ops.watchState.value.isActive).toBe(false)
-      expect(ops.isWatchModeBusy.value).toBe(false)
+      expect(ops.isRestoringWatchMode.value).toBe(false)
+      expect(ops.isPickingWatchDirectory.value).toBe(false)
       expect(permission === 'error' ? notification.error : notification.warning).toHaveBeenCalled()
       expect(WatchHandleStore.clearRootHandle).not.toHaveBeenCalled()
       expect(picker).not.toHaveBeenCalled()
@@ -302,25 +303,98 @@ describe('watch mode directory permission restore', () => {
     expect(root.requestPermission).not.toHaveBeenCalled()
   })
 
-  it('ignores repeated restore and picker calls while authorization is pending, avoiding concurrent starts', async () => {
-    const { ops, root, picker } = setup()
+  it('blocks repeated restore while authorization is pending, yet lets manual picker supersede it', async () => {
+    const { ops, root, picker, notification } = setup()
+    const freshBuildData = directory('BuildData')
+    const freshSavedData = directory('SavedData', { BuildData: freshBuildData })
+    const freshSaved = directory('Saved', { SavedData: freshSavedData })
+    const freshRoot = directory('X6Game', { Saved: freshSaved })
+    picker.mockResolvedValueOnce(freshRoot)
+
     await ops.restoreWatchModeSilently()
-    let resolve!: (permission: PermissionState) => void
+    let resolvePermission!: (permission: PermissionState) => void
     root.requestPermission.mockReturnValueOnce(
       new Promise((done) => {
-        resolve = done
+        resolvePermission = done
       })
     )
 
     const restoring = ops.restoreWatchMode()
+    expect(ops.isRestoringWatchMode.value).toBe(true)
+    expect(ops.isPickingWatchDirectory.value).toBe(false)
     expect(await ops.restoreWatchMode()).toBe(false)
     expect(await ops.restoreWatchModeSilently()).toBe(false)
-    await ops.startWatchMode()
-    expect(picker).not.toHaveBeenCalled()
-    root.queryPermission.mockResolvedValue('granted')
-    resolve('granted')
-    expect(await restoring).toBe(true)
     expect(root.requestPermission).toHaveBeenCalledOnce()
+
+    await ops.startWatchMode()
+    expect(picker).toHaveBeenCalledOnce()
+    expect(ops.watchState.value.isActive).toBe(true)
+    expect(ops.watchState.value.dirHandle).toBe(freshBuildData)
+    expect(ops.isRestoringWatchMode.value).toBe(false)
+    expect(ops.isPickingWatchDirectory.value).toBe(false)
+
+    // 旧授权请求事后返回时必须静默作废，不能覆盖新选目录或弹错误提示。
+    resolvePermission('denied')
+    expect(await restoring).toBe(false)
+    expect(ops.watchState.value.dirHandle).toBe(freshBuildData)
+    expect(notification.warning).not.toHaveBeenCalled()
+    ops.cleanup()
+  })
+
+  it('keeps manual restore and picker usable when silent permission query hangs and times out', async () => {
+    const { ops, root } = setup()
+    let resolvePermission!: (permission: PermissionState) => void
+    root.queryPermission.mockReturnValueOnce(
+      new Promise((done) => {
+        resolvePermission = done
+      })
+    )
+
+    const silentRestore = ops.restoreWatchModeSilently()
+    // 静默探测尚未结束前，不提前暴露恢复入口，也不锁死手动选择目录。
+    await Promise.resolve()
+    expect(ops.canRestoreWatchMode.value).toBe(false)
+    expect(ops.isRestoringWatchMode.value).toBe(false)
+    expect(ops.isPickingWatchDirectory.value).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(await silentRestore).toBe(false)
+    expect(ops.canRestoreWatchMode.value).toBe(true)
+    expect(ops.isRestoringWatchMode.value).toBe(false)
+    expect(ops.isPickingWatchDirectory.value).toBe(false)
+    expect(ops.watchState.value.isActive).toBe(false)
+
+    // 超时后即便底层 queryPermission 最终 resolve，也不得私自激活旧的静默恢复。
+    resolvePermission('granted')
+    await Promise.resolve()
+    expect(ops.watchState.value.isActive).toBe(false)
+    expect(ops.canRestoreWatchMode.value).toBe(true)
+    ops.cleanup()
+  })
+
+  it('lets manual picker supersede a hanging silent restore before timeout without clobbering', async () => {
+    const { ops, root, picker } = setup()
+    const freshBuildData = directory('BuildData')
+    const freshSavedData = directory('SavedData', { BuildData: freshBuildData })
+    const freshSaved = directory('Saved', { SavedData: freshSavedData })
+    const freshRoot = directory('X6Game', { Saved: freshSaved })
+    picker.mockResolvedValueOnce(freshRoot)
+
+    let resolvePermission!: (permission: PermissionState) => void
+    root.queryPermission.mockReturnValueOnce(
+      new Promise((done) => {
+        resolvePermission = done
+      })
+    )
+
+    const silentRestore = ops.restoreWatchModeSilently()
+    await ops.startWatchMode()
+    expect(ops.watchState.value.isActive).toBe(true)
+    expect(ops.watchState.value.dirHandle).toBe(freshBuildData)
+
+    resolvePermission('granted')
+    expect(await silentRestore).toBe(false)
+    expect(ops.watchState.value.dirHandle).toBe(freshBuildData)
     ops.cleanup()
   })
 
@@ -333,7 +407,8 @@ describe('watch mode directory permission restore', () => {
     expect(picker).toHaveBeenCalledOnce()
     expect(WatchHandleStore.clearRootHandle).not.toHaveBeenCalled()
     expect(ops.canRestoreWatchMode.value).toBe(true)
-    expect(ops.isWatchModeBusy.value).toBe(false)
+    expect(ops.isRestoringWatchMode.value).toBe(false)
+    expect(ops.isPickingWatchDirectory.value).toBe(false)
   })
 
   it('clears the cache and restore entry when watch mode stops', async () => {

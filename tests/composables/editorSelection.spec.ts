@@ -27,7 +27,8 @@ vi.mock('@vueuse/core', async (original) => ({
 vi.mock('@/composables/useFileOperations', () => ({
   useFileOperations: () => ({
     canRestoreWatchMode: ref(false),
-    isWatchModeBusy: ref(false),
+    isRestoringWatchMode: ref(false),
+    isPickingWatchDirectory: ref(false),
   }),
 }))
 

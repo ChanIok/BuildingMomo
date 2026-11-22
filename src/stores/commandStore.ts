@@ -156,7 +156,7 @@ export const useCommandStore = defineStore('command', () => {
       enabled: () =>
         fileOps.isFileSystemAccessSupported &&
         !fileOps.watchState.value.isActive &&
-        !fileOps.isWatchModeBusy.value,
+        !fileOps.isPickingWatchDirectory.value,
       execute: async () => {
         console.log('[Command] 启动监控模式')
         await fileOps.startWatchMode()
@@ -166,7 +166,10 @@ export const useCommandStore = defineStore('command', () => {
       id: 'file.restoreWatchMode',
       label: t('watchMode.restorePermission'),
       category: 'file',
-      enabled: () => fileOps.canRestoreWatchMode.value && !fileOps.isWatchModeBusy.value,
+      enabled: () =>
+        fileOps.canRestoreWatchMode.value &&
+        !fileOps.isRestoringWatchMode.value &&
+        !fileOps.isPickingWatchDirectory.value,
       execute: async () => {
         await fileOps.restoreWatchMode()
       },
@@ -175,7 +178,7 @@ export const useCommandStore = defineStore('command', () => {
       id: 'file.stopWatchMode',
       label: t('command.file.stopWatchMode'),
       category: 'file',
-      enabled: () => fileOps.watchState.value.isActive && !fileOps.isWatchModeBusy.value,
+      enabled: () => fileOps.watchState.value.isActive,
       execute: async () => {
         console.log('[Command] 停止监控模式')
         await fileOps.stopWatchMode()

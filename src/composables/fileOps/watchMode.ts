@@ -30,6 +30,41 @@ const POLL_INTERVAL_ACTIVE = 3000
 const POLL_INTERVAL_HIDDEN = 10000
 // 目录选择器 ID：让浏览器记住上次打开位置
 const WATCH_DIRECTORY_PICKER_ID = 'momo-watch-root'
+// 静默恢复各阶段超时，防止浏览器/WebView2 权限或目录 IPC 永久挂起导致状态悬空
+const SILENT_PERMISSION_QUERY_TIMEOUT_MS = 2000
+const SILENT_DIRECTORY_RESOLVE_TIMEOUT_MS = 3000
+const SILENT_ACTIVATE_TIMEOUT_MS = 5000
+
+class WatchOperationTimeoutError extends Error {
+  readonly stage: string
+  readonly timeoutMs: number
+
+  constructor(stage: string, timeoutMs: number) {
+    super(`Timed out at ${stage} after ${timeoutMs}ms`)
+    this.name = 'WatchOperationTimeoutError'
+    this.stage = stage
+    this.timeoutMs = timeoutMs
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, stage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => {
+      reject(new WatchOperationTimeoutError(stage, timeoutMs))
+    }, timeoutMs)
+
+    promise.then(
+      (value) => {
+        globalThis.clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        globalThis.clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
+}
 
 type TranslateFn = (key: string, params?: Record<string, string | number>) => string
 
@@ -84,10 +119,16 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     fileIndex: new Map(), // 文件名 → 上次已知内容快照，用于变更检测
   })
 
-  // 启动时预读句柄，让点击恢复时能在用户手势内立即申请权限，不先等待 IndexedDB。
+  // 确认需要人工授权或恢复超时后暴露缓存句柄，让点击恢复时能在用户手势内立即申请权限。
   const storedRootHandle = shallowRef<FileSystemDirectoryHandle | null>(null)
   const canRestoreWatchMode = computed(() => !!storedRootHandle.value && !watchState.value.isActive)
-  const isWatchModeBusy = ref(false)
+  // 操作代际号：新发起的用户操作（或停止/超时）递增此值，使过期异步恢复结果静默作废。
+  let watchOperationId = 0
+  let activeSilentOpId: number | null = null
+  const activeRestoreOpId = ref<number | null>(null)
+  const activePickOpId = ref<number | null>(null)
+  const isRestoringWatchMode = computed(() => activeRestoreOpId.value !== null)
+  const isPickingWatchDirectory = computed(() => activePickOpId.value !== null)
 
   // setTimeout 返回的计时器 ID，null 表示轮询未启动
   let pollTimer: number | null = null
@@ -125,60 +166,71 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   }
 
   async function resolveStoredWatchDirectories(
-    storedHandle: FileSystemDirectoryHandle
+    storedHandle: FileSystemDirectoryHandle,
+    isCurrent: () => boolean
   ): Promise<DirectoryResolveResult | null> {
-    const rootDirHandle = await findX6GameDirectory(storedHandle)
-    if (!rootDirHandle) {
+    const resolvedRootHandle = await findX6GameDirectory(storedHandle)
+    if (!isCurrent()) return null
+    if (!resolvedRootHandle) {
       console.warn('[FileWatch] Stored directory handle no longer resolves to X6Game')
       await WatchHandleStore.clearRootHandle()
-      storedRootHandle.value = null
+      if (isCurrent()) storedRootHandle.value = null
       return null
     }
 
-    const buildDataDir = await findBuildDataDirectory(rootDirHandle)
+    const buildDataDir = await findBuildDataDirectory(resolvedRootHandle)
+    if (!isCurrent()) return null
     if (!buildDataDir) {
       console.warn(
         '[FileWatch] Stored directory handle no longer contains BuildData, clearing cache'
       )
       await WatchHandleStore.clearRootHandle()
-      storedRootHandle.value = null
+      if (isCurrent()) storedRootHandle.value = null
       return null
     }
 
-    const restoredBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
-    console.log('[FileWatch] Restored directory handle from IndexedDB:', rootDirHandle.name)
+    const restoredBuildRecordDirHandle = await findBuildRecordDirectory(resolvedRootHandle)
+    if (!isCurrent()) return null
+    console.log('[FileWatch] Restored directory handle from IndexedDB:', resolvedRootHandle.name)
     return {
-      rootDirHandle,
+      rootDirHandle: resolvedRootHandle,
       buildDataDir,
       buildRecordDirHandle: restoredBuildRecordDirHandle,
     }
   }
 
-  async function pickWatchDirectories(): Promise<DirectoryResolveResult | null> {
+  async function pickWatchDirectories(
+    isCurrent: () => boolean
+  ): Promise<DirectoryResolveResult | null> {
     const pickedHandle = await (window as any).showDirectoryPicker({
       mode: 'readwrite',
       id: WATCH_DIRECTORY_PICKER_ID,
     })
+    if (!isCurrent()) return null
 
-    const rootDirHandle = await findX6GameDirectory(pickedHandle)
-    if (!rootDirHandle) {
+    const pickedRootHandle = await findX6GameDirectory(pickedHandle)
+    if (!isCurrent()) return null
+    if (!pickedRootHandle) {
       notification.error(t('fileOps.watch.noX6Game'))
       return null
     }
 
-    console.log('[FileWatch] Selected directory for monitoring:', rootDirHandle.name)
+    console.log('[FileWatch] Selected directory for monitoring:', pickedRootHandle.name)
 
-    const buildDataDir = await findBuildDataDirectory(rootDirHandle)
+    const buildDataDir = await findBuildDataDirectory(pickedRootHandle)
+    if (!isCurrent()) return null
     if (!buildDataDir) {
       notification.error(t('fileOps.watch.noBuildData'))
       return null
     }
 
-    const pickedBuildRecordDirHandle = await findBuildRecordDirectory(rootDirHandle)
-    await WatchHandleStore.saveRootHandle(rootDirHandle)
-    storedRootHandle.value = rootDirHandle
+    const pickedBuildRecordDirHandle = await findBuildRecordDirectory(pickedRootHandle)
+    if (!isCurrent()) return null
+    await WatchHandleStore.saveRootHandle(pickedRootHandle)
+    if (!isCurrent()) return null
+    storedRootHandle.value = pickedRootHandle
     return {
-      rootDirHandle,
+      rootDirHandle: pickedRootHandle,
       buildDataDir,
       buildRecordDirHandle: pickedBuildRecordDirHandle,
     }
@@ -186,15 +238,14 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
   async function activateWatchModeFromDirectories(
     resolved: DirectoryResolveResult,
-    mode: ActivateWatchMode
-  ): Promise<void> {
+    mode: ActivateWatchMode,
+    isCurrent: () => boolean
+  ): Promise<boolean> {
     const { buildDataDir } = resolved
-    rootDirHandle = resolved.rootDirHandle
-    buildRecordDirHandle = resolved.buildRecordDirHandle
 
     // BuildRecord 目录可选，首次未找到时后续操作仍会懒加载重试
-    if (buildRecordDirHandle) {
-      console.log('[FileWatch] Found BuildRecord directory:', buildRecordDirHandle.name)
+    if (resolved.buildRecordDirHandle) {
+      console.log('[FileWatch] Found BuildRecord directory:', resolved.buildRecordDirHandle.name)
     } else {
       console.log('[FileWatch] BuildRecord directory not found, will retry lazily on use')
     }
@@ -203,6 +254,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
 
     // 找到最新存档文件（用于初始导入询问）
     const result = await findLatestBuildSaveData(buildDataDir)
+    if (!isCurrent()) return false
 
     const fileName = result?.file.name ?? ''
     const lastModified = result?.file.lastModified ?? 0
@@ -220,10 +272,13 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     >()
 
     for await (const entry of (buildDataDir as any).values()) {
+      if (!isCurrent()) return false
       if (entry.kind === 'file' && isBuildSaveDataFile(entry.name)) {
         const entryHandle = entry as FileSystemFileHandle
         const file = await entryHandle.getFile()
+        if (!isCurrent()) return false
         const content = await file.text()
+        if (!isCurrent()) return false
         fileIndex.set(entry.name, {
           lastModified: file.lastModified,
           lastContent: content,
@@ -233,10 +288,14 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       }
     }
 
+    if (!isCurrent()) return false
+
     // fileIndex 扫描已读取了所有文件内容，直接取缓存，避免再次读取磁盘
     const latestContent = fileName ? fileIndex.get(fileName)?.lastContent : undefined
 
-    // 激活监听状态
+    // 确认本代际仍有效后再提交共享句柄与激活监听状态，防止过期异步任务污染现场
+    rootDirHandle = resolved.rootDirHandle
+    buildRecordDirHandle = resolved.buildRecordDirHandle
     watchState.value = {
       isActive: true,
       dirHandle: buildDataDir,
@@ -251,7 +310,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     startPolling()
 
     if (mode === 'silent') {
-      return
+      return true
     }
 
     // 若最新存档 NeedRestore 为 true，询问用户是否立即导入
@@ -270,7 +329,7 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
             cancelText: t('fileOps.watch.later'),
           })
 
-          if (shouldImport) {
+          if (shouldImport && isCurrent()) {
             await importFromWatchedFile()
           }
         } else {
@@ -283,6 +342,8 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     } else {
       notification.success(t('fileOps.watch.started'))
     }
+
+    return true
   }
 
   /**
@@ -655,20 +716,26 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
       return
     }
 
-    if (watchState.value.isActive || isWatchModeBusy.value) {
+    if (watchState.value.isActive || isPickingWatchDirectory.value) {
       return
     }
 
-    isWatchModeBusy.value = true
+    // 主动重选目录允许随时打断后台静默恢复或挂起中的授权请求。
+    const opId = ++watchOperationId
+    activeSilentOpId = null
+    activeRestoreOpId.value = null
+    activePickOpId.value = opId
+    const isCurrent = () => opId === watchOperationId
 
     try {
       ensureResourcesReady()
-      const resolved = await pickWatchDirectories()
-      if (!resolved) return
+      const resolved = await pickWatchDirectories(isCurrent)
+      if (!resolved || !isCurrent()) return
 
       console.log('[FileWatch] Directory handle saved:', resolved.rootDirHandle.name)
-      await activateWatchModeFromDirectories(resolved, 'interactive')
+      await activateWatchModeFromDirectories(resolved, 'interactive', isCurrent)
     } catch (error: any) {
+      if (!isCurrent()) return
       if (error.name === 'AbortError') {
         // 用户主动取消目录选择，不报错
         console.log('[FileWatch] User cancelled directory picker')
@@ -679,44 +746,56 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
         t('fileOps.watch.startFailed', { reason: error.message || 'Unknown error' })
       )
     } finally {
-      isWatchModeBusy.value = false
+      if (activePickOpId.value === opId) {
+        activePickOpId.value = null
+      }
     }
   }
 
-  /** 仅由用户操作触发：对启动时预读的旧句柄重新授权，不重新打开目录选择器。 */
+  /** 仅由用户操作触发：对缓存的旧句柄重新授权，不重新打开目录选择器。 */
   async function restoreWatchMode(): Promise<boolean> {
     const storedHandle = storedRootHandle.value
-    if (!storedHandle || isWatchModeBusy.value) return false
+    if (!storedHandle || isRestoringWatchMode.value || isPickingWatchDirectory.value) return false
     if (watchState.value.isActive) return true
 
-    isWatchModeBusy.value = true
+    const opId = ++watchOperationId
+    activeSilentOpId = null
+    activeRestoreOpId.value = opId
+    const isCurrent = () => opId === watchOperationId
+
     try {
       // 此调用前不能等待 IndexedDB、目录扫描或其他异步工作，以保留用户手势。
       // 先用 read 触发旧授权恢复：WebView2 同时请求读写可能重复弹窗。
       // 恢复提示可一并恢复原有写权限，只有确实仍缺写权限时才追加申请。
       const permission = await (storedHandle as any).requestPermission({ mode: 'read' })
+      if (!isCurrent()) return false
       if (permission !== 'granted' || !(await verifyPermission(storedHandle))) {
+        if (!isCurrent()) return false
         notification.warning(t('fileOps.watch.permissionRequired'))
         return false
       }
+      if (!isCurrent()) return false
 
       ensureResourcesReady()
-      const restored = await resolveStoredWatchDirectories(storedHandle)
+      const restored = await resolveStoredWatchDirectories(storedHandle, isCurrent)
+      if (!isCurrent()) return false
       if (!restored) {
         notification.warning(t('fileOps.watch.directoryUnavailable'))
         return false
       }
 
-      await activateWatchModeFromDirectories(restored, 'interactive')
-      return true
+      return await activateWatchModeFromDirectories(restored, 'interactive', isCurrent)
     } catch (error: any) {
+      if (!isCurrent()) return false
       console.warn('[FileWatch] Interactive restore failed:', error)
       notification.error(
         t('fileOps.watch.startFailed', { reason: error.message || 'Unknown error' })
       )
       return false
     } finally {
-      isWatchModeBusy.value = false
+      if (activeRestoreOpId.value === opId) {
+        activeRestoreOpId.value = null
+      }
     }
   }
 
@@ -728,37 +807,84 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
     if (watchState.value.isActive) {
       return true
     }
-    if (isWatchModeBusy.value) return false
+    if (
+      activeSilentOpId !== null ||
+      activeRestoreOpId.value !== null ||
+      activePickOpId.value !== null
+    ) {
+      return false
+    }
 
-    isWatchModeBusy.value = true
+    const opId = ++watchOperationId
+    activeSilentOpId = opId
+    const isCurrent = () => opId === watchOperationId
+    let storedHandle: FileSystemDirectoryHandle | null = null
 
     try {
       ensureResourcesReady()
-      storedRootHandle.value = (await WatchHandleStore.getRootHandle()) ?? null
-      if (!storedRootHandle.value) return false
+      storedHandle = (await WatchHandleStore.getRootHandle()) ?? null
+      if (!isCurrent() || !storedHandle) return false
 
-      const permission = await queryPermissionState(storedRootHandle.value)
+      const permission = await withTimeout(
+        queryPermissionState(storedHandle),
+        SILENT_PERMISSION_QUERY_TIMEOUT_MS,
+        'queryPermission'
+      )
+      if (!isCurrent()) return false
       if (permission !== 'granted') {
+        storedRootHandle.value = storedHandle
         console.log('[FileWatch] Stored directory requires authorization:', permission)
         return false
       }
 
-      const restored = await resolveStoredWatchDirectories(storedRootHandle.value)
-      if (!restored) return false
+      const restored = await withTimeout(
+        resolveStoredWatchDirectories(storedHandle, isCurrent),
+        SILENT_DIRECTORY_RESOLVE_TIMEOUT_MS,
+        'resolveDirectories'
+      )
+      if (!isCurrent() || !restored) return false
 
-      await activateWatchModeFromDirectories(restored, 'silent')
+      const activated = await withTimeout(
+        activateWatchModeFromDirectories(restored, 'silent', isCurrent),
+        SILENT_ACTIVATE_TIMEOUT_MS,
+        'activate'
+      )
+      if (!isCurrent() || !activated) return false
+
+      storedRootHandle.value = restored.rootDirHandle
       console.log('[FileWatch] Silently restored watch mode')
       return true
     } catch (error) {
+      if (!isCurrent()) return false
+      if (error instanceof WatchOperationTimeoutError) {
+        // 作废超时的静默恢复代际，防止底层挂起的 Promise 事后 resolve 误改状态。
+        watchOperationId++
+        if (storedHandle) {
+          storedRootHandle.value = storedHandle
+        }
+        console.warn(
+          `[FileWatch] Silent restore timed out at ${error.stage} (${error.timeoutMs}ms), keeping handle for manual restore`
+        )
+        return false
+      }
+      if (storedHandle) {
+        storedRootHandle.value = storedHandle
+      }
       console.warn('[FileWatch] Silent restore failed:', error)
       return false
     } finally {
-      isWatchModeBusy.value = false
+      if (activeSilentOpId === opId) {
+        activeSilentOpId = null
+      }
     }
   }
 
   /** 停止监听模式并清除已保存目录句柄 */
   async function stopWatchMode(): Promise<void> {
+    ++watchOperationId
+    activeSilentOpId = null
+    activeRestoreOpId.value = null
+    activePickOpId.value = null
     stopPolling()
     rootDirHandle = null
     buildRecordDirHandle = null
@@ -848,7 +974,8 @@ export function createWatchModeOps(params: CreateWatchModeOpsParams) {
   return {
     watchState,
     canRestoreWatchMode,
-    isWatchModeBusy,
+    isRestoringWatchMode,
+    isPickingWatchDirectory,
     startWatchMode,
     restoreWatchMode,
     restoreWatchModeSilently,

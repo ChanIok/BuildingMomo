@@ -17,7 +17,11 @@ vi.mock('@vueuse/core', async (original) => ({
   },
 }))
 vi.mock('@/composables/useFileOperations', () => ({
-  useFileOperations: () => ({ canRestoreWatchMode: ref(false), isWatchModeBusy: ref(false) }),
+  useFileOperations: () => ({
+    canRestoreWatchMode: ref(false),
+    isRestoringWatchMode: ref(false),
+    isPickingWatchDirectory: ref(false),
+  }),
 }))
 vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
