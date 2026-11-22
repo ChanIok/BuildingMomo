@@ -17,18 +17,20 @@ export function useGroupMetadataImport() {
     )
   })
 
-  function preview(sourceId: string) {
+  function preview(sourceId: string, exactMatch = false) {
     const source = store.getSchemeById(sourceId)
     const target = store.activeScheme
     if (!source || !target || source.id === target.id) return null
-    return inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target))
+    return inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target), {
+      exactMatch,
+    })
   }
 
-  function importFrom(sourceId: string, targetId: string) {
+  function importFrom(sourceId: string, targetId: string, exactMatch = false) {
     if (!canImport.value || store.activeSchemeId !== targetId) return null
     const target = store.activeScheme!
     // 提交时重新读取，不能应用弹窗打开时缓存的方案数据。
-    const result = preview(sourceId)
+    const result = preview(sourceId, exactMatch)
     if (!result || (!result.changedGroupCount && !result.changedCollectionOriginCount)) return null
     recordTransaction('group.importMetadata', () => {
       target.collectionTree.value = result.collectionTree

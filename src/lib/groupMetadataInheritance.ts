@@ -1,3 +1,4 @@
+import { decodeColorMapToGroupMap } from './colorMap'
 import { getCollectionItems, reconcileCollectionOrigins } from './selectionReference'
 import { collectionTreesEqual, type CollectionTree, type GroupMetadata } from './collectionTree'
 import type { AppItem, HomeScheme } from '@/types/editor'
@@ -8,6 +9,11 @@ export interface GroupMetadataInput {
   groupOrigins: ReadonlyMap<number, string>
 }
 
+export interface InheritGroupMetadataOptions {
+  /** 是否仅按组 ID 与成员实例 ID/类型 ID 精确匹配；默认 true 保持自动继承等调用方语义不变。 */
+  exactMatch?: boolean
+}
+
 export function groupMetadataInput(scheme: HomeScheme): GroupMetadataInput {
   return {
     items: scheme.items.value,
@@ -16,32 +22,145 @@ export function groupMetadataInput(scheme: HomeScheme): GroupMetadataInput {
   }
 }
 
+interface IndexedGroup {
+  byIdentity: Map<string, AppItem[]>
+  items: AppItem[]
+}
+
 function indexGroups(items: readonly AppItem[]) {
-  const groups = new Map<number, Map<string, AppItem[]>>()
+  const groups = new Map<number, IndexedGroup>()
   for (const item of items) {
     if (item.groupId <= 0) continue
-    let members = groups.get(item.groupId)
-    if (!members) groups.set(item.groupId, (members = new Map()))
+    let group = groups.get(item.groupId)
+    if (!group) groups.set(item.groupId, (group = { byIdentity: new Map(), items: [] }))
+    group.items.push(item)
     const key = `${item.instanceId}:${item.gameId}`
-    const duplicates = members.get(key)
+    const duplicates = group.byIdentity.get(key)
     if (duplicates) duplicates.push(item)
-    else members.set(key, [item])
+    else group.byIdentity.set(key, [item])
   }
   return groups
 }
 
-/** 只迁移完整精确匹配的组；不修改家具、来源数据或目标的个人状态。 */
-export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMetadataInput) {
+function quantizeScale(value: unknown): string {
+  const number = typeof value === 'number' && Number.isFinite(value) ? value : 1
+  const rounded = Math.round(number * 1000) / 1000
+  return String(Object.is(rounded, -0) ? 0 : rounded)
+}
+
+function itemFuzzyKey(item: AppItem): string {
+  const scale = item.extra?.Scale
+  const sx = quantizeScale(scale?.X)
+  const sy = quantizeScale(scale?.Y)
+  const sz = quantizeScale(scale?.Z)
+  const colorMap = decodeColorMapToGroupMap(item.extra?.ColorMap)
+  const colorSig =
+    colorMap.size === 0
+      ? ''
+      : [...colorMap.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([slot, color]) => `${slot}=${color}`)
+          .join(',')
+  return `${item.gameId}|${sx},${sy},${sz}|${colorSig}`
+}
+
+function groupFuzzySignature(items: readonly AppItem[]): string {
+  const counts = new Map<string, number>()
+  for (const item of items) {
+    const key = itemFuzzyKey(item)
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, count]) => `${key}*${count}`)
+    .join('\n')
+}
+
+/** 迁移匹配的组信息；不修改家具、来源数据或目标的个人状态。 */
+export function inheritGroupMetadata(
+  source: GroupMetadataInput,
+  target: GroupMetadataInput,
+  options?: InheritGroupMetadataOptions
+) {
+  const exactMatch = options?.exactMatch ?? true
   const sourceGroups = indexGroups(source.items)
   const targetGroups = indexGroups(target.items)
-  const matched = new Set<number>()
-  for (const [id, members] of targetGroups) {
-    const other = sourceGroups.get(id)
+  const sourceMetadata = new Map(
+    source.collectionTree.groups.map((group) => [group.groupId, group])
+  )
+  const previousMetadata = new Map(
+    target.collectionTree.groups.map((group) => [group.groupId, group])
+  )
+
+  const matched = new Map<number, { sourceGroupId: number; exact: boolean }>()
+  const exactMatchedTargetIds = new Set<number>()
+  const usedSourceIds = new Set<number>()
+
+  // 第一轮：精确匹配优先，锁定组 ID 与成员实例 ID/类型 ID 完全一致的组。
+  for (const [id, targetGroup] of targetGroups) {
+    const sourceGroup = sourceGroups.get(id)
     if (
-      other?.size === members.size &&
-      [...members].every(([key, items]) => other.get(key)?.length === items.length)
+      sourceGroup &&
+      sourceGroup.byIdentity.size === targetGroup.byIdentity.size &&
+      [...targetGroup.byIdentity].every(
+        ([key, items]) => sourceGroup.byIdentity.get(key)?.length === items.length
+      )
     ) {
-      matched.add(id)
+      matched.set(id, { sourceGroupId: id, exact: true })
+      exactMatchedTargetIds.add(id)
+      usedSourceIds.add(id)
+    }
+  }
+
+  let ambiguousMatchCount = 0
+  if (!exactMatch) {
+    // 第二轮：对剩余组按家具类型、数量、量化缩放和规范化染色做模糊匹配；跳过空白源组。
+    const sourceBySignature = new Map<string, number[]>()
+    const sortedSourceIds = [...sourceGroups.keys()].sort((a, b) => a - b)
+    for (const sourceId of sortedSourceIds) {
+      const meta = sourceMetadata.get(sourceId)
+      if (!meta || (meta.name === undefined && meta.collectionId === null)) continue
+      const sig = groupFuzzySignature(sourceGroups.get(sourceId)!.items)
+      const list = sourceBySignature.get(sig)
+      if (list) list.push(sourceId)
+      else sourceBySignature.set(sig, [sourceId])
+    }
+
+    const initialUnusedCountBySignature = new Map<string, number>()
+    for (const [sig, candidates] of sourceBySignature) {
+      initialUnusedCountBySignature.set(
+        sig,
+        candidates.filter((id) => !usedSourceIds.has(id)).length
+      )
+    }
+
+    const remainingTargetIds = [...targetGroups.keys()]
+      .filter((id) => !matched.has(id))
+      .sort((a, b) => a - b)
+    const remainingTargetSignatures = new Map<number, string>()
+    const targetCountBySignature = new Map<string, number>()
+    for (const targetId of remainingTargetIds) {
+      const sig = groupFuzzySignature(targetGroups.get(targetId)!.items)
+      remainingTargetSignatures.set(targetId, sig)
+      targetCountBySignature.set(sig, (targetCountBySignature.get(sig) ?? 0) + 1)
+    }
+
+    for (const targetId of remainingTargetIds) {
+      const sig = remainingTargetSignatures.get(targetId)!
+      const candidates = sourceBySignature.get(sig)
+      if (!candidates?.length) continue
+
+      const nextUnused = candidates.find((id) => !usedSourceIds.has(id))
+      const sourceGroupId = nextUnused ?? candidates[0]!
+      if (nextUnused !== undefined) usedSourceIds.add(nextUnused)
+
+      matched.set(targetId, { sourceGroupId, exact: false })
+
+      const initialUnused = initialUnusedCountBySignature.get(sig) ?? 0
+      const targetCountForSig = targetCountBySignature.get(sig) ?? 0
+      if (candidates.length > 1 && !(initialUnused === 1 && targetCountForSig === 1)) {
+        ambiguousMatchCount++
+      }
     }
   }
 
@@ -74,39 +193,44 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
     return destination.id
   }
 
-  const sourceMetadata = new Map(
-    source.collectionTree.groups.map((group) => [group.groupId, group])
-  )
-  const previousMetadata = new Map(
-    target.collectionTree.groups.map((group) => [group.groupId, group])
-  )
   const groups = target.collectionTree.groups.filter((group) => !matched.has(group.groupId))
   const origins = new Map(target.groupOrigins)
   let changedGroupCount = 0
   let skippedOriginCount = 0
-  for (const groupId of matched) {
-    const from = sourceMetadata.get(groupId)
+  for (const [targetGroupId, { sourceGroupId, exact }] of matched) {
+    const from = sourceMetadata.get(sourceGroupId)
     const next: GroupMetadata | undefined = from && {
       ...from,
+      groupId: targetGroupId,
       collectionId: from.collectionId === null ? null : inheritNode(from.collectionId),
+      order:
+        !exact && from.collectionId === null && from.order === sourceGroupId
+          ? targetGroupId
+          : from.order,
     }
     if (next) groups.push(next)
-    origins.delete(groupId)
-    const originId = source.groupOrigins.get(groupId)
-    if (originId !== undefined) {
-      const sourceMembers = sourceGroups.get(groupId)!
-      const origin = [...sourceMembers.values()].flat().find((item) => item.internalId === originId)
-      const candidates =
-        origin && targetGroups.get(groupId)!.get(`${origin.instanceId}:${origin.gameId}`)
-      if (candidates?.length === 1) origins.set(groupId, candidates[0]!.internalId)
-      else skippedOriginCount++
+    if (exact) {
+      origins.delete(targetGroupId)
+      const originId = source.groupOrigins.get(sourceGroupId)
+      if (originId !== undefined) {
+        const sourceGroup = sourceGroups.get(sourceGroupId)!
+        const origin = sourceGroup.items.find((item) => item.internalId === originId)
+        const candidates =
+          origin &&
+          targetGroups.get(targetGroupId)!.byIdentity.get(`${origin.instanceId}:${origin.gameId}`)
+        if (candidates?.length === 1) origins.set(targetGroupId, candidates[0]!.internalId)
+        else skippedOriginCount++
+      }
+    } else if (source.groupOrigins.has(sourceGroupId)) {
+      // 模糊匹配跳过原点迁移，不覆盖目标组已有原点。
+      skippedOriginCount++
     }
-    const previous = previousMetadata.get(groupId)
+    const previous = previousMetadata.get(targetGroupId)
     if (
       previous?.name !== next?.name ||
       (previous?.collectionId ?? null) !== (next?.collectionId ?? null) ||
-      (previous?.order ?? groupId) !== (next?.order ?? groupId) ||
-      target.groupOrigins.get(groupId) !== origins.get(groupId)
+      (previous?.order ?? targetGroupId) !== (next?.order ?? targetGroupId) ||
+      target.groupOrigins.get(targetGroupId) !== origins.get(targetGroupId)
     ) {
       changedGroupCount++
     }
@@ -117,19 +241,19 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
   const nextNodes = nodes.map((node) => {
     const sourceId = sourceForNode.get(node.id)
     if (!sourceId) return node
-    // 混有未匹配组的既有分支不改原点；完整匹配的分支可以继承更新。
+    // 混有未精确匹配组的既有分支不改原点；完整精确匹配的分支可以继承更新。
     if (
       originalNodes.has(node.id) &&
       getCollectionItems({ nodes, groups }, target.items, node.id).some(
-        (item) => !matched.has(item.groupId)
+        (item) => !exactMatchedTargetIds.has(item.groupId)
       )
     )
       return node
     const originId = sourceNodes.get(sourceId)?.originItemId
     const origin = source.items.find((item) => item.internalId === originId)
     const candidates =
-      origin && matched.has(origin.groupId)
-        ? targetGroups.get(origin.groupId)?.get(`${origin.instanceId}:${origin.gameId}`)
+      origin && exactMatchedTargetIds.has(origin.groupId)
+        ? targetGroups.get(origin.groupId)?.byIdentity.get(`${origin.instanceId}:${origin.gameId}`)
         : undefined
     const originItemId = candidates?.length === 1 ? candidates[0]!.internalId : undefined
     if (originId && !originItemId) skippedOriginCount++
@@ -139,7 +263,9 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
     return originItemId ? { ...rest, originItemId } : rest
   })
   const nextTree = reconcileCollectionOrigins({ nodes: nextNodes, groups }, target.items)
-  const originsChanged = [...matched].some((id) => target.groupOrigins.get(id) !== origins.get(id))
+  const originsChanged = [...matched.keys()].some(
+    (id) => target.groupOrigins.get(id) !== origins.get(id)
+  )
   return {
     collectionTree: collectionTreesEqual(target.collectionTree, nextTree)
       ? target.collectionTree
@@ -150,5 +276,6 @@ export function inheritGroupMetadata(source: GroupMetadataInput, target: GroupMe
     changedGroupCount,
     changedCollectionOriginCount,
     skippedOriginCount,
+    ambiguousMatchCount,
   }
 }

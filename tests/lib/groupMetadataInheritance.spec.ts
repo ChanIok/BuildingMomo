@@ -175,3 +175,178 @@ it('remaps collection origins and updates them only on fully matched branches', 
     'new-old-b'
   )
 })
+
+it('fuzzy matches rewritten IDs by gameId/count/scale/color, skips origins, preserves target origins, and is idempotent', () => {
+  const { source, target } = pair()
+  source.items.value = [
+    makeAppItem({
+      internalId: 'old-a',
+      groupId: 7,
+      instanceId: 1000,
+      gameId: 10,
+      extra: { Scale: { X: 1.1, Y: 2, Z: 1 }, ColorMap: { '0': 0 } },
+    }),
+    makeAppItem({
+      internalId: 'old-b',
+      groupId: 7,
+      instanceId: 1001,
+      gameId: 20,
+      extra: { Scale: { X: 1, Y: 1, Z: 1 }, ColorMap: { '1': 12, '3': 34 } },
+    }),
+  ]
+  source.collectionTree.value.nodes[0]!.originItemId = 'old-b'
+  source.groupOrigins.value = new Map([[7, 'old-b']])
+
+  target.items.value = [
+    makeAppItem({
+      internalId: 'new-b',
+      groupId: 42,
+      instanceId: 9001,
+      gameId: 20,
+      x: 500,
+      rotation: { x: 15, y: 30, z: 45 },
+      extra: { Scale: { X: 1, Y: 1, Z: 1 }, ColorMap: [34, 12], AttachID: 777 },
+    }),
+    makeAppItem({
+      internalId: 'new-a',
+      groupId: 42,
+      instanceId: 9000,
+      gameId: 10,
+      x: -200,
+      extra: { Scale: { X: Math.fround(1.1), Y: 2, Z: 1 }, ColorMap: [0] },
+    }),
+  ]
+  target.groupOrigins.value = new Map([[42, 'new-a']])
+
+  // 默认严格模式不匹配
+  expect(
+    inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target)).matchedGroupCount
+  ).toBe(0)
+
+  const first = inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target), {
+    exactMatch: false,
+  })
+  expect(first.matchedGroupCount).toBe(1)
+  expect(first.changedGroupCount).toBe(1)
+  expect(first.ambiguousMatchCount).toBe(0)
+  // 源组原点和源集合原点在模糊模式下均跳过（1 + 1 = 2）
+  expect(first.skippedOriginCount).toBe(2)
+  expect(first.collectionTree.groups).toEqual([
+    { groupId: 42, name: 'Walls', collectionId: 'floor', order: 0 },
+  ])
+  expect(
+    first.collectionTree.nodes.find((node) => node.id === 'house')?.originItemId
+  ).toBeUndefined()
+  // 保留目标组原有原点，不被清空
+  expect(first.groupOrigins).toBe(target.groupOrigins.value)
+  expect(first.groupOrigins.get(42)).toBe('new-a')
+
+  target.collectionTree.value = first.collectionTree
+  const again = inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target), {
+    exactMatch: false,
+  })
+  expect(again.changedGroupCount).toBe(0)
+  expect(again.changedCollectionOriginCount).toBe(0)
+  expect(again.collectionTree).toBe(first.collectionTree)
+})
+
+it.each(['gameId', 'count', 'scale', 'color'])('rejects fuzzy match when %s differs', (diff) => {
+  const source = makeScheme([
+    makeAppItem({
+      internalId: 's1',
+      groupId: 1,
+      instanceId: 100,
+      gameId: 10,
+      extra: { Scale: { X: 1, Y: 1, Z: 1 }, ColorMap: [12] },
+    }),
+  ])
+  setGroupNames(source, [[1, 'Lamp']])
+  const targetItems = [
+    makeAppItem({
+      internalId: 't1',
+      groupId: 9,
+      instanceId: 900,
+      gameId: diff === 'gameId' ? 99 : 10,
+      extra: {
+        Scale: diff === 'scale' ? { X: 1.5, Y: 1, Z: 1 } : { X: 1, Y: 1, Z: 1 },
+        ColorMap: diff === 'color' ? [13] : [12],
+      },
+    }),
+  ]
+  if (diff === 'count') {
+    targetItems.push(
+      makeAppItem({
+        internalId: 't2',
+        groupId: 9,
+        instanceId: 901,
+        gameId: 10,
+        extra: { Scale: { X: 1, Y: 1, Z: 1 }, ColorMap: [12] },
+      })
+    )
+  }
+  const target = makeScheme(targetItems)
+  const result = inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target), {
+    exactMatch: false,
+  })
+  expect(result.matchedGroupCount).toBe(0)
+})
+
+it('runs exact matches first, skips blank source groups, supports 1-to-many, and matches many-to-many in order', () => {
+  const source = makeScheme([
+    // 源组 1（空白，未命名未分类，不应覆盖目标已有名称）
+    makeAppItem({ internalId: 'sb1', groupId: 1, instanceId: 101, gameId: 50 }),
+    // 源组 2（唯一命名的路灯，用于测试 1 对多）
+    makeAppItem({ internalId: 'sl1', groupId: 2, instanceId: 102, gameId: 60 }),
+    // 源组 3 和 4（两根相同柱子，用于测试精确优先 + 多对多顺序消耗与回退）
+    makeAppItem({ internalId: 'sp1', groupId: 3, instanceId: 103, gameId: 70 }),
+    makeAppItem({ internalId: 'sp2', groupId: 4, instanceId: 104, gameId: 70 }),
+  ])
+  source.collectionTree.value = {
+    nodes: [
+      { id: 'street', name: 'Street', parentId: null, order: 0 },
+      { id: 'f1', name: 'F1', parentId: null, order: 1 },
+      { id: 'f2', name: 'F2', parentId: null, order: 2 },
+    ],
+    groups: [
+      { groupId: 2, name: 'Lamp', collectionId: 'street', order: 0 },
+      { groupId: 3, name: 'Pillar A', collectionId: 'f1', order: 0 },
+      { groupId: 4, name: 'Pillar B', collectionId: 'f2', order: 0 },
+    ],
+  }
+  source.groupOrigins.value = new Map([[3, 'sp1']])
+
+  const target = makeScheme([
+    // 目标组 10 与空白源组 1 属性一致，但自己已有名称
+    makeAppItem({ internalId: 'tb1', groupId: 10, instanceId: 901, gameId: 50 }),
+    // 目标组 11、12 为路灯的 2 份复制品（1 对多，无歧义）
+    makeAppItem({ internalId: 'tl1', groupId: 11, instanceId: 902, gameId: 60 }),
+    makeAppItem({ internalId: 'tl2', groupId: 12, instanceId: 903, gameId: 60 }),
+    // 目标组 3 精确命中源组 3（应优先锁定并迁移原点）
+    makeAppItem({ internalId: 'tp-exact', groupId: 3, instanceId: 103, gameId: 70 }),
+    // 目标组 13、14 为另外两根柱子：13 消耗未用的源组 4，14 回退复用源组 3
+    makeAppItem({ internalId: 'tp1', groupId: 13, instanceId: 904, gameId: 70 }),
+    makeAppItem({ internalId: 'tp2', groupId: 14, instanceId: 905, gameId: 70 }),
+  ])
+  setGroupNames(target, [[10, 'Keep Wall']])
+
+  const result = inheritGroupMetadata(groupMetadataInput(source), groupMetadataInput(target), {
+    exactMatch: false,
+  })
+  const byId = new Map(result.collectionTree.groups.map((g) => [g.groupId, g]))
+  // 空白源组 1 被跳过，目标组 10 保留原有名称
+  expect(byId.get(10)?.name).toBe('Keep Wall')
+  // 1 对多全部继承
+  expect(byId.get(11)).toMatchObject({ name: 'Lamp', collectionId: 'street' })
+  expect(byId.get(12)).toMatchObject({ name: 'Lamp', collectionId: 'street' })
+  // 精确匹配组 3 锁定源组 3 并迁移原点
+  expect(byId.get(3)).toMatchObject({ name: 'Pillar A', collectionId: 'f1' })
+  expect(result.groupOrigins.get(3)).toBe('tp-exact')
+  // 目标组 13 拿到未消耗的源组 4，目标组 14 回退复用第一个候选源组 3
+  expect(byId.get(13)).toMatchObject({ name: 'Pillar B', collectionId: 'f2' })
+  expect(byId.get(14)).toMatchObject({ name: 'Pillar A', collectionId: 'f1' })
+  // 仅目标组 13、14 属于多候选模糊匹配（11、12 为单源 1 对多不计入）
+  expect(result.ambiguousMatchCount).toBe(2)
+  expect(result.matchedGroupCount).toBe(5)
+  // 目标组 14 复用带原点的源组 3，计入 1 个跳过的原点
+  expect(result.skippedOriginCount).toBe(1)
+})

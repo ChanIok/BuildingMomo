@@ -321,13 +321,22 @@ export const enLocale = {
     importDialog: {
       collectionOrigins: 'Update {count} collection origins.',
       title: 'Import group info',
-      description: 'Choose a source scheme. Group IDs and all members must match exactly.',
+      description: 'Choose a source scheme to import matching group names and collections.',
+      exactMatch: 'Exact match',
+      exactMatchHint:
+        'Require identical group and instance IDs and migrate origins; when off, match by furniture attributes.',
       empty: 'Open another scheme first.',
       matched: '{count} / {total} groups matched',
       overwrite:
+        'Update names, collections, and order for {count} groups (exact matches also update origins). Unmatched groups stay unchanged.',
+      overwriteExact:
         'Update names, collections, order, and origins for {count} groups. Unmatched groups stay unchanged.',
       noChanges: 'No group information needs updating.',
+      ambiguousMatches:
+        '{count} groups had multiple identical candidates and were matched in order. Please review after importing.',
       skippedOrigins: '{count} origins cannot be uniquely identified and will be cleared.',
+      skippedOriginsFuzzy:
+        '{count} origins were not imported (fuzzy matches skip origins, or the item could not be uniquely identified).',
       confirm: 'Import',
       success: 'Imported information for {count} groups.',
     },

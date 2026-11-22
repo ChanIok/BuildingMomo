@@ -167,3 +167,36 @@ it('rejects a closed or current source and observes cloud connection/capability 
   store.closeScheme(source.id)
   expect(imports.preview(source.id)).toBeNull()
 })
+
+it('defaults to fuzzy matching in manual import and respects exactMatch toggle', async () => {
+  const { store, source } = setup()
+  const rewrittenContent = serializeBuildData([
+    {
+      ItemID: 1170000010,
+      InstanceID: 9999,
+      GroupID: 42,
+      AttachID: 0,
+      Location: { X: 50, Y: 60, Z: 70 },
+      Rotation: { Roll: 0, Pitch: 0, Yaw: 90 },
+      Scale: { X: 1, Y: 1, Z: 1 },
+    },
+  ])
+  await store.importJSONAsScheme(rewrittenContent, 'pasted.json')
+  const target = store.activeScheme!
+  const imports = useGroupMetadataImport()
+
+  expect(imports.preview(source.id, true)?.matchedGroupCount).toBe(0)
+  expect(imports.importFrom(source.id, target.id, true)).toBeNull()
+
+  const fuzzyPreview = imports.preview(source.id)!
+  expect(fuzzyPreview.matchedGroupCount).toBe(1)
+  expect(fuzzyPreview.changedGroupCount).toBe(1)
+  expect(fuzzyPreview.skippedOriginCount).toBe(1)
+
+  const applied = imports.importFrom(source.id, target.id)!
+  expect(applied.changedGroupCount).toBe(1)
+  expect(target.collectionTree.value.groups).toEqual([
+    { groupId: 42, name: 'Walls', collectionId: 'house', order: 2 },
+  ])
+  expect(target.groupOrigins.value.size).toBe(0)
+})

@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dialog'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useEditorStore } from '@/stores/editorStore'
 import { useTabStore } from '@/stores/tabStore'
 import { useI18n } from '@/composables/useI18n'
@@ -26,6 +28,7 @@ const { canImport, preview, importFrom } = useGroupMetadataImport()
 // 弹窗按需挂载，每次打开绑定当时的目标，切换标签后不得提交到新目标。
 const targetId = store.activeSchemeId
 const sourceId = ref('')
+const exactMatch = ref(false)
 const sources = computed(() =>
   tabs.tabs.flatMap((tab) => {
     const scheme = tab.type === 'scheme' && tab.schemeId ? store.getSchemeById(tab.schemeId) : null
@@ -36,7 +39,9 @@ const sources = computed(() =>
     return [{ id: scheme.id, name: scheme.name.value, count: groupIds.size }]
   })
 )
-const result = computed(() => (props.open && sourceId.value ? preview(sourceId.value) : null))
+const result = computed(() =>
+  props.open && sourceId.value ? preview(sourceId.value, exactMatch.value) : null
+)
 const canSubmit = computed(
   () =>
     canImport.value &&
@@ -45,7 +50,10 @@ const canSubmit = computed(
 watch(
   () => props.open,
   (open) => {
-    if (open) sourceId.value = ''
+    if (open) {
+      sourceId.value = ''
+      exactMatch.value = false
+    }
   }
 )
 watch(() => store.activeSchemeId, close)
@@ -59,7 +67,7 @@ function close() {
 
 function submit() {
   if (!canSubmit.value || !targetId) return
-  const applied = importFrom(sourceId.value, targetId)
+  const applied = importFrom(sourceId.value, targetId, exactMatch.value)
   if (!applied) return
   notification.success(
     [
@@ -86,6 +94,23 @@ function submit() {
         <DialogTitle>{{ t('groups.importDialog.title') }}</DialogTitle>
         <DialogDescription>{{ t('groups.importDialog.description') }}</DialogDescription>
       </DialogHeader>
+      <div
+        class="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5"
+      >
+        <div class="min-w-0 space-y-0.5">
+          <Label for="group-import-exact-match" class="cursor-pointer text-sm font-medium">
+            {{ t('groups.importDialog.exactMatch') }}
+          </Label>
+          <p id="group-import-exact-match-hint" class="text-xs text-muted-foreground">
+            {{ t('groups.importDialog.exactMatchHint') }}
+          </p>
+        </div>
+        <Switch
+          id="group-import-exact-match"
+          v-model="exactMatch"
+          aria-describedby="group-import-exact-match-hint"
+        />
+      </div>
       <RadioGroup v-model="sourceId" class="grid max-h-[45vh] gap-2 overflow-y-auto py-1">
         <label
           v-for="source in sources"
@@ -124,7 +149,12 @@ function submit() {
         >
           {{
             result.changedGroupCount
-              ? t('groups.importDialog.overwrite', { count: result.changedGroupCount })
+              ? t(
+                  exactMatch
+                    ? 'groups.importDialog.overwriteExact'
+                    : 'groups.importDialog.overwrite',
+                  { count: result.changedGroupCount }
+                )
               : t('groups.importDialog.noChanges')
           }}
         </p>
@@ -135,8 +165,18 @@ function submit() {
             })
           }}
         </p>
+        <p v-if="result.ambiguousMatchCount" class="text-xs text-amber-600 dark:text-amber-400">
+          {{ t('groups.importDialog.ambiguousMatches', { count: result.ambiguousMatchCount }) }}
+        </p>
         <p v-if="result.skippedOriginCount" class="text-xs text-amber-600 dark:text-amber-400">
-          {{ t('groups.importDialog.skippedOrigins', { count: result.skippedOriginCount }) }}
+          {{
+            t(
+              exactMatch
+                ? 'groups.importDialog.skippedOrigins'
+                : 'groups.importDialog.skippedOriginsFuzzy',
+              { count: result.skippedOriginCount }
+            )
+          }}
         </p>
       </div>
       <DialogFooter>
