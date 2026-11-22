@@ -1,6 +1,7 @@
-import type { CollectionTree } from '@/lib/collectionTree'
+import type { CollectionTree } from '@/lib/scheme/collectionTree'
 import type { Ref, ShallowRef } from 'vue'
-import type { ViewPreset } from '../composables/useThreeCamera'
+
+export type ViewPreset = 'perspective' | 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'
 
 export type SchemeSource = 'local' | 'cloud'
 

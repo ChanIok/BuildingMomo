@@ -4,7 +4,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { Button } from '@/components/ui/button'
 import { Toggle } from '@/components/ui/toggle'
 import {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useEditorStore } from '../stores/editorStore'
+import { useEditorStore } from '@/stores/editorStore'
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'vue-sonner'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 const props = defineProps<{
   open: boolean

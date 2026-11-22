@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { markRaw } from 'vue'
 import { createWatchModeOps } from '@/composables/fileOps/watchMode'
-import { WatchHandleStore } from '@/lib/watchHandleStore'
+import { WatchHandleStore } from '@/lib/persistence/watchHandleStore'
 import { makeScheme, makeAppItem } from '../fixtures/item'
 
-vi.mock('@/lib/watchHandleStore', () => ({
+vi.mock('@/lib/persistence/watchHandleStore', () => ({
   WatchHandleStore: {
     getRootHandle: vi.fn(),
     saveRootHandle: vi.fn(),

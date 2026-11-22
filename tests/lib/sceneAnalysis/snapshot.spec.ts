@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { Box3, Vector3 } from 'three'
 import { createAnalysisSnapshot } from '@/lib/sceneAnalysis/snapshot'
 import { getAnalysisBounds } from '@/lib/sceneAnalysis/geometry'
-import { SLIDE_PATH_GAME_ID } from '@/lib/slidePath'
+import { SLIDE_PATH_GAME_ID } from '@/lib/geometry/slidePath'
 import { analysisInput } from '../../fixtures/sceneAnalysis'
 import { makeAppItem } from '../../fixtures/item'
 import { createAnalysisRenderSnapshot } from '@/lib/sceneAnalysis/renderSnapshot'
-import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
+import { buildDisplayWorldMatrixFromItem } from '@/lib/transform/scaleRenderCompensation'
 
 describe('analysis snapshot', () => {
   it('captures a detached explicit scope, deduplicated catalog and only relevant metadata', () => {

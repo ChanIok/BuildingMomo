@@ -1,6 +1,6 @@
 import type { AppItem } from '@/types/editor'
-import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
-import { getSlidePathWorldPoints, isSlidePathItem } from '@/lib/slidePath'
+import { buildDisplayWorldMatrixFromItem } from '@/lib/transform/scaleRenderCompensation'
+import { getSlidePathWorldPoints, isSlidePathItem } from '@/lib/geometry/slidePath'
 import type { AnalysisSnapshot } from './types'
 import type { AnalysisRenderSnapshot } from './images'
 import { freezeAnalysisValue } from './validation'

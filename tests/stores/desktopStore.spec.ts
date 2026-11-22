@@ -7,8 +7,8 @@ vi.mock('@vueuse/core', () => ({
   useLocalStorage: (_key: string, defaults: object) => ref({ ...defaults }),
 }))
 const notification = vi.hoisted(() => ({ info: vi.fn(), error: vi.fn() }))
-vi.mock('@/composables/useNotification', () => ({ useNotification: () => notification }))
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useNotification', () => ({ useNotification: () => notification }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 let pinia: ReturnType<typeof createPinia>
 let scope: ReturnType<typeof effectScope>

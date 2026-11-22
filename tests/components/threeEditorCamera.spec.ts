@@ -4,7 +4,7 @@ import ts from 'typescript'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, ref, watch, type EffectScope } from 'vue'
 import { PerspectiveCamera } from 'three'
-import { invalidateScene, setSceneInvalidate } from '@/composables/useSceneInvalidate'
+import { invalidateScene, setSceneInvalidate } from '@/composables/viewport/useSceneInvalidate'
 
 // Execute the actual look-at watcher with real Vue scheduling without loading
 // the viewport's unrelated rendering dependencies.

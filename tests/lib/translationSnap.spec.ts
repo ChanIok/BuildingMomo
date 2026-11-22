@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { Box3, Euler, Matrix3, Matrix4, Quaternion, Vector3 } from 'three'
-import { OBB, intersectsOBBAfterTranslation } from '@/lib/collision'
+import { OBB, intersectsOBBAfterTranslation } from '@/lib/geometry/collision'
 import {
   createTranslationSnapBody,
   solveTranslationSnap,
   type TranslationSnapBody,
-} from '@/lib/translationSnap'
+} from '@/lib/geometry/translationSnap'
 
 type Basis = [Vector3, Vector3, Vector3]
 

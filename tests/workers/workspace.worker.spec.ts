@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { expose } from 'comlink'
 import type { WorkspaceWorkerApi } from '@/workers/workspace.worker'
 import type { WorkspaceSnapshot } from '@/types/persistence'
-import { saveWorkspaceSnapshot } from '@/lib/workspaceSnapshotStore'
+import { saveWorkspaceSnapshot } from '@/lib/persistence/workspaceSnapshotStore'
 import { makeAppItem } from '../fixtures/item'
 
 vi.mock('comlink', () => ({ expose: vi.fn() }))
-vi.mock('@/lib/workspaceSnapshotStore', () => ({ saveWorkspaceSnapshot: vi.fn() }))
+vi.mock('@/lib/persistence/workspaceSnapshotStore', () => ({ saveWorkspaceSnapshot: vi.fn() }))
 
 await import('@/workers/workspace.worker')
 const api = vi.mocked(expose).mock.calls[0]![0] as WorkspaceWorkerApi

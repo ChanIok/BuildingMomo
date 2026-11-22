@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useCommandStore } from '@/stores/commandStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import {
   Box,
   Image as ImageIcon,

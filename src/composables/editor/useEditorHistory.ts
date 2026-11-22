@@ -1,9 +1,9 @@
 import { toast } from 'vue-sonner'
-import { useI18n } from '../useI18n'
-import { reconcileCollectionOrigins } from '@/lib/selectionReference'
+import { useI18n } from '@/composables/app/useI18n'
+import { reconcileCollectionOrigins } from '@/lib/scheme/selectionReference'
 import { storeToRefs } from 'pinia'
 import { markRaw } from 'vue'
-import { useEditorStore } from '../../stores/editorStore'
+import { useEditorStore } from '@/stores/editorStore'
 import {
   applyEditorTransactionToScheme,
   buildTransactionByRef,
@@ -13,7 +13,7 @@ import {
   createReplayTransaction,
   invertEditorTransaction,
   transactionAffectsScene,
-} from '../../lib/editorTransactions'
+} from '@/lib/scheme/editorTransactions'
 import type {
   CollectionEntry,
   EditorTransaction,
@@ -21,7 +21,7 @@ import type {
   HistoryStack,
   SelectionHistoryEntry,
   TransactionHistoryEntry,
-} from '../../types/editor'
+} from '@/types/editor'
 
 export function useEditorHistory() {
   const store = useEditorStore()

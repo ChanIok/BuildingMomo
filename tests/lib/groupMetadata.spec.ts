@@ -9,14 +9,14 @@ import {
   readCollectionTree,
   reconcileCollectionGroups,
   resolveGroupCollection,
-} from '@/lib/collectionTree'
+} from '@/lib/scheme/collectionTree'
 import {
   applyEditorTransactionToScheme,
   buildTransactionByRef,
   captureSchemeSnapshot,
   invertEditorTransaction,
-} from '@/lib/editorTransactions'
-import { parseSchemeHistoryFile } from '@/lib/schemeHistory'
+} from '@/lib/scheme/editorTransactions'
+import { parseSchemeHistoryFile } from '@/lib/scheme/schemeHistory'
 import { makeAppItem, makeScheme } from '../fixtures/item'
 
 const directory = () => ({

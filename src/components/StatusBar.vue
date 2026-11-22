@@ -2,17 +2,17 @@
 import { computed, watch, ref } from 'vue'
 import { useDateFormat } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { useEditorStore } from '../stores/editorStore'
-import { useValidationStore } from '../stores/validationStore'
-import { useUIStore } from '../stores/uiStore'
-import { useCommandStore } from '../stores/commandStore'
-import { useSettingsStore } from '../stores/settingsStore'
+import { useEditorStore } from '@/stores/editorStore'
+import { useValidationStore } from '@/stores/validationStore'
+import { useUIStore } from '@/stores/uiStore'
+import { useCommandStore } from '@/stores/commandStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
-import { joinOnlineDisplayNames } from '@/lib/cloudPresence'
+import { joinOnlineDisplayNames } from '@/lib/scheme/cloudPresence'
 import type { CloudPresenceUser } from '@/types/cloudScheme'
-import { useI18n } from '@/composables/useI18n'
-import { useNotification } from '@/composables/useNotification'
-import { useCloudSchemeSync } from '@/composables/useCloudSchemeSync'
+import { useI18n } from '@/composables/app/useI18n'
+import { useNotification } from '@/composables/app/useNotification'
+import { useCloudSchemeSync } from '@/composables/workspace/useCloudSchemeSync'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Copy,
@@ -24,7 +24,7 @@ import {
   Cloud,
   CloudAlert,
 } from 'lucide-vue-next'
-import { MAX_RENDER_INSTANCES } from '@/lib/renderInstanceBudget'
+import { MAX_RENDER_INSTANCES } from '@/lib/viewport/renderInstanceBudget'
 import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
 
 const settingsStore = useSettingsStore()

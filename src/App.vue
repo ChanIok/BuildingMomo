@@ -1,42 +1,42 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch, nextTick, provide } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
-import { useEditorStore } from './stores/editorStore'
-import { useGameDataStore } from './stores/gameDataStore'
-import { useSettingsStore } from './stores/settingsStore'
-import { useTabStore } from './stores/tabStore'
-import Toolbar from './components/Toolbar.vue'
-import StatusBar from './components/StatusBar.vue'
-import WelcomeScreen from './components/WelcomeScreen.vue'
-import RotateHintDialog from './components/RotateHintDialog.vue'
-import CoordinateDialog from './components/CoordinateDialog.vue'
-import AdvancedPasteDialog from './components/AdvancedPasteDialog.vue'
-import GroupMergeDialog from './components/GroupMergeDialog.vue'
-import { useAsyncView } from './composables/useAsyncView'
-import GlobalAlertDialog from './components/GlobalAlertDialog.vue'
+import { useEditorStore } from '@/stores/editorStore'
+import { useGameDataStore } from '@/stores/gameDataStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useTabStore } from '@/stores/tabStore'
+import Toolbar from '@/components/Toolbar.vue'
+import StatusBar from '@/components/StatusBar.vue'
+import WelcomeScreen from '@/components/WelcomeScreen.vue'
+import RotateHintDialog from '@/components/RotateHintDialog.vue'
+import CoordinateDialog from '@/components/CoordinateDialog.vue'
+import AdvancedPasteDialog from '@/components/AdvancedPasteDialog.vue'
+import GroupMergeDialog from '@/components/GroupMergeDialog.vue'
+import { useAsyncView } from '@/composables/app/useAsyncView'
+import GlobalAlertDialog from '@/components/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
-import EditorLayout from './components/EditorLayout.vue'
+import EditorLayout from '@/components/EditorLayout.vue'
 import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
-import { useWorkspaceWorker } from './composables/useWorkspaceWorker'
-import { useCloudSchemeSync } from './composables/useCloudSchemeSync'
-import { useUIStore } from './stores/uiStore'
-import { useDesktopStore } from './stores/desktopStore'
-import { useCommandStore } from './stores/commandStore'
-import { removeLegacyDatabases } from './lib/legacyIdbCleanup'
+import { useKeyboardShortcuts } from '@/composables/app/useKeyboardShortcuts'
+import { useWorkspaceWorker } from '@/composables/workspace/useWorkspaceWorker'
+import { useCloudSchemeSync } from '@/composables/workspace/useCloudSchemeSync'
+import { useUIStore } from '@/stores/uiStore'
+import { useDesktopStore } from '@/stores/desktopStore'
+import { useCommandStore } from '@/stores/commandStore'
+import { removeLegacyDatabases } from '@/lib/persistence/legacyIdbCleanup'
 
 import {
   createAnalysisCaptureBridge,
   analysisCaptureBridgeKey,
-} from './lib/sceneAnalysis/captureBridge'
-import { useAiChat } from './composables/ai/useAiChat'
-import { aiChatKey } from './composables/ai/chatContext'
-import { externalAiKey, useExternalAi } from './composables/ai/useExternalAi'
+} from '@/lib/sceneAnalysis/captureBridge'
+import { useAiChat } from '@/composables/ai/useAiChat'
+import { aiChatKey } from '@/composables/ai/chatContext'
+import { externalAiKey, useExternalAi } from '@/composables/ai/useExternalAi'
 
-const ThreeEditor = useAsyncView(() => import('./components/ThreeEditor.vue'))
-const Sidebar = useAsyncView(() => import('./components/Sidebar.vue'))
-const DocsViewer = useAsyncView(() => import('./components/DocsViewer.vue'))
+const ThreeEditor = useAsyncView(() => import('@/components/ThreeEditor.vue'))
+const Sidebar = useAsyncView(() => import('@/components/Sidebar.vue'))
+const DocsViewer = useAsyncView(() => import('@/components/DocsViewer.vue'))
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()

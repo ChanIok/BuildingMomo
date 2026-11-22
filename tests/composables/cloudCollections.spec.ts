@@ -2,16 +2,16 @@ import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, ref } from 'vue'
-import { useCloudSchemeSync } from '@/composables/useCloudSchemeSync'
+import { useCloudSchemeSync } from '@/composables/workspace/useCloudSchemeSync'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
-import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
+import { useCollectionPanel } from '@/composables/panels/useCollectionPanel'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import { emptyCollectionTree } from '@/lib/collectionTree'
+import { emptyCollectionTree } from '@/lib/scheme/collectionTree'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('@/composables/useNotification', () => ({
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useNotification', () => ({
   useNotification: () => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
 afterEach(() => vi.unstubAllGlobals())

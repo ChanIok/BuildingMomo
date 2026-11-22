@@ -4,8 +4,8 @@ import { effectScope, ref, type EffectScope } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useCommandStore } from '@/stores/commandStore'
-import { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts'
-import { useClipboard } from '@/composables/useClipboard'
+import { useKeyboardShortcuts } from '@/composables/app/useKeyboardShortcuts'
+import { useClipboard } from '@/composables/editor/useClipboard'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { makeAppItem } from '../fixtures/item'
 
@@ -16,14 +16,14 @@ vi.mock('@vueuse/core', async (original) => ({
     keyboard.listener = listener
   },
 }))
-vi.mock('@/composables/useFileOperations', () => ({
+vi.mock('@/composables/fileOps/useFileOperations', () => ({
   useFileOperations: () => ({
     canRestoreWatchMode: ref(false),
     isRestoringWatchMode: ref(false),
     isPickingWatchDirectory: ref(false),
   }),
 }))
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 let scope: EffectScope
 

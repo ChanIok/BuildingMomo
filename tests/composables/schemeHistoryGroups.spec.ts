@@ -1,14 +1,14 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick, ref } from 'vue'
-import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
+import { useCollectionPanel } from '@/composables/panels/useCollectionPanel'
 import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { createSchemeHistoryOps } from '@/composables/fileOps/schemeHistory'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()

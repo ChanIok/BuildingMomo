@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { installFurnitureRender } from '@/composables/useFurnitureRender'
+import { installFurnitureRender } from '@/composables/renderer/useFurnitureRender'
 import { furnitureRender } from '@/composables/renderer/furnitureRenderState'
-import { createSceneCapture } from '@/composables/renderer/sceneCapture'
+import { createSceneCapture } from '@/composables/viewport/sceneCapture'
 import { analysisCaptureBridgeKey } from '@/lib/sceneAnalysis/captureBridge'
-import { homeOutputUniforms } from '@/composables/renderer/homeOutput'
+import { homeOutputUniforms } from '@/composables/environment/homeOutput'
 import {
   ref,
   shallowRef,
@@ -35,29 +35,30 @@ import { useCommandStore } from '@/stores/commandStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useThreeSelection } from '@/composables/useThreeSelection'
-import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
+import { useThreeSelection } from '@/composables/viewport/useThreeSelection'
+import { useThreeTransformGizmo } from '@/composables/viewport/gizmo/useThreeTransformGizmo'
 import {
   useThreeInstancedRenderer,
   type InteractionAdapter,
   type RaycastHit,
 } from '@/composables/renderer'
 import { useSlidePathRenderer } from '@/composables/renderer/useSlidePathRenderer'
-import { useThreeTooltip } from '@/composables/useThreeTooltip'
-import { useThreeCamera, type ViewPreset } from '@/composables/useThreeCamera'
-import { useThreeGrid } from '@/composables/useThreeGrid'
-import { useThreeBackground } from '@/composables/useThreeBackground'
-import { useHomeTerrain } from '@/composables/useHomeTerrain'
-import { useI18n } from '@/composables/useI18n'
+import { useThreeTooltip } from '@/composables/viewport/useThreeTooltip'
+import { useThreeCamera } from '@/composables/viewport/useThreeCamera'
+import type { ViewPreset } from '@/types/editor'
+import { useThreeGrid } from '@/composables/viewport/useThreeGrid'
+import { useThreeBackground } from '@/composables/environment/useThreeBackground'
+import { useHomeTerrain } from '@/composables/environment/useHomeTerrain'
+import { useI18n } from '@/composables/app/useI18n'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
-import { useCameraInputConfig } from '@/composables/useCameraInputConfig'
-import { createSceneEnvironment } from '@/composables/useThreeEnvironment'
-import { createEnvironmentTransition } from '@/composables/renderer/environmentTransition'
-import { useThreePointerRouter } from '@/composables/useThreePointerRouter'
-import { useOrbitControlsInput } from '@/composables/useOrbitControlsInput'
-import { setSceneInvalidate, invalidateScene } from '@/composables/useSceneInvalidate'
-import { ORTHO_BASE_FRUSTUM_HEIGHT } from '@/lib/cameraUtils'
-import { computeClipFarFromWorldBounds } from '@/lib/cameraClipRange'
+import { useCameraInputConfig } from '@/composables/viewport/useCameraInputConfig'
+import { createSceneEnvironment } from '@/composables/environment/useThreeEnvironment'
+import { createEnvironmentTransition } from '@/composables/environment/environmentTransition'
+import { useThreePointerRouter } from '@/composables/viewport/useThreePointerRouter'
+import { useOrbitControlsInput } from '@/composables/viewport/useOrbitControlsInput'
+import { setSceneInvalidate, invalidateScene } from '@/composables/viewport/useSceneInvalidate'
+import { ORTHO_BASE_FRUSTUM_HEIGHT } from '@/lib/viewport/cameraUtils'
+import { computeClipFarFromWorldBounds } from '@/lib/viewport/cameraClipRange'
 import {
   useMagicKeys,
   useElementSize,
@@ -67,9 +68,9 @@ import {
 } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
 import LogDepthGrid from '@/components/scene/LogDepthGrid.vue'
-import { recordRenderFrame, recordGpuFrame } from '@/composables/useFpsMonitor'
-import { createGpuFrameTimer } from '@/composables/renderer/gpuFrameTimer'
-import { getRenderQuality } from '@/lib/renderQuality'
+import { recordRenderFrame, recordGpuFrame } from '@/composables/viewport/useFpsMonitor'
+import { createGpuFrameTimer } from '@/composables/viewport/gpuFrameTimer'
+import { getRenderQuality } from '@/lib/viewport/renderQuality'
 import { useDevicePixelRatio } from '@vueuse/core'
 import { SceneAnalysisError } from '@/lib/sceneAnalysis/types'
 

@@ -1,12 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
-import type { GroupEditTarget, PasteResult, WorkingCoordinateSystem } from '../types/editor'
-import type { ViewPreset } from '../composables/useThreeCamera'
+import type {
+  GroupEditTarget,
+  PasteResult,
+  ViewPreset,
+  WorkingCoordinateSystem,
+} from '@/types/editor'
 import {
   convertPositionWorkingToGlobal,
   convertPositionGlobalToWorking,
-} from '../lib/coordinateTransform'
-import { matrixTransform } from '../lib/matrixTransform'
+} from '@/lib/transform/coordinateTransform'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
 
 // 位置类型定义
 interface Position {

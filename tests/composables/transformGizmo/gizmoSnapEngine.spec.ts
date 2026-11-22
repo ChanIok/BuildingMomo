@@ -16,14 +16,14 @@ vi.mock('@/stores/gameDataStore', () => ({
   useGameDataStore: () => hoisted.gameData,
 }))
 
-vi.mock('@/composables/useThreeModelManager', () => ({
+vi.mock('@/composables/renderer/useThreeModelManager', () => ({
   getThreeModelManager: () => ({
     getModelBoundingBox: () => hoisted.modelBox,
   }),
 }))
 
-const { matrixTransform } = await import('@/lib/matrixTransform')
-const { createGizmoSnapEngine } = await import('@/composables/transformGizmo/gizmoSnapEngine')
+const { matrixTransform } = await import('@/lib/transform/matrixTransform')
+const { createGizmoSnapEngine } = await import('@/composables/viewport/gizmo/gizmoSnapEngine')
 
 function item(id: string, x: number, y = 0, gameId = 1): AppItem {
   return {

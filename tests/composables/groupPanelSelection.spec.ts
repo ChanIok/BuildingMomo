@@ -5,13 +5,13 @@ import { useTabStore } from '@/stores/tabStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import { useGroupPanel } from '@/composables/editor/useGroupPanel'
-import { useCollectionPanel, type CollectionEntry } from '@/composables/editor/useCollectionPanel'
-import { UNCLASSIFIED } from '@/lib/collectionTree'
-import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelection'
+import { useGroupPanel } from '@/composables/panels/useGroupPanel'
+import { useCollectionPanel, type CollectionEntry } from '@/composables/panels/useCollectionPanel'
+import { UNCLASSIFIED } from '@/lib/scheme/collectionTree'
+import { useGroupPanelSelection } from '@/composables/panels/useGroupPanelSelection'
 import { makeAppItem, setGroupNames } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 let scope: EffectScope
 beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })

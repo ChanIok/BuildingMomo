@@ -10,11 +10,11 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
-import { collectionAncestors, groupNameEntries } from '@/lib/collectionTree'
+import { collectionAncestors, groupNameEntries } from '@/lib/scheme/collectionTree'
 
 const props = defineProps<{
   open: boolean

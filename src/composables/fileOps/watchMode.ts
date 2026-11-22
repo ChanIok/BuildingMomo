@@ -1,10 +1,10 @@
 import { computed, ref, shallowRef } from 'vue'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
-import type { useNotification } from '@/composables/useNotification'
+import type { useNotification } from '@/composables/app/useNotification'
 import type { FileWatchState, GameItem, HomeScheme } from '@/types/editor'
 import { createGameImportOps } from './gameImport'
-import { WatchHandleStore } from '@/lib/watchHandleStore'
+import { WatchHandleStore } from '@/lib/persistence/watchHandleStore'
 import {
   SAVE_DATA_FILENAME_REGEX,
   createDefaultManualExportFileName,
@@ -22,7 +22,7 @@ import {
   parseGameDataContent,
   serializeBuildData,
   serializeBuildRecord,
-} from '@/lib/gameDataFormat'
+} from '@/lib/scheme/gameDataFormat'
 
 // 页面可见时的轮询间隔（3 秒）
 const POLL_INTERVAL_ACTIVE = 3000

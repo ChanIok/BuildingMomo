@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineAsyncComponent } from 'vue'
-import { defineAsyncView } from '@/lib/asyncView'
+import { defineAsyncView } from '@/composables/app/useAsyncView'
 
 vi.mock('vue', () => ({ defineAsyncComponent: vi.fn(() => ({})) }))
 

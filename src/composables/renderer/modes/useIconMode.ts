@@ -12,9 +12,12 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useEditorStore } from '@/stores/editorStore'
 import type { AppItem } from '@/types/editor'
-import { selectRenderItems } from '../shared/renderItems'
+import { selectRenderItems } from '@/composables/renderer/shared/renderItems'
 import { useLoadingStore } from '@/stores/loadingStore'
-import { getThreeIconManager, disposeThreeIconManager } from '@/composables/useThreeIconManager'
+import {
+  getThreeIconManager,
+  disposeThreeIconManager,
+} from '@/composables/renderer/useThreeIconManager'
 import {
   scratchMatrix,
   scratchPosition,
@@ -24,8 +27,11 @@ import {
   scratchUpVec3,
   scratchLookAtTarget,
   scratchQuaternion,
-} from '../shared/scratchObjects'
-import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
+} from '@/composables/renderer/shared/scratchObjects'
+import {
+  nextInstancedPoolCapacity,
+  requiredInstanceCount,
+} from '@/lib/viewport/renderInstanceBudget'
 
 /**
  * Icon 渲染模式

@@ -20,10 +20,10 @@ import {
   createSceneCapture,
   frameAnalysisCamera,
   readAnalysisPixels,
-} from '@/composables/renderer/sceneCapture'
+} from '@/composables/viewport/sceneCapture'
 import type { AnalysisRenderSnapshot } from '@/lib/sceneAnalysis/images'
-import { homeOutputUniforms, updateHomeOutput } from '@/composables/renderer/homeOutput'
-import { sampleHomeTod } from '@/lib/homeTod'
+import { homeOutputUniforms, updateHomeOutput } from '@/composables/environment/homeOutput'
+import { sampleHomeTod } from '@/lib/environment/homeTod'
 
 afterEach(() => {
   vi.unstubAllGlobals()

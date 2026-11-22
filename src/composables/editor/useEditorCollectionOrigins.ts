@@ -1,7 +1,7 @@
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorHistory } from './useEditorHistory'
-import { getCollectionItems } from '@/lib/selectionReference'
+import { getCollectionItems } from '@/lib/scheme/selectionReference'
 
 export function useEditorCollectionOrigins() {
   const store = useEditorStore()

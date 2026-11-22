@@ -21,7 +21,7 @@ if (!filename || (args.length && (args.length !== 2 || args[0] !== '--output')))
     cacheDir: path.join(root, 'node_modules/.cache/scene-analysis'),
     server: { middlewareMode: true }, resolve: { alias: { '@': path.join(root, 'src') } } })
   try {
-    const { parseGameDataContent } = await server.ssrLoadModule('/src/lib/gameDataFormat.ts')
+    const { parseGameDataContent } = await server.ssrLoadModule('/src/lib/scheme/gameDataFormat.ts')
     const { createAnalysisSnapshot } = await server.ssrLoadModule('/src/lib/sceneAnalysis/snapshot.ts')
     const { getAnalysisBounds } = await server.ssrLoadModule('/src/lib/sceneAnalysis/geometry.ts')
     const { getAnalysisSummary } = await server.ssrLoadModule('/src/lib/sceneAnalysis/queries.ts')

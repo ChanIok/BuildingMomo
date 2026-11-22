@@ -7,7 +7,7 @@ import {
   type PMREMGenerator,
   type WebGLRenderer,
 } from 'three'
-import { preparePmrem } from '../../src/composables/renderer/preparePmrem'
+import { preparePmrem } from '@/composables/environment/preparePmrem'
 
 afterEach(() => vi.unstubAllGlobals())
 

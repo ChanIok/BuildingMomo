@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ImageNodeProps } from 'markstream-vue'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 defineProps<Pick<ImageNodeProps, 'node'>>()
 const { t } = useI18n()

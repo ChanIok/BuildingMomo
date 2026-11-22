@@ -3,10 +3,10 @@ import { ref, computed } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { getThreeModelManager } from '@/composables/useThreeModelManager'
-import { decodeColorMapToGroupMap } from '@/lib/colorMap'
+import { getThreeModelManager } from '@/composables/renderer/useThreeModelManager'
+import { decodeColorMapToGroupMap } from '@/lib/scheme/colorMap'
 import { resolveCustomData } from '@nuan5-pro/render/furniture'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 
 const { t } = useI18n()

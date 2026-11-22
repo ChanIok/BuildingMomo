@@ -15,8 +15,8 @@ import {
   type ScriptItem,
   type ToolRecord,
 } from './types'
-import { readObject, readString, readVector } from '../sceneAnalysis/validation'
-import type { AnalysisCamera, ImageLayout } from '../sceneAnalysis/images'
+import { readObject, readString, readVector } from '@/lib/sceneAnalysis/validation'
+import type { AnalysisCamera, ImageLayout } from '@/lib/sceneAnalysis/images'
 
 const defaultScenePanelSize = 768
 const maxScenePanelSize = 1024

@@ -9,7 +9,7 @@ import {
 } from '@/composables/editor/useEditorSceneEdit'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   setActivePinia(createPinia())

@@ -4,7 +4,7 @@ import {
   parseSchemeHistoryFile,
   schemeHistoryFileName,
   selectSchemeHistoryToPrune,
-} from '@/lib/schemeHistory'
+} from '@/lib/scheme/schemeHistory'
 import { SCHEME_HISTORY_VERSION } from '@/types/schemeHistory'
 import type { AppItem } from '@/types/editor'
 

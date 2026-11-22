@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { AnchoredHint } from '@/components/ui/anchored-hint'
-import type { CollectionRow } from '@/composables/editor/useCollectionPanel'
+import type { CollectionRow } from '@/composables/panels/useCollectionPanel'
 
 const props = defineProps<{
   container: HTMLElement | null

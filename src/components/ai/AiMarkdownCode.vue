@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import type { CodeBlockNodeProps } from 'markstream-vue'
 import { Check, Copy } from 'lucide-vue-next'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 const props = defineProps<Pick<CodeBlockNodeProps, 'node'>>()
 const { t } = useI18n()

@@ -3,18 +3,18 @@ import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { useCloudSchemeSync } from '@/composables/useCloudSchemeSync'
-import { useI18n } from '@/composables/useI18n'
-import { useNotification } from '@/composables/useNotification'
+import { useCloudSchemeSync } from '@/composables/workspace/useCloudSchemeSync'
+import { useI18n } from '@/composables/app/useI18n'
+import { useNotification } from '@/composables/app/useNotification'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import type { CloudHistoryEvent } from '@/types/cloudScheme'
 import {
   cloudHistoryCountsFromItemBuckets,
   unionCloudHistoryItemBuckets,
-} from '@/lib/editorTransactions'
-import { joinOnlineDisplayNames } from '@/lib/cloudPresence'
-import CloudSchemeHistoryTruncatedLabel from '@/components/CloudSchemeHistoryTruncatedLabel.vue'
+} from '@/lib/scheme/editorTransactions'
+import { joinOnlineDisplayNames } from '@/lib/scheme/cloudPresence'
+import CloudSchemeHistoryTruncatedLabel from './CloudSchemeHistoryTruncatedLabel.vue'
 
 const emit = defineEmits<{
   (e: 'update:open', value: boolean): void

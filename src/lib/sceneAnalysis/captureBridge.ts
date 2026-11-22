@@ -1,5 +1,5 @@
 import { shallowRef, type InjectionKey } from 'vue'
-import type { AnalysisCaptureProvider } from '@/lib/sceneAnalysis/images'
+import type { AnalysisCaptureProvider } from './images'
 
 /** The viewport owns GPU resources; this bridge only publishes its current capability. */
 export function createAnalysisCaptureBridge() {

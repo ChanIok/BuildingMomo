@@ -1,12 +1,12 @@
-import { reconcileCollectionOrigins, remapCollectionOrigins } from '@/lib/selectionReference'
+import { reconcileCollectionOrigins, remapCollectionOrigins } from '@/lib/scheme/selectionReference'
 import {
   collectionAncestors,
   restrictedCollectionGroups,
   readCollectionTree,
   UNCLASSIFIED,
-} from '@/lib/collectionTree'
-import { transactionAffectsScene } from '@/lib/editorTransactions'
-import { createEmptyClipboardData } from '@/lib/clipboardStructure'
+} from '@/lib/scheme/collectionTree'
+import { transactionAffectsScene } from '@/lib/scheme/editorTransactions'
+import { createEmptyClipboardData } from '@/lib/scheme/clipboardStructure'
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef, triggerRef, watch } from 'vue'
 
@@ -23,15 +23,15 @@ import type {
   HomeScheme,
   ClosedSchemeHistory,
   ClipboardData,
-} from '../types/editor'
-import type { ArchivedSchemeSnapshot } from '../types/archive'
-import type { SelectionCategoryId } from '../types/furniture'
-import type { SharedSchemeSnapshot } from '../types/cloudScheme'
-import { createGroupState, setSchemeItems } from '../lib/groupState'
-import { parseGameDataContent } from '../lib/gameDataFormat'
-import { groupMetadataInput, inheritGroupMetadata } from '../lib/groupMetadataInheritance'
+} from '@/types/editor'
+import type { ArchivedSchemeSnapshot } from '@/types/archive'
+import type { SelectionCategoryId } from '@/types/furniture'
+import type { SharedSchemeSnapshot } from '@/types/cloudScheme'
+import { createGroupState, setSchemeItems } from '@/lib/scheme/groupState'
+import { parseGameDataContent } from '@/lib/scheme/gameDataFormat'
+import { groupMetadataInput, inheritGroupMetadata } from '@/lib/scheme/groupMetadataInheritance'
 import { useTabStore } from './tabStore'
-import { useI18n } from '../composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 // 生成简单的UUID
 function generateUUID(): string {

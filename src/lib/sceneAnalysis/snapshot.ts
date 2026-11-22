@@ -1,6 +1,6 @@
-import { collectionAncestors, isCollectionTree } from '@/lib/collectionTree'
-import { matrixTransform } from '@/lib/matrixTransform'
-import { dataScaleToVisualScale } from '@/lib/selectionScaleTransform'
+import { collectionAncestors, isCollectionTree } from '@/lib/scheme/collectionTree'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
+import { dataScaleToVisualScale } from '@/lib/transform/selectionScaleTransform'
 import {
   SceneAnalysisError,
   type AnalysisGroup,

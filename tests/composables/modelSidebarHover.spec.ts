@@ -25,7 +25,7 @@ vi.mock('vue', async (original) => ({
   ...(await original<typeof import('vue')>()),
   onUnmounted: (dispose: () => void) => state.disposers.push(dispose),
 }))
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/stores/gameDataStore', () => ({
   useGameDataStore: () => ({ isInitialized: true, furnitureDBRevision: 1 }),
 }))

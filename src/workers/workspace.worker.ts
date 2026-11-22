@@ -1,14 +1,14 @@
 import * as Comlink from 'comlink'
-import { saveWorkspaceSnapshot } from '../lib/workspaceSnapshotStore'
-import type { AppItem } from '../types/editor'
+import { saveWorkspaceSnapshot } from '@/lib/persistence/workspaceSnapshotStore'
+import type { AppItem } from '@/types/editor'
 import type {
   WorkspaceSnapshot,
   ValidationResult,
   WorkspaceCollectionViewState,
   WorkspaceSchemeData,
-} from '../types/persistence'
-import { checkFurnitureColors } from '../lib/furnitureColorValidation'
-import { getSafeScaleRange } from '../lib/scaleLimits'
+} from '@/types/persistence'
+import { checkFurnitureColors } from '@/lib/scheme/furnitureColorValidation'
+import { getSafeScaleRange } from '@/lib/transform/scaleLimits'
 
 // 旋转容差：如 0.0000001 应视为 0（禁止旋转的轴）。
 const EPSILON = 1e-6 // 0.000001

@@ -1,12 +1,12 @@
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorHistory } from './useEditorHistory'
-import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
+import { reconcileGroupOrigins, setSchemeItems } from '@/lib/scheme/groupState'
 import {
   isCollectionTree,
   restrictedCollectionGroups,
   type CollectionTree,
-} from '@/lib/collectionTree'
+} from '@/lib/scheme/collectionTree'
 import { readOrganizeItems } from '@/lib/sceneAnalysis/organizeItems'
 import { SceneAnalysisError, type OrganizationChanges } from '@/lib/sceneAnalysis/types'
 import { freezeAnalysisValue, invalidInput } from '@/lib/sceneAnalysis/validation'

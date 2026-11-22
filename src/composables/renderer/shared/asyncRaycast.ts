@@ -1,5 +1,5 @@
 import { Mesh, Matrix4, Raycaster, Sphere, type InstancedMesh, type Intersection } from 'three'
-import type { RaycastHit, RaycastTask } from '../types'
+import type { RaycastHit, RaycastTask } from '@/composables/renderer/types'
 import {
   createTaskToken,
   cancelTaskToken,

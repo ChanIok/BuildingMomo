@@ -1,6 +1,6 @@
 import type { CollectionEntry } from '@/types/editor'
 import { storeToRefs } from 'pinia'
-import { useEditorStore } from '../../stores/editorStore'
+import { useEditorStore } from '@/stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
 import { useSelectionFilter } from './useSelectionFilter'
 

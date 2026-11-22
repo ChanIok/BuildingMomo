@@ -3,7 +3,7 @@ import {
   parseGameDataContent,
   serializeBuildData,
   serializeBuildRecord,
-} from '@/lib/gameDataFormat'
+} from '@/lib/scheme/gameDataFormat'
 import {
   EMPTY_SNAPSHOTS_JSON,
   INVALID_JSON,

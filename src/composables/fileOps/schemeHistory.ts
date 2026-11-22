@@ -1,9 +1,9 @@
-import type { CollectionTree } from '@/lib/collectionTree'
+import type { CollectionTree } from '@/lib/scheme/collectionTree'
 import { ref, toRaw, watch, type WatchStopHandle } from 'vue'
 import type { AppItem } from '@/types/editor'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useSettingsStore } from '@/stores/settingsStore'
-import type { useNotification } from '@/composables/useNotification'
+import type { useNotification } from '@/composables/app/useNotification'
 import { SCHEME_HISTORY_DIR_NAME, SCHEME_HISTORY_ROOT_DIR_NAME } from '@/types/schemeHistory'
 import type { SchemeHistoryEntry } from '@/types/schemeHistory'
 import {
@@ -11,7 +11,7 @@ import {
   parseSchemeHistoryFile,
   schemeHistoryFileName,
   selectSchemeHistoryToPrune,
-} from '@/lib/schemeHistory'
+} from '@/lib/scheme/schemeHistory'
 
 type TranslateFn = (key: string, params?: Record<string, string | number>) => string
 

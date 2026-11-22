@@ -35,8 +35,8 @@ function createLoader(mocks = {}) {
 }
 
 const load = createLoader()
-const { OBB, intersectsOBBAfterTranslation } = load('src/lib/collision.ts')
-const { createTranslationSnapBody: body, solveTranslationSnap: solve } = load('src/lib/translationSnap.ts')
+const { OBB, intersectsOBBAfterTranslation } = load('src/lib/geometry/collision.ts')
+const { createTranslationSnapBody: body, solveTranslationSnap: solve } = load('src/lib/geometry/translationSnap.ts')
 const axes = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)]
 function box(id, center, half = [50, 50, 5], basis = axes) {
   return body(id, new OBB(new Vector3(...center), new Vector3(...half), basis))
@@ -244,10 +244,10 @@ function engineFixture(mode = 'box', modelBox = null) {
   const modelManager = { getModelBoundingBox: () => modelBox }
   const loader = createLoader({
     '@/stores/gameDataStore': { useGameDataStore: () => gameDataStore },
-    '@/composables/useThreeModelManager': { getThreeModelManager: () => modelManager },
+    '@/composables/renderer/useThreeModelManager': { getThreeModelManager: () => modelManager },
   })
-  const { matrixTransform } = loader('src/lib/matrixTransform.ts')
-  const { createGizmoSnapEngine } = loader('src/composables/transformGizmo/gizmoSnapEngine.ts')
+  const { matrixTransform } = loader('src/lib/transform/matrixTransform.ts')
+  const { createGizmoSnapEngine } = loader('src/composables/viewport/gizmo/gizmoSnapEngine.ts')
   const items = [item('m', -160), item('m2', -160, 100), item('t', 0), item('t2', 0, 100)]
   const scheme = { items: { value: items }, selectedItemIds: { value: new Set(['m', 'm2']) } }
   const editorStore = { gizmoMode: 'translate' }
@@ -381,16 +381,16 @@ function gizmoFixture() {
       activeSlidePathPoint: null,
       editorContainerRect: { left: 0, top: 0, width: 1000, height: 1000 },
     }) },
-    '@/composables/useThreeModelManager': { getThreeModelManager: () => ({ getModelBoundingBox: () => null }) },
-    '@/composables/useClipboard': { useClipboard: () => ({}) },
+    '@/composables/renderer/useThreeModelManager': { getThreeModelManager: () => ({ getModelBoundingBox: () => null }) },
+    '@/composables/editor/useClipboard': { useClipboard: () => ({}) },
     '@/composables/editor/useEditorManipulation': { useEditorManipulation: () => ({
       commitBatchedTransform: (updates, options) => commits.push({ updates, options }),
     }) },
     '@/composables/editor/useEditorHistory': { useEditorHistory: () => ({}) },
-    '@/composables/transformGizmo/gizmoAppearance': { createGizmoAppearanceManager: () => () => {} },
-    '@/lib/slidePath': {},
+    '@/composables/viewport/gizmo/gizmoAppearance': { createGizmoAppearanceManager: () => () => {} },
+    '@/lib/geometry/slidePath': {},
   })
-  const { useThreeTransformGizmo } = loader('src/composables/useThreeTransformGizmo.ts')
+  const { useThreeTransformGizmo } = loader('src/composables/viewport/gizmo/useThreeTransformGizmo.ts')
   const pivot = new Object3D()
   pivot.position.set(-160, 0, 0)
   const camera = new OrthographicCamera(-500, 500, 500, -500, 1, 2000)

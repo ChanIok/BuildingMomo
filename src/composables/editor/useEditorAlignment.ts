@@ -1,13 +1,13 @@
-import { resolveSelectionReference } from '@/lib/selectionReference'
+import { resolveSelectionReference } from '@/lib/scheme/selectionReference'
 import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
-import { useEditorStore } from '../../stores/editorStore'
-import { useUIStore } from '../../stores/uiStore'
-import { useSettingsStore } from '../../stores/settingsStore'
-import { useGameDataStore } from '../../stores/gameDataStore'
+import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorHistory } from './useEditorHistory'
-import { matrixTransform } from '../../lib/matrixTransform'
-import { getThreeModelManager } from '../useThreeModelManager'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
+import { getThreeModelManager } from '@/composables/renderer/useThreeModelManager'
 import {
   buildItemOBB,
   calculateAlignAxisVector,
@@ -15,8 +15,8 @@ import {
   calculateAlignDelta,
   shouldInvertForYAxis,
   type UnitProjection,
-} from '../../lib/alignmentHelpers'
-import type { AppItem } from '../../types/editor'
+} from '@/lib/geometry/alignmentHelpers'
+import type { AppItem } from '@/types/editor'
 
 /**
  * 对齐单元：用于组合感知的对齐/分布操作

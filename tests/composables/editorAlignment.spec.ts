@@ -11,8 +11,8 @@ import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('@/composables/useThreeModelManager', () => ({
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/renderer/useThreeModelManager', () => ({
   getThreeModelManager: () => ({ getModelBoundingBox: () => null }),
 }))
 

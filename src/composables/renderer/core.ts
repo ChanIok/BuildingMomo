@@ -1,5 +1,5 @@
-import { useRenderItems } from './shared/renderItems'
-import { retainInstances } from './shared/retainInstances'
+import { useRenderItems } from '@/composables/renderer/shared/renderItems'
+import { retainInstances } from '@/composables/renderer/shared/retainInstances'
 import { ref, watch, onUnmounted, computed, type Ref } from 'vue'
 import {
   Matrix4,
@@ -15,15 +15,19 @@ import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useThrottleFn } from '@vueuse/core'
-import type { ViewPreset } from '../useThreeCamera'
-import { useBoxMode } from './modes/useBoxMode'
-import { useIconMode } from './modes/useIconMode'
-import { useSimpleBoxMode } from './modes/useSimpleBoxMode'
-import { useModelMode } from './modes/useModelMode'
-import { useInstanceColor } from './shared/useInstanceColor'
-import { useInstanceMatrix } from './shared/useInstanceMatrix'
-import { useSelectionOutline } from './shared/useSelectionOutline'
-import { createRaycastTask, cancelTask, raycastInstancedMeshAsync } from './shared/asyncRaycast'
+import type { ViewPreset } from '@/types/editor'
+import { useBoxMode } from '@/composables/renderer/modes/useBoxMode'
+import { useIconMode } from '@/composables/renderer/modes/useIconMode'
+import { useSimpleBoxMode } from '@/composables/renderer/modes/useSimpleBoxMode'
+import { useModelMode } from '@/composables/renderer/modes/useModelMode'
+import { useInstanceColor } from '@/composables/renderer/shared/useInstanceColor'
+import { useInstanceMatrix } from '@/composables/renderer/shared/useInstanceMatrix'
+import { useSelectionOutline } from '@/composables/renderer/shared/useSelectionOutline'
+import {
+  createRaycastTask,
+  cancelTask,
+  raycastInstancedMeshAsync,
+} from '@/composables/renderer/shared/asyncRaycast'
 import type {
   InteractionAdapter,
   RaycastHit,
@@ -33,9 +37,9 @@ import type {
 } from './types'
 import { initBVH } from './bvh'
 import { initEulerMatrixCache } from '@nuan5-pro/render'
-import { requiredInstanceCount } from '@/lib/renderInstanceBudget'
-import { invalidateScene } from '@/composables/useSceneInvalidate'
-import type { ScreenPoint } from '@/lib/interaction/screenGeometry'
+import { requiredInstanceCount } from '@/lib/viewport/renderInstanceBudget'
+import { invalidateScene } from '@/composables/viewport/useSceneInvalidate'
+import type { ScreenPoint } from '@/lib/geometry/screenGeometry'
 import { SceneAnalysisError } from '@/lib/sceneAnalysis/types'
 
 // 全局 BVH 初始化标志（确保只初始化一次）

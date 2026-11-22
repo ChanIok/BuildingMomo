@@ -23,11 +23,11 @@ vi.mock('vue', async (original) => ({
   ...(await original<typeof import('vue')>()),
   onUnmounted: () => {},
 }))
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/workers/client', () => ({
   workerApi: { validate: state.validate, updateFurnitureConstraints: vi.fn() },
 }))
-vi.mock('@/composables/useNotification', () => ({ useNotification: () => state.notification }))
+vi.mock('@/composables/app/useNotification', () => ({ useNotification: () => state.notification }))
 vi.mock('@/stores/gameDataStore', () => ({
   useGameDataStore: () => ({
     initialize: state.initialize,
@@ -35,7 +35,9 @@ vi.mock('@/stores/gameDataStore', () => ({
     getFurniture: () => undefined,
   }),
 }))
-vi.mock('@/composables/useIconLoader', () => ({ getIconLoader: () => ({ preloadIcons: vi.fn() }) }))
+vi.mock('@/composables/renderer/useIconLoader', () => ({
+  getIconLoader: () => ({ preloadIcons: vi.fn() }),
+}))
 vi.mock('@/composables/fileOps/schemeHistory', () => ({
   createSchemeHistoryOps: () => ({
     start: () => {},
@@ -82,7 +84,7 @@ async function setup() {
   const scheme = store.activeScheme!
   scheme.items.value = [makeAppItem({ groupId: 7 })]
   scheme.filePath.value = 'BUILD_SAVEDATA_123.json'
-  const { useFileOperations } = await import('@/composables/useFileOperations')
+  const { useFileOperations } = await import('@/composables/fileOps/useFileOperations')
   const ops = useFileOperations(store)
   return { store, scheme, ops, settings: useSettingsStore() }
 }

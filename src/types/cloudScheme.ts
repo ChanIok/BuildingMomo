@@ -1,4 +1,4 @@
-import type { CollectionTree } from '@/lib/collectionTree'
+import type { CollectionTree } from '@/lib/scheme/collectionTree'
 import type { AppItem, EditorTransaction } from './editor'
 
 export interface SharedSchemeSnapshot {

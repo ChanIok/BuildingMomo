@@ -1,5 +1,5 @@
-import { groupNameEntries, patchGroupNames } from '@/lib/collectionTree'
-import { createGroupState } from '@/lib/groupState'
+import { groupNameEntries, patchGroupNames } from '@/lib/scheme/collectionTree'
+import { createGroupState } from '@/lib/scheme/groupState'
 import { ref, shallowRef } from 'vue'
 import type { AppItem, HistoryStack, HomeScheme, ThreeViewState } from '@/types/editor'
 

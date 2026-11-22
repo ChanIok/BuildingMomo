@@ -189,10 +189,10 @@ export interface ScriptItem {
   gameId: number
   name: string | null
   groupId: number
-  position: import('../sceneAnalysis/types').AnalysisVector3
-  rotation: import('../sceneAnalysis/types').AnalysisVector3
-  scale: import('../sceneAnalysis/types').AnalysisVector3
-  bounds: import('../sceneAnalysis/types').AnalysisBounds | null
+  position: import('@/lib/sceneAnalysis/types').AnalysisVector3
+  rotation: import('@/lib/sceneAnalysis/types').AnalysisVector3
+  scale: import('@/lib/sceneAnalysis/types').AnalysisVector3
+  bounds: import('@/lib/sceneAnalysis/types').AnalysisBounds | null
 }
 /** 完整物品库目录条目；场景里没有的家具也能被检索到。 */
 export interface CatalogEntry {
@@ -211,10 +211,10 @@ export interface RenderPanel {
   members: string[]
   kind: 'scene' | 'atlas'
   focus?: string[]
-  camera?: import('../sceneAnalysis/images').AnalysisCamera
+  camera?: import('@/lib/sceneAnalysis/images').AnalysisCamera
   width?: number
   height?: number
-  layout?: import('../sceneAnalysis/images').ImageLayout
+  layout?: import('@/lib/sceneAnalysis/images').ImageLayout
   color?: string
   labels?: boolean | string[]
 }
@@ -224,22 +224,25 @@ export interface EditorHost {
   revision(schemeId: string): string
   selection(schemeId: string): string[]
   structure(schemeId: string): {
-    groups: import('../collectionTree').GroupMetadata[]
-    collections: import('../collectionTree').SchemeCollection[]
+    groups: import('@/lib/scheme/collectionTree').GroupMetadata[]
+    collections: import('@/lib/scheme/collectionTree').SchemeCollection[]
   }
-  snapshot(schemeId: string, members?: string[]): import('../sceneAnalysis/types').AnalysisSnapshot
+  snapshot(
+    schemeId: string,
+    members?: string[]
+  ): import('@/lib/sceneAnalysis/types').AnalysisSnapshot
   catalog(): CatalogEntry[]
   render(
     schemeId: string,
     panels: RenderPanel[],
     signal: AbortSignal,
-    layout?: import('../sceneAnalysis/images').ImageLayout
-  ): Promise<import('../sceneAnalysis/images').AnalysisImageOutput>
+    layout?: import('@/lib/sceneAnalysis/images').ImageLayout
+  ): Promise<import('@/lib/sceneAnalysis/images').AnalysisImageOutput>
   /** Capture the active 3D viewport without changing camera, selection, or scene data. */
   viewport(
     schemeId: string,
     signal: AbortSignal
-  ): Promise<import('../sceneAnalysis/images').AnalysisImageOutput>
+  ): Promise<import('@/lib/sceneAnalysis/images').AnalysisImageOutput>
   apply(schemeId: string, parameters: unknown, version: string): ToolOutput
   verify(edit: EditOutcome): boolean
 }

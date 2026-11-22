@@ -16,7 +16,7 @@ import {
   Vector3,
   type WebGLRenderer,
 } from 'three'
-import { createSceneEnvironment } from '../../src/composables/useThreeEnvironment'
+import { createSceneEnvironment } from '@/composables/environment/useThreeEnvironment'
 
 vi.mock('three', async (importOriginal) => {
   const three = await importOriginal<typeof import('three')>()
@@ -37,7 +37,7 @@ vi.mock('@nuan5-pro/render', () => ({
   setEnvironmentDiffuseWeight: vi.fn(),
   setEnvironmentReflection: vi.fn(),
 }))
-vi.mock('@/composables/renderer/homeSky', () => ({
+vi.mock('@/composables/environment/homeSky', () => ({
   createHomeSky: () => ({
     root: new Group(),
     dispose: vi.fn(),
@@ -52,8 +52,8 @@ vi.mock('three/addons/loaders/HDRLoader.js', () => ({
     }
   },
 }))
-vi.mock('@/composables/renderer/homeOutput', () => ({ updateHomeOutput: vi.fn() }))
-vi.mock('@/composables/renderer/preparePmrem', () => ({
+vi.mock('@/composables/environment/homeOutput', () => ({ updateHomeOutput: vi.fn() }))
+vi.mock('@/composables/environment/preparePmrem', () => ({
   preparePmrem: async (
     _renderer: unknown,
     generator: { fromEquirectangular(texture: Texture): unknown },

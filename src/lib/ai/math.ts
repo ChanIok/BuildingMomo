@@ -1,7 +1,7 @@
 import {
   convertPositionGlobalToWorking,
   convertPositionWorkingToGlobal,
-} from '../coordinateTransform'
+} from '../transform/coordinateTransform'
 import type { AnalysisItem, AnalysisVector3 } from '../sceneAnalysis/types'
 
 export const scriptMath = {

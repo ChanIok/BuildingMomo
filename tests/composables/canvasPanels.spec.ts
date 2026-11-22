@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, reactive, type EffectScope } from 'vue'
 import { useUIStore } from '@/stores/uiStore'
-import { useCanvasPanels } from '@/composables/editor/useCanvasPanels'
+import { useCanvasPanels } from '@/composables/panels/useCanvasPanels'
 
 let scope: EffectScope
 

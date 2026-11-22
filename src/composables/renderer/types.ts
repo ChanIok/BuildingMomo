@@ -1,6 +1,6 @@
 import type { Camera, InstancedMesh, Matrix4, Raycaster } from 'three'
 import type { Ref } from 'vue'
-import type { ScreenPoint } from '@/lib/interaction/screenGeometry'
+import type { ScreenPoint } from '@/lib/geometry/screenGeometry'
 
 /**
  * 渲染模式返回值接口（各模式 composable 的统一返回结构）

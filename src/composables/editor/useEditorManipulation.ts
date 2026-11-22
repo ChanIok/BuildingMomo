@@ -1,26 +1,26 @@
-import { resolveSelectionReference } from '@/lib/selectionReference'
+import { resolveSelectionReference } from '@/lib/scheme/selectionReference'
 import { storeToRefs } from 'pinia'
 import { Vector3, Quaternion, Euler, MathUtils, Matrix4 } from 'three'
-import { useEditorStore } from '../../stores/editorStore'
-import { useUIStore } from '../../stores/uiStore'
-import { useSettingsStore } from '../../stores/settingsStore'
-import { useGameDataStore } from '../../stores/gameDataStore'
-import { calculateBounds } from '../../lib/geometry'
+import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useGameDataStore } from '@/stores/gameDataStore'
+import { calculateBounds } from '@/lib/geometry/geometry'
 import { useEditorHistory } from './useEditorHistory'
-import type { AppItem } from '../../types/editor'
-import { matrixTransform } from '../../lib/matrixTransform'
+import type { AppItem } from '@/types/editor'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
 import {
   constrainSelectionScaleFactors,
   scaleItemsAroundPivot,
   setItemsAbsoluteScale,
   type VisualScaleAxis,
-} from '../../lib/selectionScaleTransform'
-import { createSelectionTransformFrame, translateItems } from '../../lib/selectionTransform'
-import { rotateItemsInWorkingCoordinate } from '../../lib/rotationTransform'
+} from '@/lib/transform/selectionScaleTransform'
+import { createSelectionTransformFrame, translateItems } from '@/lib/transform/selectionTransform'
+import { rotateItemsInWorkingCoordinate } from '@/lib/transform/rotationTransform'
 import {
   convertRotationGlobalToWorking,
   convertRotationWorkingToGlobal,
-} from '../../lib/coordinateTransform'
+} from '@/lib/transform/coordinateTransform'
 
 export function useEditorManipulation() {
   const store = useEditorStore()

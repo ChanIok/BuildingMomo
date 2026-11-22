@@ -16,19 +16,19 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useLoadingStore } from '@/stores/loadingStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { readyFurnitureRender } from '@/composables/useFurnitureRender'
-import { furnitureRender } from '../furnitureRenderState'
-import { decodeColorMapToGroupMap } from '@/lib/colorMap'
+import { readyFurnitureRender } from '@/composables/renderer/useFurnitureRender'
+import { furnitureRender } from '@/composables/renderer/furnitureRenderState'
+import { decodeColorMapToGroupMap } from '@/lib/scheme/colorMap'
 import {
   applyScaleRenderCompensationToPositionInPlace,
   resolveDisplayGeometryInfo,
-} from '@/lib/scaleRenderCompensation'
-import { resolveFurnitureSize } from '@/lib/slidePath'
-import { invalidateScene } from '@/composables/useSceneInvalidate'
+} from '@/lib/transform/scaleRenderCompensation'
+import { resolveFurnitureSize } from '@/lib/geometry/slidePath'
+import { invalidateScene } from '@/composables/viewport/useSceneInvalidate'
 import { createBoxMaterial } from '@nuan5-pro/render'
-import { nextInstancedPoolCapacity } from '@/lib/renderInstanceBudget'
-import { diffRenderItems, selectRenderItems } from '../shared/renderItems'
-import { retainInstances } from '../shared/retainInstances'
+import { nextInstancedPoolCapacity } from '@/lib/viewport/renderInstanceBudget'
+import { diffRenderItems, selectRenderItems } from '@/composables/renderer/shared/renderItems'
+import { retainInstances } from '@/composables/renderer/shared/retainInstances'
 
 export const MODEL_FALLBACK_MESH_KEY = '-1'
 

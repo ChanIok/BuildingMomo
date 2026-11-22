@@ -3,9 +3,9 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watchEffect } from 'vue'
 import { DEFAULT_AI_PREFERENCES, DEFAULT_AI_SETTINGS, type AiSettings } from '@/lib/ai/connection'
 import type { ModelAssetProfile } from '@nuan5-pro/render/furniture'
-import type { RenderQuality } from '@/lib/renderQuality'
+import type { RenderQuality } from '@/lib/viewport/renderQuality'
 
-import type { Locale } from '../composables/useI18n'
+import type { Locale } from '@/composables/app/useI18n'
 
 // 输入绑定配置接口
 export interface InputBindings {

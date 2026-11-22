@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { promisifyRequest } from 'idb-keyval'
 import { expect, it } from 'vitest'
 import { createConversationRepository } from '@/lib/ai/repository'
-import { removeLegacyDatabases } from '@/lib/legacyIdbCleanup'
+import { removeLegacyDatabases } from '@/lib/persistence/legacyIdbCleanup'
 
 it('removes obsolete databases while preserving current AI records and workspace snapshots', async () => {
   const obsolete = [

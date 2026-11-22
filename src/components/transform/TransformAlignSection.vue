@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useUIStore } from '../../stores/uiStore'
-import { useEditorAlignment } from '../../composables/editor/useEditorAlignment'
-import { useI18n } from '../../composables/useI18n'
-import { fmt, type SelectionInfo } from '../../composables/transform/useTransformSelection'
+import { useUIStore } from '@/stores/uiStore'
+import { useEditorAlignment } from '@/composables/editor/useEditorAlignment'
+import { useI18n } from '@/composables/app/useI18n'
+import { fmt, type SelectionInfo } from '@/composables/panels/useTransformSelection'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Toggle } from '@/components/ui/toggle'
 import {

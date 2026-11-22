@@ -12,7 +12,7 @@ import {
   Trash2,
 } from 'lucide-vue-next'
 import { externalAiKey } from '@/composables/ai/useExternalAi'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { aiExecutionBusy } from '@/lib/ai/executionGate'
 import type { ImageReference, ToolRecord } from '@/lib/ai/types'
 import { Button } from '@/components/ui/button'

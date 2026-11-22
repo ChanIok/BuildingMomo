@@ -1,6 +1,6 @@
 import { ref, toRaw } from 'vue'
 import type { useEditorStore } from '@/stores/editorStore'
-import type { useNotification } from '@/composables/useNotification'
+import type { useNotification } from '@/composables/app/useNotification'
 import type {
   ArchiveEntry,
   ArchiveGroup,

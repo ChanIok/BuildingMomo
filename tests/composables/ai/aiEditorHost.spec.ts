@@ -10,7 +10,7 @@ import { analysisInput } from '../../fixtures/sceneAnalysis'
 import { createAnalysisSnapshot } from '@/lib/sceneAnalysis/snapshot'
 import type { AnalysisImageOutput } from '@/lib/sceneAnalysis/images'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const scopes: ReturnType<typeof effectScope>[] = []
 beforeEach(() => {
   vi.stubEnv('VITE_ENABLE_SECURE_MODE', 'true')

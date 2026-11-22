@@ -7,12 +7,12 @@ import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useTabStore } from '@/stores/tabStore'
-import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
-import { isCollectionTree, UNCLASSIFIED } from '@/lib/collectionTree'
+import { applyEditorTransactionToScheme } from '@/lib/scheme/editorTransactions'
+import { isCollectionTree, UNCLASSIFIED } from '@/lib/scheme/collectionTree'
 import { makeAppItem, makeScheme } from '../fixtures/item'
 import type { OrganizationChanges } from '@/lib/sceneAnalysis/types'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const scopes: ReturnType<typeof effectScope>[] = []
 beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })

@@ -1,8 +1,8 @@
 import { defineStore, storeToRefs } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { ValidationResult } from '../types/persistence'
+import type { ValidationResult } from '@/types/persistence'
 import { useEditorStore } from './editorStore'
-import { useEditorHistory } from '../composables/editor/useEditorHistory'
+import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 
 export const useValidationStore = defineStore('validation', () => {
   const editorStore = useEditorStore()

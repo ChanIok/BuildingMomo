@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
-import { useI18n } from '@/composables/useI18n'
-import { useNotification } from '@/composables/useNotification'
+import { useI18n } from '@/composables/app/useI18n'
+import { useNotification } from '@/composables/app/useNotification'
 import type { DesktopSettings, DesktopStatus, CleanMemoryResult } from '@/types/desktop'
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {

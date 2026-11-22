@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { Input } from '@/components/ui/input'
 import type { AiModel } from '@/lib/ai/models'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 defineOptions({ inheritAttrs: false })
 const props = defineProps<{ modelValue: string; models: readonly AiModel[]; disabled?: boolean }>()

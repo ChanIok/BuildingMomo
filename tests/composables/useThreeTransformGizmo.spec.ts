@@ -63,11 +63,11 @@ vi.mock('@/stores/uiStore', () => ({
   }),
 }))
 
-vi.mock('@/composables/useThreeModelManager', () => ({
+vi.mock('@/composables/renderer/useThreeModelManager', () => ({
   getThreeModelManager: () => ({ getModelBoundingBox: () => null }),
 }))
 
-vi.mock('@/composables/useClipboard', () => ({
+vi.mock('@/composables/editor/useClipboard', () => ({
   useClipboard: () => ({}),
 }))
 
@@ -84,12 +84,12 @@ vi.mock('@/composables/editor/useEditorHistory', () => ({
   useEditorHistory: () => ({ recordTransaction: () => {} }),
 }))
 
-vi.mock('@/composables/transformGizmo/gizmoAppearance', () => ({
+vi.mock('@/composables/viewport/gizmo/gizmoAppearance', () => ({
   createGizmoAppearanceManager: () => () => {},
 }))
 
 // 飞花道相关导入在普通家具拖拽路径上不会被调用，但 ESM 要求命名导出必须存在。
-vi.mock('@/lib/slidePath', () => ({
+vi.mock('@/lib/geometry/slidePath', () => ({
   isSlidePathItem: () => false,
   hasEditableSlidePath: () => false,
   shouldRenderAsSlidePath: () => false,
@@ -97,7 +97,8 @@ vi.mock('@/lib/slidePath', () => ({
   withSlidePathWorldPoint: (item: AppItem) => item,
 }))
 
-const { useThreeTransformGizmo } = await import('@/composables/useThreeTransformGizmo')
+const { useThreeTransformGizmo } =
+  await import('@/composables/viewport/gizmo/useThreeTransformGizmo')
 
 function item(id: string, x: number, y = 0, gameId = 1): AppItem {
   return {

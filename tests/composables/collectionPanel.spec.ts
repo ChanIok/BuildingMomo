@@ -6,23 +6,26 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
-import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
-import { UNCLASSIFIED } from '@/lib/collectionTree'
+import { useCollectionPanel } from '@/composables/panels/useCollectionPanel'
+import { UNCLASSIFIED } from '@/lib/scheme/collectionTree'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
-import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
-import { buildSchemeHistoryFile, parseSchemeHistoryFile } from '@/lib/schemeHistory'
+import { buildSharedSchemeSnapshot } from '@/lib/scheme/schemeSnapshot'
+import { buildSchemeHistoryFile, parseSchemeHistoryFile } from '@/lib/scheme/schemeHistory'
 import {
   collectionTreesEqual,
   getGroupChanges,
   isCollectionTree,
   emptyCollectionTree,
   reconcileCollectionGroups,
-} from '@/lib/collectionTree'
-import { applyEditorTransactionToScheme, invertEditorTransaction } from '@/lib/editorTransactions'
-import { setSchemeItems } from '@/lib/groupState'
+} from '@/lib/scheme/collectionTree'
+import {
+  applyEditorTransactionToScheme,
+  invertEditorTransaction,
+} from '@/lib/scheme/editorTransactions'
+import { setSchemeItems } from '@/lib/scheme/groupState'
 import { makeAppItem, setGroupNames } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   setActivePinia(createPinia())

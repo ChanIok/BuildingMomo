@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getSafeScaleRange, nextFloat64 } from '../../src/lib/scaleLimits'
+import { getSafeScaleRange, nextFloat64 } from '@/lib/transform/scaleLimits'
 
 describe('getSafeScaleRange', () => {
   it('matches the observed server cutoffs at 0.7 and 1.3', () => {

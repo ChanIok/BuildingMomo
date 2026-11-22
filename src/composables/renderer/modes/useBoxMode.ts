@@ -1,12 +1,15 @@
 import { ref, markRaw } from 'vue'
 import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 'three'
 import type { AppItem } from '@/types/editor'
-import { selectRenderItems } from '../shared/renderItems'
+import { selectRenderItems } from '@/composables/renderer/shared/renderItems'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
-import { applyScaleRenderCompensationToPositionInPlace } from '@/lib/scaleRenderCompensation'
-import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
-import { resolveFurnitureSize } from '@/lib/slidePath'
+import { applyScaleRenderCompensationToPositionInPlace } from '@/lib/transform/scaleRenderCompensation'
+import {
+  nextInstancedPoolCapacity,
+  requiredInstanceCount,
+} from '@/lib/viewport/renderInstanceBudget'
+import { resolveFurnitureSize } from '@/lib/geometry/slidePath'
 import { createBoxMaterial } from '@nuan5-pro/render'
 import {
   scratchMatrix,
@@ -15,7 +18,7 @@ import {
   scratchQuaternion,
   scratchScale,
   scratchColor,
-} from '../shared/scratchObjects'
+} from '@/composables/renderer/shared/scratchObjects'
 
 // 当缺少尺寸信息时使用的默认尺寸（游戏坐标：X=长, Y=宽, Z=高）
 const DEFAULT_FURNITURE_SIZE: [number, number, number] = [100, 100, 150]

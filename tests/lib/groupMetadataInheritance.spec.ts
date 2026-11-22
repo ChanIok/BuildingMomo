@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { emptyCollectionTree, isCollectionTree } from '@/lib/collectionTree'
-import { groupMetadataInput, inheritGroupMetadata } from '@/lib/groupMetadataInheritance'
+import { emptyCollectionTree, isCollectionTree } from '@/lib/scheme/collectionTree'
+import { groupMetadataInput, inheritGroupMetadata } from '@/lib/scheme/groupMetadataInheritance'
 import { makeAppItem, makeScheme, setGroupNames } from '../fixtures/item'
 
 function pair() {

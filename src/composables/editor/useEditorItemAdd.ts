@@ -1,12 +1,9 @@
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useEditorStore } from '../../stores/editorStore'
+import { useEditorStore } from '@/stores/editorStore'
 import { useEditorHistory } from './useEditorHistory'
-import type { AppItem } from '../../types/editor'
-import type {
-  FurnitureCombinationColorPreset,
-  FurnitureCombinationMember,
-} from '../../types/furniture'
+import type { AppItem } from '@/types/editor'
+import type { FurnitureCombinationColorPreset, FurnitureCombinationMember } from '@/types/furniture'
 
 // 生成简单的UUID
 function generateUUID(): string {

@@ -1,5 +1,5 @@
 import type { AppItem } from '@/types/editor'
-import type { CollectionTree, SchemeCollection } from '@/lib/collectionTree'
+import type { CollectionTree, SchemeCollection } from '@/lib/scheme/collectionTree'
 
 export interface AnalysisVector3 {
   readonly x: number

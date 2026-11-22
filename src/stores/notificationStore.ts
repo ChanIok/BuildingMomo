@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { useI18n } from '../composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 // 详情项接口
 export interface AlertDetailItem {

@@ -1,0 +1,120 @@
+import { computed } from 'vue'
+import { onKeyStroke } from '@vueuse/core'
+import type { Command } from '@/stores/commandStore'
+import { hasTextSelection, isTextInputFocused } from '@/lib/keyboard'
+import { useUIStore } from '@/stores/uiStore'
+
+export interface UseKeyboardShortcutsOptions {
+  commands: Command[]
+  executeCommand: (commandId: string) => void
+}
+
+export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
+  const { commands, executeCommand } = options
+  const uiStore = useUIStore()
+
+  // 构建快捷键映射表（响应式）
+  const shortcutMap = computed(() => {
+    const map = new Map<string, Command>()
+    commands.forEach((cmd) => {
+      if (cmd.shortcut) {
+        const shortcut = normalizeShortcut(cmd.shortcut)
+        map.set(shortcut, cmd)
+      }
+    })
+    return map
+  })
+
+  // 标准化快捷键字符串（统一格式）
+  function normalizeShortcut(shortcut: string): string {
+    return shortcut.toLowerCase().replace(/\s/g, '').replace('ctrl', 'control')
+  }
+
+  // 将键盘事件转换为快捷键字符串
+  function eventToShortcut(event: KeyboardEvent): string {
+    const parts: string[] = []
+
+    if (event.ctrlKey || event.metaKey) parts.push('control')
+    if (event.shiftKey) parts.push('shift')
+    if (event.altKey) parts.push('alt')
+
+    // 处理特殊键
+    let key = event.key.toLowerCase()
+
+    // 标准化一些特殊键名
+    if (key === '+') key = '='
+    if (key === '_') key = '-'
+
+    // 不重复添加修饰键
+    if (!['control', 'shift', 'alt', 'meta'].includes(key)) {
+      parts.push(key)
+    }
+
+    return parts.join('+')
+  }
+
+  // 使用 VueUse 的 onKeyStroke 处理键盘事件
+  onKeyStroke(
+    (event) => {
+      // 优先级 1: 如果在输入框中，不处理快捷键
+      if (isTextInputFocused()) {
+        return
+      }
+
+      // 空格键不在这里处理，由各编辑器自行监听
+      if (event.code === 'Space') {
+        event.preventDefault()
+        return
+      }
+
+      if (event.key === 'Escape') {
+        if (event.repeat || event.defaultPrevented) return
+        if (
+          uiStore.isSelectingOrigin ||
+          uiStore.isSelectingPivotItem ||
+          uiStore.isSelectingAlignReference ||
+          uiStore.isSelectingQuickAlignTarget ||
+          uiStore.isSelectingReplaceTarget
+        ) {
+          event.preventDefault()
+          uiStore.setSelectingOrigin(null)
+          uiStore.setSelectingPivotItem(false)
+          uiStore.setSelectingAlignReference(false)
+          uiStore.setSelectingQuickAlignTarget(false)
+          uiStore.setSelectingReplaceTarget(false)
+          return
+        }
+      }
+
+      // 匹配快捷键命令
+      const shortcut = eventToShortcut(event)
+      const command = shortcutMap.value.get(shortcut)
+      const commandId = command?.id
+
+      if (command && commandId) {
+        if (event.repeat && command.allowRepeat === false) return
+        // 优先级 2: 对于复制、剪切命令，检查是否有文本选中
+        // 如果有文本选中，允许浏览器的原生复制/剪切行为
+        const isTextOperationCommand = ['edit.copy', 'edit.cut'].includes(commandId)
+        if (isTextOperationCommand && hasTextSelection()) {
+          // 不阻止默认行为，让浏览器处理文本复制
+          console.log(`[Shortcut] Text selection detected, allowing native ${commandId}`)
+          return
+        }
+
+        // 执行自定义命令
+        event.preventDefault()
+        console.log(`[Shortcut] Triggered: ${shortcut} -> ${commandId}`)
+        executeCommand(commandId)
+      }
+    },
+    { target: window, dedupe: false }
+  )
+
+  // 初始化日志
+  console.log(`[Shortcuts] Registered ${shortcutMap.value.size} keyboard shortcuts`)
+
+  return {
+    shortcutMap,
+  }
+}

@@ -6,7 +6,7 @@ import {
   getInstantFps,
   getGpuFrameMs,
   getFpsHistory,
-} from '@/composables/useFpsMonitor'
+} from '@/composables/viewport/useFpsMonitor'
 
 const CANVAS_W = 120
 const CANVAS_H = 32

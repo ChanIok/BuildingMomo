@@ -7,12 +7,12 @@ import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useGroupMetadataImport } from '@/composables/editor/useGroupMetadataImport'
 import { createGameImportOps } from '@/composables/fileOps/gameImport'
-import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
-import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
-import { serializeBuildData } from '@/lib/gameDataFormat'
+import { buildSharedSchemeSnapshot } from '@/lib/scheme/schemeSnapshot'
+import { applyEditorTransactionToScheme } from '@/lib/scheme/editorTransactions'
+import { serializeBuildData } from '@/lib/scheme/gameDataFormat'
 import { makeAppItem, setGroupNames } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
   setActivePinia(createPinia())

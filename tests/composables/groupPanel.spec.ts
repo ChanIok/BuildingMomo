@@ -4,27 +4,27 @@ import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, ref, type EffectScope } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
-import { setSchemeItems } from '@/lib/groupState'
-import { UNCLASSIFIED } from '@/lib/collectionTree'
+import { setSchemeItems } from '@/lib/scheme/groupState'
+import { UNCLASSIFIED } from '@/lib/scheme/collectionTree'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
-import { useGroupPanel } from '@/composables/editor/useGroupPanel'
-import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
-import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelection'
-import { useClipboard } from '@/composables/useClipboard'
-import { createEmptyClipboardData } from '@/lib/clipboardStructure'
+import { useGroupPanel } from '@/composables/panels/useGroupPanel'
+import { useCollectionPanel } from '@/composables/panels/useCollectionPanel'
+import { useGroupPanelSelection } from '@/composables/panels/useGroupPanelSelection'
+import { useClipboard } from '@/composables/editor/useClipboard'
+import { createEmptyClipboardData } from '@/lib/scheme/clipboardStructure'
 import { useValidationStore } from '@/stores/validationStore'
-import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
+import { buildSharedSchemeSnapshot } from '@/lib/scheme/schemeSnapshot'
 import { makeAppItem, groupNamesOf } from '../fixtures/item'
 import {
   applyEditorTransactionToScheme,
   collectTransactionTouchedGroupIds,
   collectTransactionTouchedItemIds,
-} from '@/lib/editorTransactions'
+} from '@/lib/scheme/editorTransactions'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 let scope: EffectScope
 beforeEach(() => {

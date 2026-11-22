@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createGpuFrameTimer } from '../../src/composables/renderer/gpuFrameTimer'
+import { createGpuFrameTimer } from '@/composables/viewport/gpuFrameTimer'
 
 let available: boolean, disjoint: boolean, lost: boolean, enabled: boolean
 let current: object | null

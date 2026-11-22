@@ -9,12 +9,12 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { Button } from '@/components/ui/button'
-import type { ThreeTooltipData } from '@/composables/useThreeTooltip'
+import type { ThreeTooltipData } from '@/composables/viewport/useThreeTooltip'
 import {
   PanelBottomClose,
   PanelBottomOpen,
@@ -27,8 +27,8 @@ import CanvasToolbar from './CanvasToolbar.vue'
 import FurnitureLibrary from './FurnitureLibrary.vue'
 import DyePanel from './DyePanel.vue'
 import GroupPanel from './GroupPanel.vue'
-import { useCanvasPanels } from '@/composables/editor/useCanvasPanels'
-import { useGroupPanelResize } from '@/composables/editor/useGroupPanelResize'
+import { useCanvasPanels } from '@/composables/panels/useCanvasPanels'
+import { useGroupPanelResize } from '@/composables/panels/useGroupPanelResize'
 import DebugPanel from './DebugPanel.vue'
 import FpsMonitor from './FpsMonitor.vue'
 

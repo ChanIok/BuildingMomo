@@ -5,7 +5,7 @@ import {
   convertRotationGlobalToWorking,
   convertRotationWorkingToGlobal,
   type Rotation,
-} from '@/lib/coordinateTransform'
+} from '@/lib/transform/coordinateTransform'
 
 const rotations: Rotation[] = [
   { x: 0, y: 0, z: 0 },

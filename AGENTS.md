@@ -94,11 +94,25 @@ UI、编辑操作 API 和高级粘贴统一使用视觉 `x/y/z`：
 
 ## 架构导航
 
-- 应用与状态：`src/App.vue`、`src/stores/`
-- 编辑与变换：`src/composables/editor/`、`src/composables/transformGizmo/`、`src/lib/`
-- 视口与渲染：`src/components/ThreeEditor.vue`、`src/composables/renderer/`；共享家具入口为 `src/composables/useFurnitureRender.ts`
-- 文件与持久化：`src/composables/fileOps/`、`src/lib/workspaceSnapshotStore.ts`、`src/workers/workspace.worker.ts`
-- 云协同：`src/composables/useCloudSchemeSync.ts`、`functions/api/cloud-schemes/`、`cloud-sync-worker/src/index.js`
+- 应用与状态：`src/App.vue`、`src/stores/`、`src/composables/app/`
+- 领域内核（纯逻辑，禁止反向依赖 `stores/` 或 `composables/`）：
+  - `src/lib/transform/`（坐标、矩阵、旋转、缩放、显示补偿）
+  - `src/lib/geometry/`（碰撞、边界、对齐、吸附、飞花道、屏幕几何）
+  - `src/lib/scheme/`（存档格式、分类树、事务、历史、剪贴板、染色校验）
+  - `src/lib/viewport/`（相机数学、裁剪面、相机构图包围盒、渲染档位）
+  - `src/lib/environment/`（家园昼夜/天空/大气数据与计算）
+  - `src/lib/persistence/`（IndexedDB 与句柄存储）
+  - `src/lib/sceneAnalysis/`、`src/lib/ai/`（场景分析与 AI 执行引擎，各自另有 `README.md`）
+- 编辑命令与面板：`src/composables/editor/`（纯编辑事务命令）、`src/composables/panels/`（组面板/变换面板/浮层 ViewModel）
+- 视口、环境与渲染：
+  - `src/components/ThreeEditor.vue`、`src/composables/viewport/`（相机、输入路由、选区、截图、`gizmo/`）
+  - `src/composables/environment/`（家园天空、地形、光照、背景）
+  - `src/composables/renderer/`（实例化家具与飞花道渲染引擎、模型与图标资源管理；共享家具入口为 `src/composables/renderer/useFurnitureRender.ts`）
+- 文件、持久化与云协同：
+  - `src/composables/fileOps/`（导入导出、监听、存档、磁盘历史；主入口为 `src/composables/fileOps/useFileOperations.ts`）
+  - `src/composables/workspace/`（`useWorkspaceWorker.ts`、`useCloudSchemeSync.ts`）
+  - `src/workers/workspace.worker.ts`、`functions/api/cloud-schemes/`、`cloud-sync-worker/src/index.js`
+- AI 宿主：`src/composables/ai/`、`src/workers/aiScript.worker.ts`
 - 桌面桥接：`src/stores/desktopStore.ts`、`src/types/desktop.ts`、`desktop/src/desktop_bridge.cpp`；协议变更须检查两端
 - 类型与文案：`src/types/`、`src/locales/zh.ts`、`src/locales/en.ts`
 

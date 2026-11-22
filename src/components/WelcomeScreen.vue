@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useCommandStore } from '../stores/commandStore'
-import { useTabStore } from '../stores/tabStore'
-import { useI18n } from '../composables/useI18n'
+import { useCommandStore } from '@/stores/commandStore'
+import { useTabStore } from '@/stores/tabStore'
+import { useI18n } from '@/composables/app/useI18n'
 import {
   FolderSearch,
   FileJson,

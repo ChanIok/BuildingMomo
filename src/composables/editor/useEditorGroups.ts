@@ -1,10 +1,10 @@
-import { patchGroupNames, resolveGroupCollection } from '@/lib/collectionTree'
-import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
+import { patchGroupNames, resolveGroupCollection } from '@/lib/scheme/collectionTree'
+import { reconcileGroupOrigins, setSchemeItems } from '@/lib/scheme/groupState'
 import { storeToRefs } from 'pinia'
-import { useEditorStore } from '../../stores/editorStore'
-import { useUIStore } from '../../stores/uiStore'
+import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
 import { useEditorHistory } from './useEditorHistory'
-import type { AppItem, GroupEditTarget } from '../../types/editor'
+import type { AppItem, GroupEditTarget } from '@/types/editor'
 
 /** 成组动作；仅在跨集合且组面板打开时需要选择目标。 */
 export type GroupRequest =

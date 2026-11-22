@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { aiChatKey } from '@/composables/ai/chatContext'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import type { ImageReference } from '@/lib/ai/types'
 
 const props = defineProps<{

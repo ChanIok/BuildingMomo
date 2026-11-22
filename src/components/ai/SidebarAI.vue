@@ -20,7 +20,7 @@ import { aiChatKey, type ChatEntry } from '@/composables/ai/chatContext'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { resolveAiConfig } from '@/lib/ai/context'
 import { aiExecutionBusy } from '@/lib/ai/executionGate'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { BoxGeometry, Color, Group, InstancedMesh, Matrix4, MeshBasicMaterial } from 'three'
-import { useLoadingStore } from '../../src/stores/loadingStore'
-import { useModelMode } from '../../src/composables/renderer/modes/useModelMode'
-import { invalidateScene } from '../../src/composables/useSceneInvalidate'
+import { useLoadingStore } from '@/stores/loadingStore'
+import { useModelMode } from '@/composables/renderer/modes/useModelMode'
+import { invalidateScene } from '@/composables/viewport/useSceneInvalidate'
 
 const state = vi.hoisted(() => ({
   editor: {
@@ -31,7 +31,7 @@ vi.mock('@/stores/settingsStore', () => ({
     settings: state.settings,
   }),
 }))
-vi.mock('@/composables/useFurnitureRender', () => ({
+vi.mock('@/composables/renderer/useFurnitureRender', () => ({
   readyFurnitureRender: () => state.ready(),
 }))
 vi.mock('@/composables/renderer/furnitureRenderState', () => ({
@@ -41,7 +41,7 @@ vi.mock('@/composables/renderer/furnitureRenderState', () => ({
     },
   },
 }))
-vi.mock('@/composables/useSceneInvalidate', () => ({ invalidateScene: vi.fn() }))
+vi.mock('@/composables/viewport/useSceneInvalidate', () => ({ invalidateScene: vi.fn() }))
 
 function item(id: string, gameId = 1, groupId = 0) {
   return {

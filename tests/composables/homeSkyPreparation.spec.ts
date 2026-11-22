@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { type Mesh, type ShaderMaterial, type Texture, type WebGLRenderer } from 'three'
-import { createHomeSky } from '../../src/composables/renderer/homeSky'
-import { sampleHomeTod } from '../../src/lib/homeTod'
+import { createHomeSky } from '@/composables/environment/homeSky'
+import { sampleHomeTod } from '@/lib/environment/homeTod'
 
 const clock = vi.hoisted(() => ({ value: 0 }))
-vi.mock('@/lib/homeAtmosphere', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/lib/homeAtmosphere')>()),
+vi.mock('@/lib/environment/homeAtmosphere', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/environment/homeAtmosphere')>()),
   sampleAtmosphere: () => {
     clock.value += 0.01
     return [1, 2, 3]

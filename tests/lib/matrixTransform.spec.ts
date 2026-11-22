@@ -1,15 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
-import { matrixTransform } from '@/lib/matrixTransform'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
 import { makeAppItem } from '../fixtures/item'
-
-// matrixTransform 内部会取 pinia store 查询家具尺寸；
-// 这里给出确定性尺寸，避免测试依赖 public/assets 下的真实游戏数据。
-vi.mock('@/stores/gameDataStore', () => ({
-  useGameDataStore: () => ({
-    getFurnitureSize: (gameId: number) => (gameId === 9001 ? ([200, 400, 600] as const) : null),
-  }),
-}))
 
 /** 去掉父级 Y 翻转，还原出局部矩阵，便于直接断言 Scale 落位。 */
 function decomposeLocal(world: Matrix4) {
@@ -70,14 +62,16 @@ describe('buildWorldMatrixFromItem', () => {
       z: 0,
       extra: { Scale: { X: 2, Y: 1, Z: 3 }, AttachID: 0 },
     })
-    const { scale } = decomposeLocal(matrixTransform.buildWorldMatrixFromItem(item, false))
+    const { scale } = decomposeLocal(
+      matrixTransform.buildWorldMatrixFromItem(item, false, [200, 400, 600])
+    )
 
     expect(scale.x).toBeCloseTo(1 * 200)
     expect(scale.y).toBeCloseTo(2 * 400)
     expect(scale.z).toBeCloseTo(3 * 600)
   })
 
-  it('Box 模式：查不到家具尺寸时回退默认尺寸', () => {
+  it('Box 模式：未传入家具尺寸时回退默认尺寸', () => {
     const item = makeAppItem({
       gameId: 1,
       extra: { Scale: { X: 1, Y: 1, Z: 1 }, AttachID: 0 },
@@ -87,7 +81,7 @@ describe('buildWorldMatrixFromItem', () => {
     expect(scale.toArray()).toEqual([100, 100, 150])
   })
 
-  it('Box 模式：调用方已解析的尺寸优先于 store，仍保持视觉缩放轴映射', () => {
+  it('Box 模式：显式传入的尺寸与视觉缩放轴映射一致', () => {
     const item = makeAppItem({ gameId: 9001, extra: { Scale: { X: 2, Y: 3, Z: 4 }, AttachID: 0 } })
     const { scale } = decomposeLocal(
       matrixTransform.buildWorldMatrixFromItem(item, false, [10, 20, 30])

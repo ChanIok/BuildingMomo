@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkFurnitureColors, cleanFurnitureColors } from '../../src/lib/furnitureColorValidation'
+import { checkFurnitureColors, cleanFurnitureColors } from '@/lib/scheme/furnitureColorValidation'
 
 describe('checkFurnitureColors', () => {
   it('accepts one configured scheme per area in arrays and objects', () => {

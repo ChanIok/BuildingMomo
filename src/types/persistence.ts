@@ -1,4 +1,4 @@
-import type { CollectionTree } from '@/lib/collectionTree'
+import type { CollectionTree } from '@/lib/scheme/collectionTree'
 import type { AppItem, SchemeSource, ThreeViewState } from './editor'
 import type { Tab } from './tab'
 

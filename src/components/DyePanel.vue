@@ -4,12 +4,12 @@ import { X } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import type { AppItem, GameColorMap } from '@/types/editor'
 import type { FurnitureCombinationColorPreset } from '@/types/furniture'
-import { decodeColorMapToGroupMap } from '@/lib/colorMap'
-import { cleanFurnitureColors } from '@/lib/furnitureColorValidation'
+import { decodeColorMapToGroupMap } from '@/lib/scheme/colorMap'
+import { cleanFurnitureColors } from '@/lib/scheme/furnitureColorValidation'
 
 interface ColorOption {
   colorIndex: number

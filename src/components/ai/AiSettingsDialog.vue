@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { AcceptableValue } from 'reka-ui'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { AiError } from '@/lib/ai/types'
 import {
   AI_PROVIDERS,

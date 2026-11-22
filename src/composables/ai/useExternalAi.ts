@@ -1,7 +1,7 @@
 import { computed, onScopeDispose, ref, shallowRef, watch, type InjectionKey, type Ref } from 'vue'
 import { useDesktopStore } from '@/stores/desktopStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { createConversationRepository } from '@/lib/ai/repository'
 import { createExternalWorkbench } from '@/lib/ai/externalWorkbench'
 import { createMcpHandler, desktopAiProtocol, type McpHttpRequest } from '@/lib/ai/mcp'

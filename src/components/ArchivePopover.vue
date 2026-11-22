@@ -13,8 +13,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useI18n } from '@/composables/useI18n'
-import { useNotification } from '@/composables/useNotification'
+import { useI18n } from '@/composables/app/useI18n'
+import { useNotification } from '@/composables/app/useNotification'
 import { useCommandStore } from '@/stores/commandStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { useTabStore } from '@/stores/tabStore'

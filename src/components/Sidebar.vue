@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
-import { useEditorStore } from '../stores/editorStore'
-import { useUIStore } from '../stores/uiStore'
-import { useSettingsStore } from '../stores/settingsStore'
-import { useI18n } from '../composables/useI18n'
+import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useI18n } from '@/composables/app/useI18n'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarSelection from './SidebarSelection.vue'
@@ -13,10 +13,10 @@ import SidebarTransform from './SidebarTransform.vue'
 import SidebarEditorSettings from './SidebarEditorSettings.vue'
 import SidebarDisplaySettings from './SidebarDisplaySettings.vue'
 import SidebarDesktopSettings from './SidebarDesktopSettings.vue'
-import { useAsyncView } from '@/composables/useAsyncView'
+import { useAsyncView } from '@/composables/app/useAsyncView'
 import SidebarToggleItem from './SidebarToggleItem.vue'
-import IconMomo from './icons/IconMomo.vue'
-import { useDesktopStore } from '../stores/desktopStore'
+import IconMomo from '@/components/icons/IconMomo.vue'
+import { useDesktopStore } from '@/stores/desktopStore'
 import {
   ChevronDown,
   ChevronUp,
@@ -32,7 +32,7 @@ const uiStore = useUIStore()
 const settingsStore = useSettingsStore()
 const desktopStore = useDesktopStore()
 const { t } = useI18n()
-const AiWorkspace = useAsyncView(() => import('./ai/AiWorkspace.vue'))
+const AiWorkspace = useAsyncView(() => import('@/components/ai/AiWorkspace.vue'))
 
 const isCompactSidebar = useMediaQuery('(max-height: 700px)')
 const isHeaderCollapsed = ref(false)

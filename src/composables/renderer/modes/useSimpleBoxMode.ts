@@ -1,10 +1,13 @@
 import { ref, markRaw } from 'vue'
 import { BoxGeometry, InstancedMesh, DynamicDrawUsage, Sphere, Vector3 } from 'three'
 import type { AppItem } from '@/types/editor'
-import { selectRenderItems } from '../shared/renderItems'
+import { selectRenderItems } from '@/composables/renderer/shared/renderItems'
 import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
+import {
+  nextInstancedPoolCapacity,
+  requiredInstanceCount,
+} from '@/lib/viewport/renderInstanceBudget'
 import { createBoxMaterial } from '@nuan5-pro/render'
 import {
   scratchMatrix,
@@ -14,7 +17,7 @@ import {
   scratchScale,
   scratchColor,
   scratchTmpVec3,
-} from '../shared/scratchObjects'
+} from '@/composables/renderer/shared/scratchObjects'
 
 function detachInstancedMesh(mesh: InstancedMesh) {
   mesh.geometry = null as any

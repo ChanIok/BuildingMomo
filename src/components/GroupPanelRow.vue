@@ -10,12 +10,12 @@ import {
   LockKeyhole,
   UnlockKeyhole,
 } from 'lucide-vue-next'
-import { useI18n } from '@/composables/useI18n'
-import type { CollectionRow } from '@/composables/editor/useCollectionPanel'
+import { useI18n } from '@/composables/app/useI18n'
+import type { CollectionRow } from '@/composables/panels/useCollectionPanel'
 import type {
   GroupSelectionPresentation,
   GroupSelectionState,
-} from '@/composables/editor/useGroupPanelSelection'
+} from '@/composables/panels/useGroupPanelSelection'
 
 const props = defineProps<{
   row: CollectionRow

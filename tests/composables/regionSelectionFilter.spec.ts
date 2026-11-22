@@ -8,10 +8,10 @@ import { useUIStore } from '@/stores/uiStore'
 import { useTabStore } from '@/stores/tabStore'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import { useThreeSelection } from '@/composables/useThreeSelection'
-import { useThreeTooltip } from '@/composables/useThreeTooltip'
+import { useThreeSelection } from '@/composables/viewport/useThreeSelection'
+import { useThreeTooltip } from '@/composables/viewport/useThreeTooltip'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
-import { SLIDE_PATH_GAME_ID } from '@/lib/slidePath'
+import { SLIDE_PATH_GAME_ID } from '@/lib/geometry/slidePath'
 import type { InteractionAdapter, RaycastHit } from '@/composables/renderer/types'
 import { SELECTION_CATEGORY_IDS, type FurnitureItem } from '@/types/furniture'
 import { makeAppItem } from '../fixtures/item'
@@ -20,7 +20,7 @@ vi.mock('@vueuse/core', async (original) => ({
   ...(await original<typeof import('@vueuse/core')>()),
   useMagicKeys: () => ({ shift: ref(false), ctrl: ref(false), alt: ref(false) }),
 }))
-vi.mock('@/composables/useI18n', () => ({
+vi.mock('@/composables/app/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key, locale: ref('zh') }),
 }))
 

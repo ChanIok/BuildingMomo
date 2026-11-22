@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useLoadingStore } from '@/stores/loadingStore'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 const { t } = useI18n()
 const loadingStore = useLoadingStore()

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { effectScope, nextTick, shallowRef, type EffectScope } from 'vue'
-import { GROUP_ROW_HEIGHT, useGroupVirtualList } from '@/composables/editor/useGroupVirtualList'
-import type { CollectionEntry, CollectionRow } from '@/composables/editor/useCollectionPanel'
+import { GROUP_ROW_HEIGHT, useGroupVirtualList } from '@/composables/panels/useGroupVirtualList'
+import type { CollectionEntry, CollectionRow } from '@/composables/panels/useCollectionPanel'
 
 let scope: EffectScope
 beforeEach(() => {

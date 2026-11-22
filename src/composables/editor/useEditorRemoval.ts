@@ -6,9 +6,9 @@ import {
   hasOperationTargets,
   resolveEditorOperationTargets,
   type EditorOperationTargets,
-} from '@/lib/collectionTargets'
-import { UNCLASSIFIED } from '@/lib/collectionTree'
-import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
+} from '@/lib/scheme/collectionTargets'
+import { UNCLASSIFIED } from '@/lib/scheme/collectionTree'
+import { reconcileGroupOrigins, setSchemeItems } from '@/lib/scheme/groupState'
 import type { CollectionEntry, HomeScheme } from '@/types/editor'
 import { useEditorHistory } from './useEditorHistory'
 

@@ -1,4 +1,4 @@
-import { selectRenderItems } from './shared/renderItems'
+import { selectRenderItems } from '@/composables/renderer/shared/renderItems'
 import { computed, markRaw, onUnmounted, ref, watch } from 'vue'
 import {
   BoxGeometry,
@@ -18,9 +18,12 @@ import {
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
-import { invalidateScene } from '@/composables/useSceneInvalidate'
-import { matrixTransform } from '@/lib/matrixTransform'
-import { nextInstancedPoolCapacity, requiredInstanceCount } from '@/lib/renderInstanceBudget'
+import { invalidateScene } from '@/composables/viewport/useSceneInvalidate'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
+import {
+  nextInstancedPoolCapacity,
+  requiredInstanceCount,
+} from '@/lib/viewport/renderInstanceBudget'
 import { createBoxMaterial } from '@nuan5-pro/render'
 import {
   ALIGN_REFERENCE_ITEM_COLOR,
@@ -28,7 +31,7 @@ import {
   DEFAULT_ITEM_COLOR,
   HOVER_ITEM_COLOR,
   SELECTED_ITEM_COLOR,
-} from './shared/interactionColors'
+} from '@/composables/renderer/shared/interactionColors'
 import {
   buildSlidePathSegmentLocalMatrix,
   getSlidePathScenePoints,
@@ -36,7 +39,7 @@ import {
   shouldRenderAsSlidePath,
   SLIDE_PATH_GAME_ID,
   withSlidePathWorldPoint,
-} from '@/lib/slidePath'
+} from '@/lib/geometry/slidePath'
 import type { AppItem } from '@/types/editor'
 import type { InteractionAdapter, RaycastHit, RegionCenterCandidate } from './types'
 

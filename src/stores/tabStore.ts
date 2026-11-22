@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Tab } from '../types/tab'
-import type { HomeScheme } from '../types/editor'
+import type { Tab } from '@/types/tab'
+import type { HomeScheme } from '@/types/editor'
 
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 // 生成简单的UUID
 function generateUUID(): string {

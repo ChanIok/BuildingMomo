@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useThrottleFn } from '@vueuse/core'
-import { useSettingsStore } from '../stores/settingsStore'
-import { useI18n } from '../composables/useI18n'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useI18n } from '@/composables/app/useI18n'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'

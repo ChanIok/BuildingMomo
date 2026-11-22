@@ -15,15 +15,15 @@ import GroupPanel from '@/components/GroupPanel.vue'
 import GroupPanelRow from '@/components/GroupPanelRow.vue'
 import GroupMergeDialog from '@/components/GroupMergeDialog.vue'
 import GroupMetadataImportDialog from '@/components/GroupMetadataImportDialog.vue'
-import type { CollectionRow } from '@/composables/editor/useCollectionPanel'
+import type { CollectionRow } from '@/composables/panels/useCollectionPanel'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import * as groupVirtualList from '@/composables/editor/useGroupVirtualList'
+import * as groupVirtualList from '@/composables/panels/useGroupVirtualList'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 const cleanups: (() => void)[] = []
 beforeEach(() => {

@@ -6,9 +6,9 @@ import {
   setItemsAbsoluteScale,
   visualScaleAxisToDataAxis,
   type ScaleRangeResolver,
-} from '@/lib/selectionScaleTransform'
+} from '@/lib/transform/selectionScaleTransform'
 import { makeAppItem } from '../fixtures/item'
-import { getSafeScaleRange } from '@/lib/scaleLimits'
+import { getSafeScaleRange } from '@/lib/transform/scaleLimits'
 
 /** 所有家具的所有轴都限制在 [0.1, 5]。 */
 const uniformRange: ScaleRangeResolver = () => [0.1, 5]

@@ -5,7 +5,7 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
-import { MODEL_FALLBACK_MESH_KEY } from '../modes/useModelMode'
+import { MODEL_FALLBACK_MESH_KEY } from '@/composables/renderer/modes/useModelMode'
 import { scratchColor } from './scratchObjects'
 import {
   ALIGN_REFERENCE_ITEM_COLOR,

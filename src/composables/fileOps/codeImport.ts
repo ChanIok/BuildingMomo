@@ -1,9 +1,9 @@
 import type { useEditorStore } from '@/stores/editorStore'
-import type { useNotification } from '@/composables/useNotification'
+import type { useNotification } from '@/composables/app/useNotification'
 import type { AppItem, GameItem } from '@/types/editor'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorItemAdd } from '@/composables/editor/useEditorItemAdd'
-import { parseGameDataContent } from '@/lib/gameDataFormat'
+import { parseGameDataContent } from '@/lib/scheme/gameDataFormat'
 
 type SchemeCodeType = 'island' | 'combination'
 type TranslateFn = (key: string, params?: Record<string, string | number>) => string

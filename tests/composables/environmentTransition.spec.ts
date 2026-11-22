@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createEnvironmentTransition } from '../../src/composables/renderer/environmentTransition'
+import { createEnvironmentTransition } from '@/composables/environment/environmentTransition'
 
 afterEach(() => vi.unstubAllGlobals())
 

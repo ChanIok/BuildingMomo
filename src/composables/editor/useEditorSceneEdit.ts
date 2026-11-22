@@ -2,16 +2,16 @@ import { useEditorStore } from '@/stores/editorStore'
 import { toRaw } from 'vue'
 import { useEditorHistory } from './useEditorHistory'
 import { createPlacedItem } from './useEditorItemAdd'
-import { reconcileGroupOrigins, setSchemeItems } from '@/lib/groupState'
-import { matrixTransform } from '@/lib/matrixTransform'
+import { reconcileGroupOrigins, setSchemeItems } from '@/lib/scheme/groupState'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
 import {
   dataScaleToVisualScale,
   scaleItemsAroundPivot,
   visualScaleToDataScale,
-} from '@/lib/selectionScaleTransform'
-import { createSelectionTransformFrame, translateItems } from '@/lib/selectionTransform'
-import { rotateItemsInWorkingCoordinate } from '@/lib/rotationTransform'
-import { remapColorMapGroupIds } from '@/lib/colorMap'
+} from '@/lib/transform/selectionScaleTransform'
+import { createSelectionTransformFrame, translateItems } from '@/lib/transform/selectionTransform'
+import { rotateItemsInWorkingCoordinate } from '@/lib/transform/rotationTransform'
+import { remapColorMapGroupIds } from '@/lib/scheme/colorMap'
 import { SceneAnalysisError, type AnalysisVector3 } from '@/lib/sceneAnalysis/types'
 import {
   invalidInput,

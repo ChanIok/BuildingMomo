@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useDesktopStore } from '../stores/desktopStore'
-import { useI18n } from '../composables/useI18n'
-import { useNotification } from '../composables/useNotification'
+import { useDesktopStore } from '@/stores/desktopStore'
+import { useI18n } from '@/composables/app/useI18n'
+import { useNotification } from '@/composables/app/useNotification'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'

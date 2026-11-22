@@ -1,6 +1,6 @@
 // 渲染相关的常量定义
 
-export { MAX_RENDER_INSTANCES } from '@/lib/renderInstanceBudget'
+export { MAX_RENDER_INSTANCES } from '@/lib/viewport/renderInstanceBudget'
 
 // Scene / Selection bounds 超过此数量后，退化为“仅按物品原点”计算的粗略包围盒
 export const SCENE_BOUNDS_ORIGIN_ONLY_THRESHOLD = 10000

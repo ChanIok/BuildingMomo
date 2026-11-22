@@ -1,9 +1,9 @@
 import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
+import { buildDisplayWorldMatrixFromItem } from '@/lib/transform/scaleRenderCompensation'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { Matrix4, Object3D } from 'three'
-import { useThreeTransformGizmo } from '@/composables/useThreeTransformGizmo'
+import { useThreeTransformGizmo } from '@/composables/viewport/gizmo/useThreeTransformGizmo'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, ref, shallowRef, type EffectScope } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
@@ -13,14 +13,14 @@ import { useEditorCollectionOrigins } from '@/composables/editor/useEditorCollec
 import { useEditorManipulation } from '@/composables/editor/useEditorManipulation'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
-import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
-import { useGroupPanel } from '@/composables/editor/useGroupPanel'
-import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelection'
-import { useTransformSelection } from '@/composables/transform/useTransformSelection'
-import { useClipboard } from '@/composables/useClipboard'
-import { resolveSelectionReference } from '@/lib/selectionReference'
-import { readCollectionTree } from '@/lib/collectionTree'
-import { buildSharedSchemeSnapshot } from '@/lib/schemeSnapshot'
+import { useCollectionPanel } from '@/composables/panels/useCollectionPanel'
+import { useGroupPanel } from '@/composables/panels/useGroupPanel'
+import { useGroupPanelSelection } from '@/composables/panels/useGroupPanelSelection'
+import { useTransformSelection } from '@/composables/panels/useTransformSelection'
+import { useClipboard } from '@/composables/editor/useClipboard'
+import { resolveSelectionReference } from '@/lib/scheme/selectionReference'
+import { readCollectionTree } from '@/lib/scheme/collectionTree'
+import { buildSharedSchemeSnapshot } from '@/lib/scheme/schemeSnapshot'
 import { makeAppItem } from '../fixtures/item'
 
 vi.mock('@vueuse/core', async (original) => ({
@@ -32,10 +32,10 @@ vi.mock('@vueuse/core', async (original) => ({
     Shift: ref(false),
   }),
 }))
-vi.mock('@/composables/useI18n', () => ({
+vi.mock('@/composables/app/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key, locale: ref('zh') }),
 }))
-vi.mock('@/composables/useThreeModelManager', () => ({
+vi.mock('@/composables/renderer/useThreeModelManager', () => ({
   getThreeModelManager: () => ({ getModelBoundingBox: () => null }),
 }))
 

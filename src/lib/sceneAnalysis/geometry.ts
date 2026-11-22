@@ -1,8 +1,8 @@
 import { Vector3 } from 'three'
 import type { AppItem } from '@/types/editor'
-import { buildDisplayWorldMatrixFromItem } from '@/lib/scaleRenderCompensation'
-import { getAABBFromMatrix, getAABBFromMatrixAndModelBox } from '@/lib/collision'
-import { getSlidePathWorldBox, isSlidePathItem } from '@/lib/slidePath'
+import { buildDisplayWorldMatrixFromItem } from '@/lib/transform/scaleRenderCompensation'
+import { getAABBFromMatrix, getAABBFromMatrixAndModelBox } from '@/lib/geometry/collision'
+import { getSlidePathWorldBox, isSlidePathItem } from '@/lib/geometry/slidePath'
 import type { AnalysisBounds } from './types'
 
 type GeometryContext = Parameters<typeof buildDisplayWorldMatrixFromItem>[1]

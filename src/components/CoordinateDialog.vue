@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { matrixTransform } from '../lib/matrixTransform'
-import { useUIStore } from '../stores/uiStore'
-import { useEditorStore } from '../stores/editorStore'
+import { matrixTransform } from '@/lib/transform/matrixTransform'
+import { useUIStore } from '@/stores/uiStore'
+import { useEditorStore } from '@/stores/editorStore'
 import {
   Dialog,
   DialogContent,
@@ -18,7 +18,7 @@ import { Slider } from '@/components/ui/slider'
 import { Kbd } from '@/components/ui/kbd'
 import { RotateCcw } from 'lucide-vue-next'
 
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 
 const props = defineProps<{
   open: boolean

@@ -6,10 +6,10 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTabStore } from '@/stores/tabStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useThreeCamera } from '@/composables/useThreeCamera'
+import { useThreeCamera } from '@/composables/viewport/useThreeCamera'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@vueuse/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@vueuse/core')>()
   return {
@@ -29,7 +29,7 @@ vi.mock('@vueuse/core', async (importOriginal) => {
     }),
   }
 })
-vi.mock('@/lib/spatialBounds', () => ({
+vi.mock('@/lib/viewport/spatialBounds', () => ({
   getItemsWorldBoundsMetrics: (items: Array<{ x: number; y: number; z: number }>) => {
     if (items.length === 0) return null
     const first = items[0]!

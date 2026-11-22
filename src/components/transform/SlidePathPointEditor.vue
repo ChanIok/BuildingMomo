@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-vue-next'
 import { useEditorStore } from '@/stores/editorStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import {
   getSlidePathLocalPoints,
   isSlidePathItem,
@@ -12,7 +12,7 @@ import {
   withSlidePathLocalPointValue,
   type SlidePathAxis,
   type SlidePathPoint,
-} from '@/lib/slidePath'
+} from '@/lib/geometry/slidePath'
 
 const editorStore = useEditorStore()
 const uiStore = useUIStore()

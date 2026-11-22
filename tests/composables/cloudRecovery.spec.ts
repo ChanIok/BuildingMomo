@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick } from 'vue'
-import { useCloudSchemeSync } from '@/composables/useCloudSchemeSync'
+import { useCloudSchemeSync } from '@/composables/workspace/useCloudSchemeSync'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorStore } from '@/stores/editorStore'
 import { makeAppItem } from '../fixtures/item'
-import { emptyCollectionTree } from '@/lib/collectionTree'
+import { emptyCollectionTree } from '@/lib/scheme/collectionTree'
 import type { EditorTransaction } from '@/types/editor'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
-vi.mock('@/composables/useNotification', () => ({
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useNotification', () => ({
   useNotification: () => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }))
 class Socket extends EventTarget {

@@ -1,9 +1,9 @@
-import { UNCLASSIFIED } from '@/lib/collectionTree'
+import { UNCLASSIFIED } from '@/lib/scheme/collectionTree'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, type EffectScope } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
-import { useWorkspaceWorker } from '@/composables/useWorkspaceWorker'
+import { useWorkspaceWorker } from '@/composables/workspace/useWorkspaceWorker'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTabStore } from '@/stores/tabStore'
 import { makeAppItem, groupNamesOf, setGroupNames } from '../fixtures/item'
@@ -26,9 +26,9 @@ vi.mock('vue', async (original) => ({
   ...(await original<typeof import('vue')>()),
   onUnmounted: (dispose: () => void) => state.disposers.push(dispose),
 }))
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/workers/client', () => ({ workerApi: state.api }))
-vi.mock('@/lib/workspaceSnapshotStore', () => ({ loadWorkspaceSnapshot: state.load }))
+vi.mock('@/lib/persistence/workspaceSnapshotStore', () => ({ loadWorkspaceSnapshot: state.load }))
 
 let scope: EffectScope
 beforeEach(() => {

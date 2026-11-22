@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onActivated, nextTick, defineAsyncComponent } from 'vue'
 import type { AsyncComponentLoader } from 'vue'
-import { useTabStore } from '../stores/tabStore'
-import { useI18n } from '../composables/useI18n'
+import { useTabStore } from '@/stores/tabStore'
+import { useI18n } from '@/composables/app/useI18n'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useEventListener, useDebounceFn } from '@vueuse/core'
@@ -10,14 +10,14 @@ import { useEventListener, useDebounceFn } from '@vueuse/core'
 // 动态导入文档组件，支持语言切换
 const docsComponents = {
   zh: {
-    QuickStart: () => import('./docs/QuickStart.vue'),
-    UserGuide: () => import('./docs/UserGuide.vue'),
-    FAQ: () => import('./docs/FAQ.vue'),
+    QuickStart: () => import('@/components/docs/QuickStart.vue'),
+    UserGuide: () => import('@/components/docs/UserGuide.vue'),
+    FAQ: () => import('@/components/docs/FAQ.vue'),
   },
   en: {
-    QuickStart: () => import('./docs/QuickStart.en.vue'),
-    UserGuide: () => import('./docs/UserGuide.en.vue'),
-    FAQ: () => import('./docs/FAQ.en.vue'),
+    QuickStart: () => import('@/components/docs/QuickStart.en.vue'),
+    UserGuide: () => import('@/components/docs/UserGuide.en.vue'),
+    FAQ: () => import('@/components/docs/FAQ.en.vue'),
   },
 }
 

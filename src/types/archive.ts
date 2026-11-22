@@ -1,4 +1,4 @@
-import type { CollectionTree } from '@/lib/collectionTree'
+import type { CollectionTree } from '@/lib/scheme/collectionTree'
 import type { AppItem, ThreeViewState } from './editor'
 
 export const ARCHIVE_INDEX_VERSION = 1

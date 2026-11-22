@@ -14,8 +14,8 @@ import { useEditorSelection } from '@/composables/editor/useEditorSelection'
 import { useThreeInstancedRenderer } from '@/composables/renderer/core'
 import { useSlidePathRenderer } from '@/composables/renderer/useSlidePathRenderer'
 import { diffRenderItems, selectRenderItems } from '@/composables/renderer/shared/renderItems'
-import { MAX_RENDER_INSTANCES } from '@/lib/renderInstanceBudget'
-import { SLIDE_PATH_GAME_ID } from '@/lib/slidePath'
+import { MAX_RENDER_INSTANCES } from '@/lib/viewport/renderInstanceBudget'
+import { SLIDE_PATH_GAME_ID } from '@/lib/geometry/slidePath'
 import { SELECTED_ITEM_COLOR } from '@/composables/renderer/shared/interactionColors'
 
 const state = vi.hoisted(() => ({
@@ -26,7 +26,7 @@ vi.mock('vue', async (original) => ({
   ...(await original<typeof import('vue')>()),
   onUnmounted: (dispose: () => void) => state.disposers.push(dispose),
 }))
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('@/stores/gameDataStore', () => ({
   useGameDataStore: () => ({
     isInitialized: true,
@@ -35,7 +35,7 @@ vi.mock('@/stores/gameDataStore', () => ({
     getFurnitureModelConfig: () => undefined,
   }),
 }))
-vi.mock('@/composables/useThreeIconManager', async () => {
+vi.mock('@/composables/renderer/useThreeIconManager', async () => {
   const { Data3DTexture } = await import('three')
   const texture = new Data3DTexture()
   return {

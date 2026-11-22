@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 let now = 0
-let monitor: typeof import('../../src/composables/useFpsMonitor')
+let monitor: typeof import('@/composables/viewport/useFpsMonitor')
 
 beforeEach(async () => {
   vi.resetModules()
   vi.useFakeTimers()
   now = 0
   vi.spyOn(performance, 'now').mockImplementation(() => now)
-  monitor = await import('../../src/composables/useFpsMonitor')
+  monitor = await import('@/composables/viewport/useFpsMonitor')
   monitor.startFpsMonitor()
 })
 

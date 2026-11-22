@@ -1,5 +1,5 @@
 import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
-import { useClipboard } from '@/composables/useClipboard'
+import { useClipboard } from '@/composables/editor/useClipboard'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, ref, type EffectScope } from 'vue'
@@ -9,16 +9,16 @@ import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useEditorGroups } from '@/composables/editor/useEditorGroups'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
 import { useEditorSelection } from '@/composables/editor/useEditorSelection'
-import { useGroupPanel } from '@/composables/editor/useGroupPanel'
-import { useGroupPanelSelection } from '@/composables/editor/useGroupPanelSelection'
-import { useCollectionPanel } from '@/composables/editor/useCollectionPanel'
-import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
-import { setSchemeItems } from '@/lib/groupState'
-import { collectionTreesEqual } from '@/lib/collectionTree'
+import { useGroupPanel } from '@/composables/panels/useGroupPanel'
+import { useGroupPanelSelection } from '@/composables/panels/useGroupPanelSelection'
+import { useCollectionPanel } from '@/composables/panels/useCollectionPanel'
+import { applyEditorTransactionToScheme } from '@/lib/scheme/editorTransactions'
+import { setSchemeItems } from '@/lib/scheme/groupState'
+import { collectionTreesEqual } from '@/lib/scheme/collectionTree'
 import type { GroupEditTarget } from '@/types/editor'
 import { makeAppItem } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 let scope: EffectScope
 beforeEach(() => {

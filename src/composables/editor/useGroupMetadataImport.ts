@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
-import { groupMetadataInput, inheritGroupMetadata } from '@/lib/groupMetadataInheritance'
+import { groupMetadataInput, inheritGroupMetadata } from '@/lib/scheme/groupMetadataInheritance'
 import { useEditorHistory } from './useEditorHistory'
 
 export function useGroupMetadataImport() {

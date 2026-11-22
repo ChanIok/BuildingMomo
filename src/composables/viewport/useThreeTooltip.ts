@@ -1,0 +1,227 @@
+import { computed, ref, markRaw, watch, type Ref } from 'vue'
+import { Raycaster, Vector2, type Camera } from 'three'
+import { useGameDataStore } from '@/stores/gameDataStore'
+import { useEditorStore } from '@/stores/editorStore'
+import { useUIStore } from '@/stores/uiStore'
+import { useI18n } from '@/composables/app/useI18n'
+import type { InteractionAdapter, RaycastHit } from '@/composables/renderer/types'
+import { RAYCAST_SKIP_ITEM_THRESHOLD } from '@/types/constants'
+import { SLIDE_PATH_GAME_ID } from '@/lib/geometry/slidePath'
+import { useSelectionFilter } from '@/composables/editor/useSelectionFilter'
+
+export interface ThreeTooltipData {
+  name: string
+  icon: string
+  position: { x: number; y: number } // 相对于 three 容器的屏幕坐标
+  gameId: number
+  instanceId: number
+}
+
+interface PendingRaycast {
+  ndcX: number
+  ndcY: number
+  screenX: number
+  screenY: number
+}
+
+export function useThreeTooltip(
+  cameraRef: Ref<Camera | null>,
+  containerRef: Ref<HTMLElement | null>,
+  interactionAdapter: Ref<InteractionAdapter>,
+  isEnabled: Ref<boolean>,
+  isTransformDragging?: Ref<boolean>,
+  setHoveredItemId?: (id: string | null, hit?: RaycastHit | null) => void,
+  isCameraMoving?: Ref<boolean>
+) {
+  const raycaster = markRaw(new Raycaster())
+  const pointerNdc = markRaw(new Vector2())
+  const { t, locale } = useI18n()
+  const editorStore = useEditorStore()
+  const gameDataStore = useGameDataStore()
+  const uiStore = useUIStore()
+  const { isItemSelectable } = useSelectionFilter()
+  const isReferencePicking = computed(
+    () =>
+      uiStore.isSelectingOrigin ||
+      uiStore.isSelectingPivotItem ||
+      uiStore.isSelectingAlignReference ||
+      uiStore.isSelectingQuickAlignTarget ||
+      uiStore.isSelectingReplaceTarget
+  )
+
+  const tooltipVisible = ref(false)
+  const tooltipData = ref<ThreeTooltipData | null>(null)
+
+  // 异步检测状态
+  let isRaycasting = false
+  // 待处理的检测请求（记录最新位置）
+  let pendingRaycast: PendingRaycast | null = null
+  let raycastRevision = 0
+
+  watch([() => editorStore.selectionCategoryIds, isReferencePicking], hideTooltip, {
+    flush: 'sync',
+  })
+
+  function hideTooltip() {
+    raycastRevision++
+    // 取消进行中的异步检测
+    interactionAdapter.value.cancelPick()
+    // 清空待处理请求
+    pendingRaycast = null
+
+    if (tooltipVisible.value || tooltipData.value) {
+      tooltipVisible.value = false
+      tooltipData.value = null
+    }
+    if (setHoveredItemId) {
+      setHoveredItemId(null, null)
+    }
+  }
+
+  /**
+   * 执行射线检测（核心逻辑）
+   *
+   * @param ndcX - NDC 坐标 X (-1 ~ 1)
+   * @param ndcY - NDC 坐标 Y (-1 ~ 1)
+   * @param screenX - 屏幕坐标 X（相对于容器）
+   * @param screenY - 屏幕坐标 Y（相对于容器）
+   */
+  async function executeRaycast(ndcX: number, ndcY: number, screenX: number, screenY: number) {
+    const camera = cameraRef.value
+
+    if (!camera) {
+      hideTooltip()
+      return
+    }
+
+    isRaycasting = true
+    const revision = raycastRevision
+    // 清空待处理请求（开始执行时）
+    // 注意：在 await 期间，pendingRaycast 可能会被重新赋值
+    pendingRaycast = null
+
+    pointerNdc.x = ndcX
+    pointerNdc.y = ndcY
+
+    raycaster.setFromCamera(pointerNdc, camera)
+
+    // ✨ 使用异步时间切片拾取接口（不阻塞主线程）
+    const hit = await interactionAdapter.value.pickAsync(raycaster)
+
+    isRaycasting = false
+
+    // ✨ 关键：检测完成后，如果有待处理请求，递归执行它
+    // 注：在 await 期间，handlePointerMove 可能会被调用并设置 pendingRaycast
+    // TypeScript 静态分析无法感知这一点，所以需要类型断言
+    const pending = pendingRaycast as PendingRaycast | null
+    if (pending !== null) {
+      pendingRaycast = null
+      await executeRaycast(pending.ndcX, pending.ndcY, pending.screenX, pending.screenY)
+      return
+    }
+
+    // 类别或点选用途变化后，旧请求不能恢复已清除的 tooltip / hover。
+    if (revision !== raycastRevision) return
+
+    // 只判断最近命中，不穿透被过滤的物品；专用参考拾取不限制类别。
+    if (!hit || (!isReferencePicking.value && !isItemSelectable(hit.internalId))) {
+      hideTooltip()
+      return
+    }
+
+    // 性能优化：使用 Map O(1) 查找替代数组 find O(N)
+    const item = editorStore.itemsMap.get(hit.internalId)
+
+    if (!item) {
+      hideTooltip()
+      return
+    }
+
+    const furnitureInfo = gameDataStore.getFurniture(item.gameId)
+
+    let name = ''
+    if (furnitureInfo) {
+      name =
+        locale.value === 'zh'
+          ? furnitureInfo.name_cn
+          : furnitureInfo.name_en || furnitureInfo.name_cn
+    } else if (item.gameId === SLIDE_PATH_GAME_ID) {
+      name = t('sidebar.slidePathName')
+    } else {
+      name = t('sidebar.itemDefaultName', { id: item.gameId })
+    }
+
+    tooltipData.value = {
+      name,
+      icon: furnitureInfo ? gameDataStore.getIconUrl(item.gameId) : '',
+      position: { x: screenX, y: screenY },
+      gameId: item.gameId,
+      instanceId: item.instanceId,
+    }
+
+    tooltipVisible.value = true
+
+    if (setHoveredItemId) {
+      setHoveredItemId(hit.internalId, hit)
+    }
+  }
+
+  async function handlePointerMove(evt: PointerEvent, isSelecting: boolean) {
+    const camera = cameraRef.value
+    const container = containerRef.value
+
+    if (!camera || !container) {
+      hideTooltip()
+      return
+    }
+
+    // 功能未启用或当前处于交互中（框选 / Gizmo / 任意按键按下）时隐藏 tooltip
+    if (!isEnabled.value || isSelecting || isTransformDragging?.value || evt.buttons !== 0) {
+      hideTooltip()
+      return
+    }
+
+    // 性能优化：物品数超过阈值且相机正在移动时，跳过射线检测以避免卡顿
+    const itemCount = editorStore.activeScheme?.items.value.length ?? 0
+    if (itemCount > RAYCAST_SKIP_ITEM_THRESHOLD && isCameraMoving?.value) {
+      hideTooltip()
+      return
+    }
+
+    // 性能优化：直接从 Store 获取缓存的 Rect，避免触发 Layout Thrashing
+    const rect = uiStore.editorContainerRect
+    const x = evt.clientX - rect.left
+    const y = evt.clientY - rect.top
+
+    // 1. 优先更新位置：如果 Tooltip 当前可见，必须实时更新位置以保证视觉流畅（跟随鼠标）
+    if (tooltipData.value) {
+      tooltipData.value.position = { x, y }
+    }
+
+    // 防御：指针不在容器内
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+      hideTooltip()
+      return
+    }
+
+    // 计算 NDC 坐标
+    const ndcX = (x / rect.width) * 2 - 1
+    const ndcY = -(y / rect.height) * 2 + 1
+
+    // ✨ 关键改动：如果已有检测在进行中，记录为待处理请求（确保最后位置被检测）
+    if (isRaycasting) {
+      pendingRaycast = { ndcX, ndcY, screenX: x, screenY: y }
+      return
+    }
+
+    // 执行射线检测
+    await executeRaycast(ndcX, ndcY, x, y)
+  }
+
+  return {
+    tooltipVisible,
+    tooltipData,
+    handlePointerMove,
+    hideTooltip,
+  }
+}

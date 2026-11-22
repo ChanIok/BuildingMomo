@@ -1,6 +1,6 @@
 import type { AppItem } from '@/types/editor'
 import { useEditorStore } from '@/stores/editorStore'
-import { requiredInstanceCount } from '@/lib/renderInstanceBudget'
+import { requiredInstanceCount } from '@/lib/viewport/renderInstanceBudget'
 
 /** Filter before applying the instance budget; retain the authoritative item references. */
 export function selectRenderItems(

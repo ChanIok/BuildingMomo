@@ -35,7 +35,7 @@ vi.mock('@vueuse/core', async (original) => {
       actual.useStorage(key, value, globalThis.localStorage, options),
   }
 })
-vi.mock('@/composables/useI18n', () => ({
+vi.mock('@/composables/app/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key, locale: ref('zh') }),
 }))
 

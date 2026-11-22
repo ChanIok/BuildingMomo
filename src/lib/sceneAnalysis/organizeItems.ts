@@ -1,4 +1,4 @@
-import { isCollectionTree } from '@/lib/collectionTree'
+import { isCollectionTree } from '@/lib/scheme/collectionTree'
 import type { OrganizeItemsCommand } from './types'
 import { assertScopedIds } from './queries'
 import {
@@ -15,7 +15,7 @@ import {
 export function readOrganizeItems(
   scope: {
     itemIds: readonly string[]
-    collections: readonly import('@/lib/collectionTree').SchemeCollection[]
+    collections: readonly import('@/lib/scheme/collectionTree').SchemeCollection[]
   },
   value: unknown
 ): OrganizeItemsCommand {

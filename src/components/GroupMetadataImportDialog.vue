@@ -14,8 +14,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useEditorStore } from '@/stores/editorStore'
 import { useTabStore } from '@/stores/tabStore'
-import { useI18n } from '@/composables/useI18n'
-import { useNotification } from '@/composables/useNotification'
+import { useI18n } from '@/composables/app/useI18n'
+import { useNotification } from '@/composables/app/useNotification'
 import { useGroupMetadataImport } from '@/composables/editor/useGroupMetadataImport'
 
 const props = defineProps<{ open: boolean }>()

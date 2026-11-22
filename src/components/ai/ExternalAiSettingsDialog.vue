@@ -2,7 +2,7 @@
 import { inject, onBeforeUnmount, ref } from 'vue'
 import { Check, Copy, Square } from 'lucide-vue-next'
 import { externalAiKey } from '@/composables/ai/useExternalAi'
-import { useI18n } from '@/composables/useI18n'
+import { useI18n } from '@/composables/app/useI18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'

@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useEditorStore } from '../../src/stores/editorStore'
-import { useEditorSelection } from '../../src/composables/editor/useEditorSelection'
-import { useEditorHistory } from '../../src/composables/editor/useEditorHistory'
-import { useEditorGroups } from '../../src/composables/editor/useEditorGroups'
-import type { AppItem } from '../../src/types/editor'
+import { useEditorStore } from '@/stores/editorStore'
+import { useEditorSelection } from '@/composables/editor/useEditorSelection'
+import { useEditorHistory } from '@/composables/editor/useEditorHistory'
+import { useEditorGroups } from '@/composables/editor/useEditorGroups'
+import type { AppItem } from '@/types/editor'
 import { OrthographicCamera } from 'three'
 import { shallowRef, ref } from 'vue'
-import { useThreeSelection } from '../../src/composables/useThreeSelection'
-import { useUIStore } from '../../src/stores/uiStore'
-import type { InteractionAdapter, RaycastHit } from '../../src/composables/renderer/types'
-import { useCommandStore } from '../../src/stores/commandStore'
-import { useKeyboardShortcuts } from '../../src/composables/useKeyboardShortcuts'
+import { useThreeSelection } from '@/composables/viewport/useThreeSelection'
+import { useUIStore } from '@/stores/uiStore'
+import type { InteractionAdapter, RaycastHit } from '@/composables/renderer/types'
+import { useCommandStore } from '@/stores/commandStore'
+import { useKeyboardShortcuts } from '@/composables/app/useKeyboardShortcuts'
 
 const keyboard = vi.hoisted(() => ({
   listener: null as ((event: KeyboardEvent) => void) | null,
@@ -24,7 +24,7 @@ vi.mock('@vueuse/core', async (original) => ({
   },
   useMagicKeys: () => keyboard.keys,
 }))
-vi.mock('@/composables/useFileOperations', () => ({
+vi.mock('@/composables/fileOps/useFileOperations', () => ({
   useFileOperations: () => ({
     canRestoreWatchMode: ref(false),
     isRestoringWatchMode: ref(false),
@@ -32,7 +32,7 @@ vi.mock('@/composables/useFileOperations', () => ({
   }),
 }))
 
-vi.mock('@/composables/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('@/composables/app/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 function item(id: string, groupId: number, gameId = 1): AppItem {
   return {

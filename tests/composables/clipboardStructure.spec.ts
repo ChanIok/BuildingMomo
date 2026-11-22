@@ -3,14 +3,14 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useEditorStore } from '@/stores/editorStore'
 import { useCloudSchemeStore } from '@/stores/cloudSchemeStore'
 import { useTabStore } from '@/stores/tabStore'
-import { useClipboard } from '@/composables/useClipboard'
+import { useClipboard } from '@/composables/editor/useClipboard'
 import { useEditorRemoval } from '@/composables/editor/useEditorRemoval'
 import { useEditorHistory } from '@/composables/editor/useEditorHistory'
-import { applyEditorTransactionToScheme } from '@/lib/editorTransactions'
-import { isCollectionTree } from '@/lib/collectionTree'
+import { applyEditorTransactionToScheme } from '@/lib/scheme/editorTransactions'
+import { isCollectionTree } from '@/lib/scheme/collectionTree'
 import { makeAppItem, makeScheme } from '../fixtures/item'
 
-vi.mock('@/composables/useI18n', () => ({
+vi.mock('@/composables/app/useI18n', () => ({
   useI18n: () => ({
     t: (key: string, args?: { name: string }) => (args ? `${args.name} copy` : key),
   }),

@@ -7,7 +7,7 @@ import {
   collectTransactionItemBuckets,
   collectTransactionTouchedItemIds,
   invertEditorTransaction,
-} from '@/lib/editorTransactions'
+} from '@/lib/scheme/editorTransactions'
 import type { AppItem, EditorTransaction } from '@/types/editor'
 import { makeAppItem, makeScheme, groupNamesOf, setGroupNames } from '../fixtures/item'
 

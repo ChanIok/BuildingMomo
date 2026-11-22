@@ -5,7 +5,7 @@ import {
   type FurnitureModelConfig,
   type ModelAssetProfile,
 } from '@nuan5-pro/render/furniture'
-import { getSafeScaleRange } from '../lib/scaleLimits'
+import { getSafeScaleRange } from '@/lib/transform/scaleLimits'
 import type {
   FurnitureItem,
   FurnitureCategory,
@@ -13,7 +13,7 @@ import type {
   RawFurnitureCombinationColorPreset,
   FurnitureCombinationColorPreset,
   SelectionCategoryId,
-} from '../types/furniture'
+} from '@/types/furniture'
 
 // 远程数据源 (Build time fetched)
 const FURNITURE_DATA_URL = import.meta.env.BASE_URL + 'assets/data/building-momo-furniture.json'
