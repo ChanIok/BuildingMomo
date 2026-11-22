@@ -45,12 +45,12 @@ import {
   Redo2,
   Focus,
 } from 'lucide-vue-next'
-import SettingsDialog from './SettingsDialog.vue'
-import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
-import ImportCodeDialog from './ImportCodeDialog.vue'
-import ArchivePopover from './ArchivePopover.vue'
-import CloudSchemePopover from './CloudSchemePopover.vue'
-import CloudSchemeDialog from './CloudSchemeDialog.vue'
+import SettingsDialog from '@/components/dialogs/SettingsDialog.vue'
+import SchemeSettingsDialog from '@/components/workspace/SchemeSettingsDialog.vue'
+import ImportCodeDialog from '@/components/workspace/ImportCodeDialog.vue'
+import ArchivePopover from '@/components/workspace/ArchivePopover.vue'
+import CloudSchemePopover from '@/components/workspace/CloudSchemePopover.vue'
+import CloudSchemeDialog from '@/components/workspace/CloudSchemeDialog.vue'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { useNotification } from '@/composables/app/useNotification'

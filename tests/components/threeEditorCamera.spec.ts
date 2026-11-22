@@ -9,7 +9,7 @@ import { invalidateScene, setSceneInvalidate } from '@/composables/viewport/useS
 // Execute the actual look-at watcher with real Vue scheduling without loading
 // the viewport's unrelated rendering dependencies.
 const source = readFileSync(
-  new URL('../../src/components/ThreeEditor.vue', import.meta.url),
+  new URL('../../src/components/viewport/ThreeEditor.vue', import.meta.url),
   'utf8'
 )
 const script = source.slice(source.indexOf('>') + 1, source.indexOf('</script>'))

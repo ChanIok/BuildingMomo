@@ -103,9 +103,17 @@ UI、编辑操作 API 和高级粘贴统一使用视觉 `x/y/z`：
   - `src/lib/environment/`（家园昼夜/天空/大气数据与计算）
   - `src/lib/persistence/`（IndexedDB 与句柄存储）
   - `src/lib/sceneAnalysis/`、`src/lib/ai/`（场景分析与 AI 执行引擎，各自另有 `README.md`）
+- 视图组件（`src/components/`，根目录无散落业务组件）：
+  - `layout/`（应用外壳：`EditorLayout`、`Toolbar`、`StatusBar`、`WelcomeScreen`）
+  - `viewport/`（3D 视口与 HUD：`ThreeEditor`、`ThreeEditorOverlays`、`LogDepthGrid`、`CanvasToolbar`、`LoadingProgress`、`FpsMonitor`、`DebugPanel`）
+  - `panels/`（画布浮层业务面板：`FurnitureLibrary`、`DyePanel`、`GroupPanel*`、`GroupMetadataImportDialog`、`GroupMergeDialog`）
+  - `sidebar/`（右侧边栏视图与选区/变换子节，含 `Transform*` 与 `SlidePathPointEditor`）
+  - `workspace/`（存档、云协同与方案导入/设置浮层及弹窗）
+  - `dialogs/`（全局设置、坐标系、高级粘贴、提示与横屏引导弹窗）
+  - `ai/`、`docs/`、`icons/`、`ui/`（AI 助手、内嵌文档、SVG 图标与 shadcn-vue 基础原语）
 - 编辑命令与面板：`src/composables/editor/`（纯编辑事务命令）、`src/composables/panels/`（组面板/变换面板/浮层 ViewModel）
 - 视口、环境与渲染：
-  - `src/components/ThreeEditor.vue`、`src/composables/viewport/`（相机、输入路由、选区、截图、`gizmo/`）
+  - `src/components/viewport/ThreeEditor.vue`、`src/composables/viewport/`（相机、输入路由、选区、截图、`gizmo/`）
   - `src/composables/environment/`（家园天空、地形、光照、背景）
   - `src/composables/renderer/`（实例化家具与飞花道渲染引擎、模型与图标资源管理；共享家具入口为 `src/composables/renderer/useFurnitureRender.ts`）
 - 文件、持久化与云协同：

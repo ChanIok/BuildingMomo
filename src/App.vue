@@ -5,17 +5,17 @@ import { useEditorStore } from '@/stores/editorStore'
 import { useGameDataStore } from '@/stores/gameDataStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useTabStore } from '@/stores/tabStore'
-import Toolbar from '@/components/Toolbar.vue'
-import StatusBar from '@/components/StatusBar.vue'
-import WelcomeScreen from '@/components/WelcomeScreen.vue'
-import RotateHintDialog from '@/components/RotateHintDialog.vue'
-import CoordinateDialog from '@/components/CoordinateDialog.vue'
-import AdvancedPasteDialog from '@/components/AdvancedPasteDialog.vue'
-import GroupMergeDialog from '@/components/GroupMergeDialog.vue'
+import Toolbar from '@/components/layout/Toolbar.vue'
+import StatusBar from '@/components/layout/StatusBar.vue'
+import WelcomeScreen from '@/components/layout/WelcomeScreen.vue'
+import RotateHintDialog from '@/components/dialogs/RotateHintDialog.vue'
+import CoordinateDialog from '@/components/dialogs/CoordinateDialog.vue'
+import AdvancedPasteDialog from '@/components/dialogs/AdvancedPasteDialog.vue'
+import GroupMergeDialog from '@/components/panels/GroupMergeDialog.vue'
 import { useAsyncView } from '@/composables/app/useAsyncView'
-import GlobalAlertDialog from '@/components/GlobalAlertDialog.vue'
+import GlobalAlertDialog from '@/components/dialogs/GlobalAlertDialog.vue'
 import { Toaster } from '@/components/ui/sonner'
-import EditorLayout from '@/components/EditorLayout.vue'
+import EditorLayout from '@/components/layout/EditorLayout.vue'
 import 'vue-sonner/style.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useKeyboardShortcuts } from '@/composables/app/useKeyboardShortcuts'
@@ -34,9 +34,9 @@ import { useAiChat } from '@/composables/ai/useAiChat'
 import { aiChatKey } from '@/composables/ai/chatContext'
 import { externalAiKey, useExternalAi } from '@/composables/ai/useExternalAi'
 
-const ThreeEditor = useAsyncView(() => import('@/components/ThreeEditor.vue'))
-const Sidebar = useAsyncView(() => import('@/components/Sidebar.vue'))
-const DocsViewer = useAsyncView(() => import('@/components/DocsViewer.vue'))
+const ThreeEditor = useAsyncView(() => import('@/components/viewport/ThreeEditor.vue'))
+const Sidebar = useAsyncView(() => import('@/components/sidebar/Sidebar.vue'))
+const DocsViewer = useAsyncView(() => import('@/components/docs/DocsViewer.vue'))
 
 const editorStore = useEditorStore()
 const gameDataStore = useGameDataStore()

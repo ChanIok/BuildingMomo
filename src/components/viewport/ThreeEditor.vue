@@ -67,7 +67,7 @@ import {
   watchOnce,
 } from '@vueuse/core'
 import ThreeEditorOverlays from './ThreeEditorOverlays.vue'
-import LogDepthGrid from '@/components/scene/LogDepthGrid.vue'
+import LogDepthGrid from './LogDepthGrid.vue'
 import { recordRenderFrame, recordGpuFrame } from '@/composables/viewport/useFpsMonitor'
 import { createGpuFrameTimer } from '@/composables/viewport/gpuFrameTimer'
 import { getRenderQuality } from '@/lib/viewport/renderQuality'

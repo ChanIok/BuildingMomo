@@ -25,7 +25,7 @@ import {
   CloudAlert,
 } from 'lucide-vue-next'
 import { MAX_RENDER_INSTANCES } from '@/lib/viewport/renderInstanceBudget'
-import SchemeSettingsDialog from './SchemeSettingsDialog.vue'
+import SchemeSettingsDialog from '@/components/workspace/SchemeSettingsDialog.vue'
 
 const settingsStore = useSettingsStore()
 const editorStore = useEditorStore()
