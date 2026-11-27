@@ -17,6 +17,7 @@ import {
   type WebGLRenderer,
 } from 'three'
 import { createSceneEnvironment } from '@/composables/environment/useThreeEnvironment'
+import { setEnvironmentReflection } from '@nuan5-pro/render'
 
 vi.mock('three', async (importOriginal) => {
   const three = await importOriginal<typeof import('three')>()
@@ -139,6 +140,22 @@ it('uses SH-derived sky/ground endpoints only in economy and preserves TOD and s
   } finally {
     cheap.dispose()
   }
+})
+
+it('updates terrain specular radiance with TOD and clears it in studio', async () => {
+  await environment.prepare('home', 720)
+  environment.update('home', 720)
+  const noon = vi.mocked(setEnvironmentReflection).mock.lastCall?.[4]
+  expect(noon).toHaveLength(3)
+  expect(noon!.every((channel) => channel > 0)).toBe(true)
+
+  environment.update('home', 0)
+  const night = vi.mocked(setEnvironmentReflection).mock.lastCall?.[4]
+  expect(night).toHaveLength(3)
+  expect(night!.every((channel, i) => channel < noon![i]!)).toBe(true)
+
+  environment.update('studio', 0)
+  expect(setEnvironmentReflection).toHaveBeenLastCalledWith(renderer, [1, 1, 1], [1, 1, 1])
 })
 
 function expectShadowCoverage(bounds: Box3) {

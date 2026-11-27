@@ -18,6 +18,7 @@ import {
   homeEnvironmentAsset,
   homeEnvironmentSH,
   homeEnvironmentSHSigns,
+  homeTerrainReflectionAlbedo,
 } from '@/lib/environment/homeEnvironmentData'
 import { sampleHomeTod, type HomeTodSample } from '@/lib/environment/homeTod'
 import {
@@ -69,6 +70,8 @@ export function createSceneEnvironment(
   // Economy evaluates two endpoint irradiances on TOD changes instead.
   if (shadingQuality !== 'economy') scene.add(probe)
   const fillIrradiance = new Vector3()
+  const groundReflection = new Vector3()
+  const upward = new Vector3(0, 0, 1)
   const downward = new Vector3(0, 0, -1)
 
   const previous = {
@@ -254,11 +257,24 @@ export function createSceneEnvironment(
         hemisphere.intensity = 1
       }
       setEnvironmentDiffuseWeight(renderer, 0)
+      // The source cube has no lower-hemisphere radiance. Use the island's
+      // Lambertian ground bounce in place of a local Lumen reflection probe.
+      probe.sh.getIrradianceAt(upward, groundReflection).multiplyScalar(sample.skyIntensity)
+      const sunIrradiance = sun.intensity * Math.max(0, sample.sunDirectionWorld[2])
+      groundReflection.addScaledVector(
+        fillIrradiance.set(sun.color.r, sun.color.g, sun.color.b),
+        sunIrradiance
+      )
+      groundReflection
+        .clampScalar(0, Infinity)
+        .multiply(fillIrradiance.fromArray(homeTerrainReflectionAlbedo))
+        .multiplyScalar(1 / Math.PI)
       setEnvironmentReflection(
         renderer,
         sample.generalReflectionTint,
         sample.waterReflectionTint,
-        sample.skyColor
+        sample.skyColor,
+        [groundReflection.x, groundReflection.y, groundReflection.z]
       )
     } else {
       scene.environmentRotation.copy(previous.environmentRotation)
