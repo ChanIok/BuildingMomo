@@ -31,7 +31,7 @@ importers:
         version: 5.3.0
       '@nuan5-pro/render':
         specifier: github:nuan5-pro/infinity-nikki-web-render
-        version: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/3d9282a9dea5fa1071a0c6d6c2aaf479d06739bb(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)
+        version: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/71f42fb380a125f16b2695bed16cdb34a00497d5(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)
       '@tailwindcss/vite':
         specifier: ^4.2.0
         version: 4.3.3(rolldown-vite@7.3.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@25.9.9)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
@@ -775,8 +775,8 @@ packages:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
 
-  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/3d9282a9dea5fa1071a0c6d6c2aaf479d06739bb':
-    resolution: {gitHosted: true, integrity: sha512-X+nOxArq4QvIcnL5wVeDhLcX6kES+vwRwMFYQSjshBazXM303W/ywXRoK88IGMre2mb/sT6cN58e6PdbLD9LxA==, tarball: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/3d9282a9dea5fa1071a0c6d6c2aaf479d06739bb}
+  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/71f42fb380a125f16b2695bed16cdb34a00497d5':
+    resolution: {gitHosted: true, integrity: sha512-hhCKoQJw+UawnOQrtOirhFptp+0kUkgC7qBIKxWLtm0YOktosZwA8uo0DLbfMdPjN+GIk93/mZ9/h0teP7AomA==, tarball: https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/71f42fb380a125f16b2695bed16cdb34a00497d5}
     version: 0.1.0
     peerDependencies:
       three: '>=0.183.2 <0.184.0'
@@ -3792,7 +3792,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.4
     optional: true
 
-  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/3d9282a9dea5fa1071a0c6d6c2aaf479d06739bb(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)':
+  '@nuan5-pro/render@https://codeload.github.com/nuan5-pro/infinity-nikki-web-render/tar.gz/71f42fb380a125f16b2695bed16cdb34a00497d5(three-mesh-bvh@0.9.16(three@0.183.2))(three@0.183.2)':
     dependencies:
       three: 0.183.2
       three-mesh-bvh: 0.9.16(three@0.183.2)
