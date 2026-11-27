@@ -23,3 +23,7 @@ export const homeEnvironmentSH = [
 // UE's real-SH basis has negative Y/X, YZ/XZ terms. Reflecting source Y once
 // into editor world space gives these signs for Three's positive real-SH basis.
 export const homeEnvironmentSHSigns = [1, 1, 1, -1, -1, 1, 1, -1, 1] as const
+
+// Linear base color of the upward-facing island ground in home-terrain.glb
+// (Home8000001), sampled in UV space and weighted by horizontal triangle area.
+export const homeTerrainReflectionAlbedo = [0.0287414, 0.0432898, 0.0121837] as const
